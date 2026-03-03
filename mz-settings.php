@@ -12,7 +12,7 @@
  *  CONFIG
  *  ================================ */
 const MEZA_ADMIN_EMAIL       = 'info@meza.design';
-const MEZA_GMT_OFFSET        = -4;     // fixed UTC-4
+const MEZA_GMT_OFFSET        = -5;     // fixed UTC-5
 const MEZA_TIMEZONE_STRING   = '';
 const MEZA_RSS_USE_EXCERPT   = 1;
 
@@ -95,7 +95,9 @@ const MEZA_MENU_LOCATIONS = [
 /** Force a WordPress option to always read as a specific value, no matter what is stored in the database. */
 function meza_force_option_read($opt, $value)
 {
-    add_filter("pre_option_{$opt}", fn() => $value, 9999);
+    add_filter("pre_option_{$opt}", function () use ($value) {
+        return $value;
+    }, 9999);
 }
 
 /** Intercept writes to an option so this plugin can allow, reject, or normalize attempted changes. */
@@ -263,10 +265,18 @@ function meza_latest_twenty_slug(): string
  *  OPTION FORCING (reads + writes)
  *  ================================ */
 add_action('muplugins_loaded', function () {
-    $target_blogname = meza_resolve_target(MEZA_SITE_TITLE, fn() => get_option('blogname'));
-    $target_home     = meza_resolve_target(MEZA_HOME_URL,   fn() => get_option('home'));
-    $target_siteurl  = meza_resolve_target(MEZA_SITE_URL,   fn() => get_option('siteurl'));
-    $target_lang     = meza_resolve_target(MEZA_WP_LANG,    fn() => get_option('WPLANG'));
+    $target_blogname = meza_resolve_target(MEZA_SITE_TITLE, function () {
+        return get_option('blogname');
+    });
+    $target_home     = meza_resolve_target(MEZA_HOME_URL, function () {
+        return get_option('home');
+    });
+    $target_siteurl  = meza_resolve_target(MEZA_SITE_URL, function () {
+        return get_option('siteurl');
+    });
+    $target_lang     = meza_resolve_target(MEZA_WP_LANG, function () {
+        return get_option('WPLANG');
+    });
 
     meza_force_option_read('admin_email',     MEZA_ADMIN_EMAIL);
     meza_force_option_read('blogname',        $target_blogname);
@@ -285,8 +295,12 @@ add_action('muplugins_loaded', function () {
         $allow    = MEZA_ALLOW_EDITOR_SWITCH ? 'allow' : 'disallow';
         meza_force_option_read('classic-editor-replace',      $replace);
         meza_force_option_read('classic-editor-allow-users',  $allow);
-        meza_guard_option_write('classic-editor-replace',     fn($n, $o) => $n === $replace ? $replace : null);
-        meza_guard_option_write('classic-editor-allow-users', fn($n, $o) => $n === $allow ? $allow : null);
+        meza_guard_option_write('classic-editor-replace', function ($n, $o) use ($replace) {
+            return $n === $replace ? $replace : null;
+        });
+        meza_guard_option_write('classic-editor-allow-users', function ($n, $o) use ($allow) {
+            return $n === $allow ? $allow : null;
+        });
     }
 
     meza_force_option_read('rss_use_excerpt', MEZA_RSS_USE_EXCERPT);
@@ -347,14 +361,20 @@ add_action('muplugins_loaded', function () {
             'default_email_category' => MEZA_DEFAULT_EMAIL_CATEGORY,
         ] as $opt => $target
     ) {
-        meza_guard_option_write($opt, fn($n, $o) => ((string)$n == (string)$target) ? $target : null);
+        meza_guard_option_write($opt, function ($n, $o) use ($target) {
+            return ((string) $n == (string) $target) ? $target : null;
+        });
     }
 
     if (meza_has_assigned_reading_pages()) {
-        meza_guard_option_write('show_on_front', fn($n, $o) => ((string)$n === 'page') ? 'page' : null);
+        meza_guard_option_write('show_on_front', function ($n, $o) {
+            return ((string) $n === 'page') ? 'page' : null;
+        });
     }
 
-    meza_guard_option_write('admin_email', fn($n, $o) => (strcasecmp((string)$n, (string)MEZA_ADMIN_EMAIL) === 0) ? $n : null);
+    meza_guard_option_write('admin_email', function ($n, $o) {
+        return (strcasecmp((string) $n, (string) MEZA_ADMIN_EMAIL) === 0) ? $n : null;
+    });
 }, 0);
 
 /** =========================================
@@ -386,8 +406,12 @@ add_action('admin_init', function () {
 
         meza_force_option_read('page_on_front',  (int)$home_id);
         meza_force_option_read('page_for_posts', (int)$posts_id);
-        meza_guard_option_write('page_on_front',  fn($n, $o) => ((int)$n === (int)$home_id) ? $home_id : null);
-        meza_guard_option_write('page_for_posts', fn($n, $o) => ((int)$n === (int)$posts_id) ? $posts_id : null);
+        meza_guard_option_write('page_on_front', function ($n, $o) use ($home_id) {
+            return ((int) $n === (int) $home_id) ? $home_id : null;
+        });
+        meza_guard_option_write('page_for_posts', function ($n, $o) use ($posts_id) {
+            return ((int) $n === (int) $posts_id) ? $posts_id : null;
+        });
     }
 
     // Privacy Policy
@@ -413,10 +437,18 @@ add_action('admin_init', function () {
  *  SEED OTHER OPTIONS (idempotent)
  *  ========================================= */
 add_action('admin_init', function () {
-    $target_blogname = meza_resolve_target(MEZA_SITE_TITLE, fn() => get_option('blogname'));
-    $target_home     = meza_resolve_target(MEZA_HOME_URL,   fn() => get_option('home'));
-    $target_siteurl  = meza_resolve_target(MEZA_SITE_URL,   fn() => get_option('siteurl'));
-    $target_lang     = meza_resolve_target(MEZA_WP_LANG,    fn() => get_option('WPLANG'));
+    $target_blogname = meza_resolve_target(MEZA_SITE_TITLE, function () {
+        return get_option('blogname');
+    });
+    $target_home     = meza_resolve_target(MEZA_HOME_URL, function () {
+        return get_option('home');
+    });
+    $target_siteurl  = meza_resolve_target(MEZA_SITE_URL, function () {
+        return get_option('siteurl');
+    });
+    $target_lang     = meza_resolve_target(MEZA_WP_LANG, function () {
+        return get_option('WPLANG');
+    });
 
     update_option('blogname',           $target_blogname);
     update_option('home',               $target_home);
@@ -650,6 +682,10 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
         foreach (['mz_page_headline', 'mz_page_cta'] as $column_id) {
             if (!in_array($column_id, $hidden, true)) $hidden[] = $column_id;
         }
+    }
+
+    if (in_array($post_type, ['cta', 'review', 'reviews'], true) && !in_array('mz_thumbnail', $hidden, true)) {
+        $hidden[] = 'mz_thumbnail';
     }
 
     $hidden = array_values(array_diff($hidden, $always_visible));

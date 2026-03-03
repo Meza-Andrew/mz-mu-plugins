@@ -10,6 +10,23 @@
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) return;
 
+if (!function_exists('str_contains')) {
+    function str_contains($haystack, $needle)
+    {
+        if ($needle === '') return true;
+        return strpos((string) $haystack, (string) $needle) !== false;
+    }
+}
+
+if (!function_exists('str_starts_with')) {
+    function str_starts_with($haystack, $needle)
+    {
+        $needle = (string) $needle;
+        if ($needle === '') return true;
+        return strncmp((string) $haystack, $needle, strlen($needle)) === 0;
+    }
+}
+
 /** ================================
  *  EVENT ADMIN SORTING
  *  ================================ */
@@ -455,7 +472,9 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             }
         }
 
-        $cta_ids = array_values(array_unique(array_filter($cta_ids, fn($id) => $id > 0)));
+        $cta_ids = array_values(array_unique(array_filter($cta_ids, function ($id) {
+            return $id > 0;
+        })));
         if (empty($cta_ids)) {
             echo '&mdash;';
             return;
@@ -734,22 +753,108 @@ function meza_get_page_type_label(int $post_id): string
     return '';
 }
 
-function meza_get_page_template_label_map(): array
+function meza_get_page_type_choice_map(): array
 {
-    $map = [
-        'default' => 'Basic Page',
-        'front-page.php' => 'Front Page',
-        'home.php' => 'Posts Page',
-        'page-events.php' => 'Events Page',
-        'page-form.php' => 'Form Page',
-        'page-partners.php' => 'Partners Page',
-        'page-services.php' => 'Service Page',
-        'page-team.php' => 'Team Page',
-        'page-style-guide.php' => 'Style Guide',
+    if (!function_exists('get_field_object')) return [];
+
+    $field = get_field_object('page_type', 0, false, false);
+    if (!is_array($field) || !isset($field['choices']) || !is_array($field['choices'])) return [];
+
+    $choices = [];
+    foreach ($field['choices'] as $value => $label) {
+        $value = is_scalar($value) ? trim((string) $value) : '';
+        $label = is_scalar($label) ? trim((string) $label) : '';
+        if ($value === '' || $label === '') continue;
+        $choices[$value] = $label;
+    }
+
+    return $choices;
+}
+
+function meza_get_page_template_sort_map(): array
+{
+    $map = [];
+
+    global $wpdb;
+    $used_templates = $wpdb->get_col(
+        "SELECT DISTINCT pm.meta_value
+        FROM {$wpdb->postmeta} pm
+        INNER JOIN {$wpdb->posts} p ON (p.ID = pm.post_id)
+        WHERE pm.meta_key = '_wp_page_template'
+          AND pm.meta_value IS NOT NULL
+          AND pm.meta_value <> ''
+          AND pm.meta_value <> 'default'
+          AND p.post_type = 'page'"
+    );
+
+    if (is_array($used_templates)) {
+        foreach ($used_templates as $file) {
+            $file = trim((string) $file);
+            if ($file === '') continue;
+
+            $template_path = locate_template($file, false, false);
+            if (!is_string($template_path) || $template_path === '' || !is_readable($template_path)) continue;
+
+            $header = get_file_data($template_path, ['template_name' => 'Template Name']);
+            $label = trim((string) ($header['template_name'] ?? ''));
+            if ($label === '') continue;
+
+            $map[$file] = $label;
+        }
+    }
+
+    $registered_templates = wp_get_theme()->get_page_templates(null, 'page');
+    if (is_array($registered_templates)) {
+        foreach ($registered_templates as $label => $file) {
+            $file = trim((string) $file);
+            $label = trim((string) $label);
+            if ($file === '' || $label === '') continue;
+            if (!isset($map[$file])) $map[$file] = $label;
+        }
+    }
+
+    return $map;
+}
+
+function meza_get_page_type_sort_map(): array
+{
+    $map = meza_get_page_type_choice_map();
+
+    $aliases = [
+        'basic' => 'Basic Page',
+        'basic page' => 'Basic Page',
+        'basic-page' => 'Basic Page',
+        'basic_page' => 'Basic Page',
     ];
 
-    $filtered = apply_filters('meza/page_template_label_map', $map);
-    return is_array($filtered) ? $filtered : $map;
+    foreach (meza_get_page_template_sort_map() as $file => $label) {
+        $file_stem = strtolower(trim((string) pathinfo($file, PATHINFO_FILENAME)));
+        if ($file_stem === '') continue;
+
+        $alias_seed = $file_stem;
+        if (str_starts_with($alias_seed, 'page-')) {
+            $alias_seed = substr($alias_seed, 5);
+        }
+
+        $variants = [
+            strtolower(trim($label)),
+            $alias_seed,
+            str_replace('-', ' ', $alias_seed),
+            str_replace('-', '_', $alias_seed),
+        ];
+
+        foreach ($variants as $variant) {
+            $variant = trim((string) $variant);
+            if ($variant === '') continue;
+            if (!isset($map[$variant])) $map[$variant] = $label;
+        }
+    }
+
+    foreach ($aliases as $value => $label) {
+        if (!isset($map[$value])) $map[$value] = $label;
+    }
+
+    return $map;
 }
 
 function meza_get_page_template_label(int $post_id): string
@@ -758,57 +863,52 @@ function meza_get_page_template_label(int $post_id): string
     if ((int) get_option('page_for_posts') === $post_id) return esc_html__('Posts Page');
     if ((int) get_option('wp_page_for_privacy_policy') === $post_id) return esc_html__('Privacy Policy Page');
 
-    $template = (string) get_post_meta($post_id, '_wp_page_template', true);
-    $template_map = meza_get_page_template_label_map();
-    $default_label = trim((string) ($template_map['default'] ?? 'Basic Page'));
+    $page_type = trim(meza_get_page_type_label($post_id));
+    if ($page_type !== '') return esc_html($page_type);
 
+    $template = (string) get_post_meta($post_id, '_wp_page_template', true);
     if ($template === '' || $template === 'default') {
-        $page_type = meza_get_page_type_label($post_id);
-        if ($page_type !== '') return esc_html($page_type);
-        return esc_html($default_label);
+        return esc_html__('Basic Page');
     }
-    if (isset($template_map[$template]) && trim((string) $template_map[$template]) !== '') {
-        return esc_html(trim((string) $template_map[$template]));
+
+    $template_path = locate_template($template, false, false);
+    if (is_string($template_path) && $template_path !== '' && is_readable($template_path)) {
+        $header = get_file_data($template_path, ['template_name' => 'Template Name']);
+        $template_name = trim((string) ($header['template_name'] ?? ''));
+        if ($template_name !== '') return esc_html($template_name);
     }
 
     $post = get_post($post_id);
     $templates = wp_get_theme()->get_page_templates($post instanceof WP_Post ? $post : null, 'page');
-    $matching_labels = [];
     foreach ($templates as $label => $file) {
         if ((string) $file !== $template) continue;
         $clean_label = trim((string) $label);
-        if ($clean_label === '') continue;
-        $matching_labels[] = $clean_label;
+        if ($clean_label !== '') return esc_html($clean_label);
     }
-    if (!empty($matching_labels)) {
-        foreach ($matching_labels as $candidate) {
-            $candidate_lc = strtolower($candidate);
-            $is_file_like = str_ends_with($candidate_lc, '.php') || !str_contains($candidate, ' ');
-            if (!$is_file_like) return esc_html($candidate);
-        }
-        return esc_html($matching_labels[0]);
-    }
-
-    $humanized = ucwords(trim(str_replace(['-', '_'], ' ', (string) pathinfo($template, PATHINFO_FILENAME))));
-    if ($humanized !== '') return esc_html($humanized);
 
     return '&mdash;';
 }
 
-function meza_filter_template_state_labels(array $labels, int $post_id, string $template_display): array
+function meza_get_page_template_filter_label(int $post_id): string
 {
-    $template_meta = strtolower(trim((string) get_post_meta($post_id, '_wp_page_template', true)));
-    $template_humanized = strtolower(trim(ucwords(str_replace(['-', '_'], ' ', (string) pathinfo($template_meta, PATHINFO_FILENAME)))));
-    $template_display_normalized = strtolower(trim(wp_strip_all_tags($template_display)));
+    $label = html_entity_decode(wp_strip_all_tags(meza_get_page_template_label($post_id)), ENT_QUOTES, 'UTF-8');
+    return trim($label);
+}
 
-    return array_values(array_filter($labels, function ($label) use ($template_meta, $template_humanized, $template_display_normalized) {
-        $normalized = strtolower(trim(wp_strip_all_tags((string) $label)));
-        if ($normalized === '') return false;
-        if ($template_display_normalized !== '' && $normalized === $template_display_normalized) return false;
-        if ($template_meta !== '' && $normalized === $template_meta) return false;
-        if ($template_humanized !== '' && $normalized === $template_humanized) return false;
-        return true;
-    }));
+function meza_get_page_template_filter_link(int $post_id): string
+{
+    $label = meza_get_page_template_filter_label($post_id);
+    if ($label === '' || meza_is_empty_template_display($label)) return '&mdash;';
+
+    $url = add_query_arg(
+        [
+            'post_type' => 'page',
+            'meza_page_template_filter' => $label,
+        ],
+        admin_url('edit.php')
+    );
+
+    return '<a href="' . esc_url($url) . '">' . esc_html($label) . '</a>';
 }
 
 function meza_is_empty_template_display(string $value): bool
@@ -850,7 +950,9 @@ function meza_get_page_state_labels(int $post_id): array
     if ((int) get_option('page_for_posts') === $post_id) $labels[] = __('Posts Page');
     if ((int) get_option('wp_page_for_privacy_policy') === $post_id) $labels[] = __('Privacy Policy Page');
 
-    return array_values(array_unique(array_filter($labels, fn($v) => is_string($v) && trim($v) !== '')));
+    return array_values(array_unique(array_filter($labels, function ($v) {
+        return is_string($v) && trim($v) !== '';
+    })));
 }
 
 function meza_is_front_page(int $post_id): bool
@@ -891,12 +993,11 @@ add_filter('manage_pages_columns', function ($columns) {
     return $updated;
 }, 1000);
 
-// Render only the selected page template label in the Page Template cell.
+// Render only the selected page template label from the editor dropdown in the Page Template cell.
 $meza_render_page_template_column = function ($column, $post_id) {
     if ($column !== 'mz_page_template') return;
 
-    $template_display = meza_get_page_template_label((int) $post_id);
-    echo meza_is_empty_template_display($template_display) ? '&mdash;' : $template_display;
+    echo meza_get_page_template_filter_link((int) $post_id);
 };
 add_action('manage_page_posts_custom_column', $meza_render_page_template_column, 100, 2);
 
@@ -908,7 +1009,7 @@ add_action('manage_page_posts_custom_column', function ($column, $post_id) {
     echo '&mdash;';
 }, 100, 2);
 
-// Admin Columns plugin renderer: show only the selected page template label.
+// Admin Columns plugin renderer: show only the selected page template label from the editor dropdown.
 add_filter('ac/column/value', function ($value, $id, $column) {
     if (!is_object($column) || !method_exists($column, 'get_type') || !method_exists($column, 'get_post_type')) {
         return $value;
@@ -916,8 +1017,7 @@ add_filter('ac/column/value', function ($value, $id, $column) {
     if ((string) $column->get_post_type() !== 'page') return $value;
     if ((string) $column->get_type() !== 'column-page_template') return $value;
 
-    $template_display = meza_get_page_template_label((int) $id);
-    return meza_is_empty_template_display($template_display) ? '&mdash;' : $template_display;
+    return meza_get_page_template_filter_link((int) $id);
 }, 100, 3);
 
 // Admin Columns plugin renderer: show an em dash for front page slug.
@@ -931,6 +1031,119 @@ add_filter('ac/column/value', function ($value, $id, $column) {
 
     return '&mdash;';
 }, 100, 3);
+
+add_filter('manage_edit-page_sortable_columns', function ($cols) {
+    if (!is_array($cols)) return $cols;
+
+    $cols['mz_page_template'] = ['mz_page_template', false];
+    return $cols;
+}, 1000);
+
+add_action('pre_get_posts', function (WP_Query $q) {
+    global $pagenow;
+    if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php') return;
+    if ((string) $q->get('post_type') !== 'page') return;
+
+    $orderby = (string) $q->get('orderby');
+    if (!in_array($orderby, ['mz_page_template', 'column-page_template', 'page_template'], true)) return;
+
+    $order = strtoupper((string) $q->get('order'));
+    $q->set('orderby', 'mz_page_template');
+    $q->set('order', in_array($order, ['ASC', 'DESC'], true) ? $order : 'ASC');
+    $q->set('meza_page_template_sort', true);
+}, 20);
+
+add_action('pre_get_posts', function (WP_Query $q) {
+    global $pagenow;
+    if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php') return;
+    if ((string) $q->get('post_type') !== 'page') return;
+
+    $filter_label = isset($_GET['meza_page_template_filter'])
+        ? sanitize_text_field(wp_unslash((string) $_GET['meza_page_template_filter']))
+        : '';
+    if ($filter_label === '') return;
+
+    $q->set('meza_page_template_filter_label', $filter_label);
+}, 20);
+
+add_filter('posts_clauses', function (array $clauses, WP_Query $q): array {
+    if (!is_admin() || !$q->is_main_query()) return $clauses;
+    if ((string) $q->get('post_type') !== 'page') return $clauses;
+
+    $do_sort = (bool) $q->get('meza_page_template_sort');
+    $filter_label = trim((string) $q->get('meza_page_template_filter_label'));
+    if (!$do_sort && $filter_label === '') return $clauses;
+
+    global $wpdb;
+
+    $order = strtoupper((string) $q->get('order'));
+    $order = in_array($order, ['ASC', 'DESC'], true) ? $order : 'ASC';
+
+    $front_page_id = (int) get_option('page_on_front');
+    $posts_page_id = (int) get_option('page_for_posts');
+    $privacy_page_id = (int) get_option('wp_page_for_privacy_policy');
+
+    $page_type_meta_expr = "NULL";
+    $page_type_choices = meza_get_page_type_sort_map();
+    if (!empty($page_type_choices)) {
+        $cases = [];
+        foreach ($page_type_choices as $value => $label) {
+            $cases[] = "WHEN '" . esc_sql(strtolower(trim((string) $value))) . "' THEN '" . esc_sql($label) . "'";
+        }
+        $page_type_meta_expr = "NULLIF(TRIM(CASE LOWER(TRIM(meza_pt_meta.meta_value)) " . implode(' ', $cases) . " ELSE '' END), '')";
+    }
+
+    $page_type_terms_expr = "NULLIF(TRIM(GROUP_CONCAT(DISTINCT meza_pt_terms.name ORDER BY meza_pt_terms.name ASC SEPARATOR ', ')), '')";
+    $page_type_terms_filter_expr =
+        "(SELECT NULLIF(TRIM(GROUP_CONCAT(DISTINCT meza_pt_terms_sub.name ORDER BY meza_pt_terms_sub.name ASC SEPARATOR ', ')), '') " .
+        "FROM {$wpdb->term_relationships} AS meza_pt_tr_sub " .
+        "LEFT JOIN {$wpdb->term_taxonomy} AS meza_pt_tt_sub ON (meza_pt_tr_sub.term_taxonomy_id = meza_pt_tt_sub.term_taxonomy_id AND meza_pt_tt_sub.taxonomy = 'page_type') " .
+        "LEFT JOIN {$wpdb->terms} AS meza_pt_terms_sub ON (meza_pt_tt_sub.term_id = meza_pt_terms_sub.term_id) " .
+        "WHERE meza_pt_tr_sub.object_id = {$wpdb->posts}.ID)";
+
+    $template_cases = [
+        "WHEN meza_tpl_meta.meta_value IS NULL OR meza_tpl_meta.meta_value = '' OR meza_tpl_meta.meta_value = 'default' THEN 'Basic Page'",
+    ];
+    foreach (meza_get_page_template_sort_map() as $file => $label) {
+        $template_cases[] = "WHEN meza_tpl_meta.meta_value = '" . esc_sql($file) . "' THEN '" . esc_sql($label) . "'";
+    }
+    $template_label_expr = "(CASE " . implode(' ', $template_cases) . " ELSE '' END)";
+
+    $sort_label_expr =
+        "(CASE " .
+        "WHEN {$wpdb->posts}.ID = {$front_page_id} THEN 'Front Page' " .
+        "WHEN {$wpdb->posts}.ID = {$posts_page_id} THEN 'Posts Page' " .
+        "WHEN {$wpdb->posts}.ID = {$privacy_page_id} THEN 'Privacy Policy Page' " .
+        "WHEN {$page_type_meta_expr} IS NOT NULL THEN {$page_type_meta_expr} " .
+        "WHEN {$page_type_terms_expr} IS NOT NULL THEN {$page_type_terms_expr} " .
+        "ELSE {$template_label_expr} END)";
+
+    $filter_label_expr =
+        "(CASE " .
+        "WHEN {$wpdb->posts}.ID = {$front_page_id} THEN 'Front Page' " .
+        "WHEN {$wpdb->posts}.ID = {$posts_page_id} THEN 'Posts Page' " .
+        "WHEN {$wpdb->posts}.ID = {$privacy_page_id} THEN 'Privacy Policy Page' " .
+        "WHEN {$page_type_meta_expr} IS NOT NULL THEN {$page_type_meta_expr} " .
+        "WHEN {$page_type_terms_filter_expr} IS NOT NULL THEN {$page_type_terms_filter_expr} " .
+        "ELSE {$template_label_expr} END)";
+
+    $clauses['join'] .= " LEFT JOIN {$wpdb->postmeta} AS meza_pt_meta ON ({$wpdb->posts}.ID = meza_pt_meta.post_id AND meza_pt_meta.meta_key = 'page_type')";
+    $clauses['join'] .= " LEFT JOIN {$wpdb->postmeta} AS meza_tpl_meta ON ({$wpdb->posts}.ID = meza_tpl_meta.post_id AND meza_tpl_meta.meta_key = '_wp_page_template')";
+    $clauses['join'] .= " LEFT JOIN {$wpdb->term_relationships} AS meza_pt_tr ON ({$wpdb->posts}.ID = meza_pt_tr.object_id)";
+    $clauses['join'] .= " LEFT JOIN {$wpdb->term_taxonomy} AS meza_pt_tt ON (meza_pt_tr.term_taxonomy_id = meza_pt_tt.term_taxonomy_id AND meza_pt_tt.taxonomy = 'page_type')";
+    $clauses['join'] .= " LEFT JOIN {$wpdb->terms} AS meza_pt_terms ON (meza_pt_tt.term_id = meza_pt_terms.term_id)";
+
+    $clauses['groupby'] = "{$wpdb->posts}.ID";
+    if ($filter_label !== '') {
+        $clauses['where'] .= $wpdb->prepare(" AND {$filter_label_expr} = %s", $filter_label);
+    }
+
+    if ($do_sort) {
+        $clauses['orderby'] = "LOWER({$sort_label_expr}) {$order}, {$wpdb->posts}.post_title ASC";
+    }
+
+    return $clauses;
+}, 30, 2);
 
 /** ================================
  *  DASHBOARD WIDGET DEFAULTS
@@ -997,7 +1210,9 @@ function meza_dashboard_allowed_widget_ids(array $widgets): array
 
     // Keep only widgets that actually exist for this user.
     foreach ($ids as $column => $column_ids) {
-        $ids[$column] = array_values(array_filter($column_ids, fn($id) => isset($widgets[$id])));
+        $ids[$column] = array_values(array_filter($column_ids, function ($id) use ($widgets) {
+            return isset($widgets[$id]);
+        }));
     }
 
     return $ids;
@@ -1009,7 +1224,9 @@ add_filter('screen_layout_columns', function ($columns) {
     $columns['dashboard'] = 4;
     return $columns;
 });
-add_filter('get_user_option_screen_layout_dashboard', fn() => 4, 100);
+add_filter('get_user_option_screen_layout_dashboard', function () {
+    return 4;
+}, 100);
 
 // Keep forced dashboard widgets responsive: 2 columns on medium screens, 1 on small.
 add_action('admin_head-index.php', function () {
@@ -1046,7 +1263,7 @@ add_action('admin_head-index.php', function () {
         '}' .
         '}' .
         '</style>';
-}, 99999);
+}, PHP_INT_MAX - 2);
 
 // Restrict dashboard widgets and place the allowed ones in requested columns.
 add_action('wp_dashboard_setup', function () {
@@ -1142,6 +1359,10 @@ function meza_admin_menu_content_group(string $menu_slug): string
     $menu_slug = trim($menu_slug);
     if ($menu_slug === '') return '';
 
+    if (function_exists('acf_get_options_page') && acf_get_options_page($menu_slug)) {
+        return 'without';
+    }
+
     if ($menu_slug === 'upload.php' || $menu_slug === 'edit.php') {
         return 'with';
     }
@@ -1161,9 +1382,13 @@ function meza_admin_menu_content_group(string $menu_slug): string
     return meza_post_type_has_permalink($post_type) ? 'with' : 'without';
 }
 
-// Normalize selected plugin/admin menu labels.
-add_action('admin_menu', function () {
+function meza_normalize_admin_plugin_menus(): void
+{
     global $menu, $submenu;
+
+    if (!is_array($menu) || !is_array($submenu)) return;
+
+    $redirects_item = null;
 
     foreach ($menu as $index => &$item) {
         if (!is_array($item)) continue;
@@ -1174,6 +1399,17 @@ add_action('admin_menu', function () {
         $is_wp_mail_smtp = str_contains($slug, 'wp-mail-smtp') || $title === 'wp mail smtp';
         $is_updraft = str_contains($slug, 'updraft')
             || in_array($title, ['updraft', 'updraftplus'], true);
+        $is_site_kit = str_contains($slug, 'googlesitekit')
+            || str_contains($slug, 'google-site-kit')
+            || in_array($title, ['site kit', 'site kit by google'], true);
+        $is_aios = str_contains($slug, 'aiowpsec')
+            || str_contains($slug, 'wp-security')
+            || str_contains($slug, 'all-in-one')
+            || str_contains($title, 'all-in-one')
+            || str_contains($title, 'aios');
+        $is_yoast = str_contains($slug, 'wpseo')
+            || str_contains($title, 'yoast seo')
+            || $title === 'seo';
 
         if ($is_wp_mail_smtp) {
             $item[0] = 'Mail';
@@ -1185,6 +1421,25 @@ add_action('admin_menu', function () {
         if ($is_updraft) {
             $item[0] = 'Backups';
             if (isset($item[3])) $item[3] = 'Backups';
+            continue;
+        }
+
+        if ($is_site_kit) {
+            $item[0] = 'Web Analytics';
+            if (isset($item[3])) $item[3] = 'Web Analytics';
+            continue;
+        }
+
+        if ($is_aios) {
+            $item[0] = 'Security';
+            if (isset($item[3])) $item[3] = 'Security';
+            $item[6] = 'dashicons-shield';
+            continue;
+        }
+
+        if ($is_yoast) {
+            $item[0] = 'SEO';
+            if (isset($item[3])) $item[3] = 'SEO';
         }
     }
     unset($item);
@@ -1192,17 +1447,63 @@ add_action('admin_menu', function () {
     foreach ($submenu as $parent_slug => &$items) {
         if (!is_array($items)) continue;
 
-        foreach ($items as &$item) {
+        foreach ($items as $index => &$item) {
             if (!is_array($item)) continue;
 
             $slug = strtolower((string) ($item[2] ?? ''));
             $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+            $is_yoast_menu = str_contains(strtolower((string) $parent_slug), 'wpseo');
+            $is_wp_mail_smtp_menu = str_contains(strtolower((string) $parent_slug), 'wp-mail-smtp');
+            $is_redirection = str_contains($slug, 'redirection')
+                || $title === 'redirection';
+
+            if (str_contains($title, 'upgrade')) {
+                unset($items[$index]);
+                continue;
+            }
+
+            if (str_contains($title, 'yoast')) {
+                unset($items[$index]);
+                continue;
+            }
+
+            if ($parent_slug === 'tools.php' && $is_redirection) {
+                $item[0] = 'Redirects';
+                if (isset($item[3])) $item[3] = 'Redirects';
+                if ($redirects_item === null) {
+                    $redirects_item = $item;
+                }
+                unset($items[$index]);
+                continue;
+            }
+
+            if ($is_yoast_menu && !in_array($title, ['general', 'settings', 'tools'], true)) {
+                unset($items[$index]);
+                continue;
+            }
+
+            if ($is_wp_mail_smtp_menu && !in_array($title, ['settings', 'tools'], true)) {
+                unset($items[$index]);
+                continue;
+            }
 
             $is_intuitive_cpo = str_contains($slug, 'intuitive-custom-post-order')
                 || str_contains($slug, 'cporder')
                 || $title === 'intuitive cpo';
             $is_post_duplicator = str_contains($slug, 'post-duplicator')
                 || $title === 'post duplicator';
+            $is_converter_for_media = str_contains($slug, 'webp')
+                || str_contains($slug, 'converter-for-media')
+                || $title === 'converter for media';
+            $is_wp_super_cache = str_contains($slug, 'wp-super-cache')
+                || str_contains($slug, 'wpsupercache')
+                || $title === 'wp super cache';
+            $is_menu_editor = $slug === 'menu_editor'
+                || str_contains($slug, 'menu_editor')
+                || str_contains($slug, 'menu-editor')
+                || str_contains($slug, 'admin-menu-editor')
+                || str_contains($title, 'menu editor')
+                || str_contains($title, 'admin menu');
 
             if ($parent_slug === 'options-general.php' && $is_intuitive_cpo) {
                 $item[0] = 'Post Ordering';
@@ -1213,15 +1514,105 @@ add_action('admin_menu', function () {
             if ($parent_slug === 'options-general.php' && $is_post_duplicator) {
                 $item[0] = 'Post Duplication';
                 if (isset($item[3])) $item[3] = 'Post Duplication';
+                continue;
+            }
+
+            if (in_array($parent_slug, ['options-general.php', 'upload.php'], true) && $is_converter_for_media) {
+                $new_label = ($parent_slug === 'upload.php') ? 'Performance' : 'Image Performance';
+                $item[0] = $new_label;
+                if (isset($item[3])) $item[3] = $new_label;
+                continue;
+            }
+
+            if ($parent_slug === 'options-general.php' && $is_wp_super_cache) {
+                $item[0] = 'Cache';
+                if (isset($item[3])) $item[3] = 'Cache';
+                continue;
+            }
+
+            if ($is_menu_editor) {
+                $item[0] = 'Admin Menu';
+                if (isset($item[3])) $item[3] = 'Admin Menu';
+                continue;
+            }
+
+            if ($parent_slug === 'options-general.php' && $is_redirection) {
+                $item[0] = 'Redirects';
+                if (isset($item[3])) $item[3] = 'Redirects';
             }
         }
         unset($item);
+        $items = array_values($items);
+
+        if ($parent_slug === 'options-general.php' && is_array($redirects_item)) {
+            $has_redirects = false;
+            foreach ($items as $existing_item) {
+                if (!is_array($existing_item)) continue;
+                $existing_label = trim(wp_strip_all_tags((string) ($existing_item[0] ?? '')));
+                if (strcasecmp($existing_label, 'Redirects') === 0) {
+                    $has_redirects = true;
+                    break;
+                }
+            }
+
+            if (!$has_redirects) {
+                $items[] = $redirects_item;
+            }
+        }
+
+        if ($parent_slug === 'options-general.php') {
+            $ordered_labels = [
+                'Redirects',
+                'Cache',
+                'Image Performance',
+                'Post Ordering',
+                'Post Duplication',
+                'Admin Columns',
+                'Admin Menu',
+            ];
+
+            $ordered_items = [];
+            $matched_indexes = [];
+            $privacy_index = null;
+
+            foreach ($items as $index => $item) {
+                if (!is_array($item)) continue;
+
+                $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
+
+                if (strcasecmp($label, 'Privacy') === 0 && $privacy_index === null) {
+                    $privacy_index = (int) $index;
+                }
+
+                $label_match_index = array_search($label, $ordered_labels, true);
+                if ($label_match_index === false) continue;
+
+                $ordered_items[$label_match_index] = $item;
+                $matched_indexes[] = (int) $index;
+            }
+
+            if ($privacy_index !== null && !empty($matched_indexes)) {
+                rsort($matched_indexes, SORT_NUMERIC);
+                foreach ($matched_indexes as $matched_index) {
+                    array_splice($items, $matched_index, 1);
+                    if ($matched_index < $privacy_index) {
+                        $privacy_index--;
+                    }
+                }
+
+                ksort($ordered_items);
+                array_splice($items, $privacy_index + 1, 0, array_values($ordered_items));
+            }
+        }
     }
     unset($items);
-}, 99999);
+}
 
-// Group top-level content menus after Dashboard: permalink-capable first, then non-viewable/admin-only.
-add_action('admin_menu', function () {
+// Normalize selected plugin/admin menu labels.
+add_action('admin_menu', 'meza_normalize_admin_plugin_menus', PHP_INT_MAX - 2);
+
+function meza_rebuild_content_menu_group(): void
+{
     global $menu;
 
     if (!is_array($menu) || empty($menu)) return;
@@ -1260,7 +1651,9 @@ add_action('admin_menu', function () {
     $sort_entries($without_permalink);
 
     $grouped_items = array_map(
-        static fn(array $entry): array => $entry['item'],
+        static function (array $entry): array {
+            return $entry['item'];
+        },
         $with_permalink
     );
 
@@ -1312,16 +1705,24 @@ add_action('admin_menu', function () {
     if ($inserted) {
         $menu = $rebuilt;
     }
-}, 100000);
+}
 
-// Keep Backups in the dashboard group, directly after Dashboard and before the content separator.
-add_action('admin_menu', function () {
+// Group top-level content menus after Dashboard: permalink-capable first, then non-viewable/admin-only.
+add_action('admin_menu', 'meza_rebuild_content_menu_group', PHP_INT_MAX - 1);
+
+function meza_reorder_dashboard_utility_items(): void
+{
     global $menu;
 
     if (!is_array($menu) || empty($menu)) return;
 
     $dashboard_index = null;
-    $backups_index = null;
+    $ordered_items = [
+        'web_analytics' => null,
+        'seo' => null,
+        'backups' => null,
+    ];
+    $matched_indexes = [];
 
     foreach ($menu as $index => $item) {
         if (!is_array($item)) continue;
@@ -1334,26 +1735,151 @@ add_action('admin_menu', function () {
             continue;
         }
 
+        $is_site_kit = str_contains($slug, 'googlesitekit')
+            || str_contains($slug, 'google-site-kit')
+            || str_contains($slug, 'site-kit')
+            || in_array($title, ['web analytics', 'site kit', 'site kit by google'], true);
+        $is_yoast = str_contains($slug, 'wpseo')
+            || str_contains($slug, 'wordpress-seo')
+            || str_contains($title, 'seo');
         $is_updraft = str_contains($slug, 'updraft')
             || in_array($title, ['backups', 'updraft', 'updraftplus'], true);
 
-        if ($is_updraft && $backups_index === null) {
-            $backups_index = (int) $index;
+        if ($is_site_kit && $ordered_items['web_analytics'] === null) {
+            $ordered_items['web_analytics'] = $item;
+            $matched_indexes[] = (int) $index;
+            continue;
+        }
+
+        if ($is_yoast && $ordered_items['seo'] === null) {
+            $ordered_items['seo'] = $item;
+            $matched_indexes[] = (int) $index;
+            continue;
+        }
+
+        if ($is_updraft && $ordered_items['backups'] === null) {
+            $ordered_items['backups'] = $item;
+            $matched_indexes[] = (int) $index;
         }
     }
 
-    if ($dashboard_index === null || $backups_index === null || $dashboard_index === $backups_index) return;
+    if ($dashboard_index === null || empty($matched_indexes)) return;
 
-    $backups_item = $menu[$backups_index] ?? null;
-    if (!is_array($backups_item)) return;
-
-    array_splice($menu, $backups_index, 1);
-    if ($backups_index < $dashboard_index) {
-        $dashboard_index--;
+    rsort($matched_indexes, SORT_NUMERIC);
+    foreach ($matched_indexes as $matched_index) {
+        array_splice($menu, $matched_index, 1);
     }
 
-    array_splice($menu, $dashboard_index + 1, 0, [$backups_item]);
-}, 100001);
+    foreach ($menu as $index => $item) {
+        if (is_array($item) && ((string) ($item[2] ?? '')) === 'index.php') {
+            $dashboard_index = (int) $index;
+            break;
+        }
+    }
+
+    $items_to_insert = array_values(array_filter($ordered_items, static function ($item): bool {
+        return is_array($item);
+    }));
+
+    if (empty($items_to_insert)) return;
+
+    array_splice($menu, $dashboard_index + 1, 0, $items_to_insert);
+}
+
+// Keep utility plugins grouped with Dashboard in a fixed order before the content separator.
+add_action('admin_menu', 'meza_reorder_dashboard_utility_items', PHP_INT_MAX);
+
+function meza_group_post_settings_utilities(): void
+{
+    global $menu;
+
+    if (!is_array($menu) || empty($menu)) return;
+
+    $settings_index = null;
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item)) continue;
+
+        if (((string) ($item[2] ?? '')) === 'options-general.php') {
+            $settings_index = (int) $index;
+            break;
+        }
+    }
+
+    if ($settings_index === null) return;
+
+    $utility_items = [];
+    $utility_indexes = [];
+
+    foreach ($menu as $index => $item) {
+        if ((int) $index <= $settings_index || !is_array($item)) continue;
+
+        $classes = strtolower((string) ($item[4] ?? ''));
+        if (str_contains($classes, 'wp-menu-separator')) continue;
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+        $is_acf = $slug === 'edit.php?post_type=acf-field-group'
+            || $label === 'acf';
+        $is_mail = str_contains($slug, 'wp-mail-smtp')
+            || $label === 'mail';
+        $is_security = str_contains($slug, 'aiowpsec')
+            || str_contains($slug, 'wp-security')
+            || $label === 'security';
+
+        if (!$is_acf && !$is_mail && !$is_security) continue;
+
+        $utility_indexes[] = (int) $index;
+        $utility_items[] = [
+            'item' => $item,
+            'label' => $label,
+        ];
+    }
+
+    if (empty($utility_items)) return;
+
+    usort($utility_items, static function (array $a, array $b): int {
+        return strnatcasecmp($a['label'], $b['label']);
+    });
+
+    rsort($utility_indexes, SORT_NUMERIC);
+    foreach ($utility_indexes as $menu_index) {
+        array_splice($menu, $menu_index, 1);
+    }
+
+    foreach ($menu as $index => $item) {
+        if (is_array($item) && ((string) ($item[2] ?? '')) === 'options-general.php') {
+            $settings_index = (int) $index;
+            break;
+        }
+    }
+
+    $items_to_insert = [[
+        '',
+        'read',
+        'separator-meza-settings-utilities',
+        '',
+        'wp-menu-separator',
+    ]];
+
+    foreach ($utility_items as $entry) {
+        $items_to_insert[] = $entry['item'];
+    }
+
+    array_splice($menu, $settings_index + 1, 0, $items_to_insert);
+}
+
+// Keep ACF, Mail, and Security in their own utility group below Settings.
+add_action('admin_menu', 'meza_group_post_settings_utilities', PHP_INT_MAX);
+
+// Admin Menu Editor swaps in its custom menu after admin_menu, so reapply these mutations then as well.
+add_action('admin_menu_editor-menu_replaced', function () {
+    meza_normalize_admin_plugin_menus();
+    meza_rebuild_content_menu_group();
+    meza_reorder_dashboard_utility_items();
+    meza_group_post_settings_utilities();
+}, PHP_INT_MAX);
 
 // Move Site Health from Tools to Dashboard, directly under Updates.
 add_action('admin_menu', function () {
@@ -1574,11 +2100,11 @@ function meza_strip_acf_key_description_columns(array $columns): array
     foreach ($columns as $key => $label) {
         $key_normalized = strtolower(trim((string) $key));
         $label_normalized = strtolower(trim(wp_strip_all_tags((string) $label)));
-        if (in_array($key_normalized, ['key', 'description', 'acf_key', 'acf_description'], true)) {
+        if (in_array($key_normalized, ['id', 'key', 'description', 'acf_id', 'acf_key', 'acf_description'], true)) {
             unset($columns[$key]);
             continue;
         }
-        if (in_array($label_normalized, ['key', 'description'], true)) {
+        if (in_array($label_normalized, ['id', 'key', 'description'], true)) {
             unset($columns[$key]);
         }
     }
@@ -1612,9 +2138,6 @@ function meza_strip_acf_key_description_columns(array $columns): array
     };
 
     $append('cb');
-
-    $id_key = $find_column_key(['id']);
-    if ($id_key !== '') $append($id_key);
 
     $order = [
         ['title'],
@@ -1656,14 +2179,14 @@ add_action('admin_head-edit.php', function () {
     $is_acf_screen = meza_is_acf_admin_post_type((string) ($screen->post_type ?? ''));
 
     echo '<style id="meza-admin-list-column-widths">' .
-        '.wp-list-table .column-mz_id{width:100px;}' .
+        '.wp-list-table .column-mz_id{width:50px;}' .
         '.wp-list-table .column-mz_thumbnail{width:125px;}' .
         '.wp-list-table .column-mz_thumbnail .row-actions{font-size:11px;line-height:1.1;}' .
         '.wp-list-table .column-title{width:225px;}' .
         '.wp-list-table .column-mz_modified,.wp-list-table .column-mz_published{width:225px;}' .
         '.wp-list-table th.column-categories,.wp-list-table td.column-categories{width:225px;max-width:225px;}' .
         '.wp-list-table th[class*="column-taxonomy-"],.wp-list-table td[class*="column-taxonomy-"]{width:225px;}' .
-        '.wp-list-table th.column-mz_page_template,.wp-list-table td.column-mz_page_template{width:125px;max-width:125px;}' .
+        '.wp-list-table th.column-mz_page_template,.wp-list-table td.column-mz_page_template{width:150px;max-width:150px;}' .
         '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:225px;max-width:225px;}' .
         '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:175px;max-width:175px;}' .
         '</style>';
@@ -1673,7 +2196,8 @@ add_action('admin_head-edit.php', function () {
     // ACF list tables often use generic id/key/description column slugs.
     echo '<style id="meza-acf-admin-column-normalization">' .
         'table.wp-list-table.fixed{table-layout:fixed!important;}' .
-        '.wp-list-table th.column-id,.wp-list-table td.column-id,.wp-list-table th.column-ID,.wp-list-table td.column-ID{width:100px!important;min-width:100px!important;max-width:100px!important;}' .
+        'table.wp-list-table.fixed col.column-id,table.wp-list-table.fixed col.column-ID{display:none!important;}' .
+        '.wp-list-table th.column-id,.wp-list-table td.column-id,.wp-list-table th.column-ID,.wp-list-table td.column-ID{display:none!important;}' .
         '.wp-list-table th.column-key,.wp-list-table td.column-key,.wp-list-table th.column-description,.wp-list-table td.column-description{display:none!important;}' .
         'table.wp-list-table.fixed col.column-posts,.wp-list-table th.column-posts,.wp-list-table td.column-posts{width:125px!important;min-width:125px!important;max-width:125px!important;}' .
         'table.wp-list-table.fixed col.column-terms,.wp-list-table th.column-terms,.wp-list-table td.column-terms{width:125px!important;min-width:125px!important;max-width:125px!important;}' .
@@ -1941,7 +2465,9 @@ function meza_replace_glance_items()
         }
     }
 
-    usort($custom_items, fn($a, $b) => $b['count'] <=> $a['count']);
+    usort($custom_items, function ($a, $b) {
+        return $b['count'] <=> $a['count'];
+    });
 
     foreach ($custom_items as $item) {
         $label = sprintf('%s %s', number_format_i18n($item['count']), $item['label']);

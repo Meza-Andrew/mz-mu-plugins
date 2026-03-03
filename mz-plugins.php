@@ -128,7 +128,9 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
     $last_fp = (string)get_option('mz_bootstrap_fingerprint_envonly', '');
     if ($has_run && $last_fp === $fingerprint && !mz_plugins_should_rerun()) return;
 
-    add_filter('filesystem_method', fn() => 'direct', 99);
+    add_filter('filesystem_method', function () {
+        return 'direct';
+    }, 99);
     if (!class_exists('WP_Ajax_Upgrader_Skin')) {
         require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader-skins.php';
     }

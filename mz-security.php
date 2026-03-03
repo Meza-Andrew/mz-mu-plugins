@@ -16,7 +16,10 @@ if (defined('WP_INSTALLING') && WP_INSTALLING) return;
 
 /** Feed policy: redirect legacy RSS endpoints back to the homepage. */
 foreach (['do_feed_rss2', 'do_feed_rss2_comments'] as $feed_action) {
-    add_action($feed_action, fn() => wp_redirect(home_url(), 301) && exit, 1);
+    add_action($feed_action, function () {
+        wp_redirect(home_url(), 301);
+        exit;
+    }, 1);
 }
 
 /** Core head cleanup: remove links and metadata this site does not use. */
@@ -34,15 +37,23 @@ remove_action('wp_head', 'wp_shortlink_wp_head');
  *  ================================ */
 
 /** Disable XML-RPC globally. */
-add_filter('xmlrpc_enabled', fn() => false);
+add_filter('xmlrpc_enabled', function () {
+    return false;
+});
 
 /** Authentication hardening: avoid revealing whether login credentials were invalid. */
-add_filter('login_errors', fn() => null);
+add_filter('login_errors', function () {
+    return null;
+});
 
 /** ================================
  *  CONTENT POLICY
  *  ================================ */
 
 /** Content policy: disable comments and pings site-wide. */
-add_filter('comments_open', fn() => false, 10, 2);
-add_filter('pings_open', fn() => false, 10, 2);
+add_filter('comments_open', function () {
+    return false;
+}, 10, 2);
+add_filter('pings_open', function () {
+    return false;
+}, 10, 2);

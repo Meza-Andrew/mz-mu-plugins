@@ -42,7 +42,9 @@ add_filter('wp_resource_hints', function (array $urls, string $relation): array 
         return $urls;
     }
 
-    $urls = array_filter($urls, fn($url) => strpos($url, 's.w.org') === false);
+    $urls = array_filter($urls, function ($url) {
+        return strpos($url, 's.w.org') === false;
+    });
     $dns_prefetch_urls = [];
     return array_merge($urls, $dns_prefetch_urls);
 }, 10, 2);
