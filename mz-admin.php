@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: MZ Admin
+ * Plugin Name: DS Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
  * Version: 1.1.0
  * Author: Meza LLC

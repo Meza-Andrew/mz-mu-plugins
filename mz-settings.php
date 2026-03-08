@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: MZ Settings
+ * Plugin Name: DS Settings
  * Description: Core site settings, defaults, and bootstrap configuration.
  * Author: Meza LLC
  * Author URI: https://meza.design

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: MZ Plugins
+ * Plugin Name: DS Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
  * Version: 1.4.0
  * Author: Meza LLC
