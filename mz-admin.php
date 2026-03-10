@@ -268,6 +268,7 @@ function meza_normalize_datetime_columns(array $columns): array
 
 function meza_register_datetime_sortable_columns(array $cols): array
 {
+    $cols['mz_id'] = ['ID', true];
     $cols['mz_published'] = ['date', true];
     $cols['mz_modified'] = ['modified', true];
     return $cols;
