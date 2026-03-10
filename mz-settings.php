@@ -12,8 +12,8 @@
  *  CONFIG
  *  ================================ */
 const MEZA_ADMIN_EMAIL       = 'info@meza.design';
-const MEZA_GMT_OFFSET        = -5;     // fixed UTC-5
-const MEZA_TIMEZONE_STRING   = '';
+const MEZA_GMT_OFFSET        = null;   // auto-resolve from timezone string
+const MEZA_TIMEZONE_STRING   = 'America/New_York';
 const MEZA_RSS_USE_EXCERPT   = 1;
 
 /** Decide whether search engines should be allowed to index the site for the current environment. */
@@ -114,6 +114,22 @@ function meza_resolve_target($const, $fallback_cb)
 {
     if ($const !== '' && $const !== null) return $const;
     return is_callable($fallback_cb) ? (string) $fallback_cb() : (string) $fallback_cb;
+}
+
+/** Resolve the desired GMT offset; when timezone string is set, use the current DST-aware offset for that zone. */
+function meza_resolve_gmt_offset()
+{
+    if (is_string(MEZA_TIMEZONE_STRING) && trim(MEZA_TIMEZONE_STRING) !== '') {
+        try {
+            $tz = new DateTimeZone(MEZA_TIMEZONE_STRING);
+            $now = new DateTimeImmutable('now', $tz);
+            return $tz->getOffset($now) / HOUR_IN_SECONDS;
+        } catch (Throwable $e) {
+            // Fall back to explicit constant below.
+        }
+    }
+
+    return MEZA_GMT_OFFSET;
 }
 
 /** Check whether WordPress already has both a front page and posts page assigned. */
@@ -473,7 +489,10 @@ add_action('admin_init', function () {
         update_option('show_on_front', 'page');
     }
     update_option('timezone_string', MEZA_TIMEZONE_STRING);
-    update_option('gmt_offset',      MEZA_GMT_OFFSET);
+    $resolved_gmt_offset = meza_resolve_gmt_offset();
+    if ($resolved_gmt_offset !== null && $resolved_gmt_offset !== '') {
+        update_option('gmt_offset', (float) $resolved_gmt_offset);
+    }
     update_option('thumbnail_size_w', MEZA_THUMB_W);
     update_option('thumbnail_size_h', MEZA_THUMB_H);
     update_option('thumbnail_crop',   MEZA_THUMB_CROP);
