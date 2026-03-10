@@ -153,7 +153,12 @@ function meza_normalize_datetime_columns(array $columns): array
     $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
     $show_form_slug_column = ($post_type === 'form');
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
-    $show_cta_subhead_column = ($post_type === 'cta');
+    $show_summary_column = (
+        $post_type !== ''
+        && !in_array($post_type, ['page', 'attachment'], true)
+        && !meza_is_acf_admin_post_type($post_type)
+        && meza_post_type_has_permalink($post_type)
+    );
 
     $has_modified = false;
     foreach ($columns as $key => $label) {
@@ -184,13 +189,13 @@ function meza_normalize_datetime_columns(array $columns): array
         if ($key === 'title') {
             $updated['mz_id'] = __('ID');
             if ($supports_thumbnail) $updated['mz_thumbnail'] = __('Image');
-            $updated[$key] = $show_cta_subhead_column ? __('Headline (H2)') : $label;
+            $updated[$key] = ($post_type === 'cta') ? __('Headline (H2)') : $label;
+            if ($show_summary_column) $updated['mz_summary'] = __('Summary');
             if ($show_form_slug_column) $updated['mz_slug'] = __('Slug');
             if ($show_review_columns) {
                 $updated['mz_review_quote'] = __('Quote');
                 $updated['mz_review_citer'] = __('Citer');
             }
-            if ($show_cta_subhead_column) $updated['mz_subhead'] = __('Subhead');
             if ($show_page_columns) {
                 $updated['mz_page_link'] = __('Link');
                 $updated['mz_page_headline'] = __('Page Headline (H1)');
@@ -234,7 +239,7 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_id');
         $append('mz_thumbnail');
         $append('title');
-        if ($show_cta_subhead_column) $append('mz_subhead');
+        if ($show_summary_column) $append('mz_summary');
         if ($show_form_slug_column) $append('mz_slug');
         if ($show_review_columns) {
             foreach (array_keys($updated) as $key) {
@@ -258,7 +263,7 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_id');
         $append('mz_thumbnail');
         $append('title');
-        if ($show_cta_subhead_column) $append('mz_subhead');
+        if ($show_summary_column) $append('mz_summary');
         if ($show_form_slug_column) $append('mz_slug');
         if ($show_review_columns) {
             foreach (array_keys($updated) as $key) {
@@ -338,7 +343,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             $column === 'mz_published' ||
             $column === 'mz_id' ||
             $column === 'mz_slug' ||
-            $column === 'mz_subhead' ||
+            $column === 'mz_summary' ||
             $column === 'mz_review_quote' ||
             $column === 'mz_review_citer' ||
             $column === 'mz_thumbnail' ||
@@ -360,9 +365,9 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         echo ($slug !== '') ? esc_html($slug) : '&mdash;';
         return;
     }
-    if ($column === 'mz_subhead') {
-        $subhead = trim((string) ($post->post_excerpt ?? ''));
-        echo ($subhead !== '') ? esc_html($subhead) : '&mdash;';
+    if ($column === 'mz_summary') {
+        $summary = trim(wp_strip_all_tags((string) ($post->post_excerpt ?? '')));
+        echo ($summary !== '') ? esc_html($summary) : '&mdash;';
         return;
     }
     if ($column === 'mz_review_quote') {
@@ -2365,7 +2370,7 @@ add_action('admin_head-edit.php', function () {
     echo '<style id="meza-admin-list-column-widths">' .
         '.wp-list-table .column-mz_id{width:50px;}' .
         '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
-        '.wp-list-table .column-mz_subhead{width:325px;max-width:325px;}' .
+        '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_thumbnail{width:125px;}' .
