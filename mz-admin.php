@@ -2067,23 +2067,137 @@ add_action('admin_menu', function () {
  *  ADMIN LIST ACTIONS
  *  ================================ */
 
-function meza_remove_quick_edit_action(array $actions): array
+function meza_get_post_type_singular_label($post): string
+{
+    $post_obj = null;
+    if ($post instanceof WP_Post) $post_obj = $post;
+    if (is_numeric($post) && (int) $post > 0) $post_obj = get_post((int) $post);
+    if (!($post_obj instanceof WP_Post)) return 'Post';
+
+    $post_type_obj = get_post_type_object((string) $post_obj->post_type);
+    if (is_object($post_type_obj) && isset($post_type_obj->labels->singular_name)) {
+        $label = trim((string) $post_type_obj->labels->singular_name);
+        if ($label !== '') return $label;
+    }
+
+    $fallback = trim(str_replace(['-', '_'], ' ', (string) $post_obj->post_type));
+    return $fallback !== '' ? ucwords($fallback) : 'Post';
+}
+
+function meza_get_view_post_label($post): string
+{
+    return sprintf(__('View %s'), meza_get_post_type_singular_label($post));
+}
+
+function meza_get_preview_post_label($post): string
+{
+    return sprintf(__('Preview %s'), meza_get_post_type_singular_label($post));
+}
+
+function meza_update_admin_action_link(string $html, string $label = ''): string
+{
+    if (trim($html) === '') return $html;
+
+    return preg_replace_callback('/<a\b([^>]*)>(.*?)<\/a>/is', static function ($matches) use ($label) {
+        $attrs = (string) ($matches[1] ?? '');
+        $text = (string) ($matches[2] ?? '');
+
+        if (!preg_match('/\btarget\s*=/i', $attrs)) {
+            $attrs .= ' target="_blank"';
+        }
+        if (!preg_match('/\brel\s*=/i', $attrs)) {
+            $attrs .= ' rel="noopener noreferrer"';
+        }
+
+        if ($label !== '') $text = esc_html($label);
+        return '<a' . $attrs . '>' . $text . '</a>';
+    }, $html, 1) ?? $html;
+}
+
+function meza_remove_quick_edit_action(array $actions, $post = null): array
 {
     if (isset($actions['inline hide-if-no-js'])) unset($actions['inline hide-if-no-js']);
     if (isset($actions['inline'])) unset($actions['inline']);
+
     if (isset($actions['edit']) && is_string($actions['edit'])) {
-        $actions['edit'] = preg_replace(
-            '/<a\s/i',
-            '<a target="_blank" rel="noopener noreferrer" ',
-            $actions['edit'],
-            1
-        ) ?? $actions['edit'];
+        $actions['edit'] = meza_update_admin_action_link($actions['edit']);
     }
+    if (isset($actions['view']) && is_string($actions['view'])) {
+        $actions['view'] = meza_update_admin_action_link($actions['view'], meza_get_view_post_label($post));
+    }
+    if (isset($actions['preview']) && is_string($actions['preview'])) {
+        $actions['preview'] = meza_update_admin_action_link($actions['preview'], meza_get_preview_post_label($post));
+    }
+
     return $actions;
 }
 
-add_filter('post_row_actions', 'meza_remove_quick_edit_action', 1000);
-add_filter('page_row_actions', 'meza_remove_quick_edit_action', 1000);
+add_filter('post_row_actions', 'meza_remove_quick_edit_action', 1000, 2);
+add_filter('page_row_actions', 'meza_remove_quick_edit_action', 1000, 2);
+
+add_filter('post_updated_messages', function (array $messages): array {
+    global $post;
+    if (!($post instanceof WP_Post)) return $messages;
+
+    $post_type = (string) $post->post_type;
+    if ($post_type === '' || !isset($messages[$post_type]) || !is_array($messages[$post_type])) return $messages;
+
+    $view_label = meza_get_view_post_label($post);
+    $preview_label = meza_get_preview_post_label($post);
+
+    foreach ($messages[$post_type] as $index => $message) {
+        if (!is_string($message) || $message === '') continue;
+
+        $messages[$post_type][$index] = preg_replace_callback('/<a\b([^>]*)>(.*?)<\/a>/is', static function ($matches) use ($view_label, $preview_label) {
+            $attrs = (string) ($matches[1] ?? '');
+            $text_html = (string) ($matches[2] ?? '');
+            $text_plain = strtolower(trim(wp_strip_all_tags($text_html)));
+            $label = str_contains($text_plain, 'preview') ? $preview_label : $view_label;
+
+            if (!preg_match('/\btarget\s*=/i', $attrs)) {
+                $attrs .= ' target="_blank"';
+            }
+            if (!preg_match('/\brel\s*=/i', $attrs)) {
+                $attrs .= ' rel="noopener noreferrer"';
+            }
+
+            return '<a' . $attrs . '>' . esc_html($label) . '</a>';
+        }, $message) ?? $message;
+    }
+
+    return $messages;
+}, 1000);
+
+add_action('admin_bar_menu', function ($wp_admin_bar) {
+    if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
+
+    $view_node = $wp_admin_bar->get_node('view');
+    if (!is_object($view_node)) return;
+
+    $post = get_post();
+    if (!($post instanceof WP_Post)) return;
+
+    $meta = is_array($view_node->meta ?? null) ? $view_node->meta : [];
+    $meta['target'] = '_blank';
+
+    $rel = trim((string) ($meta['rel'] ?? ''));
+    if ($rel === '') {
+        $meta['rel'] = 'noopener noreferrer';
+    } else {
+        if (!preg_match('/\bnoopener\b/i', $rel)) $rel .= ' noopener';
+        if (!preg_match('/\bnoreferrer\b/i', $rel)) $rel .= ' noreferrer';
+        $meta['rel'] = trim($rel);
+    }
+
+    $wp_admin_bar->add_node([
+        'id' => (string) $view_node->id,
+        'parent' => $view_node->parent ?? false,
+        'title' => esc_html(meza_get_view_post_label($post)),
+        'href' => $view_node->href ?? false,
+        'group' => !empty($view_node->group),
+        'meta' => $meta,
+    ]);
+}, 100001);
 
 /** ================================
  *  ACF ADMIN COLUMN NORMALIZATION
