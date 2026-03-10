@@ -133,10 +133,11 @@ if (!function_exists('mzf_slug_registry')) {
                 'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
                 'layout' => ['FullName', 'Company', 'Email', 'Phone', 'DateNeeded', 'Dimensions', 'WallSurface', 'InstalledGraphics', 'FilesLink', 'Comments'],
             ],
-            'banner-printing' => [
-                'subject' => '{{name_company}} is interested in banner printing',
+            
+            'print-quote' => [
+                'subject' => 'New print quote request from {{name_company}}',
                 'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'DateNeeded', 'Quantity', 'Dimensions', 'FilesLink', 'Comments'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'ItemType', 'DateNeeded', 'Quantity', 'Dimensions', 'FilesLink', 'Comments'],
             ],
         ];
 

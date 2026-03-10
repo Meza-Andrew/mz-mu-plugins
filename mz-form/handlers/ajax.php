@@ -413,7 +413,7 @@ if (!function_exists('send_form_data')) :
 
         $page_id = isset($_POST['PageId']) ? absint($_POST['PageId']) : ($page_id ?? 0);
         $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
-        $is_quote = in_array($slug, ['quote', 'vehicle-wraps', 'wall-graphics', 'banner-printing'], true);
+        $is_quote = in_array($slug, ['quote', 'vehicle-wraps', 'wall-graphics', 'banner-printing', 'print-quote'], true);
 
         $first_name = isset($data['FirstName']) ? sanitize_text_field($data['FirstName']) : '';
         $last_name  = isset($data['LastName'])  ? sanitize_text_field($data['LastName'])  : '';
@@ -648,8 +648,14 @@ if (!function_exists('send_form_data')) :
             $data['UploadedFiles'] = $attached_meta;
         }
 
-        $successMsg = (!empty($form_cfg['message_success'])) ? wp_kses_post($form_cfg['message_success']) : 'Your submission was sent successfully.';
-        $errorMsg   = (!empty($form_cfg['message_error']))   ? wp_kses_post($form_cfg['message_error'])   : 'Your submission failed to send. Please try again.';
+        $successMsgRaw = function_exists('mzf_form_config_value')
+            ? mzf_form_config_value($form_cfg, ['messages.success', 'message_success'], 'Your submission was sent successfully.')
+            : ((isset($form_cfg['message_success']) && $form_cfg['message_success'] !== '') ? $form_cfg['message_success'] : 'Your submission was sent successfully.');
+        $errorMsgRaw = function_exists('mzf_form_config_value')
+            ? mzf_form_config_value($form_cfg, ['messages.error', 'message_error'], 'Your submission failed to send. Please try again.')
+            : ((isset($form_cfg['message_error']) && $form_cfg['message_error'] !== '') ? $form_cfg['message_error'] : 'Your submission failed to send. Please try again.');
+        $successMsg = wp_kses_post((string) $successMsgRaw);
+        $errorMsg   = wp_kses_post((string) $errorMsgRaw);
         $successMsg = (string) apply_filters('mzf_success_message', $successMsg, $data, $form_cfg);
         $errorMsg   = (string) apply_filters('mzf_error_message', $errorMsg, $data, $form_cfg);
 

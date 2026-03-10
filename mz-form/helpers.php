@@ -33,13 +33,13 @@ if (!function_exists('mz_build_user_email')) {
         $first = trim((string) ($form_data['FirstName'] ?? ''));
         $site_name_raw = (string) get_bloginfo('name');
 
-        $subject = (string) ($cfg['email_subject'] ?? 'Thank you');
+        $subject = (string) mzf_form_config_value($cfg, ['email_user.subject', 'email_subject'], 'Thank you');
         $subject = ds_replace_tokens($subject, $form_data);
 
-        $intro = (string) ($cfg['email_intro'] ?? '');
-        $main = (string) ($cfg['email_content'] ?? '');
-        $salutation = (string) ($cfg['email_salutation'] ?? '');
-        $signature = (string) ($cfg['email_signature'] ?? ('The ' . $site_name_raw . ' Team'));
+        $intro = (string) mzf_form_config_value($cfg, ['email_user.intro', 'email_intro'], '');
+        $main = (string) mzf_form_config_value($cfg, ['email_user.body', 'email_content'], '');
+        $salutation = (string) mzf_form_config_value($cfg, ['email_user.salutation', 'email_salutation'], '');
+        $signature = (string) mzf_form_config_value($cfg, ['email_user.signature', 'email_signature'], ('The ' . $site_name_raw . ' Team'));
         $signature = str_replace('{site name}', $site_name_raw, $signature);
 
         $greeting_html = $intro !== ''
@@ -64,6 +64,54 @@ if (!function_exists('mz_build_user_email')) {
     }
 }
 
+if (!function_exists('mzf_get_path')) {
+    function mzf_get_path(array $source, string $path)
+    {
+        if ($path === '') {
+            return null;
+        }
+        if (array_key_exists($path, $source)) {
+            return $source[$path];
+        }
+
+        $segments = explode('.', $path);
+        $cursor = $source;
+        foreach ($segments as $segment) {
+            if (!is_array($cursor) || !array_key_exists($segment, $cursor)) {
+                return null;
+            }
+            $cursor = $cursor[$segment];
+        }
+        return $cursor;
+    }
+}
+
+if (!function_exists('mzf_has_meaningful_value')) {
+    function mzf_has_meaningful_value($value): bool
+    {
+        if (is_array($value)) {
+            return !empty($value);
+        }
+        if (is_bool($value) || is_numeric($value)) {
+            return true;
+        }
+        return trim((string) $value) !== '';
+    }
+}
+
+if (!function_exists('mzf_form_config_value')) {
+    function mzf_form_config_value(array $cfg, array $keys, $fallback = '')
+    {
+        foreach ($keys as $key) {
+            $candidate = mzf_get_path($cfg, (string) $key);
+            if (mzf_has_meaningful_value($candidate)) {
+                return $candidate;
+            }
+        }
+        return $fallback;
+    }
+}
+
 if (!function_exists('mz_resolve_office_email')) {
     function mz_resolve_office_email($store_raw = '', $ref_path = '')
     {
@@ -81,9 +129,21 @@ if (!function_exists('mzf_resolve_form_config')) {
         if ($slug !== '' && function_exists('get_page_by_path') && function_exists('get_fields')) {
             $form_post = get_page_by_path($slug, OBJECT, 'form');
             if ($form_post instanceof WP_Post) {
+                $form_post_id = (int) $form_post->ID;
                 $from_form = (array) get_fields((int) $form_post->ID);
+                $from_form_group = function_exists('get_field') ? get_field('section_form', $form_post_id) : null;
+                if (is_array($from_form_group) && !empty($from_form_group)) {
+                    // Support transitional storage where the entire form config lives in a section_form group.
+                    $cfg = array_merge($cfg, $from_form_group);
+                }
                 if (!empty($from_form)) {
                     $cfg = array_merge($cfg, $from_form);
+                }
+                if (function_exists('get_post_meta')) {
+                    $from_post_meta_group = get_post_meta($form_post_id, 'section_form', true);
+                    if (is_array($from_post_meta_group) && !empty($from_post_meta_group)) {
+                        $cfg = array_merge($cfg, $from_post_meta_group);
+                    }
                 }
             }
         }
@@ -131,7 +191,8 @@ if (!function_exists('mzf_parse_recipients')) {
         if ($s === '') {
             return [];
         }
-        $parts = array_map('trim', explode(',', $s));
+        $parts = preg_split('/[\s,;]+/', $s) ?: [];
+        $parts = array_map('trim', $parts);
         return array_values(array_unique(array_filter($parts, 'is_email')));
     }
 }
@@ -140,7 +201,7 @@ if (!function_exists('mzf_recipients_from_form_config')) {
     function mzf_recipients_from_form_config(array $data = [], ?array $cfg = null): array
     {
         $cfg = is_array($cfg) ? $cfg : mzf_resolve_form_config($data);
-        $raw = $cfg['email_recipients'] ?? [];
+        $raw = mzf_form_config_value($cfg, ['email_admin.recipients', 'email_recipients'], []);
         $emails = mzf_parse_recipients($raw);
         return array_values(array_unique(array_filter($emails, 'is_email')));
     }

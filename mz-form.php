@@ -22,3 +22,5 @@ require_once $mzf_base . '/providers/marketing.php';
 require_once $mzf_base . '/handlers/ajax.php';
 require_once $mzf_base . '/hooks.php';
 require_once $mzf_base . '/admin-ui.php';
+require_once __DIR__ . '/mz-form-migration-tools.php';
+require_once __DIR__ . '/mz-form-client-overrides.php';
