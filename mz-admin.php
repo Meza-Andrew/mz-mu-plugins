@@ -1870,7 +1870,56 @@ function meza_rebuild_content_menu_group(): void
     }
 
     if ($inserted) {
-        $menu = $rebuilt;
+        $cleaned = [];
+        $count = count($rebuilt);
+
+        for ($i = 0; $i < $count; $i++) {
+            $item = $rebuilt[$i];
+            if (!is_array($item)) {
+                $cleaned[] = $item;
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            $classes = strtolower((string) ($item[4] ?? ''));
+            $is_separator = str_contains($classes, 'wp-menu-separator') || str_starts_with($slug, 'separator');
+            if (!$is_separator) {
+                $cleaned[] = $item;
+                continue;
+            }
+
+            $prev = null;
+            for ($p = $i - 1; $p >= 0; $p--) {
+                if (is_array($rebuilt[$p])) {
+                    $prev = $rebuilt[$p];
+                    break;
+                }
+            }
+
+            $next = null;
+            for ($n = $i + 1; $n < $count; $n++) {
+                if (is_array($rebuilt[$n])) {
+                    $next = $rebuilt[$n];
+                    break;
+                }
+            }
+
+            // Drop separators at edges and collapse stacked separators.
+            if ($prev === null || $next === null) continue;
+            if (!empty($cleaned)) {
+                $last = $cleaned[count($cleaned) - 1];
+                if (is_array($last)) {
+                    $last_slug = (string) ($last[2] ?? '');
+                    $last_classes = strtolower((string) ($last[4] ?? ''));
+                    $last_is_separator = str_contains($last_classes, 'wp-menu-separator') || str_starts_with($last_slug, 'separator');
+                    if ($last_is_separator) continue;
+                }
+            }
+
+            $cleaned[] = $item;
+        }
+
+        $menu = $cleaned;
     }
 }
 
@@ -2040,12 +2089,64 @@ function meza_group_post_settings_utilities(): void
 // Keep ACF, Mail, and Security in their own utility group below Settings.
 add_action('admin_menu', 'meza_group_post_settings_utilities', PHP_INT_MAX);
 
+function meza_cleanup_menu_separators(): void
+{
+    global $menu;
+    if (!is_array($menu) || empty($menu)) return;
+
+    $is_separator = static function ($item): bool {
+        if (!is_array($item)) return false;
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $classes = strtolower((string) ($item[4] ?? ''));
+        return str_starts_with($slug, 'separator') || str_contains($classes, 'wp-menu-separator');
+    };
+
+    $cleaned = [];
+    $count = count($menu);
+    for ($i = 0; $i < $count; $i++) {
+        $item = $menu[$i];
+
+        if (!$is_separator($item)) {
+            $cleaned[] = $item;
+            continue;
+        }
+
+        $prev_non_sep = null;
+        for ($p = count($cleaned) - 1; $p >= 0; $p--) {
+            if (!$is_separator($cleaned[$p])) {
+                $prev_non_sep = $cleaned[$p];
+                break;
+            }
+        }
+
+        $next_non_sep = null;
+        for ($n = $i + 1; $n < $count; $n++) {
+            if (!$is_separator($menu[$n])) {
+                $next_non_sep = $menu[$n];
+                break;
+            }
+        }
+
+        // Drop separators at edges and collapse stacked separators to a single spacer.
+        if ($prev_non_sep === null || $next_non_sep === null) continue;
+        if (!empty($cleaned) && $is_separator($cleaned[count($cleaned) - 1])) continue;
+
+        $cleaned[] = $item;
+    }
+
+    $menu = $cleaned;
+}
+
+// Final top-level menu cleanup pass.
+add_action('admin_menu', 'meza_cleanup_menu_separators', PHP_INT_MAX);
+
 // Admin Menu Editor swaps in its custom menu after admin_menu, so reapply these mutations then as well.
 add_action('admin_menu_editor-menu_replaced', function () {
     meza_normalize_admin_plugin_menus();
     meza_rebuild_content_menu_group();
     meza_reorder_dashboard_utility_items();
     meza_group_post_settings_utilities();
+    meza_cleanup_menu_separators();
 }, PHP_INT_MAX);
 
 // Move Site Health from Tools to Dashboard, directly under Updates.
