@@ -152,6 +152,7 @@ function meza_normalize_datetime_columns(array $columns): array
     $supports_thumbnail = ($post_type !== '' && post_type_supports($post_type, 'thumbnail'));
     $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
     $show_form_slug_column = ($post_type === 'form');
+    $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
 
     $has_modified = false;
     foreach ($columns as $key => $label) {
@@ -184,6 +185,10 @@ function meza_normalize_datetime_columns(array $columns): array
             if ($supports_thumbnail) $updated['mz_thumbnail'] = __('Image');
             $updated[$key] = $label;
             if ($show_form_slug_column) $updated['mz_slug'] = __('Slug');
+            if ($show_review_columns) {
+                $updated['mz_review_quote'] = __('Quote');
+                $updated['mz_review_citer'] = __('Citer');
+            }
             if ($show_page_columns) {
                 $updated['mz_page_link'] = __('Link');
                 $updated['mz_page_headline'] = __('Page Headline (H1)');
@@ -228,6 +233,15 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_thumbnail');
         $append('title');
         if ($show_form_slug_column) $append('mz_slug');
+        if ($show_review_columns) {
+            foreach (array_keys($updated) as $key) {
+                if (str_starts_with((string) $key, 'taxonomy-') || $key === 'categories') {
+                    $append((string) $key);
+                }
+            }
+            $append('mz_review_quote');
+            $append('mz_review_citer');
+        }
         if ($show_page_columns) {
             $append('mz_page_link');
             $append('mz_page_headline');
@@ -242,6 +256,15 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_thumbnail');
         $append('title');
         if ($show_form_slug_column) $append('mz_slug');
+        if ($show_review_columns) {
+            foreach (array_keys($updated) as $key) {
+                if (str_starts_with((string) $key, 'taxonomy-') || $key === 'categories') {
+                    $append((string) $key);
+                }
+            }
+            $append('mz_review_quote');
+            $append('mz_review_citer');
+        }
         if ($show_page_columns) {
             $append('mz_page_link');
             $append('mz_page_headline');
@@ -311,6 +334,8 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             $column === 'mz_published' ||
             $column === 'mz_id' ||
             $column === 'mz_slug' ||
+            $column === 'mz_review_quote' ||
+            $column === 'mz_review_citer' ||
             $column === 'mz_thumbnail' ||
             $column === 'mz_page_link' ||
             $column === 'mz_page_headline' ||
@@ -328,6 +353,26 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     if ($column === 'mz_slug') {
         $slug = (string) ($post->post_name ?? '');
         echo ($slug !== '') ? esc_html($slug) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_review_quote') {
+        $quote = '';
+        if (function_exists('get_field')) {
+            $acf_quote = get_field('quote', (int) $post_id);
+            if (is_string($acf_quote)) $quote = trim(wp_strip_all_tags($acf_quote));
+        }
+        if ($quote === '') $quote = trim(wp_strip_all_tags((string) get_post_meta((int) $post_id, 'quote', true)));
+        echo ($quote !== '') ? esc_html($quote) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_review_citer') {
+        $citer = '';
+        if (function_exists('get_field')) {
+            $acf_citer = get_field('citer', (int) $post_id);
+            if (is_string($acf_citer)) $citer = trim(wp_strip_all_tags($acf_citer));
+        }
+        if ($citer === '') $citer = trim(wp_strip_all_tags((string) get_post_meta((int) $post_id, 'citer', true)));
+        echo ($citer !== '') ? esc_html($citer) : '&mdash;';
         return;
     }
 
@@ -2310,6 +2355,8 @@ add_action('admin_head-edit.php', function () {
     echo '<style id="meza-admin-list-column-widths">' .
         '.wp-list-table .column-mz_id{width:50px;}' .
         '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
+        '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
+        '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_thumbnail{width:125px;}' .
         '.wp-list-table .column-mz_thumbnail .row-actions{font-size:11px;line-height:1.1;}' .
         '.wp-list-table .column-title{width:225px;}' .
