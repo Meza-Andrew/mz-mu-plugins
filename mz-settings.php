@@ -659,6 +659,8 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     if (!is_array($hidden)) return $hidden;
     if (!($screen instanceof WP_Screen)) return $hidden;
     if ($screen->base !== 'edit') return $hidden;
+    // Respect user Screen Options changes after first save/load.
+    if (!$use_defaults) return $hidden;
 
     // Force-hide known Content Permissions column ids.
     foreach (['content_permissions', 'content-permissions'] as $column_id) {
