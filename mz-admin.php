@@ -230,6 +230,13 @@ function meza_normalize_datetime_columns(array $columns): array
         $ordered[$key] = $updated[$key];
         $used[$key] = true;
     };
+    $append_taxonomy_columns = static function () use (&$updated, $append): void {
+        foreach (array_keys($updated) as $key) {
+            if (str_starts_with((string) $key, 'taxonomy-') || $key === 'categories') {
+                $append((string) $key);
+            }
+        }
+    };
 
     // Keep bulk checkbox first when present.
     $append('cb');
@@ -239,14 +246,10 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_id');
         $append('mz_thumbnail');
         $append('title');
+        $append_taxonomy_columns();
         if ($show_summary_column) $append('mz_summary');
         if ($show_form_slug_column) $append('mz_slug');
         if ($show_review_columns) {
-            foreach (array_keys($updated) as $key) {
-                if (str_starts_with((string) $key, 'taxonomy-') || $key === 'categories') {
-                    $append((string) $key);
-                }
-            }
             $append('mz_review_quote');
             $append('mz_review_citer');
         }
@@ -263,14 +266,10 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_id');
         $append('mz_thumbnail');
         $append('title');
+        $append_taxonomy_columns();
         if ($show_summary_column) $append('mz_summary');
         if ($show_form_slug_column) $append('mz_slug');
         if ($show_review_columns) {
-            foreach (array_keys($updated) as $key) {
-                if (str_starts_with((string) $key, 'taxonomy-') || $key === 'categories') {
-                    $append((string) $key);
-                }
-            }
             $append('mz_review_quote');
             $append('mz_review_citer');
         }
@@ -2561,7 +2560,7 @@ add_action('admin_head-edit.php', function () {
     $is_acf_screen = meza_is_acf_admin_post_type((string) ($screen->post_type ?? ''));
 
     echo '<style id="meza-admin-list-column-widths">' .
-        '.wp-list-table .column-mz_id{width:50px;}' .
+        '.wp-list-table .column-mz_id{width:75px;}' .
         '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
