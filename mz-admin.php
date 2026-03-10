@@ -1272,16 +1272,108 @@ function meza_dashboard_find_site_kit_widget_id(array $widgets): string
     return $best_match;
 }
 
+function meza_dashboard_find_woocommerce_status_widget_id(array $widgets): string
+{
+    $known_ids = [
+        'woocommerce_dashboard_status',
+        'woocommerce_dashboard_recent_reviews',
+    ];
+    foreach ($known_ids as $widget_id) {
+        if (isset($widgets[$widget_id])) return $widget_id;
+    }
+
+    foreach ($widgets as $widget_id => $data) {
+        $title = strtolower(trim(wp_strip_all_tags((string) (($data['widget']['title'] ?? '')))));
+        if ($title === '') continue;
+        if (str_contains($title, 'woocommerce') && str_contains($title, 'status')) return (string) $widget_id;
+    }
+
+    return '';
+}
+
+function meza_dashboard_find_wp_mail_smtp_widget_id(array $widgets): string
+{
+    $known_ids = [
+        'wp_mail_smtp_reports_widget_lite',
+        'wp_mail_smtp_reports_widget',
+        'wp_mail_smtp_dashboard_widget',
+    ];
+    foreach ($known_ids as $widget_id) {
+        if (isset($widgets[$widget_id])) return $widget_id;
+    }
+
+    foreach ($widgets as $widget_id => $data) {
+        $title = strtolower(trim(wp_strip_all_tags((string) (($data['widget']['title'] ?? '')))));
+        if ($title === '') continue;
+        if (str_contains($title, 'wp mail smtp')) return (string) $widget_id;
+    }
+
+    return '';
+}
+
+function meza_dashboard_find_php_error_log_widget_id(array $widgets): string
+{
+    $known_ids = [
+        'ws_php_error_log',
+        'php_error_log_dashboard',
+    ];
+    foreach ($known_ids as $widget_id) {
+        if (isset($widgets[$widget_id])) return $widget_id;
+    }
+
+    foreach ($widgets as $widget_id => $data) {
+        $title = strtolower(trim(wp_strip_all_tags((string) (($data['widget']['title'] ?? '')))));
+        if ($title === '') continue;
+        if (str_contains($title, 'php error log')) return (string) $widget_id;
+    }
+
+    return '';
+}
+
+function meza_dashboard_widget_with_custom_title(string $widget_id, array $widget): array
+{
+    $title = trim(wp_strip_all_tags((string) ($widget['title'] ?? '')));
+    $normalized_title = strtolower($title);
+    $normalized_id = strtolower($widget_id);
+
+    $custom_title = '';
+    if ($widget_id === 'dashboard_right_now' || $normalized_title === 'at a glance') {
+        $custom_title = 'Site Overview';
+    } elseif ($widget_id === 'dashboard_site_health' || str_contains($normalized_title, 'site health')) {
+        $custom_title = 'Site Health';
+    } elseif (str_contains($normalized_id, 'googlesitekit') || (str_contains($normalized_title, 'site kit') && str_contains($normalized_title, 'summary'))) {
+        $custom_title = 'Web Analytics';
+    } elseif (str_contains($normalized_id, 'wp_mail_smtp') || str_contains($normalized_title, 'wp mail smtp')) {
+        $custom_title = 'Mail';
+    } elseif (str_contains($normalized_id, 'woocommerce') || str_contains($normalized_title, 'woocommerce')) {
+        $custom_title = 'WooCommerce';
+    }
+
+    if ($custom_title !== '') $widget['title'] = $custom_title;
+    return $widget;
+}
+
 function meza_dashboard_allowed_widget_ids(array $widgets): array
 {
     $ids = [
         'column1' => [],
-        'column2' => ['dashboard_right_now', 'wp_mail_smtp_reports_widget_lite', 'dashboard_site_health'],
-        'column3' => ['ws_php_error_log'],
+        'column2' => ['dashboard_right_now'],
+        'column3' => [],
     ];
 
     $site_kit_widget_id = meza_dashboard_find_site_kit_widget_id($widgets);
     if ($site_kit_widget_id !== '') $ids['column1'][] = $site_kit_widget_id;
+
+    $woocommerce_widget_id = meza_dashboard_find_woocommerce_status_widget_id($widgets);
+    if ($woocommerce_widget_id !== '') $ids['column2'][] = $woocommerce_widget_id;
+
+    if (isset($widgets['dashboard_site_health'])) $ids['column2'][] = 'dashboard_site_health';
+
+    $wp_mail_smtp_widget_id = meza_dashboard_find_wp_mail_smtp_widget_id($widgets);
+    if ($wp_mail_smtp_widget_id !== '') $ids['column2'][] = $wp_mail_smtp_widget_id;
+
+    $php_error_log_widget_id = meza_dashboard_find_php_error_log_widget_id($widgets);
+    if ($php_error_log_widget_id !== '') $ids['column3'][] = $php_error_log_widget_id;
 
     // Keep only widgets that actually exist for this user.
     foreach ($ids as $column => $column_ids) {
@@ -1366,13 +1458,13 @@ add_action('wp_dashboard_setup', function () {
     ];
 
     foreach ($allowed['column1'] as $widget_id) {
-        $wp_meta_boxes['dashboard']['normal']['core'][$widget_id] = $widgets[$widget_id]['widget'];
+        $wp_meta_boxes['dashboard']['normal']['core'][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, (array) $widgets[$widget_id]['widget']);
     }
     foreach ($allowed['column2'] as $widget_id) {
-        $wp_meta_boxes['dashboard']['side']['core'][$widget_id] = $widgets[$widget_id]['widget'];
+        $wp_meta_boxes['dashboard']['side']['core'][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, (array) $widgets[$widget_id]['widget']);
     }
     foreach ($allowed['column3'] as $widget_id) {
-        $wp_meta_boxes['dashboard']['column3']['core'][$widget_id] = $widgets[$widget_id]['widget'];
+        $wp_meta_boxes['dashboard']['column3']['core'][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, (array) $widgets[$widget_id]['widget']);
     }
 
     // Keep Screen Options aligned with the enforced set.
