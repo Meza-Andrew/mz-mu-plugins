@@ -477,6 +477,24 @@ if (!function_exists('send_form_data')) :
         if (empty($to)) {
             error_log('Mail: no admin recipients resolved');
             $debug_log('no_recipients', ['form_slug' => (string) ($data['FormSlug'] ?? ''), 'env' => (string) $env]);
+            if (function_exists('mzf_log_submission')) {
+                mzf_log_submission([
+                    'form_slug' => (string) ($data['FormSlug'] ?? ''),
+                    'page_id' => (int) ($data['PageId'] ?? 0),
+                    'name' => (string) $full_name,
+                    'email' => (string) ($data['Email'] ?? ''),
+                    'delivery_status' => 'error_no_recipients',
+                    'admin_ok' => false,
+                    'user_ok' => false,
+                    'subject' => (string) $subject,
+                    'env' => (string) $env,
+                    'error_message' => 'No admin recipients configured.',
+                    'payload' => (array) $data,
+                    'submitted' => function_exists('mzf_prepare_submission_payload') ? mzf_prepare_submission_payload((array) $_POST) : (array) $_POST,
+                    'recipients' => [],
+                    'attachments' => (array) $attached_meta,
+                ]);
+            }
             wp_send_json_error(['message' => 'No admin recipients configured.'], 500);
         }
 
@@ -700,6 +718,26 @@ if (!function_exists('send_form_data')) :
         remove_filter('wp_mail_content_type', $__meza_set_html);
 
         $delivery_success = (bool) apply_filters('mzf_delivery_success', ($admin_ok && $user_ok), $admin_ok, $user_ok, $data);
+        $partial_success = (bool) apply_filters('mzf_partial_success', $admin_ok, $admin_ok, $user_ok, $data);
+        $delivery_status = $delivery_success ? 'success' : ($partial_success ? 'partial' : 'failed');
+        $submission_log_id = 0;
+        if (function_exists('mzf_log_submission')) {
+            $submission_log_id = (int) mzf_log_submission([
+                'form_slug' => (string) ($data['FormSlug'] ?? ''),
+                'page_id' => (int) ($data['PageId'] ?? 0),
+                'name' => (string) $full_name,
+                'email' => (string) ($data['Email'] ?? ''),
+                'delivery_status' => (string) $delivery_status,
+                'admin_ok' => (bool) $admin_ok,
+                'user_ok' => (bool) $user_ok,
+                'subject' => (string) $subject,
+                'env' => (string) $env,
+                'payload' => (array) $data,
+                'submitted' => function_exists('mzf_prepare_submission_payload') ? mzf_prepare_submission_payload((array) $_POST) : (array) $_POST,
+                'recipients' => (array) $to,
+                'attachments' => (array) $attached_meta,
+            ]);
+        }
         $debug_payload = [
             'env' => (string) $env,
             'form_slug' => (string) ($data['FormSlug'] ?? ''),
@@ -711,6 +749,7 @@ if (!function_exists('send_form_data')) :
             'required_fields' => array_values((array) $required_fields),
             'unknown_fields_rejected' => false,
             'strict_mode' => (bool) $strict_mode,
+            'submission_log_id' => $submission_log_id,
         ];
         $debug_log('delivery_result', $debug_payload);
 
@@ -724,7 +763,6 @@ if (!function_exists('send_form_data')) :
         if (!$admin_ok) error_log('Mail: admin send failed');
         if (!$user_ok)  error_log('Mail: user confirmation failed');
 
-        $partial_success = (bool) apply_filters('mzf_partial_success', $admin_ok, $admin_ok, $user_ok, $data);
         if ($partial_success) {
             $payload = ['message_success' => $successMsg];
             if ($debug_response_enabled) {
