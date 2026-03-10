@@ -151,6 +151,7 @@ function meza_normalize_datetime_columns(array $columns): array
     $post_type = ($screen instanceof WP_Screen) ? (string) ($screen->post_type ?? '') : '';
     $supports_thumbnail = ($post_type !== '' && post_type_supports($post_type, 'thumbnail'));
     $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
+    $show_form_slug_column = ($post_type === 'form');
 
     $has_modified = false;
     foreach ($columns as $key => $label) {
@@ -182,6 +183,7 @@ function meza_normalize_datetime_columns(array $columns): array
             $updated['mz_id'] = __('ID');
             if ($supports_thumbnail) $updated['mz_thumbnail'] = __('Image');
             $updated[$key] = $label;
+            if ($show_form_slug_column) $updated['mz_slug'] = __('Slug');
             if ($show_page_columns) {
                 $updated['mz_page_link'] = __('Link');
                 $updated['mz_page_headline'] = __('Page Headline (H1)');
@@ -225,6 +227,7 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_id');
         $append('mz_thumbnail');
         $append('title');
+        if ($show_form_slug_column) $append('mz_slug');
         if ($show_page_columns) {
             $append('mz_page_link');
             $append('mz_page_headline');
@@ -238,6 +241,7 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_id');
         $append('mz_thumbnail');
         $append('title');
+        if ($show_form_slug_column) $append('mz_slug');
         if ($show_page_columns) {
             $append('mz_page_link');
             $append('mz_page_headline');
@@ -268,6 +272,10 @@ function meza_normalize_datetime_columns(array $columns): array
 
 function meza_register_datetime_sortable_columns(array $cols): array
 {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (($screen instanceof WP_Screen) && ((string) ($screen->post_type ?? '') === 'form')) {
+        $cols['mz_slug'] = ['name', true];
+    }
     $cols['mz_id'] = ['ID', true];
     $cols['mz_published'] = ['date', true];
     $cols['mz_modified'] = ['modified', true];
@@ -302,6 +310,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             $column === 'mz_modified' ||
             $column === 'mz_published' ||
             $column === 'mz_id' ||
+            $column === 'mz_slug' ||
             $column === 'mz_thumbnail' ||
             $column === 'mz_page_link' ||
             $column === 'mz_page_headline' ||
@@ -314,6 +323,11 @@ function meza_render_posts_list_column(string $column, int $post_id): void
 
     if ($column === 'mz_id') {
         echo (int) $post_id;
+        return;
+    }
+    if ($column === 'mz_slug') {
+        $slug = (string) ($post->post_name ?? '');
+        echo ($slug !== '') ? esc_html($slug) : '&mdash;';
         return;
     }
 
@@ -2295,6 +2309,7 @@ add_action('admin_head-edit.php', function () {
 
     echo '<style id="meza-admin-list-column-widths">' .
         '.wp-list-table .column-mz_id{width:50px;}' .
+        '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_thumbnail{width:125px;}' .
         '.wp-list-table .column-mz_thumbnail .row-actions{font-size:11px;line-height:1.1;}' .
         '.wp-list-table .column-title{width:225px;}' .
