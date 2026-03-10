@@ -19,8 +19,26 @@ if (!defined('CC_LIST_ID'))       define('CC_LIST_ID',       'af35f4c0-c3e2-11ef
 // Optional: set a tag id if you want to auto-tag signups (else leave blank)
 if (!defined('CC_TAG_ID'))        define('CC_TAG_ID',        ''); // e.g., '12345678-...'
 
+if (!function_exists('cc_has_wp_config_keys')) {
+    function cc_has_wp_config_keys(): bool
+    {
+        $client_id = defined('CC_CLIENT_ID') ? trim((string) CC_CLIENT_ID) : '';
+        $client_secret = defined('CC_CLIENT_SECRET') ? trim((string) CC_CLIENT_SECRET) : '';
+        $list_id = defined('CC_LIST_ID') ? trim((string) CC_LIST_ID) : '';
+
+        if ($client_id === '' || $client_secret === '' || $list_id === '') return false;
+        if (in_array($client_id, ['YOUR_CLIENT_ID', 'your_client_id'], true)) return false;
+        if (in_array($client_secret, ['YOUR_CLIENT_SECRET', 'your_client_secret'], true)) return false;
+
+        return true;
+    }
+}
+
 // --- Admin page to connect OAuth ---
 add_action('admin_menu', function () {
+    // Only expose this menu when credentials are explicitly provided via wp-config constants.
+    if (!cc_has_wp_config_keys()) return;
+
     add_submenu_page(
         'options-general.php',
         'Constant Contact',

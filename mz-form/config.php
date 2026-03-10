@@ -175,16 +175,11 @@ if (!function_exists('mzf_reject_unknown_fields')) {
 if (!function_exists('mzf_debug_allowed')) {
     function mzf_debug_allowed(array $src = []): bool
     {
-        $enabled = defined('MZF_DEBUG_ENABLED')
-            ? (bool) MZF_DEBUG_ENABLED
-            : (bool) mzf_get('debug_enabled', false);
+        // Debug is controlled only via wp-config constants.
+        $enabled = defined('MZF_DEBUG_ENABLED') ? (bool) MZF_DEBUG_ENABLED : false;
         $enabled = (bool) apply_filters('mzf_debug_enabled', $enabled, $src);
 
-        $session_enabled = function_exists('mzf_debug_session_enabled')
-            ? mzf_debug_session_enabled()
-            : false;
-
-        if (is_user_logged_in() && current_user_can('manage_options') && ($enabled || $session_enabled)) {
+        if (is_user_logged_in() && current_user_can('manage_options') && $enabled) {
             return true;
         }
 
@@ -192,9 +187,7 @@ if (!function_exists('mzf_debug_allowed')) {
             return false;
         }
 
-        $configured_key = defined('MZF_DEBUG_KEY')
-            ? (string) MZF_DEBUG_KEY
-            : (string) mzf_get('debug_key', '');
+        $configured_key = defined('MZF_DEBUG_KEY') ? (string) MZF_DEBUG_KEY : '';
         $configured_key = trim($configured_key);
         $provided_key = isset($src['debug_key']) ? trim((string) $src['debug_key']) : '';
 
