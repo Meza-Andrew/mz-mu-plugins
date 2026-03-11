@@ -151,6 +151,7 @@ function meza_normalize_datetime_columns(array $columns): array
     $post_type = ($screen instanceof WP_Screen) ? (string) ($screen->post_type ?? '') : '';
     $supports_thumbnail = ($post_type !== '' && post_type_supports($post_type, 'thumbnail'));
     $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
+    $show_organization_url_column = ($post_type === 'organization');
     $show_form_slug_column = ($post_type === 'form');
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
     $show_summary_column = (
@@ -190,6 +191,7 @@ function meza_normalize_datetime_columns(array $columns): array
             $updated['mz_id'] = __('ID');
             if ($supports_thumbnail) $updated['mz_thumbnail'] = __('Image');
             $updated[$key] = ($post_type === 'cta') ? __('Headline (H2)') : $label;
+            if ($show_organization_url_column) $updated['mz_organization_url'] = __('URL');
             if ($show_summary_column) $updated['mz_summary'] = __('Summary');
             if ($show_form_slug_column) $updated['mz_slug'] = __('Slug');
             if ($show_review_columns) {
@@ -214,6 +216,9 @@ function meza_normalize_datetime_columns(array $columns): array
 
     if (!isset($updated['mz_published'])) $updated['mz_published'] = __('Published');
     if (!$has_modified && !isset($updated['mz_modified'])) $updated['mz_modified'] = __('Modified');
+    if ($show_organization_url_column && !isset($updated['mz_organization_url'])) {
+        $updated['mz_organization_url'] = __('URL');
+    }
     if ($show_page_columns) {
         if (!isset($updated['mz_page_link'])) $updated['mz_page_link'] = __('Link');
         if (!isset($updated['mz_page_headline'])) $updated['mz_page_headline'] = __('Page Headline (H1)');
@@ -246,6 +251,7 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_id');
         $append('mz_thumbnail');
         $append('title');
+        if ($show_organization_url_column) $append('mz_organization_url');
         $append_taxonomy_columns();
         if ($show_summary_column) $append('mz_summary');
         if ($show_form_slug_column) $append('mz_slug');
@@ -266,6 +272,7 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_id');
         $append('mz_thumbnail');
         $append('title');
+        if ($show_organization_url_column) $append('mz_organization_url');
         $append_taxonomy_columns();
         if ($show_summary_column) $append('mz_summary');
         if ($show_form_slug_column) $append('mz_slug');
@@ -343,6 +350,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             $column === 'mz_id' ||
             $column === 'mz_slug' ||
             $column === 'mz_summary' ||
+            $column === 'mz_organization_url' ||
             $column === 'mz_review_quote' ||
             $column === 'mz_review_citer' ||
             $column === 'mz_thumbnail' ||
@@ -367,6 +375,22 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     if ($column === 'mz_summary') {
         $summary = trim(wp_strip_all_tags((string) ($post->post_excerpt ?? '')));
         echo ($summary !== '') ? esc_html($summary) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_organization_url') {
+        $url = '';
+        if (function_exists('get_field')) {
+            $acf_url = get_field('url', (int) $post_id);
+            if (is_string($acf_url)) $url = trim($acf_url);
+        }
+        if ($url === '') $url = trim((string) get_post_meta((int) $post_id, 'url', true));
+
+        if ($url === '') {
+            echo '&mdash;';
+            return;
+        }
+
+        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Website') . '</a>';
         return;
     }
     if ($column === 'mz_review_quote') {
@@ -2562,6 +2586,7 @@ add_action('admin_head-edit.php', function () {
     echo '<style id="meza-admin-list-column-widths">' .
         '.wp-list-table .column-mz_id{width:75px;}' .
         '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
+        '.wp-list-table .column-mz_organization_url{width:125px;max-width:125px;}' .
         '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
