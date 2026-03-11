@@ -425,7 +425,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             (int) $post_id,
             'thumbnail',
             [
-                'style' => 'width:100px;height:100px;object-fit:contain;object-position:center;display:block;',
+                'style' => 'max-width:100px;max-height:100px;width:auto;height:auto;display:block;margin:0;',
                 'loading' => 'lazy',
                 'decoding' => 'async',
             ]
@@ -2591,6 +2591,7 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_thumbnail{width:125px;}' .
+        '.wp-list-table td.column-mz_thumbnail{vertical-align:top!important;}' .
         '.wp-list-table .column-mz_thumbnail .row-actions{font-size:11px;line-height:1.1;}' .
         '.wp-list-table .column-title{width:225px;}' .
         '.wp-list-table .column-mz_modified,.wp-list-table .column-mz_published{width:225px;}' .
