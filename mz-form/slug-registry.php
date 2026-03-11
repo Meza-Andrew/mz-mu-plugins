@@ -8,8 +8,8 @@ if (!function_exists('mzf_registry_field_labels')) {
     function mzf_registry_field_labels(): array
     {
         return [
-            'FullName' => 'Full Name',
-            'Company' => 'Company',
+            'FullName' => 'Name',
+            'Company' => 'Company/Organization',
             'Email' => 'Email',
             'Phone' => 'Phone',
             'Interest' => 'Interest',
@@ -25,6 +25,8 @@ if (!function_exists('mzf_registry_field_labels')) {
             'DateNeeded' => 'Date Needed',
             'Duration' => 'Duration',
             'Quantity' => 'Quantity',
+            'PrintColor' => 'Color',
+            'PickupContact' => 'Pickup Contact',
             'Dimensions' => 'Dimensions',
             'FilesLink' => 'Files Link',
             'FleetSize' => 'Fleet Size',
@@ -35,7 +37,7 @@ if (!function_exists('mzf_registry_field_labels')) {
             'Explosive' => 'Explosive Materials',
             'Weight' => 'Weight',
             'CondomCount' => 'Condom Order',
-            'NewsletterSignup' => 'Newsletter Sign-Up',
+            'NewsletterSignup' => 'Signed Up for Newsletter',
         ];
     }
 }
@@ -100,12 +102,12 @@ if (!function_exists('mzf_slug_registry')) {
             'quote' => [
                 'subject' => 'New quote request from {{name_company}}',
                 'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'ItemType', 'ItemName', 'DateNeeded', 'Quantity', 'Dimensions', 'FilesLink', 'Comments'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'ItemType', 'ItemName', 'DateNeeded', 'LocationDisplay', 'Quantity', 'Dimensions', 'FilesLink', 'Comments'],
             ],
             'upload-files' => [
                 'subject' => 'New quote request from {{name_company}}',
                 'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'ItemType', 'ItemName', 'DateNeeded', 'Quantity', 'Dimensions', 'FilesLink', 'Comments'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'ItemType', 'ItemName', 'DateNeeded', 'LocationDisplay', 'Quantity', 'Dimensions', 'FilesLink', 'Comments'],
             ],
             'rent' => [
                 'subject' => 'New rental request from {{name_company}}',
@@ -125,7 +127,7 @@ if (!function_exists('mzf_slug_registry')) {
             'sign-quote' => [
                 'subject' => 'New sign quote request from {{name_company}}',
                 'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'DateNeeded', 'ItemType', 'Dimensions', 'FilesLink', 'Comments'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'DateNeeded', 'LocationDisplay', 'ItemType', 'Dimensions', 'FilesLink', 'Comments'],
             ],
 
             'vehicle-wraps' => [
@@ -142,7 +144,7 @@ if (!function_exists('mzf_slug_registry')) {
             'print-quote' => [
                 'subject' => 'New print quote request from {{name_company}}',
                 'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'ItemType', 'DateNeeded', 'Quantity', 'Dimensions', 'FilesLink', 'Comments'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'ItemType', 'DateNeeded', 'LocationDisplay', 'PickupContact', 'PrintColor', 'Quantity', 'Dimensions', 'FilesLink', 'Comments'],
             ],
         ];
 

@@ -16,6 +16,13 @@ if (!function_exists('send_form_data')) :
         $env      = !empty($env) ? strtolower($env) : strtolower($env_default);
         $prod_url = !empty($prod_url) ? $prod_url : home_url();
         $domain   = parse_url($prod_url, PHP_URL_HOST);
+        $site_domain = (string) wp_parse_url(home_url('/'), PHP_URL_HOST);
+        if ($site_domain === '' && !empty($_SERVER['HTTP_HOST'])) {
+            $site_domain = preg_replace('/:\d+$/', '', (string) $_SERVER['HTTP_HOST']);
+        }
+        if ($site_domain === '') {
+            $site_domain = (string) $domain;
+        }
         $debug_allowed = function_exists('mzf_debug_allowed') ? mzf_debug_allowed((array) $_POST) : false;
         $debug_log_enabled = (bool) mzf_get('debug_log', true);
         $debug_response_enabled = $debug_allowed && (bool) mzf_get('debug_response', false);
@@ -337,10 +344,12 @@ if (!function_exists('send_form_data')) :
 
         $body .= '<hr><h3 style="margin:1em 0 .5em 0;">Request Details</h3>';
 
-        if (!empty($data['ItemType'])) $body .= '<p><strong>' . $h($label_item_type) . ':</strong><br>' . $h((string) $data['ItemType']) . '</p>';
+        if (!empty($data['ItemType']) && trim((string) ($data['Service'] ?? '')) === '') $body .= '<p><strong>' . $h($label_item_type) . ':</strong><br>' . $h((string) $data['ItemType']) . '</p>';
         if (!empty($data['ItemName'])) $body .= '<p><strong>Item:</strong><br>' . $h((string) $data['ItemName']) . '</p>';
         if (!empty($data['Quantity'])) $body .= '<p><strong>Quantity:</strong><br>' . $h((string) $data['Quantity']) . '</p>';
-        if (!empty($data['Dimensions'])) $body .= '<p><strong>Dimensions:</strong><br>' . $h((string) $data['Dimensions']) . '</p>';
+        $service_value = strtolower(trim((string) ($data['Service'] ?? '')));
+        $allow_dimensions = ($slug_for_labels === 'print-quote' || $service_value === 'printing');
+        if (!empty($data['Dimensions']) && $allow_dimensions) $body .= '<p><strong>Dimensions:</strong><br>' . $h((string) $data['Dimensions']) . '</p>';
         if (!empty($data['DateNeeded'])) $body .= '<p><strong>' . $h($label_date) . ':</strong><br>' . $h($human_date((string) $data['DateNeeded'])) . '</p>';
         if (!empty($data['Duration'])) $body .= '<p><strong>' . $h($label_duration) . ':</strong><br>' . $h($format_weeks_days((string) $data['Duration'])) . '</p>';
         if (!empty($data['LocationDisplay'])) $body .= '<p><strong>' . $h($label_location) . ':</strong><br>' . $h((string) $data['LocationDisplay']) . '</p>';
@@ -425,12 +434,66 @@ if (!function_exists('send_form_data')) :
         $prefix = 'New request from ';
 
         $core    = $prefix . $full_name . ($company ? ' at ' . $company : '');
-        $core    = mzf_apply_subject_templates($core, $data, ['domain' => (string) $domain, 'page_slug' => (string) $slug]);
+        $core    = mzf_apply_subject_templates($core, $data, ['domain' => (string) $site_domain, 'page_slug' => (string) $slug]);
         $subject = apply_filters('mzf_subject', $core, $data, (int)($data['PageId'] ?? 0), $slug, ($data['ItemType'] ?? ''), $is_quote);
-        if ($domain) {
-            $subject = preg_replace('/\s*\(' . preg_quote($domain, '/') . '\)\s*/i', ' ', $subject);
+        $default_subject = $subject;
+        $interest_values = [];
+        $interest_source = $data['Interest'] ?? ($data['Interests'] ?? []);
+        if (is_array($interest_source)) {
+            foreach ($interest_source as $interest_item) {
+                $interest_item = trim((string) $interest_item);
+                if ($interest_item !== '') {
+                    $interest_values[] = $interest_item;
+                }
+            }
+        } else {
+            $interest_text = trim((string) $interest_source);
+            if ($interest_text !== '') {
+                foreach (preg_split('/\s*,\s*/', $interest_text) as $interest_item) {
+                    $interest_item = trim((string) $interest_item);
+                    if ($interest_item !== '') {
+                        $interest_values[] = $interest_item;
+                    }
+                }
+            }
+        }
+        $interest_values = array_values(array_unique($interest_values));
+        $interest_count = count($interest_values);
+        $interest_subject = '';
+        if ($interest_count === 1) {
+            $interest_norm = strtolower($interest_values[0]);
+            if ($interest_norm === 'wide format printing') {
+                $interest_subject = 'print';
+            } elseif ($interest_norm === 'signs & graphics' || $interest_norm === 'signs and graphics') {
+                $interest_subject = 'sign';
+            }
+        }
+        $service_subject = strtolower(trim((string) ($data['Service'] ?? '')));
+        $is_upload_files = ($slug === 'upload-files');
+        $print_subject_text = $is_upload_files ? 'New print request from ' : 'New print quote request from ';
+        $sign_subject_text = $is_upload_files ? 'New sign request from ' : 'New sign quote request from ';
+        if ($interest_count > 1) {
+            $subject = $default_subject;
+        } elseif ($interest_subject === 'print') {
+            $subject = $print_subject_text . $full_name . ($company ? ' at ' . $company : '');
+        } elseif ($interest_subject === 'sign') {
+            $subject = $sign_subject_text . $full_name . ($company ? ' at ' . $company : '');
+        } elseif ($service_subject === 'printing') {
+            $subject = $print_subject_text . $full_name . ($company ? ' at ' . $company : '');
+        } elseif ($service_subject === 'signs') {
+            $subject = $sign_subject_text . $full_name . ($company ? ' at ' . $company : '');
+        }
+        $store_subject = trim((string) ($data['Store'] ?? ''));
+        if ($store_subject !== '') {
+            $store_segment = ' for ' . $store_subject;
+            if (stripos($subject, $store_segment) === false) {
+                $subject = trim($subject) . $store_segment;
+            }
+        }
+        if ($site_domain) {
+            $subject = preg_replace('/\s*[\(\[]' . preg_quote($site_domain, '/') . '[\)\]]\s*/i', ' ', $subject);
             $subject = trim(preg_replace('/\s{2,}/', ' ', $subject));
-            $subject .= ' (' . $domain . ')';
+            $subject .= ' [' . $site_domain . ']';
         }
 
         $__meza_set_html = function () {
@@ -666,6 +729,24 @@ if (!function_exists('send_form_data')) :
 
         if (!empty($attached_meta)) {
             $data['UploadedFiles'] = $attached_meta;
+            $file_links = [];
+            foreach ($attached_meta as $meta) {
+                $name = trim((string) ($meta['name'] ?? ''));
+                $url = trim((string) ($meta['url'] ?? ''));
+                if ($name !== '' && $url !== '') {
+                    $file_links[] = '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($name) . '</a>';
+                }
+            }
+            if (!empty($file_links) && stripos((string) $body, '<strong>Files:</strong>') === false) {
+                $files_block = '<p><strong>Files:</strong><br>' . implode('<br>', $file_links) . '</p>';
+                if (preg_match('/<p><strong>Files link:<\/strong><br>.*?<\/p>/is', (string) $body)) {
+                    $body = preg_replace('/(<p><strong>Files link:<\/strong><br>.*?<\/p>)/is', $files_block . '$1', (string) $body, 1);
+                } elseif (preg_match('/<hr[^>]*><p><small>/i', (string) $body)) {
+                    $body = preg_replace('/<hr[^>]*><p><small>/i', $files_block . '$0', (string) $body, 1);
+                } else {
+                    $body .= $files_block;
+                }
+            }
         }
 
         $successMsgRaw = function_exists('mzf_form_config_value')

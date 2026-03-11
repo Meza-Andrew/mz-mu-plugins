@@ -55,6 +55,7 @@ if (!function_exists('mzf_default_fields')) {
             'ContactFirstName',
             'ContactLastName',
             'ContactPhone',
+            'ContactEmail',
             'Website',
             'Honeypot',
             'Company',
@@ -74,6 +75,7 @@ if (!function_exists('mzf_default_fields')) {
             'SignType',
             'ApparelType',
             'PrintType',
+            'PrintColor',
             'WrapType',
             'ItemName',
             'Products',
@@ -94,6 +96,8 @@ if (!function_exists('mzf_default_fields')) {
             'LocationDisplay',
             'Location',
             'Place',
+            'Latitude',
+            'Longitude',
             'ReceivingOption',
             'ReceivingAddress',
             'ReceivingPlaceID',
@@ -389,6 +393,7 @@ if (!function_exists('mzf_render_template')) {
         $replacements = [];
         foreach ($tokens as $k => $v) {
             $replacements['{{' . $k . '}}'] = (string) $v;
+            $replacements['[[' . $k . ']]'] = (string) $v;
         }
         return trim(strtr($template, $replacements));
     }
@@ -424,6 +429,7 @@ if (!function_exists('mzf_apply_subject_templates')) {
             'name_company' => $name_company,
             'form_slug'    => $slug,
             'domain'       => (string) ($context['domain'] ?? ''),
+            'site_domain'  => (string) ($context['domain'] ?? ''),
             'vocals'       => trim((string) ($data['Vocals'] ?? '')),
             'vocals_or_vocalist' => (trim((string) ($data['Vocals'] ?? '')) !== '' ? trim((string) ($data['Vocals'] ?? '')) : 'vocalist'),
             'condom_count' => trim((string) ($data['CondomCount'] ?? '')),

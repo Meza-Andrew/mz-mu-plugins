@@ -11,6 +11,11 @@ if (!defined('ABSPATH')) {
  */
 
 add_filter('mzf_recipients', static function (array $to, array $data, $env): array {
+    $env_name = strtolower(trim((string) $env));
+    if (in_array($env_name, ['development', 'staging', 'local'], true)) {
+        return $to;
+    }
+
     $store = trim((string) ($data['Store'] ?? ''));
     if ($store === '' || !function_exists('mz_resolve_office_email')) {
         return $to;
