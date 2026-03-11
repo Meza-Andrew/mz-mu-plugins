@@ -696,6 +696,22 @@ if (!function_exists('mzf_render_admin_body')) {
                 if ($field_key === 'DateNeeded') {
                     $ts = strtotime($text);
                     $display = $ts ? esc_html(date_i18n('l, F, j, Y', $ts)) : esc_html($text);
+                } elseif ($field_key === 'Duration') {
+                    $days = (int) preg_replace('/\D+/', '', $text);
+                    if ($days > 0) {
+                        $weeks = intdiv($days, 7);
+                        $rem = $days % 7;
+                        $parts = [];
+                        if ($weeks > 0) {
+                            $parts[] = $weeks . ' ' . ($weeks === 1 ? 'week' : 'weeks');
+                        }
+                        if ($rem > 0) {
+                            $parts[] = $rem . ' ' . ($rem === 1 ? 'day' : 'days');
+                        }
+                        $display = esc_html(!empty($parts) ? implode(' ', $parts) : '0 days');
+                    } else {
+                        $display = esc_html($text);
+                    }
                 } elseif ($field_key === 'Comments' || $field_key === 'Reason') {
                     $display = nl2br(esc_html($text));
                 } elseif ($field_key === 'Email') {
