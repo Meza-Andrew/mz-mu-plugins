@@ -399,12 +399,14 @@ if (!function_exists('send_form_data')) :
             $org_maps_url = null;
         }
 
-        $admin_footer_html = '<hr><p><small>'
-            . ($org_addr_display && $org_maps_url ? '<a href="' . esc_url($org_maps_url) . '" target="_blank" rel="noopener">' . esc_html($org_addr_display) . '</a><br>' : '')
-            . ($org_phone ? '<a href="tel:' . esc_attr($org_phone_href) . '" target="_blank">' . esc_html($org_phone) . '</a>' : '')
-            . '<br>'
-            . ($org_email_display ? '<a href="mailto:' . esc_attr($org_email_display) . '" target="_blank">' . esc_html($org_email_display) . '</a><br>' : '')
-            . '<a href="' . esc_url($site_url) . '" target="_blank">' . $site_url . '</a></small></p>';
+        $admin_footer_html = function_exists('mzf_build_footer_html')
+            ? mzf_build_footer_html('admin', $org_addr_display, $org_maps_url, $org_phone, $org_phone_href, $org_email_display, $site_url, (string) $domain)
+            : '<hr><p><small>'
+                . ($org_addr_display && $org_maps_url ? '<a href="' . esc_url($org_maps_url) . '" target="_blank" rel="noopener">' . esc_html($org_addr_display) . '</a><br>' : '')
+                . ($org_phone ? '<a href="tel:' . esc_attr($org_phone_href) . '" target="_blank">' . esc_html($org_phone) . '</a>' : '')
+                . '<br>'
+                . ($org_email_display ? '<a href="mailto:' . esc_attr($org_email_display) . '" target="_blank">' . esc_html($org_email_display) . '</a><br>' : '')
+                . '<a href="' . esc_url($site_url) . '" target="_blank">' . $site_url . '</a></small></p>';
         $body .= $admin_footer_html;
 
         $body = mzf_render_admin_body($body, $data, ['footer_html' => $admin_footer_html, 'domain' => (string) $domain]);
@@ -413,7 +415,7 @@ if (!function_exists('send_form_data')) :
 
         $page_id = isset($_POST['PageId']) ? absint($_POST['PageId']) : ($page_id ?? 0);
         $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
-        $is_quote = in_array($slug, ['quote', 'vehicle-wraps', 'wall-graphics', 'banner-printing', 'print-quote'], true);
+        $is_quote = in_array($slug, ['quote', 'upload-files', 'vehicle-wraps', 'wall-graphics', 'banner-printing', 'print-quote'], true);
 
         $first_name = isset($data['FirstName']) ? sanitize_text_field($data['FirstName']) : '';
         $last_name  = isset($data['LastName'])  ? sanitize_text_field($data['LastName'])  : '';
@@ -677,12 +679,14 @@ if (!function_exists('send_form_data')) :
         $successMsg = (string) apply_filters('mzf_success_message', $successMsg, $data, $form_cfg);
         $errorMsg   = (string) apply_filters('mzf_error_message', $errorMsg, $data, $form_cfg);
 
-        $footer_html = '<hr><p><small>'
-            . ($org_addr_display && $org_maps_url ? '<a href="' . esc_url($org_maps_url) . '" target="_blank" rel="noopener">' . esc_html($org_addr_display) . '</a><br>' : '')
-            . ($org_phone ? '<a href="tel:' . esc_attr($org_phone_href) . '" target="_blank">' . esc_html($org_phone) . '</a>' : '')
-            . '<br>'
-            . ($org_email_display ? '<a href="mailto:' . esc_attr($org_email_display) . '" target="_blank">' . esc_html($org_email_display) . '</a><br>' : '')
-            . '<a href="' . esc_url($domain) . '" target="_blank">https://' . $domain . '</a></small></p>';
+        $footer_html = function_exists('mzf_build_footer_html')
+            ? mzf_build_footer_html('user', $org_addr_display, $org_maps_url, $org_phone, $org_phone_href, $org_email_display, $site_url, (string) $domain)
+            : '<hr><p><small>'
+                . ($org_addr_display && $org_maps_url ? '<a href="' . esc_url($org_maps_url) . '" target="_blank" rel="noopener">' . esc_html($org_addr_display) . '</a><br>' : '')
+                . ($org_phone ? '<a href="tel:' . esc_attr($org_phone_href) . '" target="_blank">' . esc_html($org_phone) . '</a>' : '')
+                . '<br>'
+                . ($org_email_display ? '<a href="mailto:' . esc_attr($org_email_display) . '" target="_blank">' . esc_html($org_email_display) . '</a><br>' : '')
+                . '<a href="' . esc_url($domain) . '" target="_blank">https://' . $domain . '</a></small></p>';
 
         $user_email = mz_build_user_email($data, $footer_html);
 

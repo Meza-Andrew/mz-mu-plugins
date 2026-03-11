@@ -423,9 +423,9 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         $thumb_id = (int) get_post_thumbnail_id((int) $post_id);
         $thumb_html = get_the_post_thumbnail(
             (int) $post_id,
-            [100, 100],
+            'thumbnail',
             [
-                'style' => 'width:100px;height:100px;object-fit:cover;',
+                'style' => 'width:100px;height:100px;object-fit:contain;object-position:center;display:block;',
                 'loading' => 'lazy',
                 'decoding' => 'async',
             ]

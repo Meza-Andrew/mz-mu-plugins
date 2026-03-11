@@ -102,6 +102,11 @@ if (!function_exists('mzf_slug_registry')) {
                 'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
                 'layout' => ['FullName', 'Company', 'Email', 'Phone', 'ItemType', 'ItemName', 'DateNeeded', 'Quantity', 'Dimensions', 'FilesLink', 'Comments'],
             ],
+            'upload-files' => [
+                'subject' => 'New quote request from {{name_company}}',
+                'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'ItemType', 'ItemName', 'DateNeeded', 'Quantity', 'Dimensions', 'FilesLink', 'Comments'],
+            ],
             'rent' => [
                 'subject' => 'New rental request from {{name_company}}',
                 'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug', 'DateNeeded'],

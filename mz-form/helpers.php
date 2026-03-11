@@ -256,6 +256,49 @@ if (!function_exists('mzf_recipients_from_form_config')) {
     }
 }
 
+if (!function_exists('mzf_build_footer_html')) {
+    function mzf_build_footer_html(
+        string $variant,
+        ?string $org_addr_display,
+        ?string $org_maps_url,
+        ?string $org_phone,
+        ?string $org_phone_href,
+        ?string $org_email_display,
+        ?string $site_url,
+        ?string $domain
+    ): string {
+        $variant = strtolower(trim((string) $variant));
+        $addr_display = trim((string) $org_addr_display);
+        $maps_url = trim((string) $org_maps_url);
+        $phone = trim((string) $org_phone);
+        $phone_href = trim((string) $org_phone_href);
+        $email_display = trim((string) $org_email_display);
+        $site_url = trim((string) $site_url);
+        $domain = trim((string) $domain);
+
+        // FH-style admin footer: full site URL in footer link.
+        if ($variant === 'admin') {
+            return '<hr><p><small>'
+                . ($addr_display !== '' && $maps_url !== '' ? '<a href="' . esc_url($maps_url) . '" target="_blank" rel="noopener">' . esc_html($addr_display) . '</a><br>' : '')
+                . ($phone !== '' ? '<a href="tel:' . esc_attr($phone_href) . '" target="_blank">' . esc_html($phone) . '</a>' : '')
+                . '<br>'
+                . ($email_display !== '' ? '<a href="mailto:' . esc_attr($email_display) . '" target="_blank">' . esc_html($email_display) . '</a><br>' : '')
+                . ($site_url !== '' ? '<a href="' . esc_url($site_url) . '" target="_blank">' . $site_url . '</a>' : '')
+                . '</small></p>';
+        }
+
+        // FH-style user footer: canonical domain link.
+        $domain_href = $domain !== '' ? ('https://' . $domain) : '';
+        return '<hr><p><small>'
+            . ($addr_display !== '' && $maps_url !== '' ? '<a href="' . esc_url($maps_url) . '" target="_blank" rel="noopener">' . esc_html($addr_display) . '</a><br>' : '')
+            . ($phone !== '' ? '<a href="tel:' . esc_attr($phone_href) . '" target="_blank">' . esc_html($phone) . '</a>' : '')
+            . '<br>'
+            . ($email_display !== '' ? '<a href="mailto:' . esc_attr($email_display) . '" target="_blank">' . esc_html($email_display) . '</a><br>' : '')
+            . ($domain_href !== '' ? '<a href="' . esc_url($domain) . '" target="_blank">' . $domain_href . '</a>' : '')
+            . '</small></p>';
+    }
+}
+
 if (!function_exists('mzf_default_body_layouts')) {
     function mzf_default_body_layouts(): array
     {
