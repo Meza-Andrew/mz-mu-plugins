@@ -38,3 +38,11 @@ add_filter('mzf_recipients', static function (array $to, array $data, $env): arr
     // Store-specific routing: send to the selected office recipient.
     return [$office_email];
 }, 20, 3);
+
+add_filter('mzf_recaptcha_disabled', static function (bool $disabled): bool {
+    $env = defined('WP_ENV') ? strtolower(trim((string) WP_ENV)) : '';
+    if (in_array($env, ['development', 'local', 'staging'], true)) {
+        return true;
+    }
+    return $disabled;
+}, 20);

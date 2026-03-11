@@ -177,6 +177,13 @@ if (!function_exists('cc_api_request')) {
 if (!function_exists('cc_get_access_token')) {
     function cc_get_access_token($skew_seconds = 300) // refresh ~5m early
     {
+        if (function_exists('mzf_crm_api_key')) {
+            $crm_key = mzf_crm_api_key('constant-contact');
+            if ($crm_key !== '') {
+                return $crm_key;
+            }
+        }
+
         $t = get_option('cc_tokens');
         if (empty($t['access_token'])) return false;
 

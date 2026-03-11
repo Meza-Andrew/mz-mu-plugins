@@ -10,6 +10,12 @@ if (!function_exists('mz_mc_get_api_key')) {
         if (defined('MAILCHIMP_API_KEY') && MAILCHIMP_API_KEY) {
             return trim((string) MAILCHIMP_API_KEY);
         }
+        if (function_exists('mzf_crm_api_key')) {
+            $crm_key = mzf_crm_api_key('mailchimp');
+            if ($crm_key !== '') {
+                return $crm_key;
+            }
+        }
         return trim((string) get_option('mz_mc_api_key', ''));
     }
 }
