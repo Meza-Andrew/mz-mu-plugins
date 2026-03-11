@@ -86,6 +86,53 @@ if (!function_exists('mzf_get_path')) {
     }
 }
 
+if (!function_exists('mzf_section_form_content')) {
+    function mzf_section_form_content($section_form): array
+    {
+        if (!is_array($section_form)) {
+            return [];
+        }
+
+        $resolve_form_post_fields = static function ($value): array {
+            if (!function_exists('get_fields') || !function_exists('get_post_type')) {
+                return [];
+            }
+
+            $post_id = 0;
+            if ($value instanceof WP_Post) {
+                $post_id = (int) $value->ID;
+            } elseif (is_numeric($value)) {
+                $post_id = (int) $value;
+            } elseif (is_array($value)) {
+                if (isset($value['ID']) || isset($value['id'])) {
+                    $post_id = (int) ($value['ID'] ?? $value['id'] ?? 0);
+                } else {
+                    $first = reset($value);
+                    if ($first instanceof WP_Post) {
+                        $post_id = (int) $first->ID;
+                    } elseif (is_numeric($first)) {
+                        $post_id = (int) $first;
+                    } elseif (is_array($first)) {
+                        $post_id = (int) ($first['ID'] ?? $first['id'] ?? 0);
+                    }
+                }
+            }
+
+            if ($post_id <= 0 || get_post_type($post_id) !== 'form') {
+                return [];
+            }
+
+            return (array) get_fields($post_id);
+        };
+
+        $form_ref = $section_form['form'] ?? null;
+        if ($form_ref !== null) {
+            return $resolve_form_post_fields($form_ref);
+        }
+        return [];
+    }
+}
+
 if (!function_exists('mzf_has_meaningful_value')) {
     function mzf_has_meaningful_value($value): bool
     {
@@ -132,8 +179,9 @@ if (!function_exists('mzf_resolve_form_config')) {
                 $form_post_id = (int) $form_post->ID;
                 $from_form = (array) get_fields((int) $form_post->ID);
                 $from_form_group = function_exists('get_field') ? get_field('section_form', $form_post_id) : null;
-                if (is_array($from_form_group) && !empty($from_form_group)) {
-                    // Support transitional storage where the entire form config lives in a section_form group.
+                $from_form_group = mzf_section_form_content($from_form_group);
+                if (!empty($from_form_group)) {
+                    // Support transitional storage where form config is nested in section_form.
                     $cfg = array_merge($cfg, $from_form_group);
                 }
                 if (!empty($from_form)) {
@@ -141,7 +189,8 @@ if (!function_exists('mzf_resolve_form_config')) {
                 }
                 if (function_exists('get_post_meta')) {
                     $from_post_meta_group = get_post_meta($form_post_id, 'section_form', true);
-                    if (is_array($from_post_meta_group) && !empty($from_post_meta_group)) {
+                    $from_post_meta_group = mzf_section_form_content($from_post_meta_group);
+                    if (!empty($from_post_meta_group)) {
                         $cfg = array_merge($cfg, $from_post_meta_group);
                     }
                 }
@@ -150,15 +199,15 @@ if (!function_exists('mzf_resolve_form_config')) {
 
         $page_id = isset($data['PageId']) ? (int) $data['PageId'] : 0;
         if ($page_id && function_exists('get_field')) {
-            $from_page = get_field('section_form', $page_id);
-            if (is_array($from_page) && !empty($from_page)) {
+            $from_page = mzf_section_form_content(get_field('section_form', $page_id));
+            if (!empty($from_page)) {
                 $cfg = array_merge($from_page, $cfg);
             }
         }
 
         if (function_exists('get_field')) {
-            $from_option = get_field('section_form', 'option');
-            if (is_array($from_option) && !empty($from_option)) {
+            $from_option = mzf_section_form_content(get_field('section_form', 'option'));
+            if (!empty($from_option)) {
                 $cfg = array_merge($from_option, $cfg);
             }
         }
