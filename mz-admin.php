@@ -1653,9 +1653,6 @@ function meza_normalize_admin_plugin_menus(): void
     global $menu, $submenu;
 
     if (!is_array($menu) || !is_array($submenu)) return;
-
-    $redirects_item = null;
-
     foreach ($menu as $index => &$item) {
         if (!is_array($item)) continue;
 
@@ -1764,10 +1761,6 @@ function meza_normalize_admin_plugin_menus(): void
             if ($parent_slug === 'tools.php' && $is_redirection) {
                 $item[0] = 'Redirects';
                 if (isset($item[3])) $item[3] = 'Redirects';
-                if ($redirects_item === null) {
-                    $redirects_item = $item;
-                }
-                unset($items[$index]);
                 continue;
             }
 
@@ -1837,22 +1830,6 @@ function meza_normalize_admin_plugin_menus(): void
         }
         unset($item);
         $items = array_values($items);
-
-        if ($parent_slug === 'options-general.php' && is_array($redirects_item)) {
-            $has_redirects = false;
-            foreach ($items as $existing_item) {
-                if (!is_array($existing_item)) continue;
-                $existing_label = trim(wp_strip_all_tags((string) ($existing_item[0] ?? '')));
-                if (strcasecmp($existing_label, 'Redirects') === 0) {
-                    $has_redirects = true;
-                    break;
-                }
-            }
-
-            if (!$has_redirects) {
-                $items[] = $redirects_item;
-            }
-        }
 
         if ($parent_slug === 'options-general.php') {
             $ordered_labels = [
