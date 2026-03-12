@@ -1679,9 +1679,10 @@ function meza_normalize_admin_plugin_menus(): void
         $is_godaddy_dashboard = str_contains($slug, 'page=wp-dashboard')
             || str_contains($slug, 'godaddy')
             || $title === 'godaddy';
-        $is_make = str_contains($slug, 'client-sign-generator')
-            || str_contains($slug, 'ds-make')
-            || in_array($title, ['make', 'customer sign generator'], true);
+        $is_customer_sign_generator = str_contains($slug, 'client-sign-generator')
+            || $title === 'customer sign generator';
+        $is_make = str_contains($slug, 'ds-make')
+            || $title === 'make';
 
         if ($is_wp_mail_smtp) {
             $item[0] = 'Mail';
@@ -1719,6 +1720,13 @@ function meza_normalize_admin_plugin_menus(): void
             $item[0] = 'Hosting';
             if (isset($item[3])) $item[3] = 'Hosting';
             $item[6] = 'dashicons-admin-site-alt3';
+            continue;
+        }
+
+        if ($is_customer_sign_generator) {
+            $item[0] = 'Customer Sign Generator';
+            if (isset($item[3])) $item[3] = 'Customer Sign Generator';
+            $item[6] = 'dashicons-rest-api';
             continue;
         }
 
@@ -2056,6 +2064,7 @@ function meza_reorder_dashboard_utility_items(): void
         'web_analytics' => null,
         'seo' => null,
         'backups' => null,
+        'customer_sign_generator' => null,
     ];
     $matched_indexes = [];
 
@@ -2079,6 +2088,8 @@ function meza_reorder_dashboard_utility_items(): void
             || str_contains($title, 'seo');
         $is_updraft = str_contains($slug, 'updraft')
             || in_array($title, ['backups', 'updraft', 'updraftplus'], true);
+        $is_customer_sign_generator = str_contains($slug, 'client-sign-generator')
+            || $title === 'customer sign generator';
 
         if ($is_site_kit && $ordered_items['web_analytics'] === null) {
             $ordered_items['web_analytics'] = $item;
@@ -2094,6 +2105,12 @@ function meza_reorder_dashboard_utility_items(): void
 
         if ($is_updraft && $ordered_items['backups'] === null) {
             $ordered_items['backups'] = $item;
+            $matched_indexes[] = (int) $index;
+            continue;
+        }
+
+        if ($is_customer_sign_generator && $ordered_items['customer_sign_generator'] === null) {
+            $ordered_items['customer_sign_generator'] = $item;
             $matched_indexes[] = (int) $index;
         }
     }
@@ -2157,9 +2174,8 @@ function meza_group_post_settings_utilities(): void
         $is_hosting = str_contains($slug, 'page=wp-dashboard')
             || str_contains($slug, 'godaddy')
             || in_array($label, ['hosting', 'godaddy'], true);
-        $is_make = str_contains($slug, 'client-sign-generator')
-            || str_contains($slug, 'ds-make')
-            || in_array($label, ['make', 'customer sign generator'], true);
+        $is_make = str_contains($slug, 'ds-make')
+            || $label === 'make';
 
         if ((int) $index <= $settings_index && !$is_make && !$is_hosting) continue;
 
@@ -2170,8 +2186,7 @@ function meza_group_post_settings_utilities(): void
         $is_security = str_contains($slug, 'aiowpsec')
             || str_contains($slug, 'wp-security')
             || $label === 'security';
-        $is_make = $is_make || str_contains($slug, 'client-sign-generator')
-            || str_contains($slug, 'ds-make')
+        $is_make = $is_make || str_contains($slug, 'ds-make')
             || $label === 'make';
 
         if (!$is_acf && !$is_mail && !$is_security && !$is_hosting && !$is_make) continue;
@@ -2193,7 +2208,6 @@ function meza_group_post_settings_utilities(): void
             'hosting' => 40,
             'godaddy' => 40,
             'make' => 50,
-            'customer sign generator' => 50,
         ];
 
         $label_a = strtolower((string) ($a['label'] ?? ''));
