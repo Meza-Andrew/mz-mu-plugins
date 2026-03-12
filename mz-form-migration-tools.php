@@ -431,6 +431,192 @@ if (!function_exists('mzf_mt_repair_dupe_form_ids')) {
     }
 }
 
+if (!function_exists('mzf_mt_default_sync_json_path')) {
+    function mzf_mt_default_sync_json_path(): string
+    {
+        return __DIR__ . '/mz-form-sync.json';
+    }
+}
+
+if (!function_exists('mzf_mt_is_volatile_meta_key')) {
+    function mzf_mt_is_volatile_meta_key(string $meta_key): bool
+    {
+        return in_array($meta_key, ['_edit_lock', '_edit_last'], true);
+    }
+}
+
+if (!function_exists('mzf_mt_export_forms_payload')) {
+    function mzf_mt_export_forms_payload(): array
+    {
+        $ids = get_posts([
+            'post_type' => 'form',
+            'post_status' => ['publish', 'draft', 'pending', 'private', 'future'],
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'no_found_rows' => true,
+            'suppress_filters' => true,
+        ]);
+
+        $forms = [];
+        foreach ((array) $ids as $id) {
+            $id = (int) $id;
+            if ($id <= 0) {
+                continue;
+            }
+
+            $meta = [];
+            foreach ((array) get_post_meta($id) as $meta_key => $meta_values) {
+                $meta_key = (string) $meta_key;
+                if ($meta_key === '' || mzf_mt_is_volatile_meta_key($meta_key)) {
+                    continue;
+                }
+                $meta[$meta_key] = array_values(array_map('strval', (array) $meta_values));
+            }
+
+            $forms[] = [
+                'id' => $id,
+                'slug' => (string) get_post_field('post_name', $id),
+                'title' => (string) get_the_title($id),
+                'status' => (string) get_post_status($id),
+                'content' => (string) get_post_field('post_content', $id),
+                'excerpt' => (string) get_post_field('post_excerpt', $id),
+                'meta' => $meta,
+            ];
+        }
+
+        return [
+            'schema' => 'mzf_form_sync_v1',
+            'generated_at' => gmdate('c'),
+            'site' => (string) home_url('/'),
+            'forms' => $forms,
+        ];
+    }
+}
+
+if (!function_exists('mzf_mt_read_forms_payload_from_json')) {
+    function mzf_mt_read_forms_payload_from_json(string $path): array
+    {
+        if ($path === '') {
+            $path = mzf_mt_default_sync_json_path();
+        }
+
+        if (!is_readable($path)) {
+            return [new WP_Error('mzf_mt_missing_json', 'JSON file is not readable: ' . $path), $path];
+        }
+
+        $json = file_get_contents($path);
+        if ($json === false || trim($json) === '') {
+            return [new WP_Error('mzf_mt_empty_json', 'JSON file is empty: ' . $path), $path];
+        }
+
+        $payload = json_decode($json, true);
+        if (!is_array($payload)) {
+            return [new WP_Error('mzf_mt_bad_json', 'Invalid JSON in file: ' . $path), $path];
+        }
+
+        if (($payload['schema'] ?? '') !== 'mzf_form_sync_v1') {
+            return [new WP_Error('mzf_mt_bad_schema', 'Unsupported schema. Expected mzf_form_sync_v1.'), $path];
+        }
+
+        return [$payload, $path];
+    }
+}
+
+if (!function_exists('mzf_mt_import_forms_payload')) {
+    function mzf_mt_import_forms_payload(array $payload, bool $replace_meta = false): array
+    {
+        $rows = [];
+        $forms = (array) ($payload['forms'] ?? []);
+
+        foreach ($forms as $entry) {
+            $entry = is_array($entry) ? $entry : [];
+            $slug = sanitize_title((string) ($entry['slug'] ?? ''));
+            $title = trim((string) ($entry['title'] ?? ''));
+            $status = sanitize_key((string) ($entry['status'] ?? 'draft'));
+            $content = (string) ($entry['content'] ?? '');
+            $excerpt = (string) ($entry['excerpt'] ?? '');
+            $meta = is_array($entry['meta'] ?? null) ? (array) $entry['meta'] : [];
+
+            if ($slug === '') {
+                $rows[] = ['status' => 'skipped', 'slug' => '', 'form_id' => 0, 'reason' => 'Missing slug'];
+                continue;
+            }
+            if ($title === '') {
+                $title = ucwords(str_replace('-', ' ', $slug));
+            }
+            if (!in_array($status, ['publish', 'draft', 'pending', 'private', 'future'], true)) {
+                $status = 'draft';
+            }
+
+            $existing = get_page_by_path($slug, OBJECT, 'form');
+            $form_id = 0;
+            $state = 'created';
+
+            if ($existing instanceof WP_Post) {
+                $form_id = (int) $existing->ID;
+                $state = 'updated';
+            } else {
+                $inserted = mzf_mt_insert_form_post($title, $slug);
+                if (is_wp_error($inserted) || !$inserted) {
+                    $rows[] = [
+                        'status' => 'error',
+                        'slug' => $slug,
+                        'form_id' => 0,
+                        'reason' => is_wp_error($inserted) ? $inserted->get_error_message() : 'Unable to create form post',
+                    ];
+                    continue;
+                }
+                $form_id = (int) $inserted;
+            }
+
+            $post_update = wp_update_post([
+                'ID' => $form_id,
+                'post_title' => $title,
+                'post_status' => $status,
+                'post_content' => $content,
+                'post_excerpt' => $excerpt,
+            ], true);
+            if (is_wp_error($post_update)) {
+                $rows[] = [
+                    'status' => 'error',
+                    'slug' => $slug,
+                    'form_id' => $form_id,
+                    'reason' => $post_update->get_error_message(),
+                ];
+                continue;
+            }
+
+            if ($replace_meta) {
+                foreach ((array) get_post_meta($form_id) as $meta_key => $values) {
+                    $meta_key = (string) $meta_key;
+                    if ($meta_key === '' || mzf_mt_is_volatile_meta_key($meta_key)) {
+                        continue;
+                    }
+                    delete_post_meta($form_id, $meta_key);
+                }
+            }
+
+            foreach ($meta as $meta_key => $meta_values) {
+                $meta_key = (string) $meta_key;
+                if ($meta_key === '' || mzf_mt_is_volatile_meta_key($meta_key)) {
+                    continue;
+                }
+
+                delete_post_meta($form_id, $meta_key);
+                foreach ((array) $meta_values as $meta_value) {
+                    add_post_meta($form_id, $meta_key, $meta_value);
+                }
+            }
+
+            $rows[] = ['status' => $state, 'slug' => $slug, 'form_id' => $form_id, 'reason' => ''];
+        }
+
+        return $rows;
+    }
+}
+
 if (!function_exists('mzf_mt_print_report')) {
     function mzf_mt_print_report(string $title, array $lines = []): void
     {
@@ -552,9 +738,77 @@ add_action('admin_init', function () {
         exit;
     }
 
+    if ($action === 'export_forms_json') {
+        $payload = mzf_mt_export_forms_payload();
+        $json = wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            mzf_mt_print_report('Form JSON Export', ['Failed to encode JSON payload.']);
+            exit;
+        }
+
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
+            header('Content-Disposition: attachment; filename="mzf-form-sync.json"');
+        }
+        echo $json;
+        exit;
+    }
+
+    if ($action === 'import_forms_json') {
+        $confirm = isset($_GET['confirm']) && (string) $_GET['confirm'] === '1';
+        if (!$confirm) {
+            mzf_mt_print_report('MZ Form Migration Tools', [
+                'Refusing JSON import without confirmation.',
+                'Run: /wp-admin/?mzf_mt_action=import_forms_json&confirm=1',
+                'Optional: add &path=/absolute/path/to/mzf-form-sync.json',
+                'Optional: add &replace_meta=1 to remove old keys not present in JSON',
+                'Default path: ' . mzf_mt_default_sync_json_path(),
+            ]);
+            exit;
+        }
+
+        $path = isset($_GET['path']) ? wp_unslash((string) $_GET['path']) : '';
+        $replace_meta = isset($_GET['replace_meta']) && (string) $_GET['replace_meta'] === '1';
+        [$payload_or_error, $resolved_path] = mzf_mt_read_forms_payload_from_json($path);
+        if (is_wp_error($payload_or_error)) {
+            mzf_mt_print_report('Form JSON Import', [
+                'Error: ' . $payload_or_error->get_error_message(),
+                'Path: ' . $resolved_path,
+            ]);
+            exit;
+        }
+
+        $rows = mzf_mt_import_forms_payload($payload_or_error, $replace_meta);
+        $counts = [];
+        foreach ($rows as $row) {
+            $status = (string) ($row['status'] ?? 'unknown');
+            $counts[$status] = ($counts[$status] ?? 0) + 1;
+        }
+
+        $lines = [];
+        $lines[] = 'Path: ' . $resolved_path;
+        $lines[] = 'Replace meta mode: ' . ($replace_meta ? 'ON' : 'OFF');
+        $lines[] = 'Summary: ' . wp_json_encode($counts);
+        $lines[] = '';
+        foreach ($rows as $row) {
+            $lines[] = sprintf(
+                '[%s] slug=%s -> form=%d',
+                strtoupper((string) ($row['status'] ?? 'unknown')),
+                (string) ($row['slug'] ?? ''),
+                (int) ($row['form_id'] ?? 0)
+            );
+            if (!empty($row['reason'])) {
+                $lines[] = '  reason: ' . (string) $row['reason'];
+            }
+        }
+
+        mzf_mt_print_report('Form JSON Import', $lines);
+        exit;
+    }
+
     mzf_mt_print_report('MZ Form Migration Tools', [
         'Unknown action: ' . $action,
-        'Valid actions: migrate_section_forms, clear_forms, repair_form_dupe_ids',
+        'Valid actions: migrate_section_forms, clear_forms, repair_form_dupe_ids, export_forms_json, import_forms_json',
     ]);
     exit;
 }, 1);

@@ -97,7 +97,6 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
     $should_install  = []; // plugins that must exist on disk for this env (active OR install-only)
     $should_activate = []; // plugins that must be active in this env
     $managed         = []; // all plugins that are managed by this catalog (across envs)
-
     foreach ($catalog as $p) {
         $file     = $p['file'];
         $envs     = (array)($p['envs'] ?? []);

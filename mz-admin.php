@@ -10,6 +10,10 @@
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) return;
 
+if (file_exists(__DIR__ . '/mz-hosting.php')) {
+    require_once __DIR__ . '/mz-hosting.php';
+}
+
 if (!function_exists('str_contains')) {
     function str_contains($haystack, $needle)
     {
@@ -1558,6 +1562,8 @@ add_action('admin_init', function () {
 // Hide selected admin menu items that we do not expose to editors/admins.
 add_action('admin_menu', function () {
     remove_menu_page('edit-comments.php');
+    remove_menu_page('godaddy-get-help');
+    remove_menu_page('admin.php?page=godaddy-get-help');
 
     remove_submenu_page('edit.php', 'edit-tags.php?taxonomy=post_tag');
 
@@ -1568,6 +1574,28 @@ add_action('admin_menu', function () {
 
     remove_submenu_page('plugins.php', 'plugin-editor.php');
 }, 999);
+
+// Remove "Get Help" top-level menu item when present.
+add_action('admin_menu', function () {
+    global $menu;
+    if (!is_array($menu) || empty($menu)) return;
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item)) continue;
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+        $is_get_help = ($label === 'get help');
+        $is_godaddy_get_help = $slug === 'godaddy-get-help' || str_contains($slug, 'page=godaddy-get-help');
+        $is_godaddy_help = str_contains($slug, 'gd-system-help') || (str_contains($slug, 'godaddy') && str_contains($slug, 'help'));
+
+        if ($is_get_help || $is_godaddy_get_help || $is_godaddy_help) {
+            unset($menu[$index]);
+        }
+    }
+
+    $menu = array_values($menu);
+}, PHP_INT_MAX - 3);
 
 // Remove late-registered Appearance submenu items by matching the final submenu array.
 add_action('admin_menu', function () {
@@ -1648,6 +1676,12 @@ function meza_normalize_admin_plugin_menus(): void
         $is_yoast = str_contains($slug, 'wpseo')
             || str_contains($title, 'yoast seo')
             || $title === 'seo';
+        $is_godaddy_dashboard = str_contains($slug, 'page=wp-dashboard')
+            || str_contains($slug, 'godaddy')
+            || $title === 'godaddy';
+        $is_make = str_contains($slug, 'client-sign-generator')
+            || str_contains($slug, 'ds-make')
+            || in_array($title, ['make', 'customer sign generator'], true);
 
         if ($is_wp_mail_smtp) {
             $item[0] = 'Mail';
@@ -1678,6 +1712,20 @@ function meza_normalize_admin_plugin_menus(): void
         if ($is_yoast) {
             $item[0] = 'SEO';
             if (isset($item[3])) $item[3] = 'SEO';
+            continue;
+        }
+
+        if ($is_godaddy_dashboard) {
+            $item[0] = 'Hosting';
+            if (isset($item[3])) $item[3] = 'Hosting';
+            $item[6] = 'dashicons-admin-site-alt3';
+            continue;
+        }
+
+        if ($is_make) {
+            $item[0] = 'Make';
+            if (isset($item[3])) $item[3] = 'Make';
+            $item[6] = 'dashicons-share-alt';
         }
     }
     unset($item);
@@ -2099,13 +2147,21 @@ function meza_group_post_settings_utilities(): void
     $utility_indexes = [];
 
     foreach ($menu as $index => $item) {
-        if ((int) $index <= $settings_index || !is_array($item)) continue;
+        if (!is_array($item)) continue;
 
         $classes = strtolower((string) ($item[4] ?? ''));
         if (str_contains($classes, 'wp-menu-separator')) continue;
 
         $slug = strtolower((string) ($item[2] ?? ''));
         $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+        $is_hosting = str_contains($slug, 'page=wp-dashboard')
+            || str_contains($slug, 'godaddy')
+            || in_array($label, ['hosting', 'godaddy'], true);
+        $is_make = str_contains($slug, 'client-sign-generator')
+            || str_contains($slug, 'ds-make')
+            || in_array($label, ['make', 'customer sign generator'], true);
+
+        if ((int) $index <= $settings_index && !$is_make && !$is_hosting) continue;
 
         $is_acf = $slug === 'edit.php?post_type=acf-field-group'
             || $label === 'acf';
@@ -2114,8 +2170,11 @@ function meza_group_post_settings_utilities(): void
         $is_security = str_contains($slug, 'aiowpsec')
             || str_contains($slug, 'wp-security')
             || $label === 'security';
+        $is_make = $is_make || str_contains($slug, 'client-sign-generator')
+            || str_contains($slug, 'ds-make')
+            || $label === 'make';
 
-        if (!$is_acf && !$is_mail && !$is_security) continue;
+        if (!$is_acf && !$is_mail && !$is_security && !$is_hosting && !$is_make) continue;
 
         $utility_indexes[] = (int) $index;
         $utility_items[] = [
@@ -2127,7 +2186,23 @@ function meza_group_post_settings_utilities(): void
     if (empty($utility_items)) return;
 
     usort($utility_items, static function (array $a, array $b): int {
-        return strnatcasecmp($a['label'], $b['label']);
+        $priority = [
+            'acf' => 10,
+            'mail' => 20,
+            'security' => 30,
+            'hosting' => 40,
+            'godaddy' => 40,
+            'make' => 50,
+            'customer sign generator' => 50,
+        ];
+
+        $label_a = strtolower((string) ($a['label'] ?? ''));
+        $label_b = strtolower((string) ($b['label'] ?? ''));
+        $rank_a = $priority[$label_a] ?? 100;
+        $rank_b = $priority[$label_b] ?? 100;
+
+        if ($rank_a !== $rank_b) return $rank_a <=> $rank_b;
+        return strnatcasecmp($label_a, $label_b);
     });
 
     rsort($utility_indexes, SORT_NUMERIC);
@@ -2157,7 +2232,7 @@ function meza_group_post_settings_utilities(): void
     array_splice($menu, $settings_index + 1, 0, $items_to_insert);
 }
 
-// Keep ACF, Mail, and Security in their own utility group below Settings.
+// Keep ACF, Mail, Security, Hosting, and Make in their own utility group below Settings.
 add_action('admin_menu', 'meza_group_post_settings_utilities', PHP_INT_MAX);
 
 function meza_cleanup_menu_separators(): void
@@ -2726,8 +2801,15 @@ function meza_remove_admin_bar_nodes($wp_admin_bar): void
             || str_contains($title, 'updraft')
             || str_contains($href, 'updraft')
             || str_contains($meta_class, 'updraft');
+        $is_feedback = str_contains($title, 'leave feedback');
+        $is_assistant = (
+            $title === 'assistant'
+            || str_contains($title, 'assistant')
+        );
 
-        if ($is_yoast || $is_updraft) $wp_admin_bar->remove_node((string) $node->id);
+        if ($is_yoast || $is_updraft || $is_feedback || $is_assistant) {
+            $wp_admin_bar->remove_node((string) $node->id);
+        }
     }
 }
 
@@ -2739,6 +2821,235 @@ add_action('wp_before_admin_bar_render', function () {
     global $wp_admin_bar;
     meza_remove_admin_bar_nodes($wp_admin_bar);
 }, 99999);
+
+function meza_position_flush_server_cache_node($wp_admin_bar): void
+{
+    if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
+
+    $flush_node_id = 'meza-flush-server-cache';
+    $nodes = $wp_admin_bar->get_nodes();
+    if (!is_array($nodes)) return;
+
+    $delete_cache_node = null;
+    $query_monitor_node = null;
+    $quick_link_node_ids = [];
+
+    foreach ($nodes as $node) {
+        if (!is_object($node) || !isset($node->id)) continue;
+
+        $node_id = strtolower((string) ($node->id ?? ''));
+        $title = strtolower(trim(wp_strip_all_tags((string) ($node->title ?? ''))));
+        $href = strtolower((string) ($node->href ?? ''));
+
+        $is_quick_links = (str_contains($title, 'quick links') && (str_contains($title, 'godaddy') || str_contains($node_id, 'godaddy') || str_contains($href, 'godaddy') || str_contains($href, 'wpaas')))
+            || (str_contains($node_id, 'godaddy') && str_contains($node_id, 'quick'))
+            || (str_contains($href, 'godaddy') && str_contains($href, 'quick'))
+            || (str_contains($href, 'wpaas') && str_contains($title, 'quick links'));
+        if ($is_quick_links) {
+            $quick_link_node_ids[] = (string) $node->id;
+        }
+
+        $is_delete_cache = str_contains($title, 'delete cache')
+            || str_contains($title, 'clear page cache')
+            || (str_contains($node_id, 'super') && str_contains($node_id, 'cache'))
+            || (str_contains($href, 'wp-super-cache') && str_contains($href, 'cache'))
+            || str_contains($href, 'wpsc_delete_cache');
+        if ($is_delete_cache && $delete_cache_node === null) {
+            $delete_cache_node = $node;
+        }
+
+        $node_parent = strtolower((string) ($node->parent ?? ''));
+        $is_query_monitor = ($node_id === 'query-monitor')
+            || ($title === 'query monitor' && ($node_parent === '' || $node_parent === 'top-secondary'));
+        if ($is_query_monitor && $query_monitor_node === null) {
+            $query_monitor_node = $node;
+        }
+    }
+
+    $remove_ids = [$flush_node_id];
+    foreach ($quick_link_node_ids as $quick_link_node_id) {
+        $remove_ids[] = $quick_link_node_id;
+    }
+
+    // Remove quick-links descendants as well so no dropdown survives.
+    $changed = true;
+    while ($changed) {
+        $changed = false;
+        foreach ($nodes as $node) {
+            if (!is_object($node) || !isset($node->id)) continue;
+
+            $id = (string) ($node->id ?? '');
+            $parent = (string) ($node->parent ?? '');
+            if ($id === '' || $parent === '') continue;
+
+            if (in_array($parent, $remove_ids, true) && !in_array($id, $remove_ids, true)) {
+                $remove_ids[] = $id;
+                $changed = true;
+            }
+        }
+    }
+
+    foreach (array_unique($remove_ids) as $remove_id) {
+        if ($remove_id === '') continue;
+        $wp_admin_bar->remove_node($remove_id);
+    }
+
+    $add_clone = static function ($node, string $title_override = '', $parent_override = null) use ($wp_admin_bar): void {
+        if (!($node instanceof stdClass)) return;
+        $node_id = (string) ($node->id ?? '');
+        if ($node_id === '') return;
+
+        $title = ($title_override !== '') ? $title_override : ($node->title ?? '');
+        $meta = is_array($node->meta ?? null) ? $node->meta : [];
+        if ($title_override !== '') {
+            $meta['title'] = $title_override;
+        }
+
+        $wp_admin_bar->add_node([
+            'id' => $node_id,
+            'parent' => ($parent_override !== null) ? $parent_override : ($node->parent ?? false),
+            'title' => $title,
+            'href' => $node->href ?? false,
+            'group' => !empty($node->group),
+            'meta' => $meta,
+        ]);
+    };
+
+    $add_flush = static function () use ($wp_admin_bar, $flush_node_id): void {
+        $wp_admin_bar->add_node([
+            'id' => $flush_node_id,
+            'parent' => 'top-secondary',
+            'title' => 'Clear Server Cache',
+            'href' => '/wp-admin/plugins.php?wpaas_action=flush_cache&wpaas_nonce=366b8ead40',
+            'group' => false,
+            'meta' => ['title' => 'Clear Server Cache'],
+        ]);
+    };
+
+    // Preferred order: Query Monitor, Clear Page Cache, Clear Server Cache.
+    if (($query_monitor_node instanceof stdClass) && ($delete_cache_node instanceof stdClass)) {
+        $query_monitor_id = (string) ($query_monitor_node->id ?? '');
+        $delete_cache_id = (string) ($delete_cache_node->id ?? '');
+        if ($query_monitor_id !== '') $wp_admin_bar->remove_node($query_monitor_id);
+        if ($delete_cache_id !== '') $wp_admin_bar->remove_node($delete_cache_id);
+
+        $add_clone($query_monitor_node, '', 'top-secondary');
+        $add_clone($delete_cache_node, 'Clear Page Cache', 'top-secondary');
+        $add_flush();
+        return;
+    }
+
+    if ($query_monitor_node instanceof stdClass) {
+        $query_monitor_id = (string) ($query_monitor_node->id ?? '');
+        if ($query_monitor_id !== '') $wp_admin_bar->remove_node($query_monitor_id);
+        $add_clone($query_monitor_node, '', 'top-secondary');
+        $add_flush();
+        return;
+    }
+
+    if ($delete_cache_node instanceof stdClass) {
+        $delete_cache_id = (string) ($delete_cache_node->id ?? '');
+        if ($delete_cache_id !== '') $wp_admin_bar->remove_node($delete_cache_id);
+        $add_clone($delete_cache_node, 'Clear Page Cache', 'top-secondary');
+        $add_flush();
+        return;
+    }
+
+    $add_flush();
+}
+
+// Remove GoDaddy Quick Links and place Clear Server Cache before Query Monitor.
+add_action('admin_bar_menu', function ($wp_admin_bar) {
+    meza_position_flush_server_cache_node($wp_admin_bar);
+}, PHP_INT_MAX);
+
+add_action('wp_before_admin_bar_render', function () {
+    global $wp_admin_bar;
+    meza_position_flush_server_cache_node($wp_admin_bar);
+}, PHP_INT_MAX);
+
+function meza_ensure_server_cache_node_visible($wp_admin_bar): void
+{
+    if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
+
+    $flush_node_id = 'meza-flush-server-cache';
+    $existing_flush = $wp_admin_bar->get_node($flush_node_id);
+    if (is_object($existing_flush)) {
+        $existing_parent = strtolower((string) ($existing_flush->parent ?? ''));
+        if ($existing_parent !== 'top-secondary') {
+            $wp_admin_bar->remove_node($flush_node_id);
+        } else {
+            return;
+        }
+    }
+
+    $nodes = $wp_admin_bar->get_nodes();
+    if (!is_array($nodes)) return;
+
+    $wp_admin_bar->add_node([
+        'id' => $flush_node_id,
+        'parent' => 'top-secondary',
+        'title' => 'Clear Server Cache',
+        'href' => '/wp-admin/plugins.php?wpaas_action=flush_cache&wpaas_nonce=366b8ead40',
+        'group' => false,
+        'meta' => ['title' => 'Clear Server Cache'],
+    ]);
+}
+
+// Final guard: ensure Clear Server Cache is always visible in the top bar.
+add_action('admin_bar_menu', function ($wp_admin_bar) {
+    meza_ensure_server_cache_node_visible($wp_admin_bar);
+}, PHP_INT_MAX);
+
+add_action('wp_before_admin_bar_render', function () {
+    global $wp_admin_bar;
+    meza_ensure_server_cache_node_visible($wp_admin_bar);
+}, PHP_INT_MAX);
+
+function meza_move_howdy_to_right_side_end($wp_admin_bar): void
+{
+    if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
+
+    $nodes = $wp_admin_bar->get_nodes();
+    if (!is_array($nodes)) return;
+
+    $my_account = null;
+    foreach ($nodes as $node) {
+        if (!is_object($node) || !isset($node->id)) continue;
+
+        $id = strtolower((string) ($node->id ?? ''));
+        $title = strtolower(trim(wp_strip_all_tags((string) ($node->title ?? ''))));
+        if ($id === 'my-account' || str_starts_with($title, 'howdy')) {
+            $my_account = $node;
+            break;
+        }
+    }
+
+    if (!($my_account instanceof stdClass)) return;
+
+    $my_account_id = (string) ($my_account->id ?? '');
+    if ($my_account_id === '') return;
+
+    $wp_admin_bar->remove_node($my_account_id);
+    $wp_admin_bar->add_node([
+        'id' => $my_account_id,
+        'parent' => 'top-secondary',
+        'title' => $my_account->title ?? '',
+        'href' => $my_account->href ?? false,
+        'group' => !empty($my_account->group),
+        'meta' => is_array($my_account->meta ?? null) ? $my_account->meta : [],
+    ]);
+}
+
+// Keep "Howdy, {User}" as the last right-side admin-bar item.
+add_action('admin_bar_menu', function ($wp_admin_bar) {
+    meza_move_howdy_to_right_side_end($wp_admin_bar);
+}, PHP_INT_MAX);
+
+add_action('wp_before_admin_bar_render', function () {
+    global $wp_admin_bar;
+    meza_move_howdy_to_right_side_end($wp_admin_bar);
+}, PHP_INT_MAX);
 
 // Keep the "New" admin-bar dropdown in alphabetical order.
 add_action('admin_bar_menu', function ($wp_admin_bar) {
