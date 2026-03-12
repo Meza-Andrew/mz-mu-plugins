@@ -2380,7 +2380,7 @@ add_action('admin_menu', function () {
     $submenu['tools.php'] = array_values($submenu['tools.php']);
 }, 100001);
 
-// Shorten post-type "Add New" submenu labels to "Add".
+// Normalize post-type "Add New" submenu labels to "Add {Post Type}".
 add_action('admin_menu', function () {
     global $submenu;
 
@@ -2391,6 +2391,22 @@ add_action('admin_menu', function () {
             || str_starts_with((string) $parent_slug, 'edit.php?post_type=');
         if (!$is_post_type_parent) continue;
 
+        $post_type = 'post';
+        if ($parent_slug !== 'edit.php') {
+            parse_str((string) parse_url((string) $parent_slug, PHP_URL_QUERY), $query_args);
+            $post_type = (string) ($query_args['post_type'] ?? '');
+            if ($post_type === '') continue;
+        }
+
+        $post_type_object = get_post_type_object($post_type);
+        $singular_label = '';
+        if ($post_type_object instanceof WP_Post_Type) {
+            $singular_label = trim((string) ($post_type_object->labels->singular_name ?? ''));
+        }
+        if ($singular_label === '') {
+            $singular_label = ucwords(str_replace(['-', '_'], ' ', $post_type));
+        }
+
         foreach ($items as &$item) {
             if (!is_array($item)) continue;
 
@@ -2400,9 +2416,11 @@ add_action('admin_menu', function () {
                 || str_starts_with($slug, 'post-new.php?');
 
             if ($is_add_screen && preg_match('/^add\s+new\b/i', $label)) {
-                $new_label = preg_replace('/^add\s+new\b\s*/i', 'Add ', $label) ?? $label;
+                $new_label = 'Add';
+                if ($singular_label !== '') {
+                    $new_label .= ' ' . $singular_label;
+                }
                 $new_label = trim(preg_replace('/\s+/', ' ', $new_label) ?? $new_label);
-                if ($new_label === '') $new_label = 'Add';
 
                 $item[0] = $new_label;
                 if (isset($item[3])) $item[3] = $new_label;
@@ -2413,7 +2431,7 @@ add_action('admin_menu', function () {
     unset($items);
 }, 100002);
 
-// Simplify post-type taxonomy submenu labels by removing the parent post type name.
+// Simplify post-type taxonomy/import/export submenu labels by removing the parent post type name.
 add_action('admin_menu', function () {
     global $menu, $submenu;
 
@@ -2458,7 +2476,11 @@ add_action('admin_menu', function () {
 
             $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
             $slug = strtolower((string) ($item[2] ?? ''));
-            if (!str_starts_with($slug, 'edit-tags.php?taxonomy=')) continue;
+            $is_taxonomy_item = str_starts_with($slug, 'edit-tags.php?taxonomy=');
+            $is_import_export_item = str_contains($slug, 'import')
+                || str_contains($slug, 'export')
+                || (bool) preg_match('/\b(import|export)\b/i', $label);
+            if (!$is_taxonomy_item && !$is_import_export_item) continue;
             if ($label === '') continue;
 
             $new_label = $label;
