@@ -773,8 +773,55 @@ if (!function_exists('mzf_render_admin_body')) {
         }
         $newsletter_raw = strtolower(trim((string) $newsletter_value));
         $newsletter_yes = in_array($newsletter_raw, ['yes', '1', 'true', 'on', 'y'], true);
+        $crm_option = [];
+        if (function_exists('get_field')) {
+            $acf_crm = get_field('crm', 'option');
+            if (is_array($acf_crm)) {
+                $crm_option = $acf_crm;
+            }
+        }
+        if (empty($crm_option)) {
+            $raw_crm_option = get_option('crm');
+            if (is_array($raw_crm_option)) {
+                $crm_option = $raw_crm_option;
+            }
+        }
+        $crm_platform_label = trim((string) ($crm_option['platform'] ?? ''));
+        if ($crm_platform_label === '') {
+            $crm_platform_label = trim((string) get_option('crm_platform', ''));
+        }
+        $crm_platform_normalized = strtolower($crm_platform_label);
+        if (in_array($crm_platform_normalized, ['constant_contact', 'constant contact', 'constantcontact'], true)) {
+            $crm_platform_normalized = 'constant_contact';
+            $crm_platform_label = 'Constant Contact';
+        } elseif (in_array($crm_platform_normalized, ['mailchimp', 'mail_chimp'], true)) {
+            $crm_platform_normalized = 'mailchimp';
+            $crm_platform_label = 'Mailchimp';
+        }
+
         if ($newsletter_yes) {
-            $body .= '<p><strong>' . esc_html((string) ($labels['NewsletterSignup'] ?? 'Signed Up for Newsletter')) . ':</strong><br>Yes</p>';
+            $newsletter_cta = '';
+            if ($crm_platform_label !== '') {
+                $crm_add_url = '';
+                $crm_list_constant_contact = trim((string) ($crm_option['list_constant-contact'] ?? $crm_option['list_constant_contact'] ?? ''));
+                $crm_list_mailchimp = trim((string) ($crm_option['list_mailchimp'] ?? ''));
+                $crm_list_zeffy = trim((string) ($crm_option['list_zeffy'] ?? ''));
+                if ($crm_platform_normalized === 'constant_contact') {
+                    $crm_add_url = $crm_list_constant_contact !== '' ? $crm_list_constant_contact : 'https://app.constantcontact.com/pages/contacts';
+                } elseif ($crm_platform_normalized === 'mailchimp') {
+                    $crm_add_url = $crm_list_mailchimp !== '' ? $crm_list_mailchimp : 'https://admin.mailchimp.com/audience';
+                } elseif ($crm_platform_normalized === 'zeffy') {
+                    $crm_add_url = $crm_list_zeffy !== '' ? $crm_list_zeffy : 'https://www.zeffy.com/dashboard';
+                }
+
+                $cta_text = '(Click to add to ' . $crm_platform_label . ')';
+                if ($crm_add_url !== '') {
+                    $newsletter_cta = ' <a href="' . esc_url($crm_add_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($cta_text) . '</a>';
+                } else {
+                    $newsletter_cta = ' ' . esc_html($cta_text);
+                }
+            }
+            $body .= '<p><strong>' . esc_html((string) ($labels['NewsletterSignup'] ?? 'Signed Up for Newsletter')) . ':</strong><br>Yes' . $newsletter_cta . '</p>';
         }
 
         if ($footer !== '') {
