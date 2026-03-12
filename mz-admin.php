@@ -1502,6 +1502,54 @@ add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
     return array_values(array_unique(array_merge((array) $hidden, $forced_hidden)));
 }, 100, 2);
 
+// Form edit screen defaults: keep Slug visible in Screen Options for first-load users.
+add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'form') return $hidden;
+    return array_values(array_diff((array) $hidden, ['slugdiv']));
+}, 200, 2);
+
+// Form edit screen defaults: place Slug directly under Title (before ACF field groups).
+add_filter('default_user_option_meta-box-order_form', function ($default_order) {
+    $order = is_string($default_order) ? $default_order : '';
+    $contexts = [];
+    if ($order !== '') {
+        parse_str($order, $contexts);
+    }
+
+    $normal_items = [];
+    if (isset($contexts['normal'])) {
+        $normal_items = array_map('sanitize_key', explode(',', (string) $contexts['normal']));
+        $normal_items = array_values(array_filter($normal_items, static function ($id) {
+            return $id !== '';
+        }));
+    }
+
+    $normal_items = array_values(array_diff($normal_items, ['slugdiv']));
+    array_unshift($normal_items, 'slugdiv');
+    $contexts['normal'] = implode(',', array_values(array_unique($normal_items)));
+
+    // Keep Publish in the side column when no default is provided.
+    if (!isset($contexts['side']) || trim((string) $contexts['side']) === '') {
+        $contexts['side'] = 'submitdiv';
+    }
+
+    $pairs = [];
+    foreach ($contexts as $context => $boxes) {
+        $context_key = sanitize_key((string) $context);
+        if ($context_key === '') continue;
+
+        $box_ids = array_map('sanitize_key', explode(',', (string) $boxes));
+        $box_ids = array_values(array_unique(array_filter($box_ids, static function ($id) {
+            return $id !== '';
+        })));
+        if (empty($box_ids)) continue;
+
+        $pairs[] = $context_key . '=' . implode(',', $box_ids);
+    }
+
+    return implode('&', $pairs);
+}, 10, 1);
+
 // Remove the Dashboard welcome panel for all users.
 add_action('admin_init', function () {
     remove_action('welcome_panel', 'wp_welcome_panel');
