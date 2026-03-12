@@ -633,6 +633,29 @@ if (!function_exists('mzf_render_admin_body')) {
         }
 
         $body = '';
+        $contact_rows = [];
+        $request_rows = [];
+        $marketing_rows = [];
+        $label_name = (string) ($labels['FullName'] ?? 'Name');
+        $label_company = (string) ($labels['Company'] ?? 'Company');
+        $label_email = (string) ($labels['Email'] ?? 'Email');
+        $label_phone = (string) ($labels['Phone'] ?? 'Phone');
+        $contact_name_value = trim((string) $value_for('FullName'));
+        if ($contact_name_value !== '') {
+            $contact_rows[] = '<p><strong>' . esc_html($label_name) . ':</strong><br>' . esc_html($contact_name_value) . '</p>';
+        }
+        $contact_company_value = trim((string) $value_for('Company'));
+        if ($contact_company_value !== '') {
+            $contact_rows[] = '<p><strong>' . esc_html($label_company) . ':</strong><br>' . esc_html($contact_company_value) . '</p>';
+        }
+        $contact_email_value = trim((string) $value_for('Email'));
+        if ($contact_email_value !== '') {
+            $contact_rows[] = '<p><strong>' . esc_html($label_email) . ':</strong><br><a href="mailto:' . esc_attr($contact_email_value) . '">' . esc_html($contact_email_value) . '</a></p>';
+        }
+        $contact_phone_value = trim((string) $value_for('Phone'));
+        if ($contact_phone_value !== '') {
+            $contact_rows[] = '<p><strong>' . esc_html($label_phone) . ':</strong><br><a href="tel:' . esc_attr(preg_replace('/[^0-9+]/', '', $contact_phone_value)) . '">' . esc_html($contact_phone_value) . '</a></p>';
+        }
         $newsletter_value = '';
         $deferred_comments = '';
         $deferred_files_link = '';
@@ -660,6 +683,9 @@ if (!function_exists('mzf_render_admin_body')) {
                 continue;
             }
             if ((string) $field_key === 'LocationDisplay' && $is_pickup) {
+                continue;
+            }
+            if (in_array((string) $field_key, ['FullName', 'Company', 'Email', 'Phone'], true)) {
                 continue;
             }
             $label = (string) ($labels[$field_key] ?? $field_key);
@@ -744,10 +770,10 @@ if (!function_exists('mzf_render_admin_body')) {
                 }
             }
 
-            $body .= '<p><strong>' . esc_html($label) . ':</strong><br>' . $display . '</p>';
+            $request_rows[] = '<p><strong>' . esc_html($label) . ':</strong><br>' . $display . '</p>';
         }
         if (!empty($uploaded_files)) {
-            $body .= '<p><strong>Files:</strong><br>' . implode('<br>', $uploaded_files) . '</p>';
+            $request_rows[] = '<p><strong>Files:</strong><br>' . implode('<br>', $uploaded_files) . '</p>';
         }
         if ($deferred_files_link === '') {
             $deferred_files_link = (string) $value_for('FilesLink');
@@ -757,7 +783,7 @@ if (!function_exists('mzf_render_admin_body')) {
             $sl = esc_url_raw($files_link_text);
             if ($sl !== '') {
                 $files_link_label = (string) ($labels['FilesLink'] ?? 'Files Link');
-                $body .= '<p><strong>' . esc_html($files_link_label) . ':</strong><br><a href="' . esc_url($sl) . '" target="_blank" rel="noopener noreferrer">' . esc_html($sl) . '</a></p>';
+                $request_rows[] = '<p><strong>' . esc_html($files_link_label) . ':</strong><br><a href="' . esc_url($sl) . '" target="_blank" rel="noopener noreferrer">' . esc_html($sl) . '</a></p>';
             }
         }
         if ($deferred_comments === '') {
@@ -766,7 +792,7 @@ if (!function_exists('mzf_render_admin_body')) {
         $comments_text = trim((string) $deferred_comments);
         if ($comments_text !== '') {
             $comments_label = (string) ($labels['Comments'] ?? 'Comments');
-            $body .= '<p><strong>' . esc_html($comments_label) . ':</strong><br>' . nl2br(esc_html($comments_text)) . '</p>';
+            $request_rows[] = '<p><strong>' . esc_html($comments_label) . ':</strong><br>' . nl2br(esc_html($comments_text)) . '</p>';
         }
         if ($newsletter_value === '') {
             $newsletter_value = (string) $value_for('NewsletterSignup');
@@ -821,7 +847,20 @@ if (!function_exists('mzf_render_admin_body')) {
                     $newsletter_cta = ' ' . esc_html($cta_text);
                 }
             }
-            $body .= '<p><strong>' . esc_html((string) ($labels['NewsletterSignup'] ?? 'Signed Up for Newsletter')) . ':</strong><br>Yes' . $newsletter_cta . '</p>';
+            $marketing_rows[] = '<p><strong>' . esc_html((string) ($labels['NewsletterSignup'] ?? 'Signed Up for Newsletter')) . ':</strong><br>Yes' . $newsletter_cta . '</p>';
+        }
+
+        if (!empty($contact_rows)) {
+            $body .= '<hr><h3 style="margin:1em 0 .5em 0;">Contact Details</h3>';
+            $body .= implode('', $contact_rows);
+        }
+        if (!empty($request_rows)) {
+            $body .= '<hr><h3 style="margin:1em 0 .5em 0;">Request Details</h3>';
+            $body .= implode('', $request_rows);
+        }
+        if (!empty($marketing_rows)) {
+            $body .= '<hr><h3 style="margin:1em 0 .5em 0;">Marketing Details</h3>';
+            $body .= implode('', $marketing_rows);
         }
 
         if ($footer !== '') {
