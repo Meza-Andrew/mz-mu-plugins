@@ -1819,8 +1819,8 @@ function meza_normalize_admin_plugin_menus(): void
             }
 
             if ($parent_slug === 'options-general.php' && $is_wp_super_cache) {
-                $item[0] = 'Cache';
-                if (isset($item[3])) $item[3] = 'Cache';
+                $item[0] = 'Page Cache';
+                if (isset($item[3])) $item[3] = 'Page Cache';
                 continue;
             }
 
@@ -1857,7 +1857,8 @@ function meza_normalize_admin_plugin_menus(): void
         if ($parent_slug === 'options-general.php') {
             $ordered_labels = [
                 'Redirects',
-                'Cache',
+                'Page Cache',
+                'Object Cache',
                 'Image Performance',
                 'Post Ordering',
                 'Post Duplication',

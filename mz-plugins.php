@@ -251,3 +251,62 @@ if ($HIDE) {
         return $plugins;
     }, 50);
 }
+
+/**
+ * Limit Plugins screen row actions to Settings and Deactivate only, in that order.
+ */
+$mz_limit_plugin_actions = function ($actions) {
+    $settings_link   = null;
+    $deactivate_link = null;
+
+    foreach ((array)$actions as $key => $html) {
+        $key_lc  = strtolower((string)$key);
+        $text_lc = strtolower(trim(wp_strip_all_tags((string)$html)));
+        $html_lc = strtolower((string)$html);
+
+        if (
+            $settings_link === null &&
+            (
+                strpos($key_lc, 'setting') !== false ||
+                strpos($text_lc, 'settings') !== false
+            )
+        ) {
+            $settings_link = $html;
+        }
+
+        if (
+            $deactivate_link === null &&
+            (
+                strpos($key_lc, 'deactivate') !== false ||
+                strpos($text_lc, 'deactivate') !== false ||
+                strpos($html_lc, 'action=deactivate') !== false
+            )
+        ) {
+            $deactivate_link = $html;
+        }
+    }
+
+    $filtered = [];
+    if ($settings_link !== null) {
+        $filtered['settings'] = $settings_link;
+    }
+    if ($deactivate_link !== null) {
+        $filtered['deactivate'] = $deactivate_link;
+    }
+
+    return $filtered;
+};
+
+add_filter('plugin_action_links', $mz_limit_plugin_actions, PHP_INT_MAX, 4);
+add_filter('network_admin_plugin_action_links', $mz_limit_plugin_actions, PHP_INT_MAX, 4);
+
+add_action('admin_init', function () use ($mz_limit_plugin_actions) {
+    if (!function_exists('get_plugins')) {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    }
+
+    foreach (array_keys(get_plugins()) as $plugin_file) {
+        add_filter("plugin_action_links_{$plugin_file}", $mz_limit_plugin_actions, PHP_INT_MAX, 4);
+        add_filter("network_admin_plugin_action_links_{$plugin_file}", $mz_limit_plugin_actions, PHP_INT_MAX, 4);
+    }
+}, PHP_INT_MAX);
