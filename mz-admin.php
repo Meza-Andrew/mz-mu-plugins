@@ -2945,10 +2945,23 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         $wp_admin_bar->remove_node($remove_id);
     }
 
-    $quick_links_hidden_successfully = !empty($quick_link_node_ids);
-    if ($quick_links_hidden_successfully) {
-        foreach ($quick_link_node_ids as $quick_link_node_id) {
-            if (is_object($wp_admin_bar->get_node($quick_link_node_id))) {
+    // This runs on multiple admin-bar hooks. On a later pass, Quick Links may
+    // already be gone, so treat "no matching node remains" as success.
+    $quick_links_hidden_successfully = true;
+    $remaining_nodes = $wp_admin_bar->get_nodes();
+    if (is_array($remaining_nodes)) {
+        foreach ($remaining_nodes as $node) {
+            if (!is_object($node) || !isset($node->id)) continue;
+
+            $node_id = strtolower((string) ($node->id ?? ''));
+            $title = strtolower(trim(wp_strip_all_tags((string) ($node->title ?? ''))));
+            $href = strtolower((string) ($node->href ?? ''));
+
+            $is_quick_links = (str_contains($title, 'quick links') && (str_contains($title, 'godaddy') || str_contains($node_id, 'godaddy') || str_contains($href, 'godaddy') || str_contains($href, 'wpaas')))
+                || (str_contains($node_id, 'godaddy') && str_contains($node_id, 'quick'))
+                || (str_contains($href, 'godaddy') && str_contains($href, 'quick'))
+                || (str_contains($href, 'wpaas') && str_contains($title, 'quick links'));
+            if ($is_quick_links) {
                 $quick_links_hidden_successfully = false;
                 break;
             }
@@ -2986,11 +2999,22 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
             return;
         }
 
+        // Keep users on the current screen while still triggering the WPaaS flush action.
+        $current_request_uri = (string) ($_SERVER['REQUEST_URI'] ?? '/wp-admin/');
+        if ($current_request_uri === '') {
+            $current_request_uri = '/wp-admin/';
+        }
+        $flush_href = remove_query_arg(['wpaas_action', 'wpaas_nonce'], $current_request_uri);
+        $flush_href = add_query_arg([
+            'wpaas_action' => 'flush_cache',
+            'wpaas_nonce' => '366b8ead40',
+        ], $flush_href);
+
         $wp_admin_bar->add_node([
             'id' => $flush_node_id,
             'parent' => 'top-secondary',
             'title' => 'Clear Server Cache',
-            'href' => '/wp-admin/plugins.php?wpaas_action=flush_cache&wpaas_nonce=366b8ead40',
+            'href' => $flush_href,
             'group' => false,
             'meta' => ['title' => 'Clear Server Cache'],
         ]);
