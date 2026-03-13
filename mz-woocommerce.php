@@ -255,7 +255,14 @@ add_action('init', function () {
 
 /** Remove jQuery on non-Woo pages for the legacy theme stack. */
 add_action('wp_default_scripts', function ($scripts) {
+    global $pagenow;
+
     if (is_admin()) {
+        return;
+    }
+
+    // Keep jQuery available for core/admin auth screens and async endpoints.
+    if ('wp-login.php' === $pagenow || wp_doing_ajax()) {
         return;
     }
 
