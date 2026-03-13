@@ -1368,7 +1368,11 @@ function meza_dashboard_widget_with_custom_title(string $widget_id, array $widge
         $custom_title = 'Site Overview';
     } elseif ($widget_id === 'dashboard_site_health' || str_contains($normalized_title, 'site health')) {
         $custom_title = 'Site Health';
-    } elseif (str_contains($normalized_id, 'googlesitekit') || (str_contains($normalized_title, 'site kit') && str_contains($normalized_title, 'summary'))) {
+    } elseif (
+        str_contains($normalized_id, 'googlesitekit')
+        || str_contains($normalized_id, 'sitekit')
+        || str_contains($normalized_title, 'site kit')
+    ) {
         $custom_title = 'Web Analytics';
     } elseif (str_contains($normalized_id, 'wp_mail_smtp') || str_contains($normalized_title, 'wp mail smtp')) {
         $custom_title = 'Mail';
@@ -1376,8 +1380,33 @@ function meza_dashboard_widget_with_custom_title(string $widget_id, array $widge
         $custom_title = 'WooCommerce';
     }
 
-    if ($custom_title !== '') $widget['title'] = $custom_title;
+    if ($custom_title !== '') {
+        $widget['title'] = $custom_title;
+        if (!isset($widget['args']) || !is_array($widget['args'])) {
+            $widget['args'] = [];
+        }
+        $widget['args']['__widget_basename'] = $custom_title;
+    }
+
     return $widget;
+}
+
+function meza_dashboard_normalize_widget_titles(): void
+{
+    global $wp_meta_boxes;
+
+    if (!isset($wp_meta_boxes['dashboard']) || !is_array($wp_meta_boxes['dashboard'])) return;
+
+    foreach ($wp_meta_boxes['dashboard'] as $context => $priorities) {
+        if (!is_array($priorities)) continue;
+        foreach ($priorities as $priority => $widgets) {
+            if (!is_array($widgets)) continue;
+            foreach ($widgets as $widget_id => $widget) {
+                if (!is_array($widget)) continue;
+                $wp_meta_boxes['dashboard'][$context][$priority][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, $widget);
+            }
+        }
+    }
 }
 
 function meza_dashboard_allowed_widget_ids(array $widgets): array
@@ -1505,6 +1534,13 @@ add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
     if (!is_array($forced_hidden)) $forced_hidden = [];
     return array_values(array_unique(array_merge((array) $hidden, $forced_hidden)));
 }, 100, 2);
+
+// Ensure Screen Options checkbox labels use the same custom widget titles.
+add_action('in_admin_header', function () {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'dashboard') return;
+    meza_dashboard_normalize_widget_titles();
+}, 1);
 
 // Form edit screen defaults: keep Slug visible in Screen Options for first-load users.
 add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
