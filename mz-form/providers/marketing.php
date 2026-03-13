@@ -66,7 +66,7 @@ if (!function_exists('mzf_marketing_provider')) {
             if (function_exists('mz_mc_is_configured') && mz_mc_is_configured()) {
                 return 'mailchimp';
             }
-            if (defined('CC_LIST_ID') && CC_LIST_ID && get_option('cc_tokens')) {
+            if (defined('CC_LIST_ID') && CC_LIST_ID && (get_option('cc_tokens') || (function_exists('cc_get_api_key') && cc_get_api_key() !== ''))) {
                 return 'constant_contact';
             }
         }
