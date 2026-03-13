@@ -9,6 +9,8 @@ if (!function_exists('mzf_registry_field_labels')) {
     {
         return [
             'FullName' => 'Name',
+            'PreferredName' => 'Preferred Name',
+            'Pronouns' => 'Pronouns',
             'Company' => 'Company',
             'Email' => 'Email',
             'Phone' => 'Phone',
@@ -59,7 +61,7 @@ if (!function_exists('mzf_slug_registry')) {
             'volunteer' => [
                 'subject' => 'New volunteer interest from {{name_company}}',
                 'required' => array_merge($contact_required, ['Training', 'Confidentiality', 'Applicant']),
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interests', 'Training', 'Confidentiality', 'Applicant', 'Comments'],
+                'layout' => ['FullName', 'PreferredName', 'Pronouns', 'Company', 'Email', 'Phone', 'Interests', 'Training', 'Confidentiality', 'Applicant', 'Comments'],
             ],
             'sponsor' => [
                 'subject' => 'New sponsorship interest from {{name_company}}',

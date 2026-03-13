@@ -174,6 +174,8 @@ if (!function_exists('mzf_default_fields')) {
         return [
             'FirstName',
             'LastName',
+            'PreferredName',
+            'Pronouns',
             'Email',
             'Phone',
             'ContactFirstName',
