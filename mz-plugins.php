@@ -354,3 +354,84 @@ add_action('admin_init', function () use ($mz_limit_plugin_actions) {
         add_filter("network_admin_plugin_action_links_{$plugin_file}", $mz_limit_plugin_actions, PHP_INT_MAX, 4);
     }
 }, PHP_INT_MAX);
+
+// Global auto-update policy by environment (forced, ignores per-site toggles).
+$mz_updates_env = defined('WP_ENV') ? strtolower((string) WP_ENV) : 'production';
+$mz_updates_is_production = ($mz_updates_env === 'production');
+
+add_filter('automatic_updater_disabled', function () use ($mz_updates_is_production) {
+    return !$mz_updates_is_production;
+});
+add_filter('allow_minor_auto_core_updates', function () use ($mz_updates_is_production) {
+    return $mz_updates_is_production;
+});
+add_filter('allow_major_auto_core_updates', function () use ($mz_updates_is_production) {
+    return $mz_updates_is_production;
+});
+add_filter('allow_dev_auto_core_updates', function () use ($mz_updates_is_production) {
+    return $mz_updates_is_production;
+});
+add_filter('auto_update_theme', function ($update, $item) use ($mz_updates_is_production) {
+    return $mz_updates_is_production;
+}, 10, 2);
+add_filter('auto_update_plugin', function ($update, $item) use ($mz_updates_is_production) {
+    return $mz_updates_is_production;
+}, 10, 2);
+
+// Hide the "Automatic Updates" column on plugin list screens.
+add_filter('manage_plugins_columns', function ($columns) {
+    if (isset($columns['auto-updates'])) {
+        unset($columns['auto-updates']);
+    }
+    return $columns;
+});
+add_filter('manage_plugins-network_columns', function ($columns) {
+    if (isset($columns['auto-updates'])) {
+        unset($columns['auto-updates']);
+    }
+    return $columns;
+});
+
+// Keep plugin byline consistent: Version | By [author_link] | View details.
+add_filter('plugin_row_meta', function ($plugin_meta, $plugin_file, $plugin_data, $status) {
+    $plugin_meta = [];
+
+    $version = isset($plugin_data['Version']) ? trim((string)$plugin_data['Version']) : '';
+    if ($version !== '') {
+        $plugin_meta[] = 'Version ' . esc_html($version);
+    } else {
+        $plugin_meta[] = 'Version';
+    }
+
+    $author_text = isset($plugin_data['AuthorName']) ? trim((string)$plugin_data['AuthorName']) : '';
+    if ($author_text === '') {
+        $author_text = isset($plugin_data['Author']) ? trim(wp_strip_all_tags((string)$plugin_data['Author'])) : '';
+    }
+    if ($author_text === '') {
+        $author_text = 'Unknown';
+    }
+    $author_uri = isset($plugin_data['AuthorURI']) ? trim((string)$plugin_data['AuthorURI']) : '';
+    if ($author_uri !== '') {
+        $plugin_meta[] = 'By <a href="' . esc_url($author_uri) . '" target="_blank" rel="noopener noreferrer">' . esc_html($author_text) . '</a>';
+    } else {
+        $plugin_meta[] = 'By ' . esc_html($author_text);
+    }
+
+    $slug = '';
+    $dir = dirname((string)$plugin_file);
+    if ($dir !== '' && $dir !== '.') {
+        $slug = $dir;
+    } elseif (!empty($plugin_data['TextDomain'])) {
+        $slug = (string)$plugin_data['TextDomain'];
+    } else {
+        $slug = basename((string)$plugin_file, '.php');
+    }
+    $details_url = admin_url(
+        'plugin-install.php?tab=plugin-information&plugin=' . rawurlencode($slug) . '&TB_iframe=true&width=600&height=550'
+    );
+    $plugin_meta[] = '<a href="' . esc_url($details_url) . '" class="thickbox open-plugin-details-modal" aria-label="' .
+        esc_attr(sprintf(__('More information about %s'), isset($plugin_data['Name']) ? $plugin_data['Name'] : $slug)) .
+        '">' . esc_html__('View details') . '</a>';
+
+    return $plugin_meta;
+}, PHP_INT_MAX, 4);
