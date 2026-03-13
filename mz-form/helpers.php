@@ -422,6 +422,8 @@ if (!function_exists('mzf_build_footer_html')) {
         }
         if ($addr_display !== '' && $maps_url !== '') {
             $footer .= '<a href="' . esc_url($maps_url) . '" target="_blank" rel="noopener">' . esc_html($addr_label) . '</a><br>';
+        } elseif ($addr_display !== '') {
+            $footer .= esc_html($addr_label) . '<br>';
         }
         if ($phone !== '') {
             $footer .= '<a href="tel:' . esc_attr($phone_href) . '" target="_blank">' . esc_html($phone) . '</a><br>';
@@ -752,19 +754,35 @@ if (!function_exists('mzf_render_admin_body')) {
                     if ($addr_display === '') {
                         $addr_display = $text;
                     }
-                    $receiving_option = strtolower(trim((string) ($data['ReceivingOption'] ?? '')));
-                    $is_delivery = ($receiving_option === 'delivery' || $receiving_option === 'deliver');
                     $place_id = trim((string) ($data['ReceivingPlaceID'] ?? ''));
-                    if ($is_delivery) {
-                        $maps_url = 'https://www.google.com/maps/dir/?api=1&origin=' . rawurlencode('My Location')
-                            . '&destination=' . rawurlencode($addr_display);
-                        if ($place_id !== '') {
-                            $maps_url .= '&destination_place_id=' . rawurlencode($place_id);
+                    $receiving_lat = trim((string) ($data['ReceivingLatitude'] ?? ''));
+                    $receiving_lng = trim((string) ($data['ReceivingLongitude'] ?? ''));
+                    $base_lat = trim((string) ($data['Latitude'] ?? ''));
+                    $base_lng = trim((string) ($data['Longitude'] ?? ''));
+                    $has_google_maps_meta = (
+                        $place_id !== ''
+                        || $receiving_lat !== ''
+                        || $receiving_lng !== ''
+                        || $base_lat !== ''
+                        || $base_lng !== ''
+                    );
+
+                    if ($has_google_maps_meta) {
+                        $receiving_option = strtolower(trim((string) ($data['ReceivingOption'] ?? '')));
+                        $is_delivery = ($receiving_option === 'delivery' || $receiving_option === 'deliver');
+                        if ($is_delivery) {
+                            $maps_url = 'https://www.google.com/maps/dir/?api=1&origin=' . rawurlencode('My Location')
+                                . '&destination=' . rawurlencode($addr_display);
+                            if ($place_id !== '') {
+                                $maps_url .= '&destination_place_id=' . rawurlencode($place_id);
+                            }
+                        } else {
+                            $maps_url = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($addr_display);
                         }
+                        $display = '<a href="' . esc_url($maps_url) . '" target="_blank" rel="noopener">' . esc_html($addr_display) . '</a>';
                     } else {
-                        $maps_url = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($addr_display);
+                        $display = esc_html($addr_display);
                     }
-                    $display = '<a href="' . esc_url($maps_url) . '" target="_blank" rel="noopener">' . esc_html($addr_display) . '</a>';
                 } else {
                     $display = esc_html($text);
                 }
@@ -799,55 +817,24 @@ if (!function_exists('mzf_render_admin_body')) {
         }
         $newsletter_raw = strtolower(trim((string) $newsletter_value));
         $newsletter_yes = in_array($newsletter_raw, ['yes', '1', 'true', 'on', 'y'], true);
-        $crm_option = [];
-        if (function_exists('get_field')) {
-            $acf_crm = get_field('crm', 'option');
-            if (is_array($acf_crm)) {
-                $crm_option = $acf_crm;
-            }
+        $crm_platform = function_exists('mzf_crm_platform') ? mzf_crm_platform() : '';
+        $crm_label = function_exists('mzf_crm_platform_label') ? mzf_crm_platform_label($crm_platform) : '';
+        $crm_url = function_exists('mzf_crm_click_url') ? mzf_crm_click_url($crm_platform) : '';
+        if ($crm_label === '') {
+            $crm_label = 'Zeffy';
         }
-        if (empty($crm_option)) {
-            $raw_crm_option = get_option('crm');
-            if (is_array($raw_crm_option)) {
-                $crm_option = $raw_crm_option;
-            }
-        }
-        $crm_platform_label = trim((string) ($crm_option['platform'] ?? ''));
-        if ($crm_platform_label === '') {
-            $crm_platform_label = trim((string) get_option('crm_platform', ''));
-        }
-        $crm_platform_normalized = strtolower($crm_platform_label);
-        if (in_array($crm_platform_normalized, ['constant_contact', 'constant contact', 'constantcontact'], true)) {
-            $crm_platform_normalized = 'constant_contact';
-            $crm_platform_label = 'Constant Contact';
-        } elseif (in_array($crm_platform_normalized, ['mailchimp', 'mail_chimp'], true)) {
-            $crm_platform_normalized = 'mailchimp';
-            $crm_platform_label = 'Mailchimp';
+        if ($crm_url === '' && function_exists('mzf_crm_dashboard_url')) {
+            $crm_url = mzf_crm_dashboard_url($crm_platform !== '' ? $crm_platform : 'zeffy');
         }
 
         if ($newsletter_yes) {
-            $newsletter_cta = '';
-            if ($crm_platform_label !== '') {
-                $crm_add_url = '';
-                $crm_list_constant_contact = trim((string) ($crm_option['list_constant-contact'] ?? $crm_option['list_constant_contact'] ?? ''));
-                $crm_list_mailchimp = trim((string) ($crm_option['list_mailchimp'] ?? ''));
-                $crm_list_zeffy = trim((string) ($crm_option['list_zeffy'] ?? ''));
-                if ($crm_platform_normalized === 'constant_contact') {
-                    $crm_add_url = $crm_list_constant_contact !== '' ? $crm_list_constant_contact : 'https://app.constantcontact.com/pages/contacts';
-                } elseif ($crm_platform_normalized === 'mailchimp') {
-                    $crm_add_url = $crm_list_mailchimp !== '' ? $crm_list_mailchimp : 'https://admin.mailchimp.com/audience';
-                } elseif ($crm_platform_normalized === 'zeffy') {
-                    $crm_add_url = $crm_list_zeffy !== '' ? $crm_list_zeffy : 'https://www.zeffy.com/dashboard';
-                }
-
-                $cta_text = '(Click to add to ' . $crm_platform_label . ')';
-                if ($crm_add_url !== '') {
-                    $newsletter_cta = ' <a href="' . esc_url($crm_add_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($cta_text) . '</a>';
-                } else {
-                    $newsletter_cta = ' ' . esc_html($cta_text);
-                }
+            $newsletter_line = 'Yes';
+            if ($crm_url !== '') {
+                $newsletter_line .= ' (<a href="' . esc_url($crm_url) . '" target="_blank" rel="noopener noreferrer">Click to add to ' . esc_html($crm_label) . '</a>)';
+            } else {
+                $newsletter_line .= ' (Click to add to ' . esc_html($crm_label) . ')';
             }
-            $marketing_rows[] = '<p><strong>' . esc_html((string) ($labels['NewsletterSignup'] ?? 'Signed Up for Newsletter')) . ':</strong><br>Yes' . $newsletter_cta . '</p>';
+            $marketing_rows[] = '<p><strong>' . esc_html((string) ($labels['NewsletterSignup'] ?? 'Signed Up for Newsletter')) . ':</strong><br>' . $newsletter_line . '</p>';
         }
 
         if (!empty($contact_rows)) {

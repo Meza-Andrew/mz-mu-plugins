@@ -253,11 +253,15 @@ if ($HIDE) {
 }
 
 /**
- * Limit Plugins screen row actions to Settings and Deactivate only, in that order.
+ * Limit Plugins screen row actions based on state:
+ * - Active plugins: Settings, Deactivate
+ * - Inactive plugins: Activate, Delete
  */
 $mz_limit_plugin_actions = function ($actions) {
     $settings_link   = null;
     $deactivate_link = null;
+    $activate_link   = null;
+    $delete_link     = null;
 
     foreach ((array)$actions as $key => $html) {
         $key_lc  = strtolower((string)$key);
@@ -284,17 +288,57 @@ $mz_limit_plugin_actions = function ($actions) {
         ) {
             $deactivate_link = $html;
         }
+
+        if (
+            $activate_link === null &&
+            (
+                (
+                    strpos($key_lc, 'activate') !== false &&
+                    strpos($key_lc, 'deactivate') === false
+                ) ||
+                (
+                    strpos($text_lc, 'activate') !== false &&
+                    strpos($text_lc, 'deactivate') === false
+                ) ||
+                strpos($html_lc, 'action=activate') !== false
+            )
+        ) {
+            $activate_link = $html;
+        }
+
+        if (
+            $delete_link === null &&
+            (
+                strpos($key_lc, 'delete') !== false ||
+                strpos($text_lc, 'delete') !== false ||
+                strpos($html_lc, 'action=delete') !== false
+            )
+        ) {
+            $delete_link = $html;
+        }
     }
 
     $filtered = [];
-    if ($settings_link !== null) {
-        $filtered['settings'] = $settings_link;
-    }
     if ($deactivate_link !== null) {
+        if ($settings_link !== null) {
+            $filtered['settings'] = $settings_link;
+        }
         $filtered['deactivate'] = $deactivate_link;
+        return $filtered;
     }
 
-    return $filtered;
+    if ($activate_link !== null) {
+        $filtered['activate'] = $activate_link;
+    }
+    if ($delete_link !== null) {
+        $filtered['delete'] = $delete_link;
+    }
+
+    if (!empty($filtered)) {
+        return $filtered;
+    }
+
+    return (array)$actions;
 };
 
 add_filter('plugin_action_links', $mz_limit_plugin_actions, PHP_INT_MAX, 4);

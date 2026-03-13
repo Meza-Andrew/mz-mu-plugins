@@ -1368,7 +1368,11 @@ function meza_dashboard_widget_with_custom_title(string $widget_id, array $widge
         $custom_title = 'Site Overview';
     } elseif ($widget_id === 'dashboard_site_health' || str_contains($normalized_title, 'site health')) {
         $custom_title = 'Site Health';
-    } elseif (str_contains($normalized_id, 'googlesitekit') || (str_contains($normalized_title, 'site kit') && str_contains($normalized_title, 'summary'))) {
+    } elseif (
+        str_contains($normalized_id, 'googlesitekit')
+        || str_contains($normalized_id, 'sitekit')
+        || str_contains($normalized_title, 'site kit')
+    ) {
         $custom_title = 'Web Analytics';
     } elseif (str_contains($normalized_id, 'wp_mail_smtp') || str_contains($normalized_title, 'wp mail smtp')) {
         $custom_title = 'Mail';
@@ -1376,8 +1380,33 @@ function meza_dashboard_widget_with_custom_title(string $widget_id, array $widge
         $custom_title = 'WooCommerce';
     }
 
-    if ($custom_title !== '') $widget['title'] = $custom_title;
+    if ($custom_title !== '') {
+        $widget['title'] = $custom_title;
+        if (!isset($widget['args']) || !is_array($widget['args'])) {
+            $widget['args'] = [];
+        }
+        $widget['args']['__widget_basename'] = $custom_title;
+    }
+
     return $widget;
+}
+
+function meza_dashboard_normalize_widget_titles(): void
+{
+    global $wp_meta_boxes;
+
+    if (!isset($wp_meta_boxes['dashboard']) || !is_array($wp_meta_boxes['dashboard'])) return;
+
+    foreach ($wp_meta_boxes['dashboard'] as $context => $priorities) {
+        if (!is_array($priorities)) continue;
+        foreach ($priorities as $priority => $widgets) {
+            if (!is_array($widgets)) continue;
+            foreach ($widgets as $widget_id => $widget) {
+                if (!is_array($widget)) continue;
+                $wp_meta_boxes['dashboard'][$context][$priority][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, $widget);
+            }
+        }
+    }
 }
 
 function meza_dashboard_allowed_widget_ids(array $widgets): array
@@ -1505,6 +1534,13 @@ add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
     if (!is_array($forced_hidden)) $forced_hidden = [];
     return array_values(array_unique(array_merge((array) $hidden, $forced_hidden)));
 }, 100, 2);
+
+// Ensure Screen Options checkbox labels use the same custom widget titles.
+add_action('in_admin_header', function () {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'dashboard') return;
+    meza_dashboard_normalize_widget_titles();
+}, 1);
 
 // Form edit screen defaults: keep Slug visible in Screen Options for first-load users.
 add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
@@ -2880,6 +2916,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         }
     }
 
+    $quick_link_node_ids = array_values(array_unique($quick_link_node_ids));
     $remove_ids = [$flush_node_id];
     foreach ($quick_link_node_ids as $quick_link_node_id) {
         $remove_ids[] = $quick_link_node_id;
@@ -2908,6 +2945,20 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         $wp_admin_bar->remove_node($remove_id);
     }
 
+    $quick_links_hidden_successfully = !empty($quick_link_node_ids);
+    if ($quick_links_hidden_successfully) {
+        foreach ($quick_link_node_ids as $quick_link_node_id) {
+            if (is_object($wp_admin_bar->get_node($quick_link_node_id))) {
+                $quick_links_hidden_successfully = false;
+                break;
+            }
+        }
+    }
+
+    if (!$quick_links_hidden_successfully) {
+        $wp_admin_bar->remove_node($flush_node_id);
+    }
+
     $add_clone = static function ($node, string $title_override = '', $parent_override = null) use ($wp_admin_bar): void {
         if (!($node instanceof stdClass)) return;
         $node_id = (string) ($node->id ?? '');
@@ -2929,7 +2980,12 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         ]);
     };
 
-    $add_flush = static function () use ($wp_admin_bar, $flush_node_id): void {
+    $add_flush = static function () use ($wp_admin_bar, $flush_node_id, $quick_links_hidden_successfully): void {
+        if (!$quick_links_hidden_successfully) {
+            $wp_admin_bar->remove_node($flush_node_id);
+            return;
+        }
+
         $wp_admin_bar->add_node([
             'id' => $flush_node_id,
             'parent' => 'top-secondary',
@@ -2972,7 +3028,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
     $add_flush();
 }
 
-// Remove GoDaddy Quick Links and place Clear Server Cache before Query Monitor.
+// Remove GoDaddy Quick Links and only show Clear Server Cache if that removal succeeds.
 add_action('admin_bar_menu', function ($wp_admin_bar) {
     meza_position_flush_server_cache_node($wp_admin_bar);
 }, PHP_INT_MAX);
@@ -2980,44 +3036,6 @@ add_action('admin_bar_menu', function ($wp_admin_bar) {
 add_action('wp_before_admin_bar_render', function () {
     global $wp_admin_bar;
     meza_position_flush_server_cache_node($wp_admin_bar);
-}, PHP_INT_MAX);
-
-function meza_ensure_server_cache_node_visible($wp_admin_bar): void
-{
-    if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
-
-    $flush_node_id = 'meza-flush-server-cache';
-    $existing_flush = $wp_admin_bar->get_node($flush_node_id);
-    if (is_object($existing_flush)) {
-        $existing_parent = strtolower((string) ($existing_flush->parent ?? ''));
-        if ($existing_parent !== 'top-secondary') {
-            $wp_admin_bar->remove_node($flush_node_id);
-        } else {
-            return;
-        }
-    }
-
-    $nodes = $wp_admin_bar->get_nodes();
-    if (!is_array($nodes)) return;
-
-    $wp_admin_bar->add_node([
-        'id' => $flush_node_id,
-        'parent' => 'top-secondary',
-        'title' => 'Clear Server Cache',
-        'href' => '/wp-admin/plugins.php?wpaas_action=flush_cache&wpaas_nonce=366b8ead40',
-        'group' => false,
-        'meta' => ['title' => 'Clear Server Cache'],
-    ]);
-}
-
-// Final guard: ensure Clear Server Cache is always visible in the top bar.
-add_action('admin_bar_menu', function ($wp_admin_bar) {
-    meza_ensure_server_cache_node_visible($wp_admin_bar);
-}, PHP_INT_MAX);
-
-add_action('wp_before_admin_bar_render', function () {
-    global $wp_admin_bar;
-    meza_ensure_server_cache_node_visible($wp_admin_bar);
 }, PHP_INT_MAX);
 
 function meza_move_howdy_to_right_side_end($wp_admin_bar): void

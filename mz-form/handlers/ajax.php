@@ -392,17 +392,24 @@ if (!function_exists('send_form_data')) :
 
         $org_addr_raw = function_exists('get_field') ? get_field('address', 'option') : null;
         [$org_addr_display, $org_addr_query, $org_place_id, $org_place_name] = $format_acf_map_address($org_addr_raw);
+        $org_has_maps_meta = false;
+        if (is_array($org_addr_raw)) {
+            $raw_place_id = trim((string) ($org_addr_raw['place_id'] ?? ''));
+            $raw_lat = trim((string) ($org_addr_raw['lat'] ?? ''));
+            $raw_lng = trim((string) ($org_addr_raw['lng'] ?? ''));
+            $org_has_maps_meta = ($raw_place_id !== '' || ($raw_lat !== '' && $raw_lng !== ''));
+        }
 
         $best_query = null;
         if (!empty($org_place_name))               $best_query = $org_place_name;
         elseif (!empty($org_addr_query) && preg_match('/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/', $org_addr_query)) $best_query = $org_addr_query;
         elseif (!empty($org_addr_display))         $best_query = $org_addr_display;
 
-        if ($org_place_id && $best_query) {
+        if ($org_has_maps_meta && $org_place_id && $best_query) {
             $org_maps_url = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($best_query) . '&query_place_id=' . rawurlencode($org_place_id);
-        } elseif ($org_place_id) {
+        } elseif ($org_has_maps_meta && $org_place_id) {
             $org_maps_url = 'https://www.google.com/maps/place/?q=place_id:' . rawurlencode($org_place_id);
-        } elseif (!empty($org_addr_query)) {
+        } elseif ($org_has_maps_meta && !empty($org_addr_query) && preg_match('/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/', (string) $org_addr_query)) {
             $org_maps_url = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($org_addr_query);
         } else {
             $org_maps_url = null;
