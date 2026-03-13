@@ -9,11 +9,10 @@ if (!function_exists('mzf_registry_field_labels')) {
     {
         return [
             'FullName' => 'Name',
-            'Company' => 'Company/Organization',
+            'Company' => 'Company',
             'Email' => 'Email',
             'Phone' => 'Phone',
-            'Interest' => 'Interest',
-            'Reason' => 'Reason',
+            'Interests' => 'Interests',
             'Father' => 'Young Father',
             'Age' => 'Age 15-21',
             'County' => 'In County',
@@ -47,7 +46,7 @@ if (!function_exists('mzf_registry_field_labels')) {
 if (!function_exists('mzf_slug_registry')) {
     function mzf_slug_registry(): array
     {
-        $contact_layout = ['FullName', 'Company', 'Email', 'Phone', 'Interest', 'Reason', 'Comments', 'NewsletterSignup'];
+        $contact_layout = ['FullName', 'Company', 'Email', 'Phone', 'Interests', 'Comments', 'NewsletterSignup'];
         $contact_required = ['FirstName', 'LastName', 'Email', 'PageId'];
 
         $registry = [
@@ -59,42 +58,42 @@ if (!function_exists('mzf_slug_registry')) {
             'volunteer' => [
                 'subject' => 'New volunteer interest from {{name_company}}',
                 'required' => array_merge($contact_required, ['Confidentiality', 'Applicant']),
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interest', 'Reason', 'Confidentiality', 'Applicant', 'Comments'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interests', 'Confidentiality', 'Applicant', 'Comments'],
             ],
             'sponsor' => [
                 'subject' => 'New sponsorship interest from {{name_company}}',
                 'required' => $contact_required,
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interest', 'Reason', 'Comments'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interests', 'Comments'],
             ],
             'program-application' => [
                 'subject' => 'New program application from {{name_company}}',
                 'required' => $contact_required,
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Father', 'Age', 'County', 'Zip', 'Interest', 'Reason', 'Comments'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Father', 'Age', 'County', 'Zip', 'Interests', 'Comments'],
             ],
             'board-member' => [
                 'subject' => 'New board member interest from {{name_company}}',
                 'required' => $contact_required,
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interest', 'Reason', 'Comments'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interests', 'Comments'],
             ],
             'staff-member' => [
                 'subject' => 'New staff member interest from {{name_company}}',
                 'required' => $contact_required,
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interest', 'Reason', 'Comments'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interests', 'Comments'],
             ],
             'coach-mentor' => [
                 'subject' => 'New coach/mentor interest from {{name_company}}',
                 'required' => $contact_required,
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interest', 'Reason', 'Comments'],
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interests', 'Comments'],
             ],
             'medical' => [
                 'subject' => 'New medical services request from {{name_company}}',
                 'required' => ['FirstName', 'Email'],
-                'layout' => ['FullName', 'Email', 'Phone', 'Company', 'LocationDisplay', 'Reason', 'Comments'],
+                'layout' => ['FullName', 'Email', 'Phone', 'Company', 'LocationDisplay', 'Interests', 'Comments'],
             ],
             'condoms' => [
                 'subject' => 'New condom order request ({{condom_count}}){{state_clause}}',
                 'required' => ['FirstName', 'Email'],
-                'layout' => ['FullName', 'Email', 'Phone', 'Company', 'LocationDisplay', 'CondomCount', 'Reason', 'Comments'],
+                'layout' => ['FullName', 'Email', 'Phone', 'Company', 'LocationDisplay', 'CondomCount', 'Interests', 'Comments'],
             ],
             'audition' => [
                 'subject' => 'New {{vocals_or_vocalist}} requesting an audition',

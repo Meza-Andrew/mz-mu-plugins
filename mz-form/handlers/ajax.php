@@ -177,25 +177,19 @@ if (!function_exists('send_form_data')) :
         if (trim((string) ($data['Phone'] ?? '')) === '') {
             $data['Phone'] = trim((string) ($data['ContactPhone'] ?? ''));
         }
-        if (trim((string) ($data['Company'] ?? '')) === '') {
-            $data['Company'] = trim((string) ($data['Organization'] ?? ''));
-        }
-        if (empty($data['Interest']) && !empty($data['Interests'])) {
-            $data['Interest'] = $data['Interests'];
-        }
         if (!empty($data['OtherInterest'])) {
             $other_interest = trim((string) $data['OtherInterest']);
             if ($other_interest !== '') {
-                $interest_values = is_array($data['Interest'] ?? null)
-                    ? array_map('sanitize_text_field', (array) $data['Interest'])
-                    : array_filter(array_map('trim', explode(',', (string) ($data['Interest'] ?? ''))));
+                $interest_values = is_array($data['Interests'] ?? null)
+                    ? array_map('sanitize_text_field', (array) $data['Interests'])
+                    : array_filter(array_map('trim', explode(',', (string) ($data['Interests'] ?? ''))));
                 $interest_values = array_values(array_filter($interest_values, static fn($v) => trim((string) $v) !== ''));
                 $interest_values = array_values(array_filter(
                     $interest_values,
                     static fn($v) => strcasecmp(trim((string) $v), 'Other') !== 0
                 ));
                 $interest_values[] = $other_interest;
-                $data['Interest'] = array_values(array_unique($interest_values));
+                $data['Interests'] = array_values(array_unique($interest_values));
             }
         }
         if (trim((string) ($data['DateNeeded'] ?? '')) === '') {
@@ -258,7 +252,7 @@ if (!function_exists('send_form_data')) :
         }
 
         if ($strict_mode) {
-            foreach (['Interest', 'Reason'] as $array_key) {
+            foreach (['Interests'] as $array_key) {
                 if (!array_key_exists($array_key, $src)) {
                     continue;
                 }
@@ -268,15 +262,10 @@ if (!function_exists('send_form_data')) :
             }
         }
 
-        $reason_source = $data['Reason'] ?? ($_POST['Reason'] ?? '');
-        $interest_source = $data['Interest'] ?? ($_POST['Interest'] ?? '');
-        $data['ReasonRaw'] = $reason_source;
-        $data['InterestRaw'] = $interest_source;
-        $data['ReasonNorm'] = function_exists('mzf_normalize_terms')
-            ? mzf_normalize_terms($reason_source)
-            : [];
-        $data['InterestNorm'] = function_exists('mzf_normalize_terms')
-            ? mzf_normalize_terms($interest_source)
+        $interests_source = $data['Interests'] ?? ($_POST['Interests'] ?? '');
+        $data['InterestsRaw'] = $interests_source;
+        $data['InterestsNorm'] = function_exists('mzf_normalize_terms')
+            ? mzf_normalize_terms($interests_source)
             : [];
 
         $required_fields = apply_filters('mzf_required_fields', ['FirstName', 'LastName', 'Email'], $data);
@@ -341,8 +330,8 @@ if (!function_exists('send_form_data')) :
 
         $full_name = trim($data['FirstName'] . ' ' . $data['LastName']);
         $slug_for_labels = sanitize_key((string) ($data['FormSlug'] ?? ''));
-        $label_company = trim((string) ($data['Organization'] ?? '')) !== '' ? 'Company/Organization' : 'Company';
-        $label_interest = !empty($data['Interests']) ? 'Interests' : 'Interest';
+        $label_company = 'Company';
+        $label_interests = 'Interests';
         $label_item_type = trim((string) ($data['Service'] ?? '')) !== '' ? 'Service' : 'Item Type';
         $label_date = (
             trim((string) ($data['RentalDate'] ?? '')) !== ''
@@ -379,8 +368,7 @@ if (!function_exists('send_form_data')) :
         if (!empty($data['DateNeeded'])) $body .= '<p><strong>' . $h($label_date) . ':</strong><br>' . $h($human_date((string) $data['DateNeeded'])) . '</p>';
         if (!empty($data['Duration'])) $body .= '<p><strong>' . $h($label_duration) . ':</strong><br>' . $h($format_weeks_days((string) $data['Duration'])) . '</p>';
         if (!empty($data['LocationDisplay'])) $body .= '<p><strong>' . $h($label_location) . ':</strong><br>' . $h((string) $data['LocationDisplay']) . '</p>';
-        if (!empty($data['Interest'])) $body .= '<p><strong>' . $h($label_interest) . ':</strong><br>' . $h($maybe_join($data['Interest'])) . '</p>';
-        if (!empty($data['Reason'])) $body .= '<p><strong>Reason:</strong><br>' . $h($maybe_join($data['Reason'])) . '</p>';
+        if (!empty($data['Interests'])) $body .= '<p><strong>' . $h($label_interests) . ':</strong><br>' . $h($maybe_join($data['Interests'])) . '</p>';
 
         if (!empty($data['FilesLink'])) {
             $sl = esc_url_raw((string)$data['FilesLink']);
@@ -471,7 +459,7 @@ if (!function_exists('send_form_data')) :
         $subject = apply_filters('mzf_subject', $core, $data, (int)($data['PageId'] ?? 0), $slug, ($data['ItemType'] ?? ''), $is_quote);
         $default_subject = $subject;
         $interest_values = [];
-        $interest_source = $data['Interest'] ?? ($data['Interests'] ?? []);
+        $interest_source = $data['Interests'] ?? [];
         if (is_array($interest_source)) {
             foreach ($interest_source as $interest_item) {
                 $interest_item = trim((string) $interest_item);

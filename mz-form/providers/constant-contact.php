@@ -320,7 +320,7 @@ if (!function_exists('cc_get_custom_field_id_by_label')) {
 if (!function_exists('mz_cc_add_contact')) {
     /**
      * Upsert a contact and add to CC list; optionally tag.
-     * Expects $data keys: Email (required), FirstName, LastName, Organization (Company), Website, LeadTags (array/string)
+     * Expects $data keys: Email (required), FirstName, LastName, Company, Website, LeadTags (array/string)
      */
     function mz_cc_add_contact(array $data)
     {
@@ -340,7 +340,7 @@ if (!function_exists('mz_cc_add_contact')) {
 
         if (!empty($data['FirstName']))    $payload['first_name']   = sanitize_text_field($data['FirstName']);
         if (!empty($data['LastName']))     $payload['last_name']    = sanitize_text_field($data['LastName']);
-        if (!empty($data['Organization'])) $payload['company_name'] = mb_substr(sanitize_text_field($data['Organization']), 0, 50);
+        if (!empty($data['Company'])) $payload['company_name'] = mb_substr(sanitize_text_field($data['Company']), 0, 50);
 
         // Custom Field: Website URL (label must exist in CC)
         if (!empty($data['Website'])) {

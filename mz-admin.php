@@ -1548,9 +1548,15 @@ add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
     return array_values(array_diff((array) $hidden, ['slugdiv']));
 }, 200, 2);
 
-// Form edit screen defaults: place Slug directly under Title (before ACF field groups).
-add_filter('default_user_option_meta-box-order_form', function ($default_order) {
-    $order = is_string($default_order) ? $default_order : '';
+// Form edit screen: keep Slug visible for all users (including users with saved Screen Options).
+add_filter('hidden_meta_boxes', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'form') return $hidden;
+    return array_values(array_diff((array) $hidden, ['slugdiv']));
+}, 200, 2);
+
+function meza_form_metabox_order_with_slug_first($order_value): string
+{
+    $order = is_string($order_value) ? $order_value : '';
     $contexts = [];
     if ($order !== '') {
         parse_str($order, $contexts);
@@ -1568,7 +1574,7 @@ add_filter('default_user_option_meta-box-order_form', function ($default_order) 
     array_unshift($normal_items, 'slugdiv');
     $contexts['normal'] = implode(',', array_values(array_unique($normal_items)));
 
-    // Keep Publish in the side column when no default is provided.
+    // Keep Publish in the side column when no order has been set.
     if (!isset($contexts['side']) || trim((string) $contexts['side']) === '') {
         $contexts['side'] = 'submitdiv';
     }
@@ -1588,7 +1594,72 @@ add_filter('default_user_option_meta-box-order_form', function ($default_order) 
     }
 
     return implode('&', $pairs);
+}
+
+// Form edit screen defaults: place Slug directly under Title (before ACF field groups).
+add_filter('default_user_option_meta-box-order_form', function ($default_order) {
+    return meza_form_metabox_order_with_slug_first($default_order);
 }, 10, 1);
+
+// Form edit screen: enforce Slug position under Title for users with existing saved meta box order.
+add_filter('get_user_option_meta-box-order_form', function ($saved_order) {
+    return meza_form_metabox_order_with_slug_first($saved_order);
+}, 10, 1);
+
+// Form edit screen: physically move core Slug metabox directly under Title.
+// This is required when ACF field groups are positioned "After Title",
+// where metabox order alone cannot place slug above ACF groups.
+add_action('admin_print_footer_scripts-post.php', function () {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen)) return;
+    if ((string) ($screen->post_type ?? '') !== 'form') return;
+    ?>
+    <script>
+    (function ($) {
+      function mezaPlaceFormSlugUnderTitle() {
+        var $title = $('#titlediv');
+        var $slug = $('#slugdiv');
+        if (!$title.length || !$slug.length) return;
+        $slug.removeClass('hide-if-js closed');
+        $slug.show();
+        $slug.insertAfter($title);
+      }
+
+      $(document).ready(function () {
+        mezaPlaceFormSlugUnderTitle();
+        window.setTimeout(mezaPlaceFormSlugUnderTitle, 50);
+        window.setTimeout(mezaPlaceFormSlugUnderTitle, 300);
+      });
+    })(jQuery);
+    </script>
+    <?php
+}, 100);
+
+add_action('admin_print_footer_scripts-post-new.php', function () {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen)) return;
+    if ((string) ($screen->post_type ?? '') !== 'form') return;
+    ?>
+    <script>
+    (function ($) {
+      function mezaPlaceFormSlugUnderTitle() {
+        var $title = $('#titlediv');
+        var $slug = $('#slugdiv');
+        if (!$title.length || !$slug.length) return;
+        $slug.removeClass('hide-if-js closed');
+        $slug.show();
+        $slug.insertAfter($title);
+      }
+
+      $(document).ready(function () {
+        mezaPlaceFormSlugUnderTitle();
+        window.setTimeout(mezaPlaceFormSlugUnderTitle, 50);
+        window.setTimeout(mezaPlaceFormSlugUnderTitle, 300);
+      });
+    })(jQuery);
+    </script>
+    <?php
+}, 100);
 
 // Remove the Dashboard welcome panel for all users.
 add_action('admin_init', function () {
@@ -3374,3 +3445,29 @@ function meza_acf_clean_wysiwyg_output($content)
 }
 add_filter('acf_the_content', 'meza_acf_clean_wysiwyg_output');
 add_filter('the_content', 'meza_acf_clean_wysiwyg_output');
+
+/**
+ * Form editor UX: when ACF field groups include a duplicate "Slug" field,
+ * hide it so editors use the core permalink/slug UI under the title.
+ */
+add_filter('acf/prepare_field', function ($field) {
+    if (!is_admin()) return $field;
+    if (!($field instanceof ArrayAccess) && !is_array($field)) return $field;
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen)) return $field;
+    if ((string) ($screen->post_type ?? '') !== 'form') return $field;
+    if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) return $field;
+
+    $name = strtolower((string) ($field['name'] ?? ''));
+    $label = strtolower(trim(wp_strip_all_tags((string) ($field['label'] ?? ''))));
+
+    $is_slug_name = in_array($name, ['slug', 'form_slug', 'post_slug'], true);
+    $is_slug_label = in_array($label, ['slug', 'form slug', 'post slug'], true);
+
+    if ($is_slug_name || $is_slug_label) {
+        return false;
+    }
+
+    return $field;
+}, 20, 1);

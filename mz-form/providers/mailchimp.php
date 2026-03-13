@@ -132,7 +132,7 @@ if (!function_exists('mz_mc_upsert_contact')) {
         $member_hash = md5(strtolower(trim($email)));
         $first = trim((string) ($data['FirstName'] ?? ''));
         $last  = trim((string) ($data['LastName'] ?? ''));
-        $company = trim((string) ($data['Company'] ?? ($data['Organization'] ?? '')));
+        $company = trim((string) ($data['Company'] ?? ''));
         $phone = preg_replace('/\D+/', '', (string) ($data['Phone'] ?? ''));
         $zip = trim((string) ($data['Zip'] ?? ''));
 
@@ -268,7 +268,7 @@ add_action('init', function () {
         'LastName'     => isset($_GET['last']) ? sanitize_text_field((string) $_GET['last']) : '',
         'Phone'        => isset($_GET['phone']) ? preg_replace('/\D+/', '', (string) $_GET['phone']) : '',
         'Zip'      => isset($_GET['zip']) ? sanitize_text_field((string) $_GET['zip']) : '',
-        'Organization' => isset($_GET['company']) ? sanitize_text_field((string) $_GET['company']) : '',
+        'Company'      => isset($_GET['company']) ? sanitize_text_field((string) $_GET['company']) : '',
         'LeadTags'     => !empty($_GET['tags'])
             ? array_values(array_filter(array_map('trim', explode(',', (string) $_GET['tags']))))
             : ['Website Lead', 'debug'],

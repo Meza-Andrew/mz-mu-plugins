@@ -474,11 +474,8 @@ if (!function_exists('mzf_render_admin_body')) {
 
         $labels = (array) apply_filters('mzf_field_labels', mzf_default_field_labels(), $data, $context);
         // Dynamic label overrides preserve original client wording without profile switches.
-        if (trim((string) ($data['Organization'] ?? '')) !== '') {
-            $labels['Company'] = 'Company/Organization';
-        }
         if (!empty($data['Interests'])) {
-            $labels['Interest'] = 'Interests';
+            $labels['Interests'] = 'Interests';
         }
         if (trim((string) ($data['Service'] ?? '')) !== '') {
             $labels['ItemType'] = 'Service';
@@ -541,9 +538,7 @@ if (!function_exists('mzf_render_admin_body')) {
                 return trim((string) ($data['ReceivingAddress'] ?? ''));
             }
             if ($key === 'Company') {
-                $company = trim((string) ($data['Company'] ?? ''));
-                if ($company !== '') return $company;
-                return trim((string) ($data['Organization'] ?? ''));
+                return trim((string) ($data['Company'] ?? ''));
             }
             if ($key === 'PrintColor') {
                 $color = trim((string) ($data['PrintColor'] ?? ''));
@@ -590,7 +585,7 @@ if (!function_exists('mzf_render_admin_body')) {
         $receiving_contact_raw = strtolower(trim((string) ($data['ReceivingContact'] ?? '')));
         $receiving_contact_enabled = in_array($receiving_contact_raw, ['1', 'true', 'yes', 'on', 'y'], true);
         $has_pickup_contact = $receiving_contact_enabled && ($contact_name !== '' || $contact_phone !== '' || $contact_email !== '');
-        $interest_source = $data['Interest'] ?? ($data['Interests'] ?? []);
+        $interest_source = $data['Interests'] ?? [];
         $interest_values = [];
         if (is_array($interest_source)) {
             foreach ($interest_source as $interest_item) {
@@ -612,15 +607,15 @@ if (!function_exists('mzf_render_admin_body')) {
         }
         $interest_values = array_values(array_unique($interest_values));
         $has_multi_interest = count($interest_values) > 1;
-        if ($has_multi_interest && !in_array('Interest', $layout, true)) {
+        if ($has_multi_interest && !in_array('Interests', $layout, true)) {
             $insert_before = array_search('FilesLink', $layout, true);
             if ($insert_before === false) {
                 $insert_before = array_search('Comments', $layout, true);
             }
             if ($insert_before !== false) {
-                array_splice($layout, (int) $insert_before, 0, ['Interest']);
+                array_splice($layout, (int) $insert_before, 0, ['Interests']);
             } else {
-                $layout[] = 'Interest';
+                $layout[] = 'Interests';
             }
         }
         if ($has_pickup_contact && !in_array('PickupContact', $layout, true)) {
@@ -746,7 +741,7 @@ if (!function_exists('mzf_render_admin_body')) {
                     } else {
                         $display = esc_html($text);
                     }
-                } elseif ($field_key === 'Comments' || $field_key === 'Reason') {
+                } elseif ($field_key === 'Comments') {
                     $display = nl2br(esc_html($text));
                 } elseif ($field_key === 'Email') {
                     $display = '<a href="mailto:' . esc_attr($text) . '">' . esc_html($text) . '</a>';

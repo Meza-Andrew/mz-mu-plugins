@@ -102,7 +102,7 @@ if (!function_exists('mzf_sync_marketing_contact')) {
                 'Email'        => $data['Email'] ?? '',
                 'FirstName'    => $data['FirstName'] ?? '',
                 'LastName'     => $data['LastName'] ?? '',
-                'Organization' => $data['Company'] ?? ($data['Organization'] ?? ''),
+                'Company'      => $data['Company'] ?? '',
                 'Website'      => $data['Website'] ?? '',
                 'LeadTags'     => $data['LeadTags'] ?? [],
             ]);

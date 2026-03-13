@@ -183,11 +183,8 @@ if (!function_exists('mzf_default_fields')) {
             'Website',
             'Honeypot',
             'Company',
-            'Organization',
-            'Interest',
             'OtherInterest',
             'Interests',
-            'Reason',
             'DateNeeded',
             'Date',
             'RentalDate',
@@ -250,7 +247,6 @@ if (!function_exists('mzf_default_fields')) {
             'County',
             'Zip',
             'CondomCount',
-            'SkillsExperience',
             'MondayTimes',
             'TuesdayTimes',
             'WednesdayTimes',
@@ -616,7 +612,7 @@ if (!function_exists('mzf_infer_form_slug')) {
         if (!empty($data['CondomCount'])) {
             return 'condoms';
         }
-        if (!empty($data['SkillsExperience']) || !empty($data['MondayTimes']) || !empty($data['TuesdayTimes']) || !empty($data['WednesdayTimes']) || !empty($data['ThursdayTimes']) || !empty($data['FridayTimes']) || !empty($data['SaturdayTimes']) || !empty($data['SundayTimes'])) {
+        if (!empty($data['MondayTimes']) || !empty($data['TuesdayTimes']) || !empty($data['WednesdayTimes']) || !empty($data['ThursdayTimes']) || !empty($data['FridayTimes']) || !empty($data['SaturdayTimes']) || !empty($data['SundayTimes'])) {
             return 'volunteer';
         }
         if (!empty($data['Explosive']) || !empty($data['Weight'])) {
@@ -635,15 +631,14 @@ if (!function_exists('mzf_infer_form_slug')) {
             return 'quote';
         }
 
-        $reasons = isset($data['ReasonNorm']) && is_array($data['ReasonNorm']) ? $data['ReasonNorm'] : [];
-        $interests = isset($data['InterestNorm']) && is_array($data['InterestNorm']) ? $data['InterestNorm'] : [];
-        foreach (array_merge($reasons, $interests) as $term) {
+        $interests = isset($data['InterestsNorm']) && is_array($data['InterestsNorm']) ? $data['InterestsNorm'] : [];
+        foreach ($interests as $term) {
             $term = sanitize_key((string) $term);
             if ($term !== '' && $term !== 'quote') {
                 return $term;
             }
         }
-        if (in_array('quote', array_merge($reasons, $interests), true)) {
+        if (in_array('quote', $interests, true)) {
             return 'quote';
         }
 
