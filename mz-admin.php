@@ -2880,6 +2880,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         }
     }
 
+    $quick_link_node_ids = array_values(array_unique($quick_link_node_ids));
     $remove_ids = [$flush_node_id];
     foreach ($quick_link_node_ids as $quick_link_node_id) {
         $remove_ids[] = $quick_link_node_id;
@@ -2908,6 +2909,20 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         $wp_admin_bar->remove_node($remove_id);
     }
 
+    $quick_links_hidden_successfully = !empty($quick_link_node_ids);
+    if ($quick_links_hidden_successfully) {
+        foreach ($quick_link_node_ids as $quick_link_node_id) {
+            if (is_object($wp_admin_bar->get_node($quick_link_node_id))) {
+                $quick_links_hidden_successfully = false;
+                break;
+            }
+        }
+    }
+
+    if (!$quick_links_hidden_successfully) {
+        $wp_admin_bar->remove_node($flush_node_id);
+    }
+
     $add_clone = static function ($node, string $title_override = '', $parent_override = null) use ($wp_admin_bar): void {
         if (!($node instanceof stdClass)) return;
         $node_id = (string) ($node->id ?? '');
@@ -2929,7 +2944,12 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         ]);
     };
 
-    $add_flush = static function () use ($wp_admin_bar, $flush_node_id): void {
+    $add_flush = static function () use ($wp_admin_bar, $flush_node_id, $quick_links_hidden_successfully): void {
+        if (!$quick_links_hidden_successfully) {
+            $wp_admin_bar->remove_node($flush_node_id);
+            return;
+        }
+
         $wp_admin_bar->add_node([
             'id' => $flush_node_id,
             'parent' => 'top-secondary',
@@ -2972,7 +2992,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
     $add_flush();
 }
 
-// Remove GoDaddy Quick Links and place Clear Server Cache before Query Monitor.
+// Remove GoDaddy Quick Links and only show Clear Server Cache if that removal succeeds.
 add_action('admin_bar_menu', function ($wp_admin_bar) {
     meza_position_flush_server_cache_node($wp_admin_bar);
 }, PHP_INT_MAX);
@@ -2980,44 +3000,6 @@ add_action('admin_bar_menu', function ($wp_admin_bar) {
 add_action('wp_before_admin_bar_render', function () {
     global $wp_admin_bar;
     meza_position_flush_server_cache_node($wp_admin_bar);
-}, PHP_INT_MAX);
-
-function meza_ensure_server_cache_node_visible($wp_admin_bar): void
-{
-    if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
-
-    $flush_node_id = 'meza-flush-server-cache';
-    $existing_flush = $wp_admin_bar->get_node($flush_node_id);
-    if (is_object($existing_flush)) {
-        $existing_parent = strtolower((string) ($existing_flush->parent ?? ''));
-        if ($existing_parent !== 'top-secondary') {
-            $wp_admin_bar->remove_node($flush_node_id);
-        } else {
-            return;
-        }
-    }
-
-    $nodes = $wp_admin_bar->get_nodes();
-    if (!is_array($nodes)) return;
-
-    $wp_admin_bar->add_node([
-        'id' => $flush_node_id,
-        'parent' => 'top-secondary',
-        'title' => 'Clear Server Cache',
-        'href' => '/wp-admin/plugins.php?wpaas_action=flush_cache&wpaas_nonce=366b8ead40',
-        'group' => false,
-        'meta' => ['title' => 'Clear Server Cache'],
-    ]);
-}
-
-// Final guard: ensure Clear Server Cache is always visible in the top bar.
-add_action('admin_bar_menu', function ($wp_admin_bar) {
-    meza_ensure_server_cache_node_visible($wp_admin_bar);
-}, PHP_INT_MAX);
-
-add_action('wp_before_admin_bar_render', function () {
-    global $wp_admin_bar;
-    meza_ensure_server_cache_node_visible($wp_admin_bar);
 }, PHP_INT_MAX);
 
 function meza_move_howdy_to_right_side_end($wp_admin_bar): void
