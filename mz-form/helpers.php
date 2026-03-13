@@ -493,6 +493,9 @@ if (!function_exists('mzf_render_admin_body')) {
         if (trim((string) ($data['RentalDuration'] ?? '')) !== '' || trim((string) ($data['Days'] ?? '')) !== '') {
             $labels['Duration'] = 'Rental Duration';
         }
+        if ($slug === 'volunteer') {
+            $labels['Date'] = 'Date of Birth';
+        }
         $full_name = trim((string) ($data['FirstName'] ?? '') . ' ' . (string) ($data['LastName'] ?? ''));
         $footer = (string) ($context['footer_html'] ?? '');
 
@@ -722,7 +725,7 @@ if (!function_exists('mzf_render_admin_body')) {
             } else {
                 $text = trim((string) $raw);
                 if ($text === '') continue;
-                if ($field_key === 'DateNeeded') {
+                if ($field_key === 'DateNeeded' || $field_key === 'Date') {
                     $ts = strtotime($text);
                     $display = $ts ? esc_html(date_i18n('l, F, j, Y', $ts)) : esc_html($text);
                 } elseif ($field_key === 'Duration') {
@@ -1045,6 +1048,42 @@ if (!function_exists('mzf_validate_commercial_submission')) {
         $qty = (int) ($data['Quantity'] ?? 0);
         if ($is_machine && $qty < 1) {
             return new WP_Error('mz_qty_invalid', 'Quantity must be at least 1.');
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('mzf_validate_volunteer_submission')) {
+    function mzf_validate_volunteer_submission(array $data)
+    {
+        $slug = function_exists('mzf_get_form_slug') ? mzf_get_form_slug($data) : sanitize_key((string) ($data['FormSlug'] ?? ''));
+        $slug = function_exists('mzf_normalize_form_slug') ? mzf_normalize_form_slug($slug) : $slug;
+        if ($slug !== 'volunteer') {
+            return true;
+        }
+
+        $dob_raw = trim((string) ($data['Date'] ?? ''));
+        if ($dob_raw === '') {
+            return new WP_Error('mz_dob_missing', 'Date of birth is required.');
+        }
+
+        $timezone = function_exists('wp_timezone')
+            ? wp_timezone()
+            : new DateTimeZone(date_default_timezone_get());
+        $dob = DateTimeImmutable::createFromFormat('Y-m-d', $dob_raw, $timezone);
+        if (!$dob) {
+            $ts = strtotime($dob_raw);
+            if ($ts === false) {
+                return new WP_Error('mz_dob_invalid', 'Please enter a valid date of birth.');
+            }
+            $dob = (new DateTimeImmutable('now', $timezone))->setTimestamp((int) $ts);
+        }
+
+        $today = (new DateTimeImmutable('now', $timezone))->setTime(0, 0);
+        $max_dob = $today->modify('-18 years');
+        if ($dob > $max_dob) {
+            return new WP_Error('mz_dob_underage', 'Volunteers must be age 18 or older.');
         }
 
         return true;

@@ -316,6 +316,12 @@ if (!function_exists('send_form_data')) :
                 wp_send_json_error(['message' => $commercial_validation->get_error_message()], 400);
             }
         }
+        if (function_exists('mzf_validate_volunteer_submission')) {
+            $volunteer_validation = mzf_validate_volunteer_submission($data);
+            if (is_wp_error($volunteer_validation)) {
+                wp_send_json_error(['message' => $volunteer_validation->get_error_message()], 400);
+            }
+        }
 
         $page_id   = isset($data['PageId']) ? absint($data['PageId']) : 0;
         $site_name = get_bloginfo('name');

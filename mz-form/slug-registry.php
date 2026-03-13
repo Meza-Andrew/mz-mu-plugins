@@ -60,8 +60,8 @@ if (!function_exists('mzf_slug_registry')) {
             ],
             'volunteer' => [
                 'subject' => 'New volunteer interest from {{name_company}}',
-                'required' => array_merge($contact_required, ['Training', 'Confidentiality', 'Applicant']),
-                'layout' => ['FullName', 'PreferredName', 'Pronouns', 'Company', 'Email', 'Phone', 'Interests', 'Training', 'Confidentiality', 'Applicant', 'Comments'],
+                'required' => array_merge($contact_required, ['Date', 'Training', 'Confidentiality', 'Applicant']),
+                'layout' => ['FullName', 'PreferredName', 'Pronouns', 'Date', 'Company', 'Email', 'Phone', 'Interests', 'Training', 'Confidentiality', 'Applicant', 'Comments'],
             ],
             'sponsor' => [
                 'subject' => 'New sponsorship interest from {{name_company}}',
