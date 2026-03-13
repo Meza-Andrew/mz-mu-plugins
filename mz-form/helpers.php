@@ -1086,6 +1086,28 @@ if (!function_exists('mzf_validate_volunteer_submission')) {
             return new WP_Error('mz_dob_underage', 'Volunteers must be age 18 or older.');
         }
 
+        $photo_field = $_FILES['PhotoID'] ?? null;
+        $has_photo_id = false;
+        if (is_array($photo_field) && array_key_exists('name', $photo_field)) {
+            if (is_array($photo_field['name'])) {
+                foreach ((array) $photo_field['name'] as $idx => $name) {
+                    $name = trim((string) $name);
+                    $err = isset($photo_field['error'][$idx]) ? (int) $photo_field['error'][$idx] : UPLOAD_ERR_NO_FILE;
+                    if ($name !== '' && $err !== UPLOAD_ERR_NO_FILE) {
+                        $has_photo_id = true;
+                        break;
+                    }
+                }
+            } else {
+                $name = trim((string) ($photo_field['name'] ?? ''));
+                $err = isset($photo_field['error']) ? (int) $photo_field['error'] : UPLOAD_ERR_NO_FILE;
+                $has_photo_id = ($name !== '' && $err !== UPLOAD_ERR_NO_FILE);
+            }
+        }
+        if (!$has_photo_id) {
+            return new WP_Error('mz_photo_id_missing', 'Photo ID upload is required.');
+        }
+
         return true;
     }
 }
