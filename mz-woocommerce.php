@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: MZ WooCommerce
+ * Plugin Name: DS WooCommerce
  * Description: WooCommerce query rules, asset loading, and storefront behavior.
  * Version: 1.1.0
  * Author: Meza LLC
@@ -253,13 +253,27 @@ add_action('init', function () {
  *  LEGACY THEME COMPATIBILITY
  *  ================================ */
 
-/** Remove jQuery on non-Woo pages for the legacy theme stack. */
+/** Remove jQuery on non-Woo pages for the legacy theme stack.
+ * Disabled by default because core/admin flows (e.g. remove-weak-pw) depend on jquery being registered.
+ * To re-enable intentionally, set `define('MZ_ALLOW_JQUERY_REMOVAL', true);` in wp-config.php.
+ */
 add_action('wp_default_scripts', function ($scripts) {
+    global $pagenow;
+
     if (is_admin()) {
         return;
     }
 
+    // Keep jQuery available for core/admin auth screens and async endpoints.
+    if ('wp-login.php' === $pagenow || wp_doing_ajax()) {
+        return;
+    }
+
     if (function_exists('mz_use_new_theme') && mz_use_new_theme()) {
+        return;
+    }
+
+    if (!defined('MZ_ALLOW_JQUERY_REMOVAL') || MZ_ALLOW_JQUERY_REMOVAL !== true) {
         return;
     }
 

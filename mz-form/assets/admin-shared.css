@@ -1,0 +1,85 @@
+/* Shared admin UI styles for MZ MU plugins */
+
+/* Submissions layout helpers */
+.mzf-submissions-tabs {
+    margin-bottom: 10px;
+}
+
+.mzf-table-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 6px 0 8px;
+    padding: 0;
+}
+
+.mzf-table-toolbar .actions {
+    float: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mzf-table-toolbar .mzf-actions-right {
+    justify-content: flex-end;
+}
+
+.mzf-submissions-table {
+    margin-top: 0;
+}
+
+/* Reusable admin filter chip UI */
+.mzf-table-toolbar .mzf-filter-wrap,
+.mz-admin-filter-wrap {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-right: 6px;
+}
+
+.mzf-table-toolbar .mzf-filter-label,
+.mz-admin-filter-label {
+    color: #50575e;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.mzf-table-toolbar .mzf-filter-chip,
+.mz-admin-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid #c3c4c7;
+    border-radius: 999px;
+    background: #f6f7f7;
+    color: #1d2327;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.mzf-table-toolbar .mzf-filter-chip strong,
+.mz-admin-filter-chip strong {
+    font-weight: 600;
+}
+
+.mzf-table-toolbar .mzf-filter-chip-remove,
+.mz-admin-filter-chip-remove {
+    color: #50575e;
+    text-decoration: none;
+    line-height: 1;
+}
+
+.mzf-table-toolbar .mzf-filter-chip-remove:hover,
+.mz-admin-filter-chip-remove:hover {
+    color: #d63638;
+}
+
+.mzf-table-toolbar .mzf-filter-reset,
+.mz-admin-filter-reset {
+    margin-left: 2px;
+    font-size: 12px;
+}

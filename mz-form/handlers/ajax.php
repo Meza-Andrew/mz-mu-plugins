@@ -16,6 +16,13 @@ if (!function_exists('send_form_data')) :
         $env      = !empty($env) ? strtolower($env) : strtolower($env_default);
         $prod_url = !empty($prod_url) ? $prod_url : home_url();
         $domain   = parse_url($prod_url, PHP_URL_HOST);
+        $site_domain = (string) wp_parse_url(home_url('/'), PHP_URL_HOST);
+        if ($site_domain === '' && !empty($_SERVER['HTTP_HOST'])) {
+            $site_domain = preg_replace('/:\d+$/', '', (string) $_SERVER['HTTP_HOST']);
+        }
+        if ($site_domain === '') {
+            $site_domain = (string) $domain;
+        }
         $debug_allowed = function_exists('mzf_debug_allowed') ? mzf_debug_allowed((array) $_POST) : false;
         $debug_log_enabled = (bool) mzf_get('debug_log', true);
         $debug_response_enabled = $debug_allowed && (bool) mzf_get('debug_response', false);
@@ -337,10 +344,12 @@ if (!function_exists('send_form_data')) :
 
         $body .= '<hr><h3 style="margin:1em 0 .5em 0;">Request Details</h3>';
 
-        if (!empty($data['ItemType'])) $body .= '<p><strong>' . $h($label_item_type) . ':</strong><br>' . $h((string) $data['ItemType']) . '</p>';
+        if (!empty($data['ItemType']) && trim((string) ($data['Service'] ?? '')) === '') $body .= '<p><strong>' . $h($label_item_type) . ':</strong><br>' . $h((string) $data['ItemType']) . '</p>';
         if (!empty($data['ItemName'])) $body .= '<p><strong>Item:</strong><br>' . $h((string) $data['ItemName']) . '</p>';
         if (!empty($data['Quantity'])) $body .= '<p><strong>Quantity:</strong><br>' . $h((string) $data['Quantity']) . '</p>';
-        if (!empty($data['Dimensions'])) $body .= '<p><strong>Dimensions:</strong><br>' . $h((string) $data['Dimensions']) . '</p>';
+        $service_value = strtolower(trim((string) ($data['Service'] ?? '')));
+        $allow_dimensions = ($slug_for_labels === 'print-quote' || $service_value === 'printing');
+        if (!empty($data['Dimensions']) && $allow_dimensions) $body .= '<p><strong>Dimensions:</strong><br>' . $h((string) $data['Dimensions']) . '</p>';
         if (!empty($data['DateNeeded'])) $body .= '<p><strong>' . $h($label_date) . ':</strong><br>' . $h($human_date((string) $data['DateNeeded'])) . '</p>';
         if (!empty($data['Duration'])) $body .= '<p><strong>' . $h($label_duration) . ':</strong><br>' . $h($format_weeks_days((string) $data['Duration'])) . '</p>';
         if (!empty($data['LocationDisplay'])) $body .= '<p><strong>' . $h($label_location) . ':</strong><br>' . $h((string) $data['LocationDisplay']) . '</p>';
@@ -383,28 +392,37 @@ if (!function_exists('send_form_data')) :
 
         $org_addr_raw = function_exists('get_field') ? get_field('address', 'option') : null;
         [$org_addr_display, $org_addr_query, $org_place_id, $org_place_name] = $format_acf_map_address($org_addr_raw);
+        $org_has_maps_meta = false;
+        if (is_array($org_addr_raw)) {
+            $raw_place_id = trim((string) ($org_addr_raw['place_id'] ?? ''));
+            $raw_lat = trim((string) ($org_addr_raw['lat'] ?? ''));
+            $raw_lng = trim((string) ($org_addr_raw['lng'] ?? ''));
+            $org_has_maps_meta = ($raw_place_id !== '' || ($raw_lat !== '' && $raw_lng !== ''));
+        }
 
         $best_query = null;
         if (!empty($org_place_name))               $best_query = $org_place_name;
         elseif (!empty($org_addr_query) && preg_match('/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/', $org_addr_query)) $best_query = $org_addr_query;
         elseif (!empty($org_addr_display))         $best_query = $org_addr_display;
 
-        if ($org_place_id && $best_query) {
+        if ($org_has_maps_meta && $org_place_id && $best_query) {
             $org_maps_url = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($best_query) . '&query_place_id=' . rawurlencode($org_place_id);
-        } elseif ($org_place_id) {
+        } elseif ($org_has_maps_meta && $org_place_id) {
             $org_maps_url = 'https://www.google.com/maps/place/?q=place_id:' . rawurlencode($org_place_id);
-        } elseif (!empty($org_addr_query)) {
+        } elseif ($org_has_maps_meta && !empty($org_addr_query) && preg_match('/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/', (string) $org_addr_query)) {
             $org_maps_url = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($org_addr_query);
         } else {
             $org_maps_url = null;
         }
 
-        $admin_footer_html = '<hr><p><small>'
-            . ($org_addr_display && $org_maps_url ? '<a href="' . esc_url($org_maps_url) . '" target="_blank" rel="noopener">' . esc_html($org_addr_display) . '</a><br>' : '')
-            . ($org_phone ? '<a href="tel:' . esc_attr($org_phone_href) . '" target="_blank">' . esc_html($org_phone) . '</a>' : '')
-            . '<br>'
-            . ($org_email_display ? '<a href="mailto:' . esc_attr($org_email_display) . '" target="_blank">' . esc_html($org_email_display) . '</a><br>' : '')
-            . '<a href="' . esc_url($site_url) . '" target="_blank">' . $site_url . '</a></small></p>';
+        $admin_footer_html = function_exists('mzf_build_footer_html')
+            ? mzf_build_footer_html('admin', $org_addr_display, $org_maps_url, $org_phone, $org_phone_href, $org_email_display, $site_url, (string) $domain)
+            : '<hr><p><small>'
+                . ($org_addr_display && $org_maps_url ? '<a href="' . esc_url($org_maps_url) . '" target="_blank" rel="noopener">' . esc_html($org_addr_display) . '</a><br>' : '')
+                . ($org_phone ? '<a href="tel:' . esc_attr($org_phone_href) . '" target="_blank">' . esc_html($org_phone) . '</a>' : '')
+                . '<br>'
+                . ($org_email_display ? '<a href="mailto:' . esc_attr($org_email_display) . '" target="_blank">' . esc_html($org_email_display) . '</a><br>' : '')
+                . '<a href="' . esc_url($site_url) . '" target="_blank">' . $site_url . '</a></small></p>';
         $body .= $admin_footer_html;
 
         $body = mzf_render_admin_body($body, $data, ['footer_html' => $admin_footer_html, 'domain' => (string) $domain]);
@@ -413,7 +431,7 @@ if (!function_exists('send_form_data')) :
 
         $page_id = isset($_POST['PageId']) ? absint($_POST['PageId']) : ($page_id ?? 0);
         $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
-        $is_quote = in_array($slug, ['quote', 'vehicle-wraps', 'wall-graphics', 'banner-printing'], true);
+        $is_quote = in_array($slug, ['quote', 'upload-files', 'vehicle-wraps', 'wall-graphics', 'banner-printing', 'print-quote'], true);
 
         $first_name = isset($data['FirstName']) ? sanitize_text_field($data['FirstName']) : '';
         $last_name  = isset($data['LastName'])  ? sanitize_text_field($data['LastName'])  : '';
@@ -423,12 +441,66 @@ if (!function_exists('send_form_data')) :
         $prefix = 'New request from ';
 
         $core    = $prefix . $full_name . ($company ? ' at ' . $company : '');
-        $core    = mzf_apply_subject_templates($core, $data, ['domain' => (string) $domain, 'page_slug' => (string) $slug]);
+        $core    = mzf_apply_subject_templates($core, $data, ['domain' => (string) $site_domain, 'page_slug' => (string) $slug]);
         $subject = apply_filters('mzf_subject', $core, $data, (int)($data['PageId'] ?? 0), $slug, ($data['ItemType'] ?? ''), $is_quote);
-        if ($domain) {
-            $subject = preg_replace('/\s*\(' . preg_quote($domain, '/') . '\)\s*/i', ' ', $subject);
+        $default_subject = $subject;
+        $interest_values = [];
+        $interest_source = $data['Interest'] ?? ($data['Interests'] ?? []);
+        if (is_array($interest_source)) {
+            foreach ($interest_source as $interest_item) {
+                $interest_item = trim((string) $interest_item);
+                if ($interest_item !== '') {
+                    $interest_values[] = $interest_item;
+                }
+            }
+        } else {
+            $interest_text = trim((string) $interest_source);
+            if ($interest_text !== '') {
+                foreach (preg_split('/\s*,\s*/', $interest_text) as $interest_item) {
+                    $interest_item = trim((string) $interest_item);
+                    if ($interest_item !== '') {
+                        $interest_values[] = $interest_item;
+                    }
+                }
+            }
+        }
+        $interest_values = array_values(array_unique($interest_values));
+        $interest_count = count($interest_values);
+        $interest_subject = '';
+        if ($interest_count === 1) {
+            $interest_norm = strtolower($interest_values[0]);
+            if ($interest_norm === 'wide format printing') {
+                $interest_subject = 'print';
+            } elseif ($interest_norm === 'signs & graphics' || $interest_norm === 'signs and graphics') {
+                $interest_subject = 'sign';
+            }
+        }
+        $service_subject = strtolower(trim((string) ($data['Service'] ?? '')));
+        $is_upload_files = ($slug === 'upload-files');
+        $print_subject_text = $is_upload_files ? 'New print request from ' : 'New print quote request from ';
+        $sign_subject_text = $is_upload_files ? 'New sign request from ' : 'New sign quote request from ';
+        if ($interest_count > 1) {
+            $subject = $default_subject;
+        } elseif ($interest_subject === 'print') {
+            $subject = $print_subject_text . $full_name . ($company ? ' at ' . $company : '');
+        } elseif ($interest_subject === 'sign') {
+            $subject = $sign_subject_text . $full_name . ($company ? ' at ' . $company : '');
+        } elseif ($service_subject === 'printing') {
+            $subject = $print_subject_text . $full_name . ($company ? ' at ' . $company : '');
+        } elseif ($service_subject === 'signs') {
+            $subject = $sign_subject_text . $full_name . ($company ? ' at ' . $company : '');
+        }
+        $store_subject = trim((string) ($data['Store'] ?? ''));
+        if ($store_subject !== '') {
+            $store_segment = ' for ' . $store_subject;
+            if (stripos($subject, $store_segment) === false) {
+                $subject = trim($subject) . $store_segment;
+            }
+        }
+        if ($site_domain) {
+            $subject = preg_replace('/\s*[\(\[]' . preg_quote($site_domain, '/') . '[\)\]]\s*/i', ' ', $subject);
             $subject = trim(preg_replace('/\s{2,}/', ' ', $subject));
-            $subject .= ' (' . $domain . ')';
+            $subject .= ' [' . $site_domain . ']';
         }
 
         $__meza_set_html = function () {
@@ -477,6 +549,24 @@ if (!function_exists('send_form_data')) :
         if (empty($to)) {
             error_log('Mail: no admin recipients resolved');
             $debug_log('no_recipients', ['form_slug' => (string) ($data['FormSlug'] ?? ''), 'env' => (string) $env]);
+            if (function_exists('mzf_log_submission')) {
+                mzf_log_submission([
+                    'form_slug' => (string) ($data['FormSlug'] ?? ''),
+                    'page_id' => (int) ($data['PageId'] ?? 0),
+                    'name' => (string) $full_name,
+                    'email' => (string) ($data['Email'] ?? ''),
+                    'delivery_status' => 'error_no_recipients',
+                    'admin_ok' => false,
+                    'user_ok' => false,
+                    'subject' => (string) $subject,
+                    'env' => (string) $env,
+                    'error_message' => 'No admin recipients configured.',
+                    'payload' => (array) $data,
+                    'submitted' => function_exists('mzf_prepare_submission_payload') ? mzf_prepare_submission_payload((array) $_POST) : (array) $_POST,
+                    'recipients' => [],
+                    'attachments' => (array) $attached_meta,
+                ]);
+            }
             wp_send_json_error(['message' => 'No admin recipients configured.'], 500);
         }
 
@@ -646,19 +736,45 @@ if (!function_exists('send_form_data')) :
 
         if (!empty($attached_meta)) {
             $data['UploadedFiles'] = $attached_meta;
+            $file_links = [];
+            foreach ($attached_meta as $meta) {
+                $name = trim((string) ($meta['name'] ?? ''));
+                $url = trim((string) ($meta['url'] ?? ''));
+                if ($name !== '' && $url !== '') {
+                    $file_links[] = '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($name) . '</a>';
+                }
+            }
+            if (!empty($file_links) && stripos((string) $body, '<strong>Files:</strong>') === false) {
+                $files_block = '<p><strong>Files:</strong><br>' . implode('<br>', $file_links) . '</p>';
+                if (preg_match('/<p><strong>Files link:<\/strong><br>.*?<\/p>/is', (string) $body)) {
+                    $body = preg_replace('/(<p><strong>Files link:<\/strong><br>.*?<\/p>)/is', $files_block . '$1', (string) $body, 1);
+                } elseif (preg_match('/<hr[^>]*><p><small>/i', (string) $body)) {
+                    $body = preg_replace('/<hr[^>]*><p><small>/i', $files_block . '$0', (string) $body, 1);
+                } else {
+                    $body .= $files_block;
+                }
+            }
         }
 
-        $successMsg = (!empty($form_cfg['message_success'])) ? wp_kses_post($form_cfg['message_success']) : 'Your submission was sent successfully.';
-        $errorMsg   = (!empty($form_cfg['message_error']))   ? wp_kses_post($form_cfg['message_error'])   : 'Your submission failed to send. Please try again.';
+        $successMsgRaw = function_exists('mzf_form_config_value')
+            ? mzf_form_config_value($form_cfg, ['messages.success', 'message_success'], 'Your submission was sent successfully.')
+            : ((isset($form_cfg['message_success']) && $form_cfg['message_success'] !== '') ? $form_cfg['message_success'] : 'Your submission was sent successfully.');
+        $errorMsgRaw = function_exists('mzf_form_config_value')
+            ? mzf_form_config_value($form_cfg, ['messages.error', 'message_error'], 'Your submission failed to send. Please try again.')
+            : ((isset($form_cfg['message_error']) && $form_cfg['message_error'] !== '') ? $form_cfg['message_error'] : 'Your submission failed to send. Please try again.');
+        $successMsg = wp_kses_post((string) $successMsgRaw);
+        $errorMsg   = wp_kses_post((string) $errorMsgRaw);
         $successMsg = (string) apply_filters('mzf_success_message', $successMsg, $data, $form_cfg);
         $errorMsg   = (string) apply_filters('mzf_error_message', $errorMsg, $data, $form_cfg);
 
-        $footer_html = '<hr><p><small>'
-            . ($org_addr_display && $org_maps_url ? '<a href="' . esc_url($org_maps_url) . '" target="_blank" rel="noopener">' . esc_html($org_addr_display) . '</a><br>' : '')
-            . ($org_phone ? '<a href="tel:' . esc_attr($org_phone_href) . '" target="_blank">' . esc_html($org_phone) . '</a>' : '')
-            . '<br>'
-            . ($org_email_display ? '<a href="mailto:' . esc_attr($org_email_display) . '" target="_blank">' . esc_html($org_email_display) . '</a><br>' : '')
-            . '<a href="' . esc_url($domain) . '" target="_blank">https://' . $domain . '</a></small></p>';
+        $footer_html = function_exists('mzf_build_footer_html')
+            ? mzf_build_footer_html('user', $org_addr_display, $org_maps_url, $org_phone, $org_phone_href, $org_email_display, $site_url, (string) $domain)
+            : '<hr><p><small>'
+                . ($org_addr_display && $org_maps_url ? '<a href="' . esc_url($org_maps_url) . '" target="_blank" rel="noopener">' . esc_html($org_addr_display) . '</a><br>' : '')
+                . ($org_phone ? '<a href="tel:' . esc_attr($org_phone_href) . '" target="_blank">' . esc_html($org_phone) . '</a>' : '')
+                . '<br>'
+                . ($org_email_display ? '<a href="mailto:' . esc_attr($org_email_display) . '" target="_blank">' . esc_html($org_email_display) . '</a><br>' : '')
+                . '<a href="' . esc_url($domain) . '" target="_blank">https://' . $domain . '</a></small></p>';
 
         $user_email = mz_build_user_email($data, $footer_html);
 
@@ -694,6 +810,26 @@ if (!function_exists('send_form_data')) :
         remove_filter('wp_mail_content_type', $__meza_set_html);
 
         $delivery_success = (bool) apply_filters('mzf_delivery_success', ($admin_ok && $user_ok), $admin_ok, $user_ok, $data);
+        $partial_success = (bool) apply_filters('mzf_partial_success', $admin_ok, $admin_ok, $user_ok, $data);
+        $delivery_status = $delivery_success ? 'success' : ($partial_success ? 'partial' : 'failed');
+        $submission_log_id = 0;
+        if (function_exists('mzf_log_submission')) {
+            $submission_log_id = (int) mzf_log_submission([
+                'form_slug' => (string) ($data['FormSlug'] ?? ''),
+                'page_id' => (int) ($data['PageId'] ?? 0),
+                'name' => (string) $full_name,
+                'email' => (string) ($data['Email'] ?? ''),
+                'delivery_status' => (string) $delivery_status,
+                'admin_ok' => (bool) $admin_ok,
+                'user_ok' => (bool) $user_ok,
+                'subject' => (string) $subject,
+                'env' => (string) $env,
+                'payload' => (array) $data,
+                'submitted' => function_exists('mzf_prepare_submission_payload') ? mzf_prepare_submission_payload((array) $_POST) : (array) $_POST,
+                'recipients' => (array) $to,
+                'attachments' => (array) $attached_meta,
+            ]);
+        }
         $debug_payload = [
             'env' => (string) $env,
             'form_slug' => (string) ($data['FormSlug'] ?? ''),
@@ -705,6 +841,7 @@ if (!function_exists('send_form_data')) :
             'required_fields' => array_values((array) $required_fields),
             'unknown_fields_rejected' => false,
             'strict_mode' => (bool) $strict_mode,
+            'submission_log_id' => $submission_log_id,
         ];
         $debug_log('delivery_result', $debug_payload);
 
@@ -718,7 +855,6 @@ if (!function_exists('send_form_data')) :
         if (!$admin_ok) error_log('Mail: admin send failed');
         if (!$user_ok)  error_log('Mail: user confirmation failed');
 
-        $partial_success = (bool) apply_filters('mzf_partial_success', $admin_ok, $admin_ok, $user_ok, $data);
         if ($partial_success) {
             $payload = ['message_success' => $successMsg];
             if ($debug_response_enabled) {

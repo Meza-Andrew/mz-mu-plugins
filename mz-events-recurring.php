@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: MZ Events Recurring
+ * Plugin Name: DS Events Recurring
  * Description: Recurring event generation and synchronization for the Events post type.
  * Version: 1.3.0
  * Author: Meza LLC

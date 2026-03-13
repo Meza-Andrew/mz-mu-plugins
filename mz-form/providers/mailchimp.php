@@ -10,7 +10,22 @@ if (!function_exists('mz_mc_get_api_key')) {
         if (defined('MAILCHIMP_API_KEY') && MAILCHIMP_API_KEY) {
             return trim((string) MAILCHIMP_API_KEY);
         }
+        if (function_exists('mzf_crm_api_key')) {
+            $crm_key = mzf_crm_api_key('mailchimp');
+            if ($crm_key !== '') {
+                return $crm_key;
+            }
+        }
         return trim((string) get_option('mz_mc_api_key', ''));
+    }
+}
+
+if (!function_exists('mz_mc_has_wp_config_keys')) {
+    function mz_mc_has_wp_config_keys(): bool
+    {
+        $api_key_defined = defined('MAILCHIMP_API_KEY') && trim((string) MAILCHIMP_API_KEY) !== '';
+        $list_id_defined = defined('MAILCHIMP_LIST_ID') && trim((string) MAILCHIMP_LIST_ID) !== '';
+        return $api_key_defined && $list_id_defined;
     }
 }
 
@@ -171,6 +186,9 @@ if (!function_exists('mz_mc_upsert_contact')) {
 }
 
 add_action('admin_menu', function () {
+    // Only expose this menu when credentials are explicitly provided via wp-config constants.
+    if (!mz_mc_has_wp_config_keys()) return;
+
     add_submenu_page(
         'options-general.php',
         'Mailchimp',

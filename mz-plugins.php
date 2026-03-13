@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: MZ Plugins
+ * Plugin Name: DS Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
  * Version: 1.4.0
  * Author: Meza LLC
@@ -97,7 +97,6 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
     $should_install  = []; // plugins that must exist on disk for this env (active OR install-only)
     $should_activate = []; // plugins that must be active in this env
     $managed         = []; // all plugins that are managed by this catalog (across envs)
-
     foreach ($catalog as $p) {
         $file     = $p['file'];
         $envs     = (array)($p['envs'] ?? []);
@@ -252,3 +251,106 @@ if ($HIDE) {
         return $plugins;
     }, 50);
 }
+
+/**
+ * Limit Plugins screen row actions based on state:
+ * - Active plugins: Settings, Deactivate
+ * - Inactive plugins: Activate, Delete
+ */
+$mz_limit_plugin_actions = function ($actions) {
+    $settings_link   = null;
+    $deactivate_link = null;
+    $activate_link   = null;
+    $delete_link     = null;
+
+    foreach ((array)$actions as $key => $html) {
+        $key_lc  = strtolower((string)$key);
+        $text_lc = strtolower(trim(wp_strip_all_tags((string)$html)));
+        $html_lc = strtolower((string)$html);
+
+        if (
+            $settings_link === null &&
+            (
+                strpos($key_lc, 'setting') !== false ||
+                strpos($text_lc, 'settings') !== false
+            )
+        ) {
+            $settings_link = $html;
+        }
+
+        if (
+            $deactivate_link === null &&
+            (
+                strpos($key_lc, 'deactivate') !== false ||
+                strpos($text_lc, 'deactivate') !== false ||
+                strpos($html_lc, 'action=deactivate') !== false
+            )
+        ) {
+            $deactivate_link = $html;
+        }
+
+        if (
+            $activate_link === null &&
+            (
+                (
+                    strpos($key_lc, 'activate') !== false &&
+                    strpos($key_lc, 'deactivate') === false
+                ) ||
+                (
+                    strpos($text_lc, 'activate') !== false &&
+                    strpos($text_lc, 'deactivate') === false
+                ) ||
+                strpos($html_lc, 'action=activate') !== false
+            )
+        ) {
+            $activate_link = $html;
+        }
+
+        if (
+            $delete_link === null &&
+            (
+                strpos($key_lc, 'delete') !== false ||
+                strpos($text_lc, 'delete') !== false ||
+                strpos($html_lc, 'action=delete') !== false
+            )
+        ) {
+            $delete_link = $html;
+        }
+    }
+
+    $filtered = [];
+    if ($deactivate_link !== null) {
+        if ($settings_link !== null) {
+            $filtered['settings'] = $settings_link;
+        }
+        $filtered['deactivate'] = $deactivate_link;
+        return $filtered;
+    }
+
+    if ($activate_link !== null) {
+        $filtered['activate'] = $activate_link;
+    }
+    if ($delete_link !== null) {
+        $filtered['delete'] = $delete_link;
+    }
+
+    if (!empty($filtered)) {
+        return $filtered;
+    }
+
+    return (array)$actions;
+};
+
+add_filter('plugin_action_links', $mz_limit_plugin_actions, PHP_INT_MAX, 4);
+add_filter('network_admin_plugin_action_links', $mz_limit_plugin_actions, PHP_INT_MAX, 4);
+
+add_action('admin_init', function () use ($mz_limit_plugin_actions) {
+    if (!function_exists('get_plugins')) {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    }
+
+    foreach (array_keys(get_plugins()) as $plugin_file) {
+        add_filter("plugin_action_links_{$plugin_file}", $mz_limit_plugin_actions, PHP_INT_MAX, 4);
+        add_filter("network_admin_plugin_action_links_{$plugin_file}", $mz_limit_plugin_actions, PHP_INT_MAX, 4);
+    }
+}, PHP_INT_MAX);

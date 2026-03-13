@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: MZ Admin
+ * Plugin Name: DS Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
  * Version: 1.1.0
  * Author: Meza LLC
@@ -9,6 +9,10 @@
  */
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) return;
+
+if (file_exists(__DIR__ . '/mz-hosting.php')) {
+    require_once __DIR__ . '/mz-hosting.php';
+}
 
 if (!function_exists('str_contains')) {
     function str_contains($haystack, $needle)
@@ -151,6 +155,15 @@ function meza_normalize_datetime_columns(array $columns): array
     $post_type = ($screen instanceof WP_Screen) ? (string) ($screen->post_type ?? '') : '';
     $supports_thumbnail = ($post_type !== '' && post_type_supports($post_type, 'thumbnail'));
     $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
+    $show_organization_url_column = ($post_type === 'organization');
+    $show_form_slug_column = ($post_type === 'form');
+    $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
+    $show_summary_column = (
+        $post_type !== ''
+        && !in_array($post_type, ['page', 'attachment'], true)
+        && !meza_is_acf_admin_post_type($post_type)
+        && meza_post_type_has_permalink($post_type)
+    );
 
     $has_modified = false;
     foreach ($columns as $key => $label) {
@@ -181,7 +194,14 @@ function meza_normalize_datetime_columns(array $columns): array
         if ($key === 'title') {
             $updated['mz_id'] = __('ID');
             if ($supports_thumbnail) $updated['mz_thumbnail'] = __('Image');
-            $updated[$key] = $label;
+            $updated[$key] = ($post_type === 'cta') ? __('Headline (H2)') : $label;
+            if ($show_organization_url_column) $updated['mz_organization_url'] = __('URL');
+            if ($show_summary_column) $updated['mz_summary'] = __('Summary');
+            if ($show_form_slug_column) $updated['mz_slug'] = __('Slug');
+            if ($show_review_columns) {
+                $updated['mz_review_quote'] = __('Quote');
+                $updated['mz_review_citer'] = __('Citer');
+            }
             if ($show_page_columns) {
                 $updated['mz_page_link'] = __('Link');
                 $updated['mz_page_headline'] = __('Page Headline (H1)');
@@ -200,6 +220,9 @@ function meza_normalize_datetime_columns(array $columns): array
 
     if (!isset($updated['mz_published'])) $updated['mz_published'] = __('Published');
     if (!$has_modified && !isset($updated['mz_modified'])) $updated['mz_modified'] = __('Modified');
+    if ($show_organization_url_column && !isset($updated['mz_organization_url'])) {
+        $updated['mz_organization_url'] = __('URL');
+    }
     if ($show_page_columns) {
         if (!isset($updated['mz_page_link'])) $updated['mz_page_link'] = __('Link');
         if (!isset($updated['mz_page_headline'])) $updated['mz_page_headline'] = __('Page Headline (H1)');
@@ -216,6 +239,13 @@ function meza_normalize_datetime_columns(array $columns): array
         $ordered[$key] = $updated[$key];
         $used[$key] = true;
     };
+    $append_taxonomy_columns = static function () use (&$updated, $append): void {
+        foreach (array_keys($updated) as $key) {
+            if (str_starts_with((string) $key, 'taxonomy-') || $key === 'categories') {
+                $append((string) $key);
+            }
+        }
+    };
 
     // Keep bulk checkbox first when present.
     $append('cb');
@@ -225,6 +255,14 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_id');
         $append('mz_thumbnail');
         $append('title');
+        if ($show_organization_url_column) $append('mz_organization_url');
+        $append_taxonomy_columns();
+        if ($show_summary_column) $append('mz_summary');
+        if ($show_form_slug_column) $append('mz_slug');
+        if ($show_review_columns) {
+            $append('mz_review_quote');
+            $append('mz_review_citer');
+        }
         if ($show_page_columns) {
             $append('mz_page_link');
             $append('mz_page_headline');
@@ -238,6 +276,14 @@ function meza_normalize_datetime_columns(array $columns): array
         $append('mz_id');
         $append('mz_thumbnail');
         $append('title');
+        if ($show_organization_url_column) $append('mz_organization_url');
+        $append_taxonomy_columns();
+        if ($show_summary_column) $append('mz_summary');
+        if ($show_form_slug_column) $append('mz_slug');
+        if ($show_review_columns) {
+            $append('mz_review_quote');
+            $append('mz_review_citer');
+        }
         if ($show_page_columns) {
             $append('mz_page_link');
             $append('mz_page_headline');
@@ -268,6 +314,11 @@ function meza_normalize_datetime_columns(array $columns): array
 
 function meza_register_datetime_sortable_columns(array $cols): array
 {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (($screen instanceof WP_Screen) && ((string) ($screen->post_type ?? '') === 'form')) {
+        $cols['mz_slug'] = ['name', true];
+    }
+    $cols['mz_id'] = ['ID', true];
     $cols['mz_published'] = ['date', true];
     $cols['mz_modified'] = ['modified', true];
     return $cols;
@@ -301,6 +352,11 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             $column === 'mz_modified' ||
             $column === 'mz_published' ||
             $column === 'mz_id' ||
+            $column === 'mz_slug' ||
+            $column === 'mz_summary' ||
+            $column === 'mz_organization_url' ||
+            $column === 'mz_review_quote' ||
+            $column === 'mz_review_citer' ||
             $column === 'mz_thumbnail' ||
             $column === 'mz_page_link' ||
             $column === 'mz_page_headline' ||
@@ -315,6 +371,52 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         echo (int) $post_id;
         return;
     }
+    if ($column === 'mz_slug') {
+        $slug = (string) ($post->post_name ?? '');
+        echo ($slug !== '') ? esc_html($slug) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_summary') {
+        $summary = trim(wp_strip_all_tags((string) ($post->post_excerpt ?? '')));
+        echo ($summary !== '') ? esc_html($summary) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_organization_url') {
+        $url = '';
+        if (function_exists('get_field')) {
+            $acf_url = get_field('url', (int) $post_id);
+            if (is_string($acf_url)) $url = trim($acf_url);
+        }
+        if ($url === '') $url = trim((string) get_post_meta((int) $post_id, 'url', true));
+
+        if ($url === '') {
+            echo '&mdash;';
+            return;
+        }
+
+        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Website') . '</a>';
+        return;
+    }
+    if ($column === 'mz_review_quote') {
+        $quote = '';
+        if (function_exists('get_field')) {
+            $acf_quote = get_field('quote', (int) $post_id);
+            if (is_string($acf_quote)) $quote = trim(wp_strip_all_tags($acf_quote));
+        }
+        if ($quote === '') $quote = trim(wp_strip_all_tags((string) get_post_meta((int) $post_id, 'quote', true)));
+        echo ($quote !== '') ? esc_html($quote) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_review_citer') {
+        $citer = '';
+        if (function_exists('get_field')) {
+            $acf_citer = get_field('citer', (int) $post_id);
+            if (is_string($acf_citer)) $citer = trim(wp_strip_all_tags($acf_citer));
+        }
+        if ($citer === '') $citer = trim(wp_strip_all_tags((string) get_post_meta((int) $post_id, 'citer', true)));
+        echo ($citer !== '') ? esc_html($citer) : '&mdash;';
+        return;
+    }
 
     if ($column === 'mz_thumbnail') {
         if (!post_type_supports((string) $post->post_type, 'thumbnail')) {
@@ -325,9 +427,9 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         $thumb_id = (int) get_post_thumbnail_id((int) $post_id);
         $thumb_html = get_the_post_thumbnail(
             (int) $post_id,
-            [100, 100],
+            'thumbnail',
             [
-                'style' => 'width:100px;height:100px;object-fit:cover;',
+                'style' => 'max-width:100px;max-height:100px;width:auto;height:auto;display:block;margin:0;',
                 'loading' => 'lazy',
                 'decoding' => 'async',
             ]
@@ -1197,16 +1299,137 @@ function meza_dashboard_find_site_kit_widget_id(array $widgets): string
     return $best_match;
 }
 
+function meza_dashboard_find_woocommerce_status_widget_id(array $widgets): string
+{
+    $known_ids = [
+        'woocommerce_dashboard_status',
+        'woocommerce_dashboard_recent_reviews',
+    ];
+    foreach ($known_ids as $widget_id) {
+        if (isset($widgets[$widget_id])) return $widget_id;
+    }
+
+    foreach ($widgets as $widget_id => $data) {
+        $title = strtolower(trim(wp_strip_all_tags((string) (($data['widget']['title'] ?? '')))));
+        if ($title === '') continue;
+        if (str_contains($title, 'woocommerce') && str_contains($title, 'status')) return (string) $widget_id;
+    }
+
+    return '';
+}
+
+function meza_dashboard_find_wp_mail_smtp_widget_id(array $widgets): string
+{
+    $known_ids = [
+        'wp_mail_smtp_reports_widget_lite',
+        'wp_mail_smtp_reports_widget',
+        'wp_mail_smtp_dashboard_widget',
+    ];
+    foreach ($known_ids as $widget_id) {
+        if (isset($widgets[$widget_id])) return $widget_id;
+    }
+
+    foreach ($widgets as $widget_id => $data) {
+        $title = strtolower(trim(wp_strip_all_tags((string) (($data['widget']['title'] ?? '')))));
+        if ($title === '') continue;
+        if (str_contains($title, 'wp mail smtp')) return (string) $widget_id;
+    }
+
+    return '';
+}
+
+function meza_dashboard_find_php_error_log_widget_id(array $widgets): string
+{
+    $known_ids = [
+        'ws_php_error_log',
+        'php_error_log_dashboard',
+    ];
+    foreach ($known_ids as $widget_id) {
+        if (isset($widgets[$widget_id])) return $widget_id;
+    }
+
+    foreach ($widgets as $widget_id => $data) {
+        $title = strtolower(trim(wp_strip_all_tags((string) (($data['widget']['title'] ?? '')))));
+        if ($title === '') continue;
+        if (str_contains($title, 'php error log')) return (string) $widget_id;
+    }
+
+    return '';
+}
+
+function meza_dashboard_widget_with_custom_title(string $widget_id, array $widget): array
+{
+    $title = trim(wp_strip_all_tags((string) ($widget['title'] ?? '')));
+    $normalized_title = strtolower($title);
+    $normalized_id = strtolower($widget_id);
+
+    $custom_title = '';
+    if ($widget_id === 'dashboard_right_now' || $normalized_title === 'at a glance') {
+        $custom_title = 'Site Overview';
+    } elseif ($widget_id === 'dashboard_site_health' || str_contains($normalized_title, 'site health')) {
+        $custom_title = 'Site Health';
+    } elseif (
+        str_contains($normalized_id, 'googlesitekit')
+        || str_contains($normalized_id, 'sitekit')
+        || str_contains($normalized_title, 'site kit')
+    ) {
+        $custom_title = 'Web Analytics';
+    } elseif (str_contains($normalized_id, 'wp_mail_smtp') || str_contains($normalized_title, 'wp mail smtp')) {
+        $custom_title = 'Mail';
+    } elseif (str_contains($normalized_id, 'woocommerce') || str_contains($normalized_title, 'woocommerce')) {
+        $custom_title = 'WooCommerce';
+    }
+
+    if ($custom_title !== '') {
+        $widget['title'] = $custom_title;
+        if (!isset($widget['args']) || !is_array($widget['args'])) {
+            $widget['args'] = [];
+        }
+        $widget['args']['__widget_basename'] = $custom_title;
+    }
+
+    return $widget;
+}
+
+function meza_dashboard_normalize_widget_titles(): void
+{
+    global $wp_meta_boxes;
+
+    if (!isset($wp_meta_boxes['dashboard']) || !is_array($wp_meta_boxes['dashboard'])) return;
+
+    foreach ($wp_meta_boxes['dashboard'] as $context => $priorities) {
+        if (!is_array($priorities)) continue;
+        foreach ($priorities as $priority => $widgets) {
+            if (!is_array($widgets)) continue;
+            foreach ($widgets as $widget_id => $widget) {
+                if (!is_array($widget)) continue;
+                $wp_meta_boxes['dashboard'][$context][$priority][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, $widget);
+            }
+        }
+    }
+}
+
 function meza_dashboard_allowed_widget_ids(array $widgets): array
 {
     $ids = [
         'column1' => [],
-        'column2' => ['dashboard_right_now', 'wp_mail_smtp_reports_widget_lite', 'dashboard_site_health'],
-        'column3' => ['ws_php_error_log'],
+        'column2' => ['dashboard_right_now'],
+        'column3' => [],
     ];
 
     $site_kit_widget_id = meza_dashboard_find_site_kit_widget_id($widgets);
     if ($site_kit_widget_id !== '') $ids['column1'][] = $site_kit_widget_id;
+
+    $woocommerce_widget_id = meza_dashboard_find_woocommerce_status_widget_id($widgets);
+    if ($woocommerce_widget_id !== '') $ids['column2'][] = $woocommerce_widget_id;
+
+    if (isset($widgets['dashboard_site_health'])) $ids['column2'][] = 'dashboard_site_health';
+
+    $wp_mail_smtp_widget_id = meza_dashboard_find_wp_mail_smtp_widget_id($widgets);
+    if ($wp_mail_smtp_widget_id !== '') $ids['column2'][] = $wp_mail_smtp_widget_id;
+
+    $php_error_log_widget_id = meza_dashboard_find_php_error_log_widget_id($widgets);
+    if ($php_error_log_widget_id !== '') $ids['column3'][] = $php_error_log_widget_id;
 
     // Keep only widgets that actually exist for this user.
     foreach ($ids as $column => $column_ids) {
@@ -1291,13 +1514,13 @@ add_action('wp_dashboard_setup', function () {
     ];
 
     foreach ($allowed['column1'] as $widget_id) {
-        $wp_meta_boxes['dashboard']['normal']['core'][$widget_id] = $widgets[$widget_id]['widget'];
+        $wp_meta_boxes['dashboard']['normal']['core'][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, (array) $widgets[$widget_id]['widget']);
     }
     foreach ($allowed['column2'] as $widget_id) {
-        $wp_meta_boxes['dashboard']['side']['core'][$widget_id] = $widgets[$widget_id]['widget'];
+        $wp_meta_boxes['dashboard']['side']['core'][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, (array) $widgets[$widget_id]['widget']);
     }
     foreach ($allowed['column3'] as $widget_id) {
-        $wp_meta_boxes['dashboard']['column3']['core'][$widget_id] = $widgets[$widget_id]['widget'];
+        $wp_meta_boxes['dashboard']['column3']['core'][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, (array) $widgets[$widget_id]['widget']);
     }
 
     // Keep Screen Options aligned with the enforced set.
@@ -1312,6 +1535,61 @@ add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
     return array_values(array_unique(array_merge((array) $hidden, $forced_hidden)));
 }, 100, 2);
 
+// Ensure Screen Options checkbox labels use the same custom widget titles.
+add_action('in_admin_header', function () {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'dashboard') return;
+    meza_dashboard_normalize_widget_titles();
+}, 1);
+
+// Form edit screen defaults: keep Slug visible in Screen Options for first-load users.
+add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'form') return $hidden;
+    return array_values(array_diff((array) $hidden, ['slugdiv']));
+}, 200, 2);
+
+// Form edit screen defaults: place Slug directly under Title (before ACF field groups).
+add_filter('default_user_option_meta-box-order_form', function ($default_order) {
+    $order = is_string($default_order) ? $default_order : '';
+    $contexts = [];
+    if ($order !== '') {
+        parse_str($order, $contexts);
+    }
+
+    $normal_items = [];
+    if (isset($contexts['normal'])) {
+        $normal_items = array_map('sanitize_key', explode(',', (string) $contexts['normal']));
+        $normal_items = array_values(array_filter($normal_items, static function ($id) {
+            return $id !== '';
+        }));
+    }
+
+    $normal_items = array_values(array_diff($normal_items, ['slugdiv']));
+    array_unshift($normal_items, 'slugdiv');
+    $contexts['normal'] = implode(',', array_values(array_unique($normal_items)));
+
+    // Keep Publish in the side column when no default is provided.
+    if (!isset($contexts['side']) || trim((string) $contexts['side']) === '') {
+        $contexts['side'] = 'submitdiv';
+    }
+
+    $pairs = [];
+    foreach ($contexts as $context => $boxes) {
+        $context_key = sanitize_key((string) $context);
+        if ($context_key === '') continue;
+
+        $box_ids = array_map('sanitize_key', explode(',', (string) $boxes));
+        $box_ids = array_values(array_unique(array_filter($box_ids, static function ($id) {
+            return $id !== '';
+        })));
+        if (empty($box_ids)) continue;
+
+        $pairs[] = $context_key . '=' . implode(',', $box_ids);
+    }
+
+    return implode('&', $pairs);
+}, 10, 1);
+
 // Remove the Dashboard welcome panel for all users.
 add_action('admin_init', function () {
     remove_action('welcome_panel', 'wp_welcome_panel');
@@ -1320,6 +1598,8 @@ add_action('admin_init', function () {
 // Hide selected admin menu items that we do not expose to editors/admins.
 add_action('admin_menu', function () {
     remove_menu_page('edit-comments.php');
+    remove_menu_page('godaddy-get-help');
+    remove_menu_page('admin.php?page=godaddy-get-help');
 
     remove_submenu_page('edit.php', 'edit-tags.php?taxonomy=post_tag');
 
@@ -1330,6 +1610,28 @@ add_action('admin_menu', function () {
 
     remove_submenu_page('plugins.php', 'plugin-editor.php');
 }, 999);
+
+// Remove "Get Help" top-level menu item when present.
+add_action('admin_menu', function () {
+    global $menu;
+    if (!is_array($menu) || empty($menu)) return;
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item)) continue;
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+        $is_get_help = ($label === 'get help');
+        $is_godaddy_get_help = $slug === 'godaddy-get-help' || str_contains($slug, 'page=godaddy-get-help');
+        $is_godaddy_help = str_contains($slug, 'gd-system-help') || (str_contains($slug, 'godaddy') && str_contains($slug, 'help'));
+
+        if ($is_get_help || $is_godaddy_get_help || $is_godaddy_help) {
+            unset($menu[$index]);
+        }
+    }
+
+    $menu = array_values($menu);
+}, PHP_INT_MAX - 3);
 
 // Remove late-registered Appearance submenu items by matching the final submenu array.
 add_action('admin_menu', function () {
@@ -1387,9 +1689,6 @@ function meza_normalize_admin_plugin_menus(): void
     global $menu, $submenu;
 
     if (!is_array($menu) || !is_array($submenu)) return;
-
-    $redirects_item = null;
-
     foreach ($menu as $index => &$item) {
         if (!is_array($item)) continue;
 
@@ -1410,6 +1709,13 @@ function meza_normalize_admin_plugin_menus(): void
         $is_yoast = str_contains($slug, 'wpseo')
             || str_contains($title, 'yoast seo')
             || $title === 'seo';
+        $is_godaddy_dashboard = str_contains($slug, 'page=wp-dashboard')
+            || str_contains($slug, 'godaddy')
+            || $title === 'godaddy';
+        $is_customer_sign_generator = str_contains($slug, 'client-sign-generator')
+            || $title === 'customer sign generator';
+        $is_make = str_contains($slug, 'ds-make')
+            || $title === 'make';
 
         if ($is_wp_mail_smtp) {
             $item[0] = 'Mail';
@@ -1440,6 +1746,27 @@ function meza_normalize_admin_plugin_menus(): void
         if ($is_yoast) {
             $item[0] = 'SEO';
             if (isset($item[3])) $item[3] = 'SEO';
+            continue;
+        }
+
+        if ($is_godaddy_dashboard) {
+            $item[0] = 'Hosting';
+            if (isset($item[3])) $item[3] = 'Hosting';
+            $item[6] = 'dashicons-admin-site-alt3';
+            continue;
+        }
+
+        if ($is_customer_sign_generator) {
+            $item[0] = 'Customer Sign Generator';
+            if (isset($item[3])) $item[3] = 'Customer Sign Generator';
+            $item[6] = 'dashicons-rest-api';
+            continue;
+        }
+
+        if ($is_make) {
+            $item[0] = 'Make';
+            if (isset($item[3])) $item[3] = 'Make';
+            $item[6] = 'dashicons-share-alt';
         }
     }
     unset($item);
@@ -1470,10 +1797,6 @@ function meza_normalize_admin_plugin_menus(): void
             if ($parent_slug === 'tools.php' && $is_redirection) {
                 $item[0] = 'Redirects';
                 if (isset($item[3])) $item[3] = 'Redirects';
-                if ($redirects_item === null) {
-                    $redirects_item = $item;
-                }
-                unset($items[$index]);
                 continue;
             }
 
@@ -1525,8 +1848,8 @@ function meza_normalize_admin_plugin_menus(): void
             }
 
             if ($parent_slug === 'options-general.php' && $is_wp_super_cache) {
-                $item[0] = 'Cache';
-                if (isset($item[3])) $item[3] = 'Cache';
+                $item[0] = 'Page Cache';
+                if (isset($item[3])) $item[3] = 'Page Cache';
                 continue;
             }
 
@@ -1544,26 +1867,11 @@ function meza_normalize_admin_plugin_menus(): void
         unset($item);
         $items = array_values($items);
 
-        if ($parent_slug === 'options-general.php' && is_array($redirects_item)) {
-            $has_redirects = false;
-            foreach ($items as $existing_item) {
-                if (!is_array($existing_item)) continue;
-                $existing_label = trim(wp_strip_all_tags((string) ($existing_item[0] ?? '')));
-                if (strcasecmp($existing_label, 'Redirects') === 0) {
-                    $has_redirects = true;
-                    break;
-                }
-            }
-
-            if (!$has_redirects) {
-                $items[] = $redirects_item;
-            }
-        }
-
         if ($parent_slug === 'options-general.php') {
             $ordered_labels = [
                 'Redirects',
-                'Cache',
+                'Page Cache',
+                'Object Cache',
                 'Image Performance',
                 'Post Ordering',
                 'Post Duplication',
@@ -1703,7 +2011,56 @@ function meza_rebuild_content_menu_group(): void
     }
 
     if ($inserted) {
-        $menu = $rebuilt;
+        $cleaned = [];
+        $count = count($rebuilt);
+
+        for ($i = 0; $i < $count; $i++) {
+            $item = $rebuilt[$i];
+            if (!is_array($item)) {
+                $cleaned[] = $item;
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            $classes = strtolower((string) ($item[4] ?? ''));
+            $is_separator = str_contains($classes, 'wp-menu-separator') || str_starts_with($slug, 'separator');
+            if (!$is_separator) {
+                $cleaned[] = $item;
+                continue;
+            }
+
+            $prev = null;
+            for ($p = $i - 1; $p >= 0; $p--) {
+                if (is_array($rebuilt[$p])) {
+                    $prev = $rebuilt[$p];
+                    break;
+                }
+            }
+
+            $next = null;
+            for ($n = $i + 1; $n < $count; $n++) {
+                if (is_array($rebuilt[$n])) {
+                    $next = $rebuilt[$n];
+                    break;
+                }
+            }
+
+            // Drop separators at edges and collapse stacked separators.
+            if ($prev === null || $next === null) continue;
+            if (!empty($cleaned)) {
+                $last = $cleaned[count($cleaned) - 1];
+                if (is_array($last)) {
+                    $last_slug = (string) ($last[2] ?? '');
+                    $last_classes = strtolower((string) ($last[4] ?? ''));
+                    $last_is_separator = str_contains($last_classes, 'wp-menu-separator') || str_starts_with($last_slug, 'separator');
+                    if ($last_is_separator) continue;
+                }
+            }
+
+            $cleaned[] = $item;
+        }
+
+        $menu = $cleaned;
     }
 }
 
@@ -1721,6 +2078,7 @@ function meza_reorder_dashboard_utility_items(): void
         'web_analytics' => null,
         'seo' => null,
         'backups' => null,
+        'customer_sign_generator' => null,
     ];
     $matched_indexes = [];
 
@@ -1744,6 +2102,8 @@ function meza_reorder_dashboard_utility_items(): void
             || str_contains($title, 'seo');
         $is_updraft = str_contains($slug, 'updraft')
             || in_array($title, ['backups', 'updraft', 'updraftplus'], true);
+        $is_customer_sign_generator = str_contains($slug, 'client-sign-generator')
+            || $title === 'customer sign generator';
 
         if ($is_site_kit && $ordered_items['web_analytics'] === null) {
             $ordered_items['web_analytics'] = $item;
@@ -1759,6 +2119,12 @@ function meza_reorder_dashboard_utility_items(): void
 
         if ($is_updraft && $ordered_items['backups'] === null) {
             $ordered_items['backups'] = $item;
+            $matched_indexes[] = (int) $index;
+            continue;
+        }
+
+        if ($is_customer_sign_generator && $ordered_items['customer_sign_generator'] === null) {
+            $ordered_items['customer_sign_generator'] = $item;
             $matched_indexes[] = (int) $index;
         }
     }
@@ -1812,13 +2178,20 @@ function meza_group_post_settings_utilities(): void
     $utility_indexes = [];
 
     foreach ($menu as $index => $item) {
-        if ((int) $index <= $settings_index || !is_array($item)) continue;
+        if (!is_array($item)) continue;
 
         $classes = strtolower((string) ($item[4] ?? ''));
         if (str_contains($classes, 'wp-menu-separator')) continue;
 
         $slug = strtolower((string) ($item[2] ?? ''));
         $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+        $is_hosting = str_contains($slug, 'page=wp-dashboard')
+            || str_contains($slug, 'godaddy')
+            || in_array($label, ['hosting', 'godaddy'], true);
+        $is_make = str_contains($slug, 'ds-make')
+            || $label === 'make';
+
+        if ((int) $index <= $settings_index && !$is_make && !$is_hosting) continue;
 
         $is_acf = $slug === 'edit.php?post_type=acf-field-group'
             || $label === 'acf';
@@ -1827,8 +2200,10 @@ function meza_group_post_settings_utilities(): void
         $is_security = str_contains($slug, 'aiowpsec')
             || str_contains($slug, 'wp-security')
             || $label === 'security';
+        $is_make = $is_make || str_contains($slug, 'ds-make')
+            || $label === 'make';
 
-        if (!$is_acf && !$is_mail && !$is_security) continue;
+        if (!$is_acf && !$is_mail && !$is_security && !$is_hosting && !$is_make) continue;
 
         $utility_indexes[] = (int) $index;
         $utility_items[] = [
@@ -1840,7 +2215,22 @@ function meza_group_post_settings_utilities(): void
     if (empty($utility_items)) return;
 
     usort($utility_items, static function (array $a, array $b): int {
-        return strnatcasecmp($a['label'], $b['label']);
+        $priority = [
+            'acf' => 10,
+            'mail' => 20,
+            'security' => 30,
+            'hosting' => 40,
+            'godaddy' => 40,
+            'make' => 50,
+        ];
+
+        $label_a = strtolower((string) ($a['label'] ?? ''));
+        $label_b = strtolower((string) ($b['label'] ?? ''));
+        $rank_a = $priority[$label_a] ?? 100;
+        $rank_b = $priority[$label_b] ?? 100;
+
+        if ($rank_a !== $rank_b) return $rank_a <=> $rank_b;
+        return strnatcasecmp($label_a, $label_b);
     });
 
     rsort($utility_indexes, SORT_NUMERIC);
@@ -1870,8 +2260,59 @@ function meza_group_post_settings_utilities(): void
     array_splice($menu, $settings_index + 1, 0, $items_to_insert);
 }
 
-// Keep ACF, Mail, and Security in their own utility group below Settings.
+// Keep ACF, Mail, Security, Hosting, and Make in their own utility group below Settings.
 add_action('admin_menu', 'meza_group_post_settings_utilities', PHP_INT_MAX);
+
+function meza_cleanup_menu_separators(): void
+{
+    global $menu;
+    if (!is_array($menu) || empty($menu)) return;
+
+    $is_separator = static function ($item): bool {
+        if (!is_array($item)) return false;
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $classes = strtolower((string) ($item[4] ?? ''));
+        return str_starts_with($slug, 'separator') || str_contains($classes, 'wp-menu-separator');
+    };
+
+    $cleaned = [];
+    $count = count($menu);
+    for ($i = 0; $i < $count; $i++) {
+        $item = $menu[$i];
+
+        if (!$is_separator($item)) {
+            $cleaned[] = $item;
+            continue;
+        }
+
+        $prev_non_sep = null;
+        for ($p = count($cleaned) - 1; $p >= 0; $p--) {
+            if (!$is_separator($cleaned[$p])) {
+                $prev_non_sep = $cleaned[$p];
+                break;
+            }
+        }
+
+        $next_non_sep = null;
+        for ($n = $i + 1; $n < $count; $n++) {
+            if (!$is_separator($menu[$n])) {
+                $next_non_sep = $menu[$n];
+                break;
+            }
+        }
+
+        // Drop separators at edges and collapse stacked separators to a single spacer.
+        if ($prev_non_sep === null || $next_non_sep === null) continue;
+        if (!empty($cleaned) && $is_separator($cleaned[count($cleaned) - 1])) continue;
+
+        $cleaned[] = $item;
+    }
+
+    $menu = $cleaned;
+}
+
+// Final top-level menu cleanup pass.
+add_action('admin_menu', 'meza_cleanup_menu_separators', PHP_INT_MAX);
 
 // Admin Menu Editor swaps in its custom menu after admin_menu, so reapply these mutations then as well.
 add_action('admin_menu_editor-menu_replaced', function () {
@@ -1879,6 +2320,7 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_rebuild_content_menu_group();
     meza_reorder_dashboard_utility_items();
     meza_group_post_settings_utilities();
+    meza_cleanup_menu_separators();
 }, PHP_INT_MAX);
 
 // Move Site Health from Tools to Dashboard, directly under Updates.
@@ -1952,7 +2394,7 @@ add_action('admin_menu', function () {
     $submenu['tools.php'] = array_values($submenu['tools.php']);
 }, 100001);
 
-// Shorten post-type "Add New" submenu labels to "Add".
+// Normalize post-type "Add New" submenu labels to "Add {Post Type}".
 add_action('admin_menu', function () {
     global $submenu;
 
@@ -1963,6 +2405,22 @@ add_action('admin_menu', function () {
             || str_starts_with((string) $parent_slug, 'edit.php?post_type=');
         if (!$is_post_type_parent) continue;
 
+        $post_type = 'post';
+        if ($parent_slug !== 'edit.php') {
+            parse_str((string) parse_url((string) $parent_slug, PHP_URL_QUERY), $query_args);
+            $post_type = (string) ($query_args['post_type'] ?? '');
+            if ($post_type === '') continue;
+        }
+
+        $post_type_object = get_post_type_object($post_type);
+        $singular_label = '';
+        if ($post_type_object instanceof WP_Post_Type) {
+            $singular_label = trim((string) ($post_type_object->labels->singular_name ?? ''));
+        }
+        if ($singular_label === '') {
+            $singular_label = ucwords(str_replace(['-', '_'], ' ', $post_type));
+        }
+
         foreach ($items as &$item) {
             if (!is_array($item)) continue;
 
@@ -1972,9 +2430,11 @@ add_action('admin_menu', function () {
                 || str_starts_with($slug, 'post-new.php?');
 
             if ($is_add_screen && preg_match('/^add\s+new\b/i', $label)) {
-                $new_label = preg_replace('/^add\s+new\b\s*/i', 'Add ', $label) ?? $label;
+                $new_label = 'Add';
+                if ($singular_label !== '') {
+                    $new_label .= ' ' . $singular_label;
+                }
                 $new_label = trim(preg_replace('/\s+/', ' ', $new_label) ?? $new_label);
-                if ($new_label === '') $new_label = 'Add';
 
                 $item[0] = $new_label;
                 if (isset($item[3])) $item[3] = $new_label;
@@ -1985,7 +2445,7 @@ add_action('admin_menu', function () {
     unset($items);
 }, 100002);
 
-// Simplify post-type taxonomy submenu labels by removing the parent post type name.
+// Simplify post-type taxonomy/import/export submenu labels by removing the parent post type name.
 add_action('admin_menu', function () {
     global $menu, $submenu;
 
@@ -2030,7 +2490,11 @@ add_action('admin_menu', function () {
 
             $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
             $slug = strtolower((string) ($item[2] ?? ''));
-            if (!str_starts_with($slug, 'edit-tags.php?taxonomy=')) continue;
+            $is_taxonomy_item = str_starts_with($slug, 'edit-tags.php?taxonomy=');
+            $is_import_export_item = str_contains($slug, 'import')
+                || str_contains($slug, 'export')
+                || (bool) preg_match('/\b(import|export)\b/i', $label);
+            if (!$is_taxonomy_item && !$is_import_export_item) continue;
             if ($label === '') continue;
 
             $new_label = $label;
@@ -2066,23 +2530,137 @@ add_action('admin_menu', function () {
  *  ADMIN LIST ACTIONS
  *  ================================ */
 
-function meza_remove_quick_edit_action(array $actions): array
+function meza_get_post_type_singular_label($post): string
+{
+    $post_obj = null;
+    if ($post instanceof WP_Post) $post_obj = $post;
+    if (is_numeric($post) && (int) $post > 0) $post_obj = get_post((int) $post);
+    if (!($post_obj instanceof WP_Post)) return 'Post';
+
+    $post_type_obj = get_post_type_object((string) $post_obj->post_type);
+    if (is_object($post_type_obj) && isset($post_type_obj->labels->singular_name)) {
+        $label = trim((string) $post_type_obj->labels->singular_name);
+        if ($label !== '') return $label;
+    }
+
+    $fallback = trim(str_replace(['-', '_'], ' ', (string) $post_obj->post_type));
+    return $fallback !== '' ? ucwords($fallback) : 'Post';
+}
+
+function meza_get_view_post_label($post): string
+{
+    return sprintf(__('View %s'), meza_get_post_type_singular_label($post));
+}
+
+function meza_get_preview_post_label($post): string
+{
+    return sprintf(__('Preview %s'), meza_get_post_type_singular_label($post));
+}
+
+function meza_update_admin_action_link(string $html, string $label = ''): string
+{
+    if (trim($html) === '') return $html;
+
+    return preg_replace_callback('/<a\b([^>]*)>(.*?)<\/a>/is', static function ($matches) use ($label) {
+        $attrs = (string) ($matches[1] ?? '');
+        $text = (string) ($matches[2] ?? '');
+
+        if (!preg_match('/\btarget\s*=/i', $attrs)) {
+            $attrs .= ' target="_blank"';
+        }
+        if (!preg_match('/\brel\s*=/i', $attrs)) {
+            $attrs .= ' rel="noopener noreferrer"';
+        }
+
+        if ($label !== '') $text = esc_html($label);
+        return '<a' . $attrs . '>' . $text . '</a>';
+    }, $html, 1) ?? $html;
+}
+
+function meza_remove_quick_edit_action(array $actions, $post = null): array
 {
     if (isset($actions['inline hide-if-no-js'])) unset($actions['inline hide-if-no-js']);
     if (isset($actions['inline'])) unset($actions['inline']);
+
     if (isset($actions['edit']) && is_string($actions['edit'])) {
-        $actions['edit'] = preg_replace(
-            '/<a\s/i',
-            '<a target="_blank" rel="noopener noreferrer" ',
-            $actions['edit'],
-            1
-        ) ?? $actions['edit'];
+        $actions['edit'] = meza_update_admin_action_link($actions['edit']);
     }
+    if (isset($actions['view']) && is_string($actions['view'])) {
+        $actions['view'] = meza_update_admin_action_link($actions['view'], meza_get_view_post_label($post));
+    }
+    if (isset($actions['preview']) && is_string($actions['preview'])) {
+        $actions['preview'] = meza_update_admin_action_link($actions['preview'], meza_get_preview_post_label($post));
+    }
+
     return $actions;
 }
 
-add_filter('post_row_actions', 'meza_remove_quick_edit_action', 1000);
-add_filter('page_row_actions', 'meza_remove_quick_edit_action', 1000);
+add_filter('post_row_actions', 'meza_remove_quick_edit_action', 1000, 2);
+add_filter('page_row_actions', 'meza_remove_quick_edit_action', 1000, 2);
+
+add_filter('post_updated_messages', function (array $messages): array {
+    global $post;
+    if (!($post instanceof WP_Post)) return $messages;
+
+    $post_type = (string) $post->post_type;
+    if ($post_type === '' || !isset($messages[$post_type]) || !is_array($messages[$post_type])) return $messages;
+
+    $view_label = meza_get_view_post_label($post);
+    $preview_label = meza_get_preview_post_label($post);
+
+    foreach ($messages[$post_type] as $index => $message) {
+        if (!is_string($message) || $message === '') continue;
+
+        $messages[$post_type][$index] = preg_replace_callback('/<a\b([^>]*)>(.*?)<\/a>/is', static function ($matches) use ($view_label, $preview_label) {
+            $attrs = (string) ($matches[1] ?? '');
+            $text_html = (string) ($matches[2] ?? '');
+            $text_plain = strtolower(trim(wp_strip_all_tags($text_html)));
+            $label = str_contains($text_plain, 'preview') ? $preview_label : $view_label;
+
+            if (!preg_match('/\btarget\s*=/i', $attrs)) {
+                $attrs .= ' target="_blank"';
+            }
+            if (!preg_match('/\brel\s*=/i', $attrs)) {
+                $attrs .= ' rel="noopener noreferrer"';
+            }
+
+            return '<a' . $attrs . '>' . esc_html($label) . '</a>';
+        }, $message) ?? $message;
+    }
+
+    return $messages;
+}, 1000);
+
+add_action('admin_bar_menu', function ($wp_admin_bar) {
+    if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
+
+    $view_node = $wp_admin_bar->get_node('view');
+    if (!is_object($view_node)) return;
+
+    $post = get_post();
+    if (!($post instanceof WP_Post)) return;
+
+    $meta = is_array($view_node->meta ?? null) ? $view_node->meta : [];
+    $meta['target'] = '_blank';
+
+    $rel = trim((string) ($meta['rel'] ?? ''));
+    if ($rel === '') {
+        $meta['rel'] = 'noopener noreferrer';
+    } else {
+        if (!preg_match('/\bnoopener\b/i', $rel)) $rel .= ' noopener';
+        if (!preg_match('/\bnoreferrer\b/i', $rel)) $rel .= ' noreferrer';
+        $meta['rel'] = trim($rel);
+    }
+
+    $wp_admin_bar->add_node([
+        'id' => (string) $view_node->id,
+        'parent' => $view_node->parent ?? false,
+        'title' => esc_html(meza_get_view_post_label($post)),
+        'href' => $view_node->href ?? false,
+        'group' => !empty($view_node->group),
+        'meta' => $meta,
+    ]);
+}, 100001);
 
 /** ================================
  *  ACF ADMIN COLUMN NORMALIZATION
@@ -2179,8 +2757,14 @@ add_action('admin_head-edit.php', function () {
     $is_acf_screen = meza_is_acf_admin_post_type((string) ($screen->post_type ?? ''));
 
     echo '<style id="meza-admin-list-column-widths">' .
-        '.wp-list-table .column-mz_id{width:50px;}' .
+        '.wp-list-table .column-mz_id{width:75px;}' .
+        '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
+        '.wp-list-table .column-mz_organization_url{width:125px;max-width:125px;}' .
+        '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
+        '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
+        '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_thumbnail{width:125px;}' .
+        '.wp-list-table td.column-mz_thumbnail{vertical-align:top!important;}' .
         '.wp-list-table .column-mz_thumbnail .row-actions{font-size:11px;line-height:1.1;}' .
         '.wp-list-table .column-title{width:225px;}' .
         '.wp-list-table .column-mz_modified,.wp-list-table .column-mz_published{width:225px;}' .
@@ -2267,8 +2851,15 @@ function meza_remove_admin_bar_nodes($wp_admin_bar): void
             || str_contains($title, 'updraft')
             || str_contains($href, 'updraft')
             || str_contains($meta_class, 'updraft');
+        $is_feedback = str_contains($title, 'leave feedback');
+        $is_assistant = (
+            $title === 'assistant'
+            || str_contains($title, 'assistant')
+        );
 
-        if ($is_yoast || $is_updraft) $wp_admin_bar->remove_node((string) $node->id);
+        if ($is_yoast || $is_updraft || $is_feedback || $is_assistant) {
+            $wp_admin_bar->remove_node((string) $node->id);
+        }
     }
 }
 
@@ -2280,6 +2871,241 @@ add_action('wp_before_admin_bar_render', function () {
     global $wp_admin_bar;
     meza_remove_admin_bar_nodes($wp_admin_bar);
 }, 99999);
+
+function meza_position_flush_server_cache_node($wp_admin_bar): void
+{
+    if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
+
+    $flush_node_id = 'meza-flush-server-cache';
+    $nodes = $wp_admin_bar->get_nodes();
+    if (!is_array($nodes)) return;
+
+    $delete_cache_node = null;
+    $query_monitor_node = null;
+    $quick_link_node_ids = [];
+
+    foreach ($nodes as $node) {
+        if (!is_object($node) || !isset($node->id)) continue;
+
+        $node_id = strtolower((string) ($node->id ?? ''));
+        $title = strtolower(trim(wp_strip_all_tags((string) ($node->title ?? ''))));
+        $href = strtolower((string) ($node->href ?? ''));
+
+        $is_quick_links = (str_contains($title, 'quick links') && (str_contains($title, 'godaddy') || str_contains($node_id, 'godaddy') || str_contains($href, 'godaddy') || str_contains($href, 'wpaas')))
+            || (str_contains($node_id, 'godaddy') && str_contains($node_id, 'quick'))
+            || (str_contains($href, 'godaddy') && str_contains($href, 'quick'))
+            || (str_contains($href, 'wpaas') && str_contains($title, 'quick links'));
+        if ($is_quick_links) {
+            $quick_link_node_ids[] = (string) $node->id;
+        }
+
+        $is_delete_cache = str_contains($title, 'delete cache')
+            || str_contains($title, 'clear page cache')
+            || (str_contains($node_id, 'super') && str_contains($node_id, 'cache'))
+            || (str_contains($href, 'wp-super-cache') && str_contains($href, 'cache'))
+            || str_contains($href, 'wpsc_delete_cache');
+        if ($is_delete_cache && $delete_cache_node === null) {
+            $delete_cache_node = $node;
+        }
+
+        $node_parent = strtolower((string) ($node->parent ?? ''));
+        $is_query_monitor = ($node_id === 'query-monitor')
+            || ($title === 'query monitor' && ($node_parent === '' || $node_parent === 'top-secondary'));
+        if ($is_query_monitor && $query_monitor_node === null) {
+            $query_monitor_node = $node;
+        }
+    }
+
+    $quick_link_node_ids = array_values(array_unique($quick_link_node_ids));
+    $remove_ids = [$flush_node_id];
+    foreach ($quick_link_node_ids as $quick_link_node_id) {
+        $remove_ids[] = $quick_link_node_id;
+    }
+
+    // Remove quick-links descendants as well so no dropdown survives.
+    $changed = true;
+    while ($changed) {
+        $changed = false;
+        foreach ($nodes as $node) {
+            if (!is_object($node) || !isset($node->id)) continue;
+
+            $id = (string) ($node->id ?? '');
+            $parent = (string) ($node->parent ?? '');
+            if ($id === '' || $parent === '') continue;
+
+            if (in_array($parent, $remove_ids, true) && !in_array($id, $remove_ids, true)) {
+                $remove_ids[] = $id;
+                $changed = true;
+            }
+        }
+    }
+
+    foreach (array_unique($remove_ids) as $remove_id) {
+        if ($remove_id === '') continue;
+        $wp_admin_bar->remove_node($remove_id);
+    }
+
+    // This runs on multiple admin-bar hooks. On a later pass, Quick Links may
+    // already be gone, so treat "no matching node remains" as success.
+    $quick_links_hidden_successfully = true;
+    $remaining_nodes = $wp_admin_bar->get_nodes();
+    if (is_array($remaining_nodes)) {
+        foreach ($remaining_nodes as $node) {
+            if (!is_object($node) || !isset($node->id)) continue;
+
+            $node_id = strtolower((string) ($node->id ?? ''));
+            $title = strtolower(trim(wp_strip_all_tags((string) ($node->title ?? ''))));
+            $href = strtolower((string) ($node->href ?? ''));
+
+            $is_quick_links = (str_contains($title, 'quick links') && (str_contains($title, 'godaddy') || str_contains($node_id, 'godaddy') || str_contains($href, 'godaddy') || str_contains($href, 'wpaas')))
+                || (str_contains($node_id, 'godaddy') && str_contains($node_id, 'quick'))
+                || (str_contains($href, 'godaddy') && str_contains($href, 'quick'))
+                || (str_contains($href, 'wpaas') && str_contains($title, 'quick links'));
+            if ($is_quick_links) {
+                $quick_links_hidden_successfully = false;
+                break;
+            }
+        }
+    }
+
+    if (!$quick_links_hidden_successfully) {
+        $wp_admin_bar->remove_node($flush_node_id);
+    }
+
+    $add_clone = static function ($node, string $title_override = '', $parent_override = null) use ($wp_admin_bar): void {
+        if (!($node instanceof stdClass)) return;
+        $node_id = (string) ($node->id ?? '');
+        if ($node_id === '') return;
+
+        $title = ($title_override !== '') ? $title_override : ($node->title ?? '');
+        $meta = is_array($node->meta ?? null) ? $node->meta : [];
+        if ($title_override !== '') {
+            $meta['title'] = $title_override;
+        }
+
+        $wp_admin_bar->add_node([
+            'id' => $node_id,
+            'parent' => ($parent_override !== null) ? $parent_override : ($node->parent ?? false),
+            'title' => $title,
+            'href' => $node->href ?? false,
+            'group' => !empty($node->group),
+            'meta' => $meta,
+        ]);
+    };
+
+    $add_flush = static function () use ($wp_admin_bar, $flush_node_id, $quick_links_hidden_successfully): void {
+        if (!$quick_links_hidden_successfully) {
+            $wp_admin_bar->remove_node($flush_node_id);
+            return;
+        }
+
+        // Keep users on the current screen while still triggering the WPaaS flush action.
+        $current_request_uri = (string) ($_SERVER['REQUEST_URI'] ?? '/wp-admin/');
+        if ($current_request_uri === '') {
+            $current_request_uri = '/wp-admin/';
+        }
+        $flush_href = remove_query_arg(['wpaas_action', 'wpaas_nonce'], $current_request_uri);
+        $flush_href = add_query_arg([
+            'wpaas_action' => 'flush_cache',
+            'wpaas_nonce' => '366b8ead40',
+        ], $flush_href);
+
+        $wp_admin_bar->add_node([
+            'id' => $flush_node_id,
+            'parent' => 'top-secondary',
+            'title' => 'Clear Server Cache',
+            'href' => $flush_href,
+            'group' => false,
+            'meta' => ['title' => 'Clear Server Cache'],
+        ]);
+    };
+
+    // Preferred order: Query Monitor, Clear Page Cache, Clear Server Cache.
+    if (($query_monitor_node instanceof stdClass) && ($delete_cache_node instanceof stdClass)) {
+        $query_monitor_id = (string) ($query_monitor_node->id ?? '');
+        $delete_cache_id = (string) ($delete_cache_node->id ?? '');
+        if ($query_monitor_id !== '') $wp_admin_bar->remove_node($query_monitor_id);
+        if ($delete_cache_id !== '') $wp_admin_bar->remove_node($delete_cache_id);
+
+        $add_clone($query_monitor_node, '', 'top-secondary');
+        $add_clone($delete_cache_node, 'Clear Page Cache', 'top-secondary');
+        $add_flush();
+        return;
+    }
+
+    if ($query_monitor_node instanceof stdClass) {
+        $query_monitor_id = (string) ($query_monitor_node->id ?? '');
+        if ($query_monitor_id !== '') $wp_admin_bar->remove_node($query_monitor_id);
+        $add_clone($query_monitor_node, '', 'top-secondary');
+        $add_flush();
+        return;
+    }
+
+    if ($delete_cache_node instanceof stdClass) {
+        $delete_cache_id = (string) ($delete_cache_node->id ?? '');
+        if ($delete_cache_id !== '') $wp_admin_bar->remove_node($delete_cache_id);
+        $add_clone($delete_cache_node, 'Clear Page Cache', 'top-secondary');
+        $add_flush();
+        return;
+    }
+
+    $add_flush();
+}
+
+// Remove GoDaddy Quick Links and only show Clear Server Cache if that removal succeeds.
+add_action('admin_bar_menu', function ($wp_admin_bar) {
+    meza_position_flush_server_cache_node($wp_admin_bar);
+}, PHP_INT_MAX);
+
+add_action('wp_before_admin_bar_render', function () {
+    global $wp_admin_bar;
+    meza_position_flush_server_cache_node($wp_admin_bar);
+}, PHP_INT_MAX);
+
+function meza_move_howdy_to_right_side_end($wp_admin_bar): void
+{
+    if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
+
+    $nodes = $wp_admin_bar->get_nodes();
+    if (!is_array($nodes)) return;
+
+    $my_account = null;
+    foreach ($nodes as $node) {
+        if (!is_object($node) || !isset($node->id)) continue;
+
+        $id = strtolower((string) ($node->id ?? ''));
+        $title = strtolower(trim(wp_strip_all_tags((string) ($node->title ?? ''))));
+        if ($id === 'my-account' || str_starts_with($title, 'howdy')) {
+            $my_account = $node;
+            break;
+        }
+    }
+
+    if (!($my_account instanceof stdClass)) return;
+
+    $my_account_id = (string) ($my_account->id ?? '');
+    if ($my_account_id === '') return;
+
+    $wp_admin_bar->remove_node($my_account_id);
+    $wp_admin_bar->add_node([
+        'id' => $my_account_id,
+        'parent' => 'top-secondary',
+        'title' => $my_account->title ?? '',
+        'href' => $my_account->href ?? false,
+        'group' => !empty($my_account->group),
+        'meta' => is_array($my_account->meta ?? null) ? $my_account->meta : [],
+    ]);
+}
+
+// Keep "Howdy, {User}" as the last right-side admin-bar item.
+add_action('admin_bar_menu', function ($wp_admin_bar) {
+    meza_move_howdy_to_right_side_end($wp_admin_bar);
+}, PHP_INT_MAX);
+
+add_action('wp_before_admin_bar_render', function () {
+    global $wp_admin_bar;
+    meza_move_howdy_to_right_side_end($wp_admin_bar);
+}, PHP_INT_MAX);
 
 // Keep the "New" admin-bar dropdown in alphabetical order.
 add_action('admin_bar_menu', function ($wp_admin_bar) {

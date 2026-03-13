@@ -44,6 +44,130 @@ if (!function_exists('mzf_get')) {
     }
 }
 
+if (!function_exists('mzf_get_crm_group')) {
+    function mzf_get_crm_group(): array
+    {
+        if (!function_exists('get_field')) {
+            return [];
+        }
+        $crm = get_field('crm', 'option');
+        return is_array($crm) ? $crm : [];
+    }
+}
+
+if (!function_exists('mzf_normalize_crm_platform')) {
+    function mzf_normalize_crm_platform(string $platform): string
+    {
+        $platform = strtolower(trim($platform));
+        $platform = str_replace(['_', ' '], '-', $platform);
+        $platform = preg_replace('/-+/', '-', $platform);
+
+        if (in_array($platform, ['constant-contact', 'constantcontact'], true)) {
+            return 'constant-contact';
+        }
+        if ($platform === 'mailchimp') {
+            return 'mailchimp';
+        }
+        if ($platform === 'zeffy') {
+            return 'zeffy';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('mzf_crm_platform')) {
+    function mzf_crm_platform(): string
+    {
+        $crm = mzf_get_crm_group();
+        $platform = (string) ($crm['platform'] ?? '');
+        return mzf_normalize_crm_platform($platform);
+    }
+}
+
+if (!function_exists('mzf_crm_platform_label')) {
+    function mzf_crm_platform_label(?string $platform = null): string
+    {
+        $slug = mzf_normalize_crm_platform((string) ($platform ?? mzf_crm_platform()));
+        if ($slug === 'constant-contact') {
+            return 'Constant Contact';
+        }
+        if ($slug === 'mailchimp') {
+            return 'Mailchimp';
+        }
+        if ($slug === 'zeffy') {
+            return 'Zeffy';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('mzf_crm_api_key')) {
+    function mzf_crm_api_key(?string $platform = null): string
+    {
+        $slug = mzf_normalize_crm_platform((string) ($platform ?? mzf_crm_platform()));
+        if ($slug === '') {
+            return '';
+        }
+        $crm = mzf_get_crm_group();
+        return trim((string) ($crm['api_' . $slug] ?? ''));
+    }
+}
+
+if (!function_exists('mzf_crm_list_url')) {
+    function mzf_crm_list_url(?string $platform = null): string
+    {
+        $slug = mzf_normalize_crm_platform((string) ($platform ?? mzf_crm_platform()));
+        if ($slug === '') {
+            return '';
+        }
+        $crm = mzf_get_crm_group();
+        $url = trim((string) ($crm['list_' . $slug] ?? ''));
+        if ($url === '') {
+            return '';
+        }
+        return (string) esc_url_raw($url);
+    }
+}
+
+if (!function_exists('mzf_crm_dashboard_url')) {
+    function mzf_crm_dashboard_url(?string $platform = null): string
+    {
+        $slug = mzf_normalize_crm_platform((string) ($platform ?? mzf_crm_platform()));
+        if ($slug === 'constant-contact') {
+            return 'https://app.constantcontact.com/pages/dashboard/home/';
+        }
+        if ($slug === 'mailchimp') {
+            return 'https://admin.mailchimp.com/';
+        }
+        if ($slug === 'zeffy') {
+            return 'https://www.zeffy.com/login';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('mzf_crm_click_url')) {
+    function mzf_crm_click_url(?string $platform = null): string
+    {
+        $slug = mzf_normalize_crm_platform((string) ($platform ?? mzf_crm_platform()));
+        if ($slug === '') {
+            return '';
+        }
+
+        $api_key = mzf_crm_api_key($slug);
+        $list_url = mzf_crm_list_url($slug);
+        if ($list_url !== '') {
+            return $list_url;
+        }
+
+        if ($api_key === '' && $list_url === '') {
+            return mzf_crm_dashboard_url($slug);
+        }
+
+        return '';
+    }
+}
+
 if (!function_exists('mzf_default_fields')) {
     function mzf_default_fields(): array
     {
@@ -55,6 +179,7 @@ if (!function_exists('mzf_default_fields')) {
             'ContactFirstName',
             'ContactLastName',
             'ContactPhone',
+            'ContactEmail',
             'Website',
             'Honeypot',
             'Company',
@@ -74,6 +199,7 @@ if (!function_exists('mzf_default_fields')) {
             'SignType',
             'ApparelType',
             'PrintType',
+            'PrintColor',
             'WrapType',
             'ItemName',
             'Products',
@@ -94,6 +220,8 @@ if (!function_exists('mzf_default_fields')) {
             'LocationDisplay',
             'Location',
             'Place',
+            'Latitude',
+            'Longitude',
             'ReceivingOption',
             'ReceivingAddress',
             'ReceivingPlaceID',
@@ -175,16 +303,11 @@ if (!function_exists('mzf_reject_unknown_fields')) {
 if (!function_exists('mzf_debug_allowed')) {
     function mzf_debug_allowed(array $src = []): bool
     {
-        $enabled = defined('MZF_DEBUG_ENABLED')
-            ? (bool) MZF_DEBUG_ENABLED
-            : (bool) mzf_get('debug_enabled', false);
+        // Debug is controlled only via wp-config constants.
+        $enabled = defined('MZF_DEBUG_ENABLED') ? (bool) MZF_DEBUG_ENABLED : false;
         $enabled = (bool) apply_filters('mzf_debug_enabled', $enabled, $src);
 
-        $session_enabled = function_exists('mzf_debug_session_enabled')
-            ? mzf_debug_session_enabled()
-            : false;
-
-        if (is_user_logged_in() && current_user_can('manage_options') && ($enabled || $session_enabled)) {
+        if (is_user_logged_in() && current_user_can('manage_options') && $enabled) {
             return true;
         }
 
@@ -192,9 +315,7 @@ if (!function_exists('mzf_debug_allowed')) {
             return false;
         }
 
-        $configured_key = defined('MZF_DEBUG_KEY')
-            ? (string) MZF_DEBUG_KEY
-            : (string) mzf_get('debug_key', '');
+        $configured_key = defined('MZF_DEBUG_KEY') ? (string) MZF_DEBUG_KEY : '';
         $configured_key = trim($configured_key);
         $provided_key = isset($src['debug_key']) ? trim((string) $src['debug_key']) : '';
 
@@ -396,6 +517,7 @@ if (!function_exists('mzf_render_template')) {
         $replacements = [];
         foreach ($tokens as $k => $v) {
             $replacements['{{' . $k . '}}'] = (string) $v;
+            $replacements['[[' . $k . ']]'] = (string) $v;
         }
         return trim(strtr($template, $replacements));
     }
@@ -425,14 +547,24 @@ if (!function_exists('mzf_apply_subject_templates')) {
             $name_company .= ' at ' . $company;
         }
 
+        $vocals_value = trim((string) ($data['Vocals'] ?? ''));
+        $vocals_subject = $vocals_value !== ''
+            ? (function_exists('mb_strtolower') ? mb_strtolower($vocals_value, 'UTF-8') : strtolower($vocals_value))
+            : '';
+        $vocals_or_vocalist = $vocals_subject;
+        if ($vocals_or_vocalist === '' || $vocals_or_vocalist === 'flexible') {
+            $vocals_or_vocalist = 'vocalist';
+        }
+
         $tokens = [
             'name'         => $name !== '' ? $name : 'A visitor',
             'company'      => $company,
             'name_company' => $name_company,
             'form_slug'    => $slug,
             'domain'       => (string) ($context['domain'] ?? ''),
-            'vocals'       => trim((string) ($data['Vocals'] ?? '')),
-            'vocals_or_vocalist' => (trim((string) ($data['Vocals'] ?? '')) !== '' ? trim((string) ($data['Vocals'] ?? '')) : 'vocalist'),
+            'site_domain'  => (string) ($context['domain'] ?? ''),
+            'vocals'       => $vocals_subject,
+            'vocals_or_vocalist' => $vocals_or_vocalist,
             'condom_count' => trim((string) ($data['CondomCount'] ?? '')),
             'state_clause' => (trim((string) ($data['LocationDisplay'] ?? '')) !== '' ? (' for ' . trim((string) ($data['LocationDisplay'] ?? ''))) : ''),
         ];

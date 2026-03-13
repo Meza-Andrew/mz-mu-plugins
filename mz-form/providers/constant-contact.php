@@ -19,8 +19,74 @@ if (!defined('CC_LIST_ID'))       define('CC_LIST_ID',       'af35f4c0-c3e2-11ef
 // Optional: set a tag id if you want to auto-tag signups (else leave blank)
 if (!defined('CC_TAG_ID'))        define('CC_TAG_ID',        ''); // e.g., '12345678-...'
 
+if (!function_exists('cc_get_api_key')) {
+    function cc_get_api_key(): string
+    {
+        if (defined('CC_API_KEY') && trim((string) CC_API_KEY) !== '') {
+            return trim((string) CC_API_KEY);
+        }
+
+        $crm = [];
+        if (function_exists('get_field')) {
+            $acf_crm = get_field('crm', 'option');
+            if (is_array($acf_crm)) {
+                $crm = $acf_crm;
+            } else {
+                // Backward/fallback read for environments using reversed args.
+                $acf_crm_fallback = get_field('option', 'crm');
+                if (is_array($acf_crm_fallback)) {
+                    $crm = $acf_crm_fallback;
+                }
+            }
+        }
+        if (empty($crm)) {
+            $opt_crm = get_option('crm');
+            if (is_array($opt_crm)) {
+                $crm = $opt_crm;
+            }
+        }
+
+        return trim((string) ($crm['api_constant-contact'] ?? $crm['api_constant_contact'] ?? ''));
+    }
+}
+
+if (!function_exists('cc_get_auth_context')) {
+    function cc_get_auth_context(): array
+    {
+        $oauth_token = cc_get_access_token();
+        if (!empty($oauth_token)) {
+            return ['token' => (string) $oauth_token, 'mode' => 'oauth'];
+        }
+
+        $api_key = cc_get_api_key();
+        if ($api_key !== '') {
+            return ['token' => $api_key, 'mode' => 'api_key'];
+        }
+
+        return [];
+    }
+}
+
+if (!function_exists('cc_has_wp_config_keys')) {
+    function cc_has_wp_config_keys(): bool
+    {
+        $client_id = defined('CC_CLIENT_ID') ? trim((string) CC_CLIENT_ID) : '';
+        $client_secret = defined('CC_CLIENT_SECRET') ? trim((string) CC_CLIENT_SECRET) : '';
+        $list_id = defined('CC_LIST_ID') ? trim((string) CC_LIST_ID) : '';
+
+        if ($client_id === '' || $client_secret === '' || $list_id === '') return false;
+        if (in_array($client_id, ['YOUR_CLIENT_ID', 'your_client_id'], true)) return false;
+        if (in_array($client_secret, ['YOUR_CLIENT_SECRET', 'your_client_secret'], true)) return false;
+
+        return true;
+    }
+}
+
 // --- Admin page to connect OAuth ---
 add_action('admin_menu', function () {
+    // Only expose this menu when credentials are explicitly provided via wp-config constants.
+    if (!cc_has_wp_config_keys()) return;
+
     add_submenu_page(
         'options-general.php',
         'Constant Contact',
@@ -126,13 +192,15 @@ if (!function_exists('cc_process_oauth_callback')) {
 if (!function_exists('cc_api_request')) {
     function cc_api_request($method, $url, $payload = null, $headers = [])
     {
-        $token = cc_get_access_token();
-        if (!$token) return new WP_Error('cc_no_token', 'No Constant Contact token');
+        $auth = cc_get_auth_context();
+        if (empty($auth['token'])) {
+            return new WP_Error('cc_no_auth', 'No Constant Contact OAuth token or API key');
+        }
 
         $args = [
             'method'  => strtoupper($method),
             'headers' => array_merge([
-                'Authorization' => 'Bearer ' . $token,
+                'Authorization' => 'Bearer ' . $auth['token'],
                 'Accept'        => 'application/json',
             ], $headers),
             'timeout' => 20,
@@ -146,7 +214,7 @@ if (!function_exists('cc_api_request')) {
         if (is_wp_error($resp)) return $resp;
 
         $code = wp_remote_retrieve_response_code($resp);
-        if ($code === 401) {
+        if ($code === 401 && ($auth['mode'] ?? '') === 'oauth') {
             // try one refresh only
             $token = cc_get_access_token(999999);
             if (!$token) return $resp;
@@ -159,6 +227,13 @@ if (!function_exists('cc_api_request')) {
 if (!function_exists('cc_get_access_token')) {
     function cc_get_access_token($skew_seconds = 300) // refresh ~5m early
     {
+        if (function_exists('mzf_crm_api_key')) {
+            $crm_key = mzf_crm_api_key('constant-contact');
+            if ($crm_key !== '') {
+                return $crm_key;
+            }
+        }
+
         $t = get_option('cc_tokens');
         if (empty($t['access_token'])) return false;
 
@@ -252,9 +327,9 @@ if (!function_exists('mz_cc_add_contact')) {
         $email = isset($data['Email']) ? sanitize_email($data['Email']) : '';
         if (!is_email($email)) return;
 
-        $token = cc_get_access_token();
-        if (!$token) {
-            error_log('CC: no access token; skipping signup.');
+        $auth = cc_get_auth_context();
+        if (empty($auth['token'])) {
+            error_log('CC: no OAuth token or API key; skipping signup.');
             return;
         }
 
@@ -309,8 +384,8 @@ if (!function_exists('mz_cc_add_contact')) {
             $tagResp = wp_remote_post(
                 'https://api.cc.email/v3/activities/contacts_taggings_add',
                 [
-                    'headers' => [
-                        'Authorization' => 'Bearer ' . $token,
+                        'headers' => [
+                        'Authorization' => 'Bearer ' . $auth['token'],
                         'Content-Type'  => 'application/json',
                         'Accept'        => 'application/json',
                     ],
