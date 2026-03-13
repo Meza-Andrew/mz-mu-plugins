@@ -525,6 +525,12 @@ if (!function_exists('mzf_render_admin_body')) {
                 $s = strtolower(trim((string) $raw));
                 return in_array($s, ['1', 'true', 'yes', 'on', 'y'], true) ? 'Yes' : 'No';
             }
+            if (in_array($key, ['Consent', 'Confidentiality', 'Applicant'], true)) {
+                $raw = $data[$key] ?? '';
+                if (is_bool($raw)) return $raw ? 'Yes' : 'No';
+                $s = strtolower(trim((string) $raw));
+                return in_array($s, ['1', 'true', 'yes', 'on', 'y'], true) ? 'Yes' : 'No';
+            }
             if ($key === 'LocationDisplay') {
                 $loc = trim((string) ($data['LocationDisplay'] ?? ''));
                 if ($loc !== '') return $loc;

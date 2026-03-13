@@ -274,11 +274,11 @@ if (!function_exists('mzf_mt_migrate_section_forms')) {
                 continue;
             }
 
-            $visible = function_exists('get_field')
-                ? (bool) get_field('visibility_form', $page_id)
-                : (bool) get_post_meta($page_id, 'visibility_form', true);
-            if (!$include_hidden && !$visible) {
-                $rows[] = ['source_id' => $page_id, 'source_slug' => (string) get_post_field('post_name', $page_id), 'status' => 'skipped', 'reason' => 'visibility_form is false', 'form_id' => 0, 'form_slug' => ''];
+            // Migration skip criteria is based on section_form content, not visibility toggles.
+            // Keep include_hidden arg for backward-compatible tool output/CLI signatures.
+            $headline = trim((string) ($legacy['headline'] ?? ''));
+            if ($headline === '') {
+                $rows[] = ['source_id' => $page_id, 'source_slug' => (string) get_post_field('post_name', $page_id), 'status' => 'skipped', 'reason' => 'section_form.headline is empty', 'form_id' => 0, 'form_slug' => ''];
                 continue;
             }
 

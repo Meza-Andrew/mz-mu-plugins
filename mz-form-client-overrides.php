@@ -46,3 +46,11 @@ add_filter('mzf_recaptcha_disabled', static function (bool $disabled): bool {
     }
     return $disabled;
 }, 20);
+
+add_filter('mzf_require_last_name', static function (bool $required, array $data): bool {
+    $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
+    if ($slug === 'contact') {
+        return false;
+    }
+    return $required;
+}, 20, 2);

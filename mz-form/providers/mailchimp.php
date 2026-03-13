@@ -134,7 +134,7 @@ if (!function_exists('mz_mc_upsert_contact')) {
         $last  = trim((string) ($data['LastName'] ?? ''));
         $company = trim((string) ($data['Company'] ?? ($data['Organization'] ?? '')));
         $phone = preg_replace('/\D+/', '', (string) ($data['Phone'] ?? ''));
-        $zip = trim((string) ($data['ZipCode'] ?? ''));
+        $zip = trim((string) ($data['Zip'] ?? ''));
 
         $merge_fields = array_filter([
             'FNAME'   => $first,
@@ -267,7 +267,7 @@ add_action('init', function () {
         'FirstName'    => isset($_GET['first']) ? sanitize_text_field((string) $_GET['first']) : '',
         'LastName'     => isset($_GET['last']) ? sanitize_text_field((string) $_GET['last']) : '',
         'Phone'        => isset($_GET['phone']) ? preg_replace('/\D+/', '', (string) $_GET['phone']) : '',
-        'ZipCode'      => isset($_GET['zip']) ? sanitize_text_field((string) $_GET['zip']) : '',
+        'Zip'      => isset($_GET['zip']) ? sanitize_text_field((string) $_GET['zip']) : '',
         'Organization' => isset($_GET['company']) ? sanitize_text_field((string) $_GET['company']) : '',
         'LeadTags'     => !empty($_GET['tags'])
             ? array_values(array_filter(array_map('trim', explode(',', (string) $_GET['tags']))))

@@ -183,6 +183,21 @@ if (!function_exists('send_form_data')) :
         if (empty($data['Interest']) && !empty($data['Interests'])) {
             $data['Interest'] = $data['Interests'];
         }
+        if (!empty($data['OtherInterest'])) {
+            $other_interest = trim((string) $data['OtherInterest']);
+            if ($other_interest !== '') {
+                $interest_values = is_array($data['Interest'] ?? null)
+                    ? array_map('sanitize_text_field', (array) $data['Interest'])
+                    : array_filter(array_map('trim', explode(',', (string) ($data['Interest'] ?? ''))));
+                $interest_values = array_values(array_filter($interest_values, static fn($v) => trim((string) $v) !== ''));
+                $interest_values = array_values(array_filter(
+                    $interest_values,
+                    static fn($v) => strcasecmp(trim((string) $v), 'Other') !== 0
+                ));
+                $interest_values[] = $other_interest;
+                $data['Interest'] = array_values(array_unique($interest_values));
+            }
+        }
         if (trim((string) ($data['DateNeeded'] ?? '')) === '') {
             $data['DateNeeded'] = trim((string) ($data['RentalDate'] ?? $data['Deadline'] ?? $data['Date'] ?? ''));
         }
@@ -204,7 +219,6 @@ if (!function_exists('send_form_data')) :
         if (trim((string) ($data['LocationDisplay'] ?? '')) === '') {
             $data['LocationDisplay'] = trim((string) ($data['Location'] ?? $data['Place'] ?? $data['ReceivingAddressDisplay'] ?? $data['ReceivingAddress'] ?? ''));
         }
-
         // Canonical comments key only.
         $comments = isset($data['Comments']) ? trim((string) $data['Comments']) : '';
         $data['Comments'] = $comments;
@@ -267,6 +281,18 @@ if (!function_exists('send_form_data')) :
 
         $required_fields = apply_filters('mzf_required_fields', ['FirstName', 'LastName', 'Email'], $data);
         $required_fields = mzf_apply_required_rules((array) $required_fields, $data);
+        $require_last_name = (bool) apply_filters(
+            'mzf_require_last_name',
+            in_array('LastName', (array) $required_fields, true),
+            $data,
+            (array) $required_fields
+        );
+        if (!$require_last_name) {
+            $required_fields = array_values(array_filter(
+                (array) $required_fields,
+                static fn($field) => (string) $field !== 'LastName'
+            ));
+        }
         foreach ($required_fields as $rf) {
             if (empty($data[$rf])) {
                 error_log("Form: missing required field {$rf}");
