@@ -36,6 +36,7 @@ if (!function_exists('mzf_registry_field_labels')) {
             'Explosive' => 'Explosive Materials',
             'Weight' => 'Weight',
             'CondomCount' => 'Condom Order',
+            'Training' => 'Training Acknowledged',
             'Confidentiality' => 'Confidentiality Acknowledged',
             'Applicant' => 'Applicant Statement Acknowledged',
             'NewsletterSignup' => 'Signed Up for Newsletter',
@@ -57,8 +58,8 @@ if (!function_exists('mzf_slug_registry')) {
             ],
             'volunteer' => [
                 'subject' => 'New volunteer interest from {{name_company}}',
-                'required' => array_merge($contact_required, ['Confidentiality', 'Applicant']),
-                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interests', 'Confidentiality', 'Applicant', 'Comments'],
+                'required' => array_merge($contact_required, ['Training', 'Confidentiality', 'Applicant']),
+                'layout' => ['FullName', 'Company', 'Email', 'Phone', 'Interests', 'Training', 'Confidentiality', 'Applicant', 'Comments'],
             ],
             'sponsor' => [
                 'subject' => 'New sponsorship interest from {{name_company}}',

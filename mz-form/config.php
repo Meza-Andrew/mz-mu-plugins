@@ -257,6 +257,7 @@ if (!function_exists('mzf_default_fields')) {
             'FilesLink',
             'Comments',
             'Consent',
+            'Training',
             'Confidentiality',
             'Applicant',
             'NewsletterSignup',
