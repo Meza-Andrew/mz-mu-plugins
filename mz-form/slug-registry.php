@@ -11,7 +11,7 @@ if (!function_exists('mzf_registry_field_labels')) {
             'FullName' => 'Name',
             'PreferredName' => 'Preferred Name',
             'Pronouns' => 'Pronouns',
-            'Company' => 'Company',
+            'Company' => 'Organization/Company',
             'Email' => 'Email',
             'Phone' => 'Phone',
             'Interests' => 'Interests',
@@ -51,6 +51,7 @@ if (!function_exists('mzf_registry_field_labels')) {
             'Weight' => 'Weight',
             'CondomCount' => 'Condom Order',
             'Training' => 'Training Acknowledged',
+            'Conduct' => 'Volunteer Conduct Acknowledged',
             'Confidentiality' => 'Confidentiality Acknowledged',
             'Applicant' => 'Applicant Statement Acknowledged',
             'NewsletterSignup' => 'Signed Up for Newsletter',
@@ -72,7 +73,7 @@ if (!function_exists('mzf_slug_registry')) {
             ],
             'volunteer' => [
                 'subject' => 'New volunteer interest from {{name_company}}',
-                'required' => array_merge($contact_required, ['Date', 'Training', 'Confidentiality', 'Applicant']),
+                'required' => array_merge($contact_required, ['Date', 'Training', 'Conduct', 'Confidentiality', 'Applicant']),
                 'layout' => [
                     'FullName',
                     'PreferredName',
@@ -95,6 +96,7 @@ if (!function_exists('mzf_slug_registry')) {
                     'SaturdaysAvailability',
                     'SundaysAvailability',
                     'Training',
+                    'Conduct',
                     'Confidentiality',
                     'Applicant',
                     'Comments',
