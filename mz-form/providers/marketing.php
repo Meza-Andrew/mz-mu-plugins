@@ -66,7 +66,7 @@ if (!function_exists('mzf_marketing_provider')) {
             if (function_exists('mz_mc_is_configured') && mz_mc_is_configured()) {
                 return 'mailchimp';
             }
-            if (defined('CC_LIST_ID') && CC_LIST_ID && (get_option('cc_tokens') || (function_exists('cc_get_api_key') && cc_get_api_key() !== ''))) {
+            if (function_exists('cc_is_configured') && cc_is_configured()) {
                 return 'constant_contact';
             }
         }
@@ -115,19 +115,27 @@ if (!function_exists('mzf_sync_marketing_contact')) {
                     'error' => 'Constant Contact provider is unavailable.',
                 ];
             }
-            mz_cc_add_contact([
+            $result = mz_cc_add_contact([
                 'Email'        => $data['Email'] ?? '',
                 'FirstName'    => $data['FirstName'] ?? '',
                 'LastName'     => $data['LastName'] ?? '',
+                'Phone'        => $data['Phone'] ?? ($data['WorkPhone'] ?? ''),
+                'Zip'          => $data['Zip'] ?? ($data['ZipCode'] ?? ''),
                 'Company'      => $data['Company'] ?? '',
-                'Website'      => $data['Website'] ?? '',
                 'LeadTags'     => $data['LeadTags'] ?? [],
             ]);
-            return [
-                'ok' => true,
-                'provider' => 'constant_contact',
-                'label' => 'Constant Contact',
-            ];
+            if (is_wp_error($result)) {
+                error_log('Constant Contact sync failed: ' . $result->get_error_message());
+                return [
+                    'ok' => false,
+                    'provider' => 'constant_contact',
+                    'label' => 'Constant Contact',
+                    'error' => $result->get_error_message(),
+                ];
+            }
+            return is_array($result)
+                ? $result
+                : ['ok' => true, 'provider' => 'constant_contact', 'label' => 'Constant Contact'];
         }
 
         return ['ok' => false, 'provider' => $provider];

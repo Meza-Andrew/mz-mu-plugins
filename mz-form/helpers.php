@@ -1043,14 +1043,17 @@ if (!function_exists('mzf_render_admin_body')) {
             $sync_label = trim((string) ($marketing_sync['label'] ?? ''));
             $sync_url = trim((string) ($marketing_sync['contact_url'] ?? ''));
             $sync_link_text = trim((string) ($marketing_sync['link_text'] ?? ''));
+            $sync_action = strtolower(trim((string) ($marketing_sync['action'] ?? '')));
             if ($sync_ok && $sync_label !== '') {
-                if ($sync_link_text === '') {
-                    $sync_link_text = 'Added to ' . $sync_label;
-                }
                 if ($sync_url !== '') {
+                    if ($sync_link_text === '') {
+                        if (in_array($sync_action, ['update', 'updated'], true)) {
+                            $sync_link_text = 'Updated in ' . $sync_label;
+                        } else {
+                            $sync_link_text = 'Added to ' . $sync_label;
+                        }
+                    }
                     $newsletter_line .= ' (<a href="' . esc_url($sync_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($sync_link_text) . '</a>)';
-                } else {
-                    $newsletter_line .= ' (' . esc_html($sync_link_text) . ')';
                 }
             } elseif ($crm_url !== '') {
                 $newsletter_line .= ' (<a href="' . esc_url($crm_url) . '" target="_blank" rel="noopener noreferrer">Click to add to ' . esc_html($crm_label) . '</a>)';

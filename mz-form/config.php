@@ -391,15 +391,26 @@ if (!function_exists('mzf_crm_list_url')) {
             }
         }
 
-        if ($url === '') {
+        if ($url !== '') {
+            if (!preg_match('#^https?://#i', $url)) {
+                return '';
+            }
+            return (string) esc_url_raw($url);
+        }
+
+        $list_id = mzf_crm_list_id($slug);
+        if ($list_id === '') {
             return '';
         }
 
-        if (!preg_match('#^https?://#i', $url)) {
-            return '';
+        if ($slug === 'mailchimp') {
+            return 'https://admin.mailchimp.com/lists/members/?id=' . rawurlencode($list_id);
+        }
+        if ($slug === 'constant-contact') {
+            return 'https://app.constantcontact.com/pages/contacts/ui/lists?list=' . rawurlencode($list_id);
         }
 
-        return (string) esc_url_raw($url);
+        return '';
     }
 }
 
@@ -408,10 +419,10 @@ if (!function_exists('mzf_crm_dashboard_url')) {
     {
         $slug = mzf_normalize_crm_platform((string) ($platform ?? mzf_crm_platform()));
         if ($slug === 'constant-contact') {
-            return 'https://app.constantcontact.com/pages/dashboard/home/';
+            return 'https://app.constantcontact.com/pages/contacts/ui/contacts';
         }
         if ($slug === 'mailchimp') {
-            return 'https://admin.mailchimp.com/';
+            return 'https://admin.mailchimp.com/audience/contacts/';
         }
         if ($slug === 'zeffy') {
             return 'https://www.zeffy.com/login';
@@ -428,17 +439,12 @@ if (!function_exists('mzf_crm_click_url')) {
             return '';
         }
 
-        $api_key = mzf_crm_api_key($slug);
         $list_url = mzf_crm_list_url($slug);
         if ($list_url !== '') {
             return $list_url;
         }
 
-        if ($api_key === '' && $list_url === '') {
-            return mzf_crm_dashboard_url($slug);
-        }
-
-        return '';
+        return mzf_crm_dashboard_url($slug);
     }
 }
 
@@ -626,6 +632,31 @@ if (!function_exists('mzf_debug_session_enabled')) {
             return false;
         }
         return get_user_meta($uid, 'mzf_debug_session', true) === '1';
+    }
+}
+
+if (!function_exists('mzf_marketing_dry_run_enabled')) {
+    function mzf_marketing_dry_run_enabled(string $provider = ''): bool
+    {
+        $env = function_exists('wp_get_environment_type')
+            ? strtolower((string) wp_get_environment_type())
+            : 'production';
+
+        $default_enabled = in_array($env, ['local', 'development', 'staging'], true);
+
+        if (defined('MZF_MARKETING_DRY_RUN')) {
+            $raw = MZF_MARKETING_DRY_RUN;
+            if (is_bool($raw)) {
+                $enabled = $raw;
+            } else {
+                $raw_s = strtolower(trim((string) $raw));
+                $enabled = in_array($raw_s, ['1', 'true', 'yes', 'on', 'y'], true);
+            }
+        } else {
+            $enabled = $default_enabled;
+        }
+
+        return (bool) apply_filters('mzf_marketing_dry_run_enabled', $enabled, $provider, $env);
     }
 }
 

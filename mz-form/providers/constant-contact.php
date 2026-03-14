@@ -1,23 +1,178 @@
 <?php
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 // Constant Contact Integration
 // ===============================
 
-// --- Config (set these in wp-config.php if you prefer) ---
-if (!defined('CC_CLIENT_ID'))     define('CC_CLIENT_ID',     'YOUR_CLIENT_ID');
-if (!defined('CC_CLIENT_SECRET')) define('CC_CLIENT_SECRET', 'YOUR_CLIENT_SECRET');
+// --- Optional config overrides (set these in wp-config.php if preferred) ---
+if (!defined('CC_CLIENT_ID')) {
+    define('CC_CLIENT_ID', '');
+}
+if (!defined('CC_CLIENT_SECRET')) {
+    define('CC_CLIENT_SECRET', '');
+}
+if (!defined('CC_SCOPES')) {
+    define('CC_SCOPES', 'contact_data offline_access');
+}
+if (!defined('CC_REDIRECT_URI')) {
+    define('CC_REDIRECT_URI', home_url('/cc-oauth-callback/'));
+}
+if (!defined('CC_LIST_ID')) {
+    define('CC_LIST_ID', '');
+}
 
-// Scopes: keep contact_data + offline_access (space-separated)
-if (!defined('CC_SCOPES'))        define('CC_SCOPES',        'contact_data offline_access');
+if (!function_exists('cc_get_client_id')) {
+    function cc_get_client_id(): string
+    {
+        $crm = function_exists('mzf_get_crm_group') ? mzf_get_crm_group() : [];
+        if (empty($crm) && function_exists('get_field')) {
+            $acf_crm = get_field('crm', 'option');
+            if (is_array($acf_crm)) {
+                $crm = $acf_crm;
+            }
+        }
+        if (empty($crm)) {
+            $opt_crm = get_option('crm');
+            if (is_array($opt_crm)) {
+                $crm = $opt_crm;
+            }
+        }
 
-// Must match your CC app redirect URL EXACTLY (scheme/host/path)
-if (!defined('CC_REDIRECT_URI'))  define('CC_REDIRECT_URI',  home_url('/cc-oauth-callback/'));
+        $nested = $crm['constant-contact'] ?? $crm['constant_contact'] ?? null;
+        if (is_array($nested)) {
+            $client_id = trim((string) ($nested['client_id'] ?? ''));
+            if ($client_id !== '') {
+                return $client_id;
+            }
+        }
 
-// Your audience/list
-if (!defined('CC_LIST_ID'))       define('CC_LIST_ID',       'af35f4c0-c3e2-11ef-aa6e-fa163e9ef3b3');
+        $direct_group = [];
+        if (function_exists('get_field')) {
+            $acf_group = get_field('constant-contact', 'option');
+            if (is_array($acf_group)) {
+                $direct_group = $acf_group;
+            } else {
+                $acf_group = get_field('constant_contact', 'option');
+                if (is_array($acf_group)) {
+                    $direct_group = $acf_group;
+                }
+            }
+        }
+        if (empty($direct_group)) {
+            $opt_group = get_option('options_constant-contact');
+            if (is_array($opt_group)) {
+                $direct_group = $opt_group;
+            } else {
+                $opt_group = get_option('options_constant_contact');
+                if (is_array($opt_group)) {
+                    $direct_group = $opt_group;
+                }
+            }
+        }
+        if (!empty($direct_group)) {
+            $client_id = trim((string) ($direct_group['client_id'] ?? ''));
+            if ($client_id !== '') {
+                return $client_id;
+            }
+        }
 
-// Optional: set a tag id if you want to auto-tag signups (else leave blank)
-if (!defined('CC_TAG_ID'))        define('CC_TAG_ID',        ''); // e.g., '12345678-...'
+        $candidates = [
+            trim((string) ($crm['client_id_constant-contact'] ?? '')),
+            trim((string) ($crm['client_id_constant_contact'] ?? '')),
+            trim((string) get_option('options_crm_client_id_constant-contact', '')),
+            trim((string) get_option('options_crm_client_id_constant_contact', '')),
+            trim((string) get_option('options_constant-contact_client_id', '')),
+            trim((string) get_option('options_constant_contact_client_id', '')),
+            trim((string) get_option('cc_client_id', '')),
+            trim((string) (defined('CC_CLIENT_ID') ? CC_CLIENT_ID : '')),
+        ];
+        foreach ($candidates as $candidate) {
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('cc_get_client_secret')) {
+    function cc_get_client_secret(): string
+    {
+        $crm = function_exists('mzf_get_crm_group') ? mzf_get_crm_group() : [];
+        if (empty($crm) && function_exists('get_field')) {
+            $acf_crm = get_field('crm', 'option');
+            if (is_array($acf_crm)) {
+                $crm = $acf_crm;
+            }
+        }
+        if (empty($crm)) {
+            $opt_crm = get_option('crm');
+            if (is_array($opt_crm)) {
+                $crm = $opt_crm;
+            }
+        }
+
+        $nested = $crm['constant-contact'] ?? $crm['constant_contact'] ?? null;
+        if (is_array($nested)) {
+            $client_secret = trim((string) ($nested['client_secret'] ?? ''));
+            if ($client_secret !== '') {
+                return $client_secret;
+            }
+        }
+
+        $direct_group = [];
+        if (function_exists('get_field')) {
+            $acf_group = get_field('constant-contact', 'option');
+            if (is_array($acf_group)) {
+                $direct_group = $acf_group;
+            } else {
+                $acf_group = get_field('constant_contact', 'option');
+                if (is_array($acf_group)) {
+                    $direct_group = $acf_group;
+                }
+            }
+        }
+        if (empty($direct_group)) {
+            $opt_group = get_option('options_constant-contact');
+            if (is_array($opt_group)) {
+                $direct_group = $opt_group;
+            } else {
+                $opt_group = get_option('options_constant_contact');
+                if (is_array($opt_group)) {
+                    $direct_group = $opt_group;
+                }
+            }
+        }
+        if (!empty($direct_group)) {
+            $client_secret = trim((string) ($direct_group['client_secret'] ?? ''));
+            if ($client_secret !== '') {
+                return $client_secret;
+            }
+        }
+
+        $candidates = [
+            trim((string) ($crm['client_secret_constant-contact'] ?? '')),
+            trim((string) ($crm['client_secret_constant_contact'] ?? '')),
+            trim((string) get_option('options_crm_client_secret_constant-contact', '')),
+            trim((string) get_option('options_crm_client_secret_constant_contact', '')),
+            trim((string) get_option('options_constant-contact_client_secret', '')),
+            trim((string) get_option('options_constant_contact_client_secret', '')),
+            trim((string) get_option('cc_client_secret', '')),
+            trim((string) (defined('CC_CLIENT_SECRET') ? CC_CLIENT_SECRET : '')),
+        ];
+        foreach ($candidates as $candidate) {
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return '';
+    }
+}
 
 if (!function_exists('cc_get_api_key')) {
     function cc_get_api_key(): string
@@ -46,7 +201,110 @@ if (!function_exists('cc_get_api_key')) {
             }
         }
 
-        return trim((string) ($crm['api_constant-contact'] ?? $crm['api_constant_contact'] ?? ''));
+        $nested = $crm['constant-contact'] ?? $crm['constant_contact'] ?? null;
+        if (is_array($nested)) {
+            $nested_api = trim((string) ($nested['api'] ?? ''));
+            if ($nested_api !== '') {
+                return $nested_api;
+            }
+        }
+
+        $candidates = [
+            trim((string) ($crm['api_constant-contact'] ?? '')),
+            trim((string) ($crm['api_constant_contact'] ?? '')),
+            trim((string) get_option('options_crm_api_constant-contact', '')),
+            trim((string) get_option('options_crm_api_constant_contact', '')),
+            trim((string) get_option('cc_api_key', '')),
+        ];
+        foreach ($candidates as $candidate) {
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('cc_get_list_id')) {
+    function cc_get_list_id(): string
+    {
+        if (function_exists('mzf_crm_list_id')) {
+            $crm_list = mzf_crm_list_id('constant-contact');
+            if ($crm_list !== '') {
+                return $crm_list;
+            }
+        }
+
+        $crm = [];
+        if (function_exists('get_field')) {
+            $acf_crm = get_field('crm', 'option');
+            if (is_array($acf_crm)) {
+                $crm = $acf_crm;
+            }
+        }
+        if (empty($crm)) {
+            $opt_crm = get_option('crm');
+            if (is_array($opt_crm)) {
+                $crm = $opt_crm;
+            }
+        }
+
+        $nested = $crm['constant-contact'] ?? $crm['constant_contact'] ?? null;
+        if (is_array($nested)) {
+            $nested_list = trim((string) ($nested['list'] ?? ''));
+            if ($nested_list !== '') {
+                return $nested_list;
+            }
+        }
+
+        $direct_group = [];
+        if (function_exists('get_field')) {
+            $acf_group = get_field('constant-contact', 'option');
+            if (is_array($acf_group)) {
+                $direct_group = $acf_group;
+            } else {
+                $acf_group = get_field('constant_contact', 'option');
+                if (is_array($acf_group)) {
+                    $direct_group = $acf_group;
+                }
+            }
+        }
+        if (empty($direct_group)) {
+            $opt_group = get_option('options_constant-contact');
+            if (is_array($opt_group)) {
+                $direct_group = $opt_group;
+            } else {
+                $opt_group = get_option('options_constant_contact');
+                if (is_array($opt_group)) {
+                    $direct_group = $opt_group;
+                }
+            }
+        }
+        if (!empty($direct_group)) {
+            $list_id = trim((string) ($direct_group['list'] ?? ''));
+            if ($list_id !== '') {
+                return $list_id;
+            }
+        }
+
+        $candidates = [
+            trim((string) ($crm['list_constant-contact'] ?? '')),
+            trim((string) ($crm['list_constant_contact'] ?? '')),
+            trim((string) get_option('options_crm_list_constant-contact', '')),
+            trim((string) get_option('options_crm_list_constant_contact', '')),
+            trim((string) get_option('options_constant-contact_list', '')),
+            trim((string) get_option('options_constant_contact_list', '')),
+            trim((string) get_option('cc_list_id', '')),
+            trim((string) (defined('CC_LIST_ID') ? CC_LIST_ID : '')),
+        ];
+        foreach ($candidates as $candidate) {
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return '';
     }
 }
 
@@ -70,60 +328,149 @@ if (!function_exists('cc_get_auth_context')) {
 if (!function_exists('cc_has_wp_config_keys')) {
     function cc_has_wp_config_keys(): bool
     {
-        $client_id = defined('CC_CLIENT_ID') ? trim((string) CC_CLIENT_ID) : '';
-        $client_secret = defined('CC_CLIENT_SECRET') ? trim((string) CC_CLIENT_SECRET) : '';
-        $list_id = defined('CC_LIST_ID') ? trim((string) CC_LIST_ID) : '';
+        $client_id = cc_get_client_id();
+        $client_secret = cc_get_client_secret();
+        $list_id = cc_get_list_id();
 
         if ($client_id === '' || $client_secret === '' || $list_id === '') return false;
-        if (in_array($client_id, ['YOUR_CLIENT_ID', 'your_client_id'], true)) return false;
-        if (in_array($client_secret, ['YOUR_CLIENT_SECRET', 'your_client_secret'], true)) return false;
 
         return true;
     }
 }
 
-// --- Admin page to connect OAuth ---
-add_action('admin_menu', function () {
-    // Only expose this menu when credentials are explicitly provided via wp-config constants.
-    if (!cc_has_wp_config_keys()) return;
+if (!function_exists('cc_is_configured')) {
+    function cc_is_configured(): bool
+    {
+        return cc_get_list_id() !== '' && (cc_get_api_key() !== '' || cc_get_access_token() !== false);
+    }
+}
 
-    add_submenu_page(
-        'options-general.php',
-        'Constant Contact',
-        'Constant Contact',
-        'manage_options',
-        'cc-connect',
-        function () {
-            $params = [
-                'client_id'     => CC_CLIENT_ID,
-                'scope'         => CC_SCOPES, // space-separated
-                'response_type' => 'code',
-                'redirect_uri'  => CC_REDIRECT_URI, // byte-for-byte w/ app
-                'state'         => wp_create_nonce('cc_oauth_state'),
-            ];
-            $auth_base = 'https://authz.constantcontact.com/oauth2/default/v1/authorize';
-            $auth_url  = $auth_base . '?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+if (!function_exists('cc_is_platform_selected')) {
+    function cc_is_platform_selected(): bool
+    {
+        $raw = '';
 
-            echo '<div class="wrap"><h1>Constant Contact</h1>';
-            echo '<p><a class="button button-primary" href="' . esc_url($auth_url) . '">Connect Constant Contact</a></p>';
-            echo '</div>';
+        if (function_exists('get_field')) {
+            $platform = get_field('platform', 'option');
+            if (is_string($platform) && trim($platform) !== '') {
+                $raw = $platform;
+            }
+
+            if ($raw === '') {
+                $crm = get_field('crm', 'option');
+                if (is_array($crm) && !empty($crm['platform'])) {
+                    $raw = (string) $crm['platform'];
+                }
+            }
         }
-    );
-});
+
+        if ($raw === '') {
+            $raw = (string) get_option('options_platform', '');
+        }
+        if ($raw === '') {
+            $crm = get_option('crm');
+            if (is_array($crm) && !empty($crm['platform'])) {
+                $raw = (string) $crm['platform'];
+            }
+        }
+        if ($raw === '') {
+            $raw = (string) get_option('crm_platform', '');
+        }
+
+        $value = strtolower(trim($raw));
+        $value = str_replace(['_', ' '], '-', $value);
+        $value = preg_replace('/-+/', '-', $value);
+
+        return in_array($value, ['constant-contact', 'constantcontact'], true);
+    }
+}
+
+if (!function_exists('cc_maybe_disconnect_when_platform_changes')) {
+    function cc_maybe_disconnect_when_platform_changes($post_id): void
+    {
+        // ACF options page saves use "options"/"option".
+        if (!in_array((string) $post_id, ['options', 'option'], true)) {
+            return;
+        }
+
+        // Keep ACF values; only drop OAuth auth state when CC isn't selected.
+        if (cc_is_platform_selected()) {
+            return;
+        }
+
+        if (get_option('cc_tokens', null) !== null) {
+            delete_option('cc_tokens');
+        }
+        delete_transient('cc_refresh_lock');
+    }
+}
+
+add_action('acf/save_post', 'cc_maybe_disconnect_when_platform_changes', 30);
+
+if (!function_exists('cc_build_auth_url')) {
+    function cc_build_auth_url(): string
+    {
+        $params = [
+            'client_id'     => cc_get_client_id(),
+            'scope'         => CC_SCOPES, // space-separated
+            'response_type' => 'code',
+            'redirect_uri'  => CC_REDIRECT_URI, // byte-for-byte w/ app
+            'state'         => wp_create_nonce('cc_oauth_state'),
+        ];
+        $auth_base = 'https://authz.constantcontact.com/oauth2/default/v1/authorize';
+        return $auth_base . '?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+    }
+}
 
 add_action('admin_notices', function () {
-    if (!current_user_can('manage_options')) return;
-    if (!isset($_GET['page']) || $_GET['page'] !== 'cc-connect') return;
-
-    $t = get_option('cc_tokens');
-    if (empty($t['access_token'])) {
-        echo '<div class="notice notice-error"><p>Constant Contact is not connected.</p></div>';
+    if (!current_user_can('manage_options')) {
         return;
     }
-    $expires_at = (int)($t['obtained_at'] ?? 0) + (int)($t['expires_in'] ?? 0);
-    $mins = max(0, floor(($expires_at - time()) / 60));
-    $rt_short = empty($t['refresh_token']) ? '⚠️ Missing refresh token' : 'OK';
-    echo '<div class="notice notice-success"><p>Connected. Access token ~' . esc_html($mins) . ' min left. Refresh token: ' . esc_html($rt_short) . '.</p></div>';
+    if (!isset($_GET['page']) || $_GET['page'] !== 'crm') {
+        return;
+    }
+    if (!cc_is_platform_selected()) {
+        return;
+    }
+
+    echo '<div class="notice notice-info"><p><strong>Constant Contact Integration</strong></p>';
+    if (!cc_has_wp_config_keys()) {
+        echo '<p>OAuth app credentials are missing. Set Client ID, Client Secret, and List ID in CRM Integration (Constant Contact group), or fallback constants <code>CC_CLIENT_ID</code>, <code>CC_CLIENT_SECRET</code>, and <code>CC_LIST_ID</code>.</p>';
+        echo '</div>';
+        return;
+    }
+
+    echo '<style>
+        .mz-oauth-row{display:flex;align-items:center;gap:10px;margin:4px 0 6px 0}
+        .wp-core-ui .button.button-primary.mz-oauth-connected,
+        .wp-core-ui .button.button-primary.mz-oauth-connected:disabled,
+        .wp-core-ui .button.button-primary.mz-oauth-connected[disabled],
+        .wp-core-ui .button.button-primary.mz-oauth-connected.disabled{
+            display:inline-flex !important;align-items:center !important;gap:5px;height:auto;line-height:1.2;padding-top:6px;padding-bottom:6px;
+            color:#fff !important;background-color:#72aee6 !important;border-color:#72aee6 !important;opacity:1 !important;filter:none !important;
+            box-shadow:none !important;text-shadow:none !important;cursor:default
+        }
+        .wp-core-ui .button.button-primary.mz-oauth-connected .dashicons{font-size:14px;line-height:16px;display:inline-flex;align-items:center;justify-content:center;color:#fff !important;vertical-align:middle;width:16px;height:16px;flex:0 0 16px}
+        .mz-oauth-status{margin:0}
+        @media (max-width:782px){.mz-oauth-row{flex-direction:column;align-items:flex-start;gap:6px}}
+    </style>';
+
+    $t = get_option('cc_tokens');
+    $connected = !empty($t['access_token']);
+    echo '<div class="mz-oauth-row">';
+    if ($connected) {
+        echo '<button type="button" class="button button-primary mz-oauth-connected" disabled aria-disabled="true">';
+        echo '<span class="dashicons dashicons-yes-alt"></span>';
+        echo 'Connected to Constant Contact!';
+        echo '</button>';
+        echo '<span class="mz-oauth-status">Refresh token saved. Access token auto-refreshes.</span>';
+    } else {
+        echo '<a class="button button-primary" href="' . esc_url(cc_build_auth_url()) . '">Connect Constant Contact</a>';
+        echo '<span class="mz-oauth-status">Refresh token not available until you connect.</span>';
+    }
+    echo '</div>';
+    echo '<p style="margin:0 0 10px 0;"><strong>Redirect URI:</strong> <code>' . esc_html((string) CC_REDIRECT_URI) . '</code></p>';
+    echo '</div>';
 });
 
 // --- Pretty callback catcher: /cc-oauth-callback/ ---
@@ -147,10 +494,13 @@ if (!function_exists('cc_process_oauth_callback')) {
         if (!$code || !$state || !wp_verify_nonce($state, 'cc_oauth_state')) {
             wp_die('Invalid OAuth response.');
         }
+        if (cc_get_client_id() === '' || cc_get_client_secret() === '') {
+            wp_die('Missing Constant Contact client credentials.');
+        }
 
         $token_url = 'https://authz.constantcontact.com/oauth2/default/v1/token';
         $headers = [
-            'Authorization' => 'Basic ' . base64_encode(CC_CLIENT_ID . ':' . CC_CLIENT_SECRET),
+            'Authorization' => 'Basic ' . base64_encode(cc_get_client_id() . ':' . cc_get_client_secret()),
             'Content-Type'  => 'application/x-www-form-urlencoded',
             'Accept'        => 'application/json',
         ];
@@ -185,7 +535,7 @@ if (!function_exists('cc_process_oauth_callback')) {
         ];
         update_option('cc_tokens', $data, false);
 
-        wp_safe_redirect(add_query_arg('cc_connected', '1', admin_url('options-general.php?page=cc-connect')));
+        wp_safe_redirect(add_query_arg('cc_connected', '1', admin_url('options-general.php?page=crm')));
         exit;
     }
 }
@@ -227,13 +577,6 @@ if (!function_exists('cc_api_request')) {
 if (!function_exists('cc_get_access_token')) {
     function cc_get_access_token($skew_seconds = 300) // refresh ~5m early
     {
-        if (function_exists('mzf_crm_api_key')) {
-            $crm_key = mzf_crm_api_key('constant-contact');
-            if ($crm_key !== '') {
-                return $crm_key;
-            }
-        }
-
         $t = get_option('cc_tokens');
         if (empty($t['access_token'])) return false;
 
@@ -247,9 +590,14 @@ if (!function_exists('cc_get_access_token')) {
         }
         set_transient('cc_refresh_lock', 1, 30);
 
+        if (cc_get_client_id() === '' || cc_get_client_secret() === '') {
+            delete_transient('cc_refresh_lock');
+            return false;
+        }
+
         $token_url = 'https://authz.constantcontact.com/oauth2/default/v1/token';
         $headers = [
-            'Authorization' => 'Basic ' . base64_encode(CC_CLIENT_ID . ':' . CC_CLIENT_SECRET),
+            'Authorization' => 'Basic ' . base64_encode(cc_get_client_id() . ':' . cc_get_client_secret()),
             'Content-Type'  => 'application/x-www-form-urlencoded',
             'Accept'        => 'application/json',
         ];
@@ -285,106 +633,307 @@ if (!function_exists('cc_get_access_token')) {
         return $t['access_token'];
     }
 }
-if (!function_exists('cc_get_custom_field_id_by_label')) {
-    function cc_get_custom_field_id_by_label(string $label)
+if (!function_exists('cc_extract_tag_id')) {
+    function cc_extract_tag_id(array $tag): string
     {
-        $cache_key = 'cc_cf_' . md5($label);
-        if ($id = get_option($cache_key)) return $id;
+        $id = trim((string) ($tag['tag_id'] ?? $tag['contact_tag_id'] ?? $tag['id'] ?? ''));
+        return $id;
+    }
+}
+if (!function_exists('cc_find_or_create_tag_ids')) {
+    function cc_find_or_create_tag_ids(array $tag_names): array
+    {
+        $tag_names = array_values(array_unique(array_filter(array_map(static function ($name) {
+            return sanitize_text_field((string) $name);
+        }, $tag_names))));
+        if (empty($tag_names)) {
+            return [];
+        }
 
-        $token = cc_get_access_token();
-        if (!$token) return false;
+        $resp = cc_api_request('GET', 'https://api.cc.email/v3/contact_tags');
+        if (is_wp_error($resp)) {
+            return [];
+        }
 
-        $resp = wp_remote_get('https://api.cc.email/v3/contact_custom_fields', [
-            'headers' => [
-                'Authorization' => 'Bearer ' . $token,
-                'Accept'        => 'application/json',
-            ],
-            'timeout' => 15,
-        ]);
-        if (is_wp_error($resp)) return false;
-
-        $code = wp_remote_retrieve_response_code($resp);
-        $data = json_decode(wp_remote_retrieve_body($resp), true);
-
-        if ($code >= 200 && $code < 300 && !empty($data['custom_fields'])) {
-            foreach ($data['custom_fields'] as $cf) {
-                if (!empty($cf['label']) && strcasecmp($cf['label'], $label) === 0 && !empty($cf['custom_field_id'])) {
-                    update_option($cache_key, $cf['custom_field_id'], false);
-                    return $cf['custom_field_id'];
+        $code = (int) wp_remote_retrieve_response_code($resp);
+        $body = json_decode((string) wp_remote_retrieve_body($resp), true);
+        $existing_by_name = [];
+        if ($code >= 200 && $code < 300 && is_array($body)) {
+            $tags = [];
+            if (!empty($body['tags']) && is_array($body['tags'])) {
+                $tags = $body['tags'];
+            } elseif (!empty($body['contact_tags']) && is_array($body['contact_tags'])) {
+                $tags = $body['contact_tags'];
+            }
+            foreach ($tags as $tag) {
+                if (!is_array($tag)) {
+                    continue;
+                }
+                $name = strtolower(trim((string) ($tag['name'] ?? '')));
+                $id = cc_extract_tag_id($tag);
+                if ($name !== '' && $id !== '') {
+                    $existing_by_name[$name] = $id;
                 }
             }
         }
-        return false;
+
+        $tag_ids = [];
+        foreach ($tag_names as $name) {
+            $key = strtolower(trim($name));
+            if ($key !== '' && isset($existing_by_name[$key])) {
+                $tag_ids[] = $existing_by_name[$key];
+            }
+        }
+
+        $missing_names = [];
+        foreach ($tag_names as $name) {
+            $key = strtolower(trim($name));
+            if ($key !== '' && !isset($existing_by_name[$key])) {
+                $missing_names[] = $name;
+            }
+        }
+
+        foreach ($missing_names as $missing_name) {
+            $create_resp = cc_api_request('POST', 'https://api.cc.email/v3/contact_tags', [
+                'name' => $missing_name,
+            ]);
+            if (is_wp_error($create_resp)) {
+                continue;
+            }
+
+            $create_code = (int) wp_remote_retrieve_response_code($create_resp);
+            $create_body = json_decode((string) wp_remote_retrieve_body($create_resp), true);
+            if ($create_code < 200 || $create_code >= 300 || !is_array($create_body)) {
+                continue;
+            }
+
+            $new_id = cc_extract_tag_id($create_body);
+            if ($new_id !== '') {
+                $tag_ids[] = $new_id;
+            }
+        }
+
+        return array_values(array_unique(array_filter($tag_ids)));
+    }
+}
+if (!function_exists('cc_find_contact_by_email')) {
+    function cc_find_contact_by_email(string $email): array
+    {
+        $email = strtolower(trim($email));
+        if ($email === '' || !is_email($email)) {
+            return ['exists' => false, 'contact_id' => ''];
+        }
+
+        $resp = cc_api_request('GET', 'https://api.cc.email/v3/contacts?email=' . rawurlencode($email));
+        if (is_wp_error($resp)) {
+            return ['exists' => false, 'contact_id' => ''];
+        }
+
+        $code = (int) wp_remote_retrieve_response_code($resp);
+        if ($code < 200 || $code >= 300) {
+            return ['exists' => false, 'contact_id' => ''];
+        }
+
+        $body = json_decode((string) wp_remote_retrieve_body($resp), true);
+        if (!is_array($body)) {
+            return ['exists' => false, 'contact_id' => ''];
+        }
+
+        $contacts = [];
+        if (!empty($body['contacts']) && is_array($body['contacts'])) {
+            $contacts = $body['contacts'];
+        } elseif (!empty($body['contact']) && is_array($body['contact'])) {
+            $contacts = [$body['contact']];
+        } elseif (!empty($body['contact_id']) || !empty($body['email_address'])) {
+            $contacts = [$body];
+        }
+
+        foreach ($contacts as $contact) {
+            if (!is_array($contact)) {
+                continue;
+            }
+
+            $candidate_email = strtolower(trim((string) ($contact['email_address']['address'] ?? $contact['email_address'] ?? '')));
+            if ($candidate_email === '' || $candidate_email !== $email) {
+                continue;
+            }
+
+            $contact_id = trim((string) ($contact['contact_id'] ?? ''));
+            return ['exists' => true, 'contact_id' => $contact_id];
+        }
+
+        return ['exists' => false, 'contact_id' => ''];
+    }
+}
+if (!function_exists('cc_get_contact_url')) {
+    function cc_get_contact_url(string $contact_id = ''): string
+    {
+        $url = '';
+        if (function_exists('mzf_crm_click_url')) {
+            $url = trim((string) mzf_crm_click_url('constant-contact'));
+        }
+        if ($url === '' && function_exists('mzf_crm_dashboard_url')) {
+            $url = trim((string) mzf_crm_dashboard_url('constant-contact'));
+        }
+        if ($url === '') {
+            $url = 'https://app.constantcontact.com/pages/contacts/ui/contacts';
+        }
+        if (!preg_match('#^https?://#i', $url)) {
+            return '';
+        }
+
+        return (string) esc_url_raw($url);
     }
 }
 if (!function_exists('mz_cc_add_contact')) {
     /**
      * Upsert a contact and add to CC list; optionally tag.
-     * Expects $data keys: Email (required), FirstName, LastName, Company, Website, LeadTags (array/string)
+     * Expects $data keys: Email (required), FirstName, LastName, Company, Phone, Zip, LeadTags (array/string)
      */
     function mz_cc_add_contact(array $data)
     {
-        $email = isset($data['Email']) ? sanitize_email($data['Email']) : '';
-        if (!is_email($email)) return;
+        $email_raw = (string) (
+            $data['Email']
+            ?? $data['EmailAddress']
+            ?? $data['email']
+            ?? $data['Email address']
+            ?? ''
+        );
+        $email = sanitize_email($email_raw);
+        if (!is_email($email)) {
+            return new WP_Error('cc_missing_email', 'Email is required.');
+        }
 
         $auth = cc_get_auth_context();
         if (empty($auth['token'])) {
-            error_log('CC: no OAuth token or API key; skipping signup.');
-            return;
+            return new WP_Error('cc_no_auth', 'No Constant Contact OAuth token or API key.');
         }
+
+        $list_id = cc_get_list_id();
+        if ($list_id === '') {
+            return new WP_Error('cc_missing_list', 'Constant Contact list ID is missing.');
+        }
+        $existing = cc_find_contact_by_email($email);
+        $contact_exists = !empty($existing['exists']);
 
         $payload = [
             'email_address'    => strtolower(trim($email)),
-            'list_memberships' => [CC_LIST_ID],
+            'list_memberships' => [$list_id],
         ];
 
-        if (!empty($data['FirstName']))    $payload['first_name']   = sanitize_text_field($data['FirstName']);
-        if (!empty($data['LastName']))     $payload['last_name']    = sanitize_text_field($data['LastName']);
-        if (!empty($data['Company'])) $payload['company_name'] = mb_substr(sanitize_text_field($data['Company']), 0, 50);
+        $first_name = trim((string) ($data['FirstName'] ?? $data['First name'] ?? $data['first_name'] ?? ''));
+        $last_name = trim((string) ($data['LastName'] ?? $data['Last name'] ?? $data['last_name'] ?? ''));
+        $company_name = trim((string) ($data['Company'] ?? $data['Company name'] ?? $data['company_name'] ?? ''));
+        $phone = trim((string) ($data['Phone'] ?? $data['WorkPhone'] ?? $data['Work phone'] ?? $data['work_phone'] ?? ''));
+        $zip = trim((string) ($data['Zip'] ?? $data['ZipCode'] ?? $data['Zip code'] ?? $data['zip_code'] ?? ''));
 
-        // Custom Field: Website URL (label must exist in CC)
-        if (!empty($data['Website'])) {
-            $cf_id = cc_get_custom_field_id_by_label('Website URL');
-            if ($cf_id) {
-                $payload['custom_fields'][] = [
-                    'custom_field_id' => $cf_id,
-                    'value'           => esc_url_raw($data['Website']),
-                ];
-            } else {
-                error_log('CC: custom field "Website URL" not found.');
+        if ($first_name !== '') {
+            $payload['first_name'] = sanitize_text_field($first_name);
+        }
+        if ($last_name !== '') {
+            $payload['last_name'] = sanitize_text_field($last_name);
+        }
+        if ($company_name !== '') {
+            $payload['company_name'] = mb_substr(sanitize_text_field($company_name), 0, 50);
+        }
+        if ($phone !== '') {
+            $phone_number = preg_replace('/[^\d+]/', '', $phone);
+            if ($phone_number !== '') {
+                $payload['phone_numbers'] = [[
+                    'phone_number' => $phone_number,
+                    'kind' => 'work',
+                ]];
             }
+        }
+        if ($zip !== '') {
+            $postal_code = sanitize_text_field($zip);
+            if ($postal_code !== '') {
+                $payload['street_addresses'] = [[
+                    'postal_code' => $postal_code,
+                ]];
+            }
+        }
+
+        $lead_tags = [];
+        if (!empty($data['LeadTags'])) {
+            $lead_tags = is_array($data['LeadTags']) ? $data['LeadTags'] : [(string) $data['LeadTags']];
+        }
+        $lead_tags = array_values(array_unique(array_filter(array_map('sanitize_text_field', $lead_tags))));
+
+        if (function_exists('mzf_marketing_dry_run_enabled') && mzf_marketing_dry_run_enabled('constant_contact')) {
+            $dry_requests = [[
+                'method' => 'POST',
+                'url' => 'https://api.cc.email/v3/contacts/sign_up_form',
+                'payload' => $payload,
+            ]];
+            if (!empty($lead_tags)) {
+                $dry_requests[] = [
+                    'method' => 'POST',
+                    'url' => 'https://api.cc.email/v3/activities/contacts_taggings_add',
+                    'payload' => [
+                        'source' => ['contact_ids' => ['<resolved_after_contact_upsert>']],
+                        'tag_names' => $lead_tags,
+                    ],
+                ];
+            }
+
+            error_log('Constant Contact dry run: ' . wp_json_encode([
+                'email' => $email,
+                'list_id' => $list_id,
+                'contact_exists' => $contact_exists,
+                'requests' => $dry_requests,
+            ]));
+
+            return [
+                'ok' => true,
+                'provider' => 'constant_contact',
+                'label' => 'Constant Contact',
+                'action' => $contact_exists ? 'update' : 'add',
+                'email' => $email,
+                'list_id' => $list_id,
+                'dry_run' => true,
+                'dry_run_env' => function_exists('wp_get_environment_type') ? (string) wp_get_environment_type() : '',
+                'dry_run_reason' => 'Marketing dry run is enabled for this environment.',
+                'dry_run_requests' => $dry_requests,
+            ];
         }
 
         $resp = cc_api_request('POST', 'https://api.cc.email/v3/contacts/sign_up_form', $payload);
 
         if (is_wp_error($resp)) {
-            error_log('CC upsert error: ' . $resp->get_error_message());
-            return;
+            return $resp;
         }
 
-        $code = wp_remote_retrieve_response_code($resp);
-        $body = json_decode(wp_remote_retrieve_body($resp), true);
+        $code = (int) wp_remote_retrieve_response_code($resp);
+        $body = json_decode((string) wp_remote_retrieve_body($resp), true);
+        if (!is_array($body)) {
+            $body = [];
+        }
         if ($code < 200 || $code >= 300) {
-            error_log('CC upsert http ' . $code . ': ' . wp_remote_retrieve_body($resp));
-            return;
+            return new WP_Error('cc_upsert_failed', 'Constant Contact upsert failed: HTTP ' . $code);
         }
 
         $contact_id = $body['contact_id'] ?? ($body['contact']['contact_id'] ?? null);
         if (!$contact_id) {
-            error_log('CC: missing contact_id in response: ' . wp_remote_retrieve_body($resp));
-            return;
+            $contact_id = (string) ($existing['contact_id'] ?? '');
+            if ($contact_id === '') {
+                return new WP_Error('cc_missing_contact_id', 'Constant Contact response did not include contact_id.');
+            }
         }
 
-        // Optional: tag contact
-        if (defined('CC_TAG_ID') && CC_TAG_ID) {
+        $lead_tag_ids = cc_find_or_create_tag_ids($lead_tags);
+
+        // Optional: tag contact by LeadTags.
+        $tag_ids = array_values(array_unique(array_filter($lead_tag_ids)));
+        if (!empty($tag_ids)) {
             $tagPayload = [
                 'source'  => ['contact_ids' => [$contact_id]],
-                'tag_ids' => [CC_TAG_ID],
+                'tag_ids' => $tag_ids,
             ];
             $tagResp = wp_remote_post(
                 'https://api.cc.email/v3/activities/contacts_taggings_add',
                 [
-                        'headers' => [
+                    'headers' => [
                         'Authorization' => 'Bearer ' . $auth['token'],
                         'Content-Type'  => 'application/json',
                         'Accept'        => 'application/json',
@@ -397,6 +946,18 @@ if (!function_exists('mz_cc_add_contact')) {
                 error_log('CC tag error: ' . (is_wp_error($tagResp) ? $tagResp->get_error_message() : wp_remote_retrieve_body($tagResp)));
             }
         }
+
+        return [
+            'ok' => true,
+            'provider' => 'constant_contact',
+            'label' => 'Constant Contact',
+            'action' => $contact_exists ? 'update' : 'add',
+            'link_text' => $contact_exists ? 'Updated in Constant Contact' : 'Added to Constant Contact',
+            'contact_url' => cc_get_contact_url((string) $contact_id),
+            'email' => $email,
+            'list_id' => $list_id,
+            'contact_id' => (string) $contact_id,
+        ];
     }
 }
 add_action('init', function () {

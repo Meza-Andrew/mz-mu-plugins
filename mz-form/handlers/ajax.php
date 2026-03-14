@@ -463,14 +463,13 @@ if (!function_exists('send_form_data')) :
             if (!empty($data['PageId'])) {
                 $lead_page_slug = (string) get_post_field('post_name', (int) $data['PageId']);
                 if ($lead_page_slug !== '') {
-                    $lead_tags[] = sanitize_title($lead_page_slug);
+                    $lead_tags[] = 'website_page_' . sanitize_title($lead_page_slug);
                 }
             }
             $form_slug_tag = sanitize_title((string) ($data['FormSlug'] ?? ''));
             if ($form_slug_tag !== '') {
-                $lead_tags[] = $form_slug_tag;
+                $lead_tags[] = 'website_form_' . $form_slug_tag;
             }
-            $lead_tags[] = 'website form';
             $data['LeadTags'] = array_values(array_unique(array_filter($lead_tags)));
             $marketing_sync = mzf_sync_marketing_contact($data);
         }
@@ -894,6 +893,9 @@ if (!function_exists('send_form_data')) :
                 'user_ok' => (bool) $user_ok,
                 'subject' => (string) $subject,
                 'env' => (string) $env,
+                'crm_platform' => function_exists('mzf_crm_platform') ? (string) mzf_crm_platform() : '',
+                'newsletter_opt_in' => !empty($newsletter_opt_in),
+                'marketing_sync' => is_array($marketing_sync) ? $marketing_sync : [],
                 'payload' => (array) $data,
                 'submitted' => function_exists('mzf_prepare_submission_payload') ? mzf_prepare_submission_payload((array) $_POST) : (array) $_POST,
                 'recipients' => (array) $to,
@@ -911,12 +913,16 @@ if (!function_exists('send_form_data')) :
             'required_fields' => array_values((array) $required_fields),
             'unknown_fields_rejected' => false,
             'strict_mode' => (bool) $strict_mode,
+            'marketing_sync' => is_array($marketing_sync) ? $marketing_sync : [],
             'submission_log_id' => $submission_log_id,
         ];
         $debug_log('delivery_result', $debug_payload);
 
         if ($delivery_success) {
             $payload = ['message_success' => $successMsg];
+            if (is_array($marketing_sync) && !empty($marketing_sync['dry_run'])) {
+                $payload['marketing_sync'] = $marketing_sync;
+            }
             if ($debug_response_enabled) {
                 $payload['debug'] = $debug_payload;
             }
@@ -927,6 +933,9 @@ if (!function_exists('send_form_data')) :
 
         if ($partial_success) {
             $payload = ['message_success' => $successMsg];
+            if (is_array($marketing_sync) && !empty($marketing_sync['dry_run'])) {
+                $payload['marketing_sync'] = $marketing_sync;
+            }
             if ($debug_response_enabled) {
                 $payload['debug'] = $debug_payload;
             }
@@ -940,3 +949,132 @@ if (!function_exists('send_form_data')) :
         wp_send_json_error($error_payload, 400);
     }
 endif;
+
+if (!function_exists('mzf_render_marketing_dry_run_alert_script')) {
+    function mzf_render_marketing_dry_run_alert_script(): void
+    {
+        if (is_admin()) {
+            return;
+        }
+        if (!function_exists('mzf_marketing_dry_run_enabled') || !mzf_marketing_dry_run_enabled()) {
+            return;
+        }
+        ?>
+        <script>
+            (function () {
+                if (window.__mzfDryRunAlertInit) return;
+                if (typeof window.fetch !== 'function') return;
+                window.__mzfDryRunAlertInit = true;
+
+                const originalFetch = window.fetch.bind(window);
+
+                function isSendFormRequest(input) {
+                    try {
+                        const url = typeof input === 'string'
+                            ? input
+                            : (input && typeof input.url === 'string' ? input.url : '');
+                        if (!url) return false;
+                        return /admin-ajax\.php/i.test(url) && /(?:\?|&)action=send_form_data(?:&|$)/.test(url);
+                    } catch (e) {
+                        return false;
+                    }
+                }
+
+                function buildDryRunMessage(sync) {
+                    const provider = (sync && (sync.label || sync.provider)) || 'provider';
+                    const requests = sync && Array.isArray(sync.dry_run_requests) ? sync.dry_run_requests : [];
+                    const chunks = ['Would successfully send to ' + provider + ' on qa and production environments!'];
+
+                    if (!requests.length) {
+                        chunks.push('No payload captured.');
+                        return chunks.join('\n\n');
+                    }
+
+                    function nonEmpty(value) {
+                        return typeof value !== 'undefined' && value !== null && String(value).trim() !== '';
+                    }
+
+                    function addField(lines, label, value) {
+                        if (!nonEmpty(value)) return;
+                        lines.push(label + ':\n' + String(value));
+                    }
+
+                    function collectPayloadFields(payload, tagCounter) {
+                        const lines = [];
+                        if (!payload || typeof payload !== 'object') {
+                            return { lines: lines, tagCounter: tagCounter };
+                        }
+
+                        addField(lines, 'Email', payload.email || payload.email_address);
+                        addField(lines, 'First Name', payload.first_name || (payload.merge_fields && payload.merge_fields.FNAME));
+                        addField(lines, 'Last Name', payload.last_name || (payload.merge_fields && payload.merge_fields.LNAME));
+                        addField(lines, 'Company', payload.company_name || (payload.merge_fields && payload.merge_fields.COMPANY));
+                        addField(lines, 'Phone', (payload.phone_numbers && payload.phone_numbers[0] && payload.phone_numbers[0].phone_number) || (payload.merge_fields && payload.merge_fields.PHONE));
+                        addField(lines, 'Zip', (payload.street_addresses && payload.street_addresses[0] && payload.street_addresses[0].postal_code) || (payload.merge_fields && payload.merge_fields.ZIP));
+
+                        if (Array.isArray(payload.tags)) {
+                            payload.tags.forEach(function (tag) {
+                                if (tag && tag.status === 'active') {
+                                    addField(lines, 'Tag' + tagCounter, tag.name);
+                                    tagCounter += 1;
+                                }
+                            });
+                        }
+                        if (Array.isArray(payload.tag_names)) {
+                            payload.tag_names.forEach(function (tagName) {
+                                addField(lines, 'Tag' + tagCounter, tagName);
+                                tagCounter += 1;
+                            });
+                        }
+                        return { lines: lines, tagCounter: tagCounter };
+                    }
+
+                    let allFields = [];
+                    let tagCounter = 1;
+                    requests.forEach(function (req) {
+                        if (req && typeof req.payload !== 'undefined') {
+                            const result = collectPayloadFields(req.payload, tagCounter);
+                            tagCounter = result.tagCounter;
+                            allFields = allFields.concat(result.lines);
+                        }
+                    });
+
+                    if (allFields.length) {
+                        const unique = [];
+                        const seen = new Set();
+                        allFields.forEach(function (line) {
+                            if (!seen.has(line)) {
+                                seen.add(line);
+                                unique.push(line);
+                            }
+                        });
+                        chunks.push(unique.join('\n\n'));
+                    } else {
+                        chunks.push('No non-technical fields.');
+                    }
+
+                    return chunks.join('\n\n');
+                }
+
+                window.fetch = function (input, init) {
+                    return originalFetch(input, init).then(function (response) {
+                        if (!isSendFormRequest(input)) {
+                            return response;
+                        }
+
+                        response.clone().json().then(function (json) {
+                            const sync = json && json.data && json.data.marketing_sync ? json.data.marketing_sync : null;
+                            if (sync && sync.dry_run) {
+                                window.alert(buildDryRunMessage(sync));
+                            }
+                        }).catch(function () {});
+
+                        return response;
+                    });
+                };
+            })();
+        </script>
+        <?php
+    }
+}
+add_action('wp_footer', 'mzf_render_marketing_dry_run_alert_script', 100);
