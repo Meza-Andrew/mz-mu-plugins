@@ -95,6 +95,129 @@ if (!function_exists('mzf_submissions_redirect_url')) {
     }
 }
 
+if (!function_exists('mzf_submission_meta_truthy')) {
+    function mzf_submission_meta_truthy($value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+        $normalized = strtolower(trim((string) $value));
+        return in_array($normalized, ['1', 'true', 'yes', 'on', 'y'], true);
+    }
+}
+
+if (!function_exists('mzf_submission_zip_code')) {
+    function mzf_submission_zip_code(int $submission_id): string
+    {
+        $sources = [
+            get_post_meta($submission_id, '_mzf_payload', true),
+            get_post_meta($submission_id, '_mzf_submitted', true),
+        ];
+
+        $extract_from_text = static function (string $value): string {
+            $value = trim($value);
+            if ($value === '') {
+                return '';
+            }
+
+            if (preg_match('/\b(\d{5}(?:-\d{4})?)\b/', $value, $matches)) {
+                return (string) ($matches[1] ?? '');
+            }
+
+            return '';
+        };
+
+        foreach ($sources as $source) {
+            if (!is_array($source)) {
+                continue;
+            }
+
+            $explicit_keys = [
+                'Zip',
+                'ZipCode',
+                'zip',
+                'zipcode',
+                'zip_code',
+                'postal_code',
+                'ReceivingAddressPostal',
+                'ReceivingAddressZip',
+                'receivingaddresspostal',
+                'receivingaddresszip',
+            ];
+
+            foreach ($explicit_keys as $key) {
+                if (!array_key_exists($key, $source)) {
+                    continue;
+                }
+
+                $candidate = $extract_from_text((string) $source[$key]);
+                if ($candidate !== '') {
+                    return $candidate;
+                }
+            }
+
+            $address_keys = [
+                'LocationDisplay',
+                'ReceivingAddressDisplay',
+                'ReceivingAddress',
+                'Address',
+                'locationdisplay',
+                'receivingaddressdisplay',
+                'receivingaddress',
+                'address',
+            ];
+
+            foreach ($address_keys as $key) {
+                if (!array_key_exists($key, $source)) {
+                    continue;
+                }
+
+                $candidate = $extract_from_text((string) $source[$key]);
+                if ($candidate !== '') {
+                    return $candidate;
+                }
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('mzf_submission_added_to_crm_data')) {
+    function mzf_submission_added_to_crm_data(int $submission_id): array
+    {
+        $marketing_sync = get_post_meta($submission_id, '_mzf_marketing_sync', true);
+        if (!is_array($marketing_sync)) {
+            return ['text' => '', 'url' => '', 'csv' => ''];
+        }
+
+        $sync_ok = mzf_submission_meta_truthy((string) ($marketing_sync['ok'] ?? ''));
+        if (!$sync_ok) {
+            return ['text' => '', 'url' => '', 'csv' => ''];
+        }
+
+        $provider = strtolower(trim((string) ($marketing_sync['provider'] ?? '')));
+        if (!in_array($provider, ['mailchimp', 'constant_contact'], true)) {
+            return ['text' => '', 'url' => '', 'csv' => ''];
+        }
+
+        $sync_label = trim((string) ($marketing_sync['label'] ?? ''));
+        $sync_contact_url = trim((string) ($marketing_sync['contact_url'] ?? ''));
+        if ($sync_contact_url === '') {
+            return ['text' => '', 'url' => '', 'csv' => ''];
+        }
+
+        $connected_label = $sync_label !== ''
+            ? $sync_label
+            : (($provider === 'mailchimp') ? 'Mailchimp' : 'Constant Contact');
+        return [
+            'text' => $connected_label,
+            'url' => $sync_contact_url,
+            'csv' => $connected_label,
+        ];
+    }
+}
+
 if (!function_exists('mzf_render_submission_log_admin_page')) {
     function mzf_render_submission_log_admin_page(): void
     {
@@ -468,11 +591,11 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         echo '<th>' . $sortable_header('Date/Time', 'date', $sort, $order, $build_admin_url) . '</th>';
         echo '<th>' . $sortable_header('First Name', 'first_name', $sort, $order, $build_admin_url) . '</th>';
         echo '<th>' . $sortable_header('Last Name', 'last_name', $sort, $order, $build_admin_url) . '</th>';
-        echo '<th>Email</th><th>Phone</th><th>Page</th><th>Form</th><th>Admin</th><th>Status</th><th>Actions</th>';
+        echo '<th>Email</th><th>Phone</th><th>Zip Code</th><th>Page</th><th>Form</th><th>CRM Entry</th><th>Admin</th><th>Status</th><th>Actions</th>';
         echo '</tr></thead><tbody>';
 
         if (!$query->have_posts()) {
-            echo '<tr><td colspan="12"><em>No submissions logged yet.</em></td></tr>';
+            echo '<tr><td colspan="14"><em>No submissions logged yet.</em></td></tr>';
         } else {
             while ($query->have_posts()) {
                 $query->the_post();
@@ -482,6 +605,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 $form_slug = (string) get_post_meta($id, '_mzf_form_slug', true);
                 $email = (string) get_post_meta($id, '_mzf_email', true);
                 $phone = (string) get_post_meta($id, '_mzf_phone', true);
+                $zip_code = mzf_submission_zip_code($id);
                 $page_id = (int) get_post_meta($id, '_mzf_page_id', true);
                 $page_link = ($page_id > 0) ? get_permalink($page_id) : '';
                 $page_title = ($page_id > 0) ? get_the_title($page_id) : '';
@@ -531,6 +655,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                     echo ($phone !== '') ? esc_html($phone) : '&mdash;';
                 }
                 echo '</td>';
+                echo '<td>' . (($zip_code !== '') ? esc_html($zip_code) : '&mdash;') . '</td>';
                 echo '<td>';
                 if ($page_link !== '') {
                     $link_text = ($page_title !== '') ? $page_title : $page_link;
@@ -548,6 +673,18 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                         $form_filter_url = $build_admin_url(['filter_form_post_id' => $form_post_id], ['filter_form_slug', 'paged']);
                     }
                     echo '<a href="' . esc_url($form_filter_url) . '">' . esc_html($form_label) . '</a>';
+                } else {
+                    echo '&mdash;';
+                }
+                echo '</td>';
+                $added_to_crm = mzf_submission_added_to_crm_data($id);
+                echo '<td>';
+                if ($added_to_crm['text'] !== '') {
+                    if ($added_to_crm['url'] !== '') {
+                        echo '<a href="' . esc_url($added_to_crm['url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html($added_to_crm['text']) . '</a>';
+                    } else {
+                        echo esc_html($added_to_crm['text']);
+                    }
                 } else {
                     echo '&mdash;';
                 }
@@ -664,9 +801,11 @@ add_action('admin_post_mzf_export_submissions_csv', function () {
         'Last Name',
         'Email',
         'Phone',
+        'Zip Code',
         'Page URL',
         'Form Name',
         'Form Edit URL',
+        'CRM Entry',
         'Admin',
         'Status',
     ]);
@@ -680,11 +819,13 @@ add_action('admin_post_mzf_export_submissions_csv', function () {
         $last_name = (string) get_post_meta($id, '_mzf_last_name', true);
         $email = (string) get_post_meta($id, '_mzf_email', true);
         $phone = (string) get_post_meta($id, '_mzf_phone', true);
+        $zip_code = mzf_submission_zip_code($id);
         $page_id = (int) get_post_meta($id, '_mzf_page_id', true);
         $page_url = ($page_id > 0) ? (string) get_permalink($page_id) : '';
         $form_post_id = (int) get_post_meta($id, '_mzf_form_post_id', true);
         $form_name = ($form_post_id > 0) ? ((string) get_the_title($form_post_id)) : (string) get_post_meta($id, '_mzf_form_slug', true);
         $form_edit_url = ($form_post_id > 0) ? (string) get_edit_post_link($form_post_id) : '';
+        $added_to_crm = mzf_submission_added_to_crm_data($id);
         $admin_to = (string) get_post_meta($id, '_mzf_admin_to', true);
         $raw_status = (string) get_post_meta($id, '_mzf_delivery_status', true);
         $status = ($raw_status === 'success') ? 'Success' : 'Failure';
@@ -697,9 +838,11 @@ add_action('admin_post_mzf_export_submissions_csv', function () {
             $last_name,
             $email,
             $phone,
+            $zip_code,
             $page_url,
             $form_name,
             $form_edit_url,
+            (string) ($added_to_crm['csv'] ?? ''),
             $admin_to,
             $status,
         ]);
@@ -820,9 +963,11 @@ add_action('admin_post_mzf_bulk_submissions_action', function () {
             'Last Name',
             'Email',
             'Phone',
+            'Zip Code',
             'Page URL',
             'Form Name',
             'Form Edit URL',
+            'CRM Entry',
             'Admin',
             'Status',
         ]);
@@ -836,11 +981,13 @@ add_action('admin_post_mzf_bulk_submissions_action', function () {
             $last_name = (string) get_post_meta($id, '_mzf_last_name', true);
             $email = (string) get_post_meta($id, '_mzf_email', true);
             $phone = (string) get_post_meta($id, '_mzf_phone', true);
+            $zip_code = mzf_submission_zip_code($id);
             $page_id = (int) get_post_meta($id, '_mzf_page_id', true);
             $page_url = ($page_id > 0) ? (string) get_permalink($page_id) : '';
             $form_post_id = (int) get_post_meta($id, '_mzf_form_post_id', true);
             $form_name = ($form_post_id > 0) ? ((string) get_the_title($form_post_id)) : (string) get_post_meta($id, '_mzf_form_slug', true);
             $form_edit_url = ($form_post_id > 0) ? (string) get_edit_post_link($form_post_id) : '';
+            $added_to_crm = mzf_submission_added_to_crm_data($id);
             $admin_to = (string) get_post_meta($id, '_mzf_admin_to', true);
             $raw_status = (string) get_post_meta($id, '_mzf_delivery_status', true);
             $status = ($raw_status === 'success') ? 'Success' : 'Failure';
@@ -852,9 +999,11 @@ add_action('admin_post_mzf_bulk_submissions_action', function () {
                 $last_name,
                 $email,
                 $phone,
+                $zip_code,
                 $page_url,
                 $form_name,
                 $form_edit_url,
+                (string) ($added_to_crm['csv'] ?? ''),
                 $admin_to,
                 $status,
             ]);
@@ -963,9 +1112,11 @@ add_action('admin_post_mzf_export_single_submission_csv', function () {
         'Last Name',
         'Email',
         'Phone',
+        'Zip Code',
         'Page URL',
         'Form Name',
         'Form Edit URL',
+        'CRM Entry',
         'Admin',
         'Status',
     ]);
@@ -974,11 +1125,13 @@ add_action('admin_post_mzf_export_single_submission_csv', function () {
     $last_name = (string) get_post_meta($id, '_mzf_last_name', true);
     $email = (string) get_post_meta($id, '_mzf_email', true);
     $phone = (string) get_post_meta($id, '_mzf_phone', true);
+    $zip_code = mzf_submission_zip_code($id);
     $page_id = (int) get_post_meta($id, '_mzf_page_id', true);
     $page_url = ($page_id > 0) ? (string) get_permalink($page_id) : '';
     $form_post_id = (int) get_post_meta($id, '_mzf_form_post_id', true);
     $form_name = ($form_post_id > 0) ? ((string) get_the_title($form_post_id)) : (string) get_post_meta($id, '_mzf_form_slug', true);
     $form_edit_url = ($form_post_id > 0) ? (string) get_edit_post_link($form_post_id) : '';
+    $added_to_crm = mzf_submission_added_to_crm_data($id);
     $admin_to = (string) get_post_meta($id, '_mzf_admin_to', true);
     $raw_status = (string) get_post_meta($id, '_mzf_delivery_status', true);
     $status = ($raw_status === 'success') ? 'Success' : 'Failure';
@@ -990,9 +1143,11 @@ add_action('admin_post_mzf_export_single_submission_csv', function () {
         $last_name,
         $email,
         $phone,
+        $zip_code,
         $page_url,
         $form_name,
         $form_edit_url,
+        (string) ($added_to_crm['csv'] ?? ''),
         $admin_to,
         $status,
     ]);
