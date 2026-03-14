@@ -379,9 +379,27 @@ if (!function_exists('mzf_build_footer_html')) {
         $option_addr_raw = function_exists('get_field') ? get_field('address', 'option') : null;
         if (is_array($option_addr_raw)) {
             $street = trim((string) (($option_addr_raw['street_number'] ?? '') . ' ' . ($option_addr_raw['street_name'] ?? '')));
+            $suite = trim((string) (
+                $option_addr_raw['subpremise'] ??
+                $option_addr_raw['suite'] ??
+                $option_addr_raw['unit'] ??
+                $option_addr_raw['street_2'] ??
+                ''
+            ));
             $city   = trim((string) ($option_addr_raw['city'] ?? ''));
             $state  = trim((string) ($option_addr_raw['state'] ?? ''));
             $zip    = trim((string) ($option_addr_raw['post_code'] ?? $option_addr_raw['postal_code'] ?? ''));
+            $option_addr = trim((string) ($option_addr_raw['address'] ?? $option_addr_raw['formatted_address'] ?? ''));
+            // Preserve suite/unit fragments (for example "#100") from formatted address if structured keys omit them.
+            if ($suite === '' && $option_addr !== '') {
+                $first_chunk = trim((string) explode(',', $option_addr)[0]);
+                if ($first_chunk !== '' && preg_match('/(?:#\s*[A-Za-z0-9\-]+|\b(?:suite|ste|unit)\s*[A-Za-z0-9\-]+)/i', $first_chunk, $m)) {
+                    $suite = trim((string) ($m[0] ?? ''));
+                }
+            }
+            if ($suite !== '' && stripos($street, $suite) === false) {
+                $street = trim($street . ' ' . $suite);
+            }
             $parts  = [];
             if ($street !== '') $parts[] = $street;
             if ($city !== '') $parts[] = $city;
@@ -390,7 +408,6 @@ if (!function_exists('mzf_build_footer_html')) {
             if (!empty($parts)) {
                 $addr_display = implode(', ', $parts);
             } else {
-                $option_addr = trim((string) ($option_addr_raw['address'] ?? $option_addr_raw['formatted_address'] ?? ''));
                 if ($option_addr !== '') {
                     $chunks = array_values(array_filter(array_map('trim', explode(',', $option_addr)), static fn($v) => $v !== ''));
                     if (count($chunks) >= 4) {
@@ -495,6 +512,7 @@ if (!function_exists('mzf_render_admin_body')) {
         }
         if ($slug === 'volunteer') {
             $labels['Date'] = 'Date of Birth';
+            $labels['Comments'] = 'Skills and Experience';
         }
         $full_name = trim((string) ($data['FirstName'] ?? '') . ' ' . (string) ($data['LastName'] ?? ''));
         $footer = (string) ($context['footer_html'] ?? '');
@@ -525,7 +543,7 @@ if (!function_exists('mzf_render_admin_body')) {
                 $s = strtolower(trim((string) $raw));
                 return in_array($s, ['1', 'true', 'yes', 'on', 'y'], true) ? 'Yes' : 'No';
             }
-            if (in_array($key, ['Consent', 'Training', 'Confidentiality', 'Applicant'], true)) {
+            if (in_array($key, ['Consent', 'Training', 'Conduct', 'Confidentiality', 'Applicant'], true)) {
                 $raw = $data[$key] ?? '';
                 if (is_bool($raw)) return $raw ? 'Yes' : 'No';
                 $s = strtolower(trim((string) $raw));
@@ -646,9 +664,24 @@ if (!function_exists('mzf_render_admin_body')) {
         $label_company = (string) ($labels['Company'] ?? 'Company');
         $label_email = (string) ($labels['Email'] ?? 'Email');
         $label_phone = (string) ($labels['Phone'] ?? 'Phone');
+        $label_pronouns = (string) ($labels['Pronouns'] ?? 'Pronouns');
         $contact_name_value = trim((string) $value_for('FullName'));
+        if ($slug === 'volunteer') {
+            $preferred_name = trim((string) ($data['PreferredName'] ?? ''));
+            if ($preferred_name !== '') {
+                $contact_name_value = $contact_name_value !== ''
+                    ? ($preferred_name . ' (' . $contact_name_value . ')')
+                    : $preferred_name;
+            }
+        }
         if ($contact_name_value !== '') {
             $contact_rows[] = '<p><strong>' . esc_html($label_name) . ':</strong><br>' . esc_html($contact_name_value) . '</p>';
+        }
+        if ($slug === 'volunteer') {
+            $contact_pronouns_value = trim((string) ($data['Pronouns'] ?? ''));
+            if ($contact_pronouns_value !== '') {
+                $contact_rows[] = '<p><strong>' . esc_html($label_pronouns) . ':</strong><br>' . esc_html($contact_pronouns_value) . '</p>';
+            }
         }
         $contact_company_value = trim((string) $value_for('Company'));
         if ($contact_company_value !== '') {
@@ -669,6 +702,127 @@ if (!function_exists('mzf_render_admin_body')) {
         $is_pickup = ($receiving_option === 'pickup' || $receiving_option === 'pick up');
         $service_value = strtolower(trim((string) ($data['Service'] ?? '')));
         $allow_dimensions = ($slug === 'print-quote' || $service_value === 'printing');
+        $availability_field_keys = [
+            'AvailabilityMode',
+            'GeneralAvailability',
+            'GeneralWeekdayAvailability',
+            'GeneralWeekendAvailability',
+            'Days',
+            'MondaysAvailability',
+            'TuesdaysAvailability',
+            'WednesdaysAvailability',
+            'ThursdaysAvailability',
+            'FridaysAvailability',
+            'SaturdaysAvailability',
+            'SundaysAvailability',
+        ];
+        $acknowledgment_field_keys = ['Applicant', 'Conduct', 'Confidentiality', 'Training', 'Consent'];
+        $normalize_selection = static function ($raw): array {
+            if (is_array($raw)) {
+                $values = $raw;
+            } else {
+                $text = trim((string) $raw);
+                $values = $text === '' ? [] : preg_split('/\s*,\s*/', $text);
+            }
+            $values = array_values(array_filter(array_map(static fn($v) => trim((string) $v), $values), static fn($v) => $v !== ''));
+            return array_values(array_unique($values));
+        };
+        $contains_ci = static function (array $haystack, string $needle): bool {
+            foreach ($haystack as $item) {
+                if (strcasecmp(trim((string) $item), $needle) === 0) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        $format_availability_line = static function (string $label, array $times) use ($contains_ci): string {
+            $times = array_values(array_filter(array_map(static fn($v) => trim((string) $v), $times), static fn($v) => $v !== ''));
+            if (empty($times) || $contains_ci($times, 'Anytime')) {
+                return $label;
+            }
+            $day_label_map = [
+                'Mondays' => 'Monday',
+                'Tuesdays' => 'Tuesday',
+                'Wednesdays' => 'Wednesday',
+                'Thursdays' => 'Thursday',
+                'Fridays' => 'Friday',
+                'Saturdays' => 'Saturday',
+                'Sundays' => 'Sunday',
+            ];
+            $display_label = (string) ($day_label_map[$label] ?? $label);
+            $times_lc = array_map(static fn($v) => strtolower((string) $v), $times);
+            if (count($times_lc) === 1) {
+                $times_text = $times_lc[0];
+            } elseif (count($times_lc) === 2) {
+                $times_text = $times_lc[0] . ' and ' . $times_lc[1];
+            } else {
+                $last = array_pop($times_lc);
+                $times_text = implode(', ', $times_lc) . ', and ' . $last;
+            }
+            return $display_label . ' ' . $times_text;
+        };
+        $availability_lines = [];
+        if ($slug === 'volunteer') {
+            $general_groups = $normalize_selection($data['GeneralAvailability'] ?? []);
+            $weekday_times = $normalize_selection($data['GeneralWeekdayAvailability'] ?? []);
+            $weekend_times = $normalize_selection($data['GeneralWeekendAvailability'] ?? []);
+            $selected_days = $normalize_selection($data['Days'] ?? []);
+
+            $is_general_mode = !empty($general_groups) || (!empty($weekday_times) || !empty($weekend_times));
+            if ($is_general_mode) {
+                if ($contains_ci($general_groups, 'Weekdays') || !empty($weekday_times)) {
+                    $availability_lines[] = $format_availability_line('Weekdays', $weekday_times);
+                }
+                if ($contains_ci($general_groups, 'Weekends') || !empty($weekend_times)) {
+                    $availability_lines[] = $format_availability_line('Weekends', $weekend_times);
+                }
+            } else {
+                $day_map = [
+                    'Mondays' => 'MondaysAvailability',
+                    'Tuesdays' => 'TuesdaysAvailability',
+                    'Wednesdays' => 'WednesdaysAvailability',
+                    'Thursdays' => 'ThursdaysAvailability',
+                    'Fridays' => 'FridaysAvailability',
+                    'Saturdays' => 'SaturdaysAvailability',
+                    'Sundays' => 'SundaysAvailability',
+                ];
+                foreach ($day_map as $day_label => $field_name) {
+                    $day_times = $normalize_selection($data[$field_name] ?? []);
+                    $day_selected = $contains_ci($selected_days, $day_label) || !empty($day_times);
+                    if (!$day_selected) {
+                        continue;
+                    }
+                    $availability_lines[] = $format_availability_line($day_label, $day_times);
+                }
+            }
+        }
+        $availability_row_added = false;
+        $availability_html = implode('<br>', array_map('esc_html', $availability_lines));
+        $ack_label_map = [
+            'Applicant' => 'Applicant Statement',
+            'Conduct' => 'Volunteer Conduct',
+            'Confidentiality' => 'Confidentiality',
+            'Training' => 'Training',
+            'Consent' => 'Consent',
+        ];
+        $is_truthy = static function ($raw): bool {
+            if (is_bool($raw)) {
+                return $raw;
+            }
+            $value = strtolower(trim((string) $raw));
+            return in_array($value, ['1', 'true', 'yes', 'on', 'y'], true);
+        };
+        $acknowledgment_lines = [];
+        if ($slug === 'volunteer') {
+            foreach ($acknowledgment_field_keys as $ack_key) {
+                if (!$is_truthy($data[$ack_key] ?? '')) {
+                    continue;
+                }
+                $acknowledgment_lines[] = (string) ($ack_label_map[$ack_key] ?? ($labels[$ack_key] ?? $ack_key));
+            }
+        }
+        $acknowledgment_row_added = false;
+        $acknowledgment_html = implode('<br>', array_map('esc_html', $acknowledgment_lines));
         foreach ($layout as $field_key) {
             if ((string) $field_key === 'NewsletterSignup') {
                 $newsletter_value = (string) $value_for('NewsletterSignup');
@@ -689,6 +843,20 @@ if (!function_exists('mzf_render_admin_body')) {
                 continue;
             }
             if ((string) $field_key === 'LocationDisplay' && $is_pickup) {
+                continue;
+            }
+            if ($slug === 'volunteer' && in_array((string) $field_key, $availability_field_keys, true)) {
+                if (!$availability_row_added && $availability_html !== '') {
+                    $request_rows[] = '<p><strong>Availability:</strong><br>' . $availability_html . '</p>';
+                    $availability_row_added = true;
+                }
+                continue;
+            }
+            if ($slug === 'volunteer' && in_array((string) $field_key, $acknowledgment_field_keys, true)) {
+                if (!$acknowledgment_row_added && $acknowledgment_html !== '') {
+                    $request_rows[] = '<p><strong>Acknowledgment(s):</strong><br>' . $acknowledgment_html . '</p>';
+                    $acknowledgment_row_added = true;
+                }
                 continue;
             }
             if (in_array((string) $field_key, ['FullName', 'Company', 'Email', 'Phone'], true)) {
@@ -721,11 +889,31 @@ if (!function_exists('mzf_render_admin_body')) {
             } elseif (is_array($raw)) {
                 $vals = array_filter(array_map(static fn($v) => trim((string) $v), $raw), static fn($v) => $v !== '');
                 if (empty($vals)) continue;
-                $display = implode(', ', array_map('esc_html', $vals));
+                if ($field_key === 'Interests') {
+                    $display = implode('<br>', array_map('esc_html', $vals));
+                } else {
+                    $display = implode(', ', array_map('esc_html', $vals));
+                }
             } else {
                 $text = trim((string) $raw);
                 if ($text === '') continue;
-                if ($field_key === 'DateNeeded' || $field_key === 'Date') {
+                if ($field_key === 'Date') {
+                    $ts = strtotime($text);
+                    if ($ts) {
+                        $display = esc_html(date_i18n('F j, Y', $ts));
+                        $timezone = function_exists('wp_timezone')
+                            ? wp_timezone()
+                            : new DateTimeZone(date_default_timezone_get());
+                        $dob = (new DateTimeImmutable('now', $timezone))->setTimestamp((int) $ts);
+                        $today = (new DateTimeImmutable('now', $timezone))->setTime(0, 0);
+                        $age = $dob->diff($today)->y;
+                        if ($age >= 0) {
+                            $display .= ' ' . esc_html('(' . $age . ' years old)');
+                        }
+                    } else {
+                        $display = esc_html($text);
+                    }
+                } elseif ($field_key === 'DateNeeded') {
                     $ts = strtotime($text);
                     $display = $ts ? esc_html(date_i18n('l, F, j, Y', $ts)) : esc_html($text);
                 } elseif ($field_key === 'Duration') {
@@ -792,10 +980,24 @@ if (!function_exists('mzf_render_admin_body')) {
                 }
             }
 
-            $request_rows[] = '<p><strong>' . esc_html($label) . ':</strong><br>' . $display . '</p>';
+            if ($slug === 'volunteer' && in_array((string) $field_key, ['PreferredName', 'Pronouns'], true)) {
+                continue;
+            }
+            if ($slug === 'volunteer' && (string) $field_key === 'Date') {
+                $contact_rows[] = '<p><strong>' . esc_html($label) . ':</strong><br>' . $display . '</p>';
+            } else {
+                $request_rows[] = '<p><strong>' . esc_html($label) . ':</strong><br>' . $display . '</p>';
+            }
         }
-        if (!empty($uploaded_files)) {
-            $request_rows[] = '<p><strong>Files:</strong><br>' . implode('<br>', $uploaded_files) . '</p>';
+        if ($slug === 'volunteer' && !$availability_row_added && $availability_html !== '') {
+            $request_rows[] = '<p><strong>Availability:</strong><br>' . $availability_html . '</p>';
+        }
+        if ($slug === 'volunteer' && !$acknowledgment_row_added && $acknowledgment_html !== '') {
+            $request_rows[] = '<p><strong>Acknowledgment(s):</strong><br>' . $acknowledgment_html . '</p>';
+        }
+        if (!empty($uploaded_files) && $slug !== 'volunteer') {
+            $uploaded_files_label = ($slug === 'volunteer') ? 'Photo ID' : 'Files';
+            $request_rows[] = '<p><strong>' . esc_html($uploaded_files_label) . ':</strong><br>' . implode('<br>', $uploaded_files) . '</p>';
         }
         if ($deferred_files_link === '') {
             $deferred_files_link = (string) $value_for('FilesLink');
@@ -816,11 +1018,15 @@ if (!function_exists('mzf_render_admin_body')) {
             $comments_label = (string) ($labels['Comments'] ?? 'Comments');
             $request_rows[] = '<p><strong>' . esc_html($comments_label) . ':</strong><br>' . nl2br(esc_html($comments_text)) . '</p>';
         }
+        if ($slug === 'volunteer' && !empty($uploaded_files)) {
+            $request_rows[] = '<p><strong>Photo ID:</strong><br>' . implode('<br>', $uploaded_files) . '</p>';
+        }
         if ($newsletter_value === '') {
             $newsletter_value = (string) $value_for('NewsletterSignup');
         }
         $newsletter_raw = strtolower(trim((string) $newsletter_value));
         $newsletter_yes = in_array($newsletter_raw, ['yes', '1', 'true', 'on', 'y'], true);
+        $marketing_sync = isset($context['marketing_sync']) && is_array($context['marketing_sync']) ? $context['marketing_sync'] : [];
         $crm_platform = function_exists('mzf_crm_platform') ? mzf_crm_platform() : '';
         $crm_label = function_exists('mzf_crm_platform_label') ? mzf_crm_platform_label($crm_platform) : '';
         $crm_url = function_exists('mzf_crm_click_url') ? mzf_crm_click_url($crm_platform) : '';
@@ -833,7 +1039,20 @@ if (!function_exists('mzf_render_admin_body')) {
 
         if ($newsletter_yes) {
             $newsletter_line = 'Yes';
-            if ($crm_url !== '') {
+            $sync_ok = !empty($marketing_sync['ok']);
+            $sync_label = trim((string) ($marketing_sync['label'] ?? ''));
+            $sync_url = trim((string) ($marketing_sync['contact_url'] ?? ''));
+            $sync_link_text = trim((string) ($marketing_sync['link_text'] ?? ''));
+            if ($sync_ok && $sync_label !== '') {
+                if ($sync_link_text === '') {
+                    $sync_link_text = 'Added to ' . $sync_label;
+                }
+                if ($sync_url !== '') {
+                    $newsletter_line .= ' (<a href="' . esc_url($sync_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($sync_link_text) . '</a>)';
+                } else {
+                    $newsletter_line .= ' (' . esc_html($sync_link_text) . ')';
+                }
+            } elseif ($crm_url !== '') {
                 $newsletter_line .= ' (<a href="' . esc_url($crm_url) . '" target="_blank" rel="noopener noreferrer">Click to add to ' . esc_html($crm_label) . '</a>)';
             } else {
                 $newsletter_line .= ' (Click to add to ' . esc_html($crm_label) . ')';
@@ -1088,24 +1307,31 @@ if (!function_exists('mzf_validate_volunteer_submission')) {
 
         $photo_field = $_FILES['PhotoID'] ?? null;
         $has_photo_id = false;
+        $photo_file_count = 0;
         if (is_array($photo_field) && array_key_exists('name', $photo_field)) {
             if (is_array($photo_field['name'])) {
                 foreach ((array) $photo_field['name'] as $idx => $name) {
                     $name = trim((string) $name);
                     $err = isset($photo_field['error'][$idx]) ? (int) $photo_field['error'][$idx] : UPLOAD_ERR_NO_FILE;
                     if ($name !== '' && $err !== UPLOAD_ERR_NO_FILE) {
+                        $photo_file_count++;
                         $has_photo_id = true;
-                        break;
                     }
                 }
             } else {
                 $name = trim((string) ($photo_field['name'] ?? ''));
                 $err = isset($photo_field['error']) ? (int) $photo_field['error'] : UPLOAD_ERR_NO_FILE;
                 $has_photo_id = ($name !== '' && $err !== UPLOAD_ERR_NO_FILE);
+                if ($has_photo_id) {
+                    $photo_file_count = 1;
+                }
             }
         }
         if (!$has_photo_id) {
             return new WP_Error('mz_photo_id_missing', 'Photo ID upload is required.');
+        }
+        if ($photo_file_count > 1) {
+            return new WP_Error('mz_photo_id_too_many', 'Please upload exactly one Photo ID file.');
         }
 
         return true;

@@ -177,21 +177,41 @@ if (!function_exists('send_form_data')) :
         if (trim((string) ($data['Phone'] ?? '')) === '') {
             $data['Phone'] = trim((string) ($data['ContactPhone'] ?? ''));
         }
-        if (!empty($data['OtherInterest'])) {
-            $other_interest = trim((string) $data['OtherInterest']);
-            if ($other_interest !== '') {
-                $interest_values = is_array($data['Interests'] ?? null)
-                    ? array_map('sanitize_text_field', (array) $data['Interests'])
-                    : array_filter(array_map('trim', explode(',', (string) ($data['Interests'] ?? ''))));
-                $interest_values = array_values(array_filter($interest_values, static fn($v) => trim((string) $v) !== ''));
-                $interest_values = array_values(array_filter(
-                    $interest_values,
-                    static fn($v) => strcasecmp(trim((string) $v), 'Other') !== 0
-                ));
-                $interest_values[] = $other_interest;
-                $data['Interests'] = array_values(array_unique($interest_values));
+        $interest_values = is_array($data['Interests'] ?? null)
+            ? array_map('sanitize_text_field', (array) $data['Interests'])
+            : array_filter(array_map('trim', explode(',', (string) ($data['Interests'] ?? ''))));
+        $interest_values = array_values(array_filter($interest_values, static fn($v) => trim((string) $v) !== ''));
+        $has_other_selected = false;
+        foreach ($interest_values as $interest_value) {
+            if (strcasecmp(trim((string) $interest_value), 'Other') === 0) {
+                $has_other_selected = true;
+                break;
             }
         }
+        $interest_values = array_values(array_filter(
+            $interest_values,
+            static function ($v): bool {
+                $value = trim((string) $v);
+                if ($value === '') {
+                    return false;
+                }
+                if (strcasecmp($value, 'Other') === 0) {
+                    return false;
+                }
+                if (strcasecmp($value, 'I am open to any role') === 0 || strcasecmp($value, 'Open to Any Role') === 0) {
+                    return false;
+                }
+                return true;
+            }
+        ));
+        if ($has_other_selected) {
+            $other_interest = trim((string) ($data['OtherInterest'] ?? ''));
+            if ($other_interest !== '') {
+                $interest_values[] = sanitize_text_field($other_interest);
+            }
+        }
+        $data['Interests'] = array_values(array_unique($interest_values));
+
         if (trim((string) ($data['DateNeeded'] ?? '')) === '') {
             $data['DateNeeded'] = trim((string) ($data['RentalDate'] ?? $data['Deadline'] ?? $data['Date'] ?? ''));
         }
@@ -336,7 +356,7 @@ if (!function_exists('send_form_data')) :
 
         $full_name = trim($data['FirstName'] . ' ' . $data['LastName']);
         $slug_for_labels = sanitize_key((string) ($data['FormSlug'] ?? ''));
-        $label_company = 'Company';
+        $label_company = 'Organization/Company';
         $label_interests = 'Interests';
         $label_item_type = trim((string) ($data['Service'] ?? '')) !== '' ? 'Service' : 'Item Type';
         $label_date = (
@@ -435,6 +455,26 @@ if (!function_exists('send_form_data')) :
             $org_maps_url = null;
         }
 
+        $marketing_sync = ['ok' => false, 'provider' => 'none'];
+        $newsletter_opt_in = mzf_truthy($data['NewsletterSignup'] ?? '');
+        $newsletter_opt_in = (bool) apply_filters('mzf_newsletter_opt_in', $newsletter_opt_in, $data);
+        if ($newsletter_opt_in) {
+            $lead_tags = [];
+            if (!empty($data['PageId'])) {
+                $lead_page_slug = (string) get_post_field('post_name', (int) $data['PageId']);
+                if ($lead_page_slug !== '') {
+                    $lead_tags[] = sanitize_title($lead_page_slug);
+                }
+            }
+            $form_slug_tag = sanitize_title((string) ($data['FormSlug'] ?? ''));
+            if ($form_slug_tag !== '') {
+                $lead_tags[] = $form_slug_tag;
+            }
+            $lead_tags[] = 'website form';
+            $data['LeadTags'] = array_values(array_unique(array_filter($lead_tags)));
+            $marketing_sync = mzf_sync_marketing_contact($data);
+        }
+
         $admin_footer_html = function_exists('mzf_build_footer_html')
             ? mzf_build_footer_html('admin', $org_addr_display, $org_maps_url, $org_phone, $org_phone_href, $org_email_display, $site_url, (string) $domain)
             : '<hr><p><small>'
@@ -445,9 +485,13 @@ if (!function_exists('send_form_data')) :
                 . '<a href="' . esc_url($site_url) . '" target="_blank">' . $site_url . '</a></small></p>';
         $body .= $admin_footer_html;
 
-        $body = mzf_render_admin_body($body, $data, ['footer_html' => $admin_footer_html, 'domain' => (string) $domain]);
+        $admin_render_context = [
+            'footer_html' => $admin_footer_html,
+            'domain' => (string) $domain,
+            'marketing_sync' => $marketing_sync,
+        ];
 
-        $body = apply_filters('mzf_email_body', $body, $data);
+        $body = mzf_render_admin_body($body, $data, $admin_render_context);
 
         $page_id = isset($_POST['PageId']) ? absint($_POST['PageId']) : ($page_id ?? 0);
         $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
@@ -595,7 +639,8 @@ if (!function_exists('send_form_data')) :
 
         // Core default BCC support (replaces DS adapter BCC bridge behavior).
         $default_bcc = sanitize_email((string) mzf_get('admin_bcc_email', ''));
-        if ($default_bcc && is_email($default_bcc)) {
+        $bcc_allowed_envs = ['production', 'qa'];
+        if (in_array((string) $env, $bcc_allowed_envs, true) && $default_bcc && is_email($default_bcc)) {
             $has_bcc = false;
             foreach ((array) $admin_headers as $hdr) {
                 if (stripos((string) $hdr, 'bcc:') === 0) {
@@ -690,7 +735,17 @@ if (!function_exists('send_form_data')) :
 
             require_once ABSPATH . 'wp-admin/includes/file.php';
 
-            foreach ($_FILES as $file) {
+            foreach ($_FILES as $field_name => $file) {
+                $field_name = (string) $field_name;
+                $is_photo_id_field = ($field_name === 'PhotoID');
+                $field_allowed_mimes = $is_photo_id_field
+                    ? [
+                        'jpg|jpeg|jpe' => 'image/jpeg',
+                        'png'          => 'image/png',
+                        'pdf'          => 'application/pdf',
+                        'pdf_alt'      => 'application/x-pdf',
+                    ]
+                    : $allowed_mimes;
                 $files = [];
                 if (is_array($file['name'])) {
                     $count = count($file['name']);
@@ -707,6 +762,10 @@ if (!function_exists('send_form_data')) :
                 } else {
                     if (!empty($file['name']) && (int)$file['size'] > 0) $files[] = $file;
                 }
+                if ($is_photo_id_field && count($files) > 1) {
+                    $file_errors[] = 'Photo ID: Please upload exactly one file (JPG, JPEG, PNG, or PDF).';
+                    continue;
+                }
 
                 foreach ($files as $single) {
                     $name = $single['name'] ?? 'file';
@@ -721,7 +780,7 @@ if (!function_exists('send_form_data')) :
                         continue;
                     }
 
-                    $moved = wp_handle_upload($single, ['test_form' => false, 'mimes' => $allowed_mimes]);
+                    $moved = wp_handle_upload($single, ['test_form' => false, 'mimes' => $field_allowed_mimes]);
 
                     if (is_array($moved) && !empty($moved['file'])) {
                         $attachments[]    = $moved['file'];
@@ -756,7 +815,11 @@ if (!function_exists('send_form_data')) :
 
         if (!empty($attached_meta)) {
             $data['UploadedFiles'] = $attached_meta;
+            if (function_exists('mzf_render_admin_body')) {
+                $body = mzf_render_admin_body($body, $data, $admin_render_context);
+            }
             $file_links = [];
+            $files_block_label = (sanitize_key((string) ($data['FormSlug'] ?? '')) === 'volunteer') ? 'Photo ID' : 'Files';
             foreach ($attached_meta as $meta) {
                 $name = trim((string) ($meta['name'] ?? ''));
                 $url = trim((string) ($meta['url'] ?? ''));
@@ -764,8 +827,8 @@ if (!function_exists('send_form_data')) :
                     $file_links[] = '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($name) . '</a>';
                 }
             }
-            if (!empty($file_links) && stripos((string) $body, '<strong>Files:</strong>') === false) {
-                $files_block = '<p><strong>Files:</strong><br>' . implode('<br>', $file_links) . '</p>';
+            if (!empty($file_links) && !preg_match('/<strong>(Files|Photo ID):<\/strong>/i', (string) $body)) {
+                $files_block = '<p><strong>' . esc_html($files_block_label) . ':</strong><br>' . implode('<br>', $file_links) . '</p>';
                 if (preg_match('/<p><strong>Files link:<\/strong><br>.*?<\/p>/is', (string) $body)) {
                     $body = preg_replace('/(<p><strong>Files link:<\/strong><br>.*?<\/p>)/is', $files_block . '$1', (string) $body, 1);
                 } elseif (preg_match('/<hr[^>]*><p><small>/i', (string) $body)) {
@@ -775,6 +838,8 @@ if (!function_exists('send_form_data')) :
                 }
             }
         }
+
+        $body = apply_filters('mzf_email_body', $body, $data);
 
         $successMsgRaw = function_exists('mzf_form_config_value')
             ? mzf_form_config_value($form_cfg, ['messages.success', 'message_success'], 'Your submission was sent successfully.')
@@ -811,21 +876,6 @@ if (!function_exists('send_form_data')) :
             'pageId'   => (int) ($data['PageId'] ?? 0),
             'data'     => $data,
         ]);
-
-        $newsletter_opt_in = mzf_truthy($data['NewsletterSignup'] ?? '');
-        $newsletter_opt_in = (bool) apply_filters('mzf_newsletter_opt_in', $newsletter_opt_in, $data);
-        if ($newsletter_opt_in) {
-            $lead_tags = [];
-            if (!empty($data['PageId'])) {
-                $slug = (string) get_post_field('post_name', (int) $data['PageId']);
-                if ($slug !== '') {
-                    $lead_tags[] = sanitize_title($slug);
-                }
-            }
-            $lead_tags[] = 'Website Lead';
-            $data['LeadTags'] = array_values(array_unique(array_filter($lead_tags)));
-            mzf_sync_marketing_contact($data);
-        }
 
         remove_filter('wp_mail_content_type', $__meza_set_html);
 

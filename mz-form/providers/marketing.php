@@ -75,28 +75,45 @@ if (!function_exists('mzf_marketing_provider')) {
 }
 
 if (!function_exists('mzf_sync_marketing_contact')) {
-    function mzf_sync_marketing_contact(array $data): bool
+    function mzf_sync_marketing_contact(array $data): array
     {
         $provider = mzf_marketing_provider();
         if ($provider === 'none') {
-            return false;
+            return ['ok' => false, 'provider' => 'none'];
         }
 
         if ($provider === 'mailchimp') {
             if (!function_exists('mz_mc_upsert_contact')) {
-                return false;
+                return [
+                    'ok' => false,
+                    'provider' => 'mailchimp',
+                    'label' => 'Mailchimp',
+                    'error' => 'Mailchimp provider is unavailable.',
+                ];
             }
             $result = mz_mc_upsert_contact($data);
             if (is_wp_error($result)) {
                 error_log('Mailchimp sync failed: ' . $result->get_error_message());
-                return false;
+                return [
+                    'ok' => false,
+                    'provider' => 'mailchimp',
+                    'label' => 'Mailchimp',
+                    'error' => $result->get_error_message(),
+                ];
             }
-            return true;
+            return is_array($result)
+                ? $result
+                : ['ok' => true, 'provider' => 'mailchimp', 'label' => 'Mailchimp'];
         }
 
         if ($provider === 'constant_contact') {
             if (!function_exists('mz_cc_add_contact')) {
-                return false;
+                return [
+                    'ok' => false,
+                    'provider' => 'constant_contact',
+                    'label' => 'Constant Contact',
+                    'error' => 'Constant Contact provider is unavailable.',
+                ];
             }
             mz_cc_add_contact([
                 'Email'        => $data['Email'] ?? '',
@@ -106,9 +123,13 @@ if (!function_exists('mzf_sync_marketing_contact')) {
                 'Website'      => $data['Website'] ?? '',
                 'LeadTags'     => $data['LeadTags'] ?? [],
             ]);
-            return true;
+            return [
+                'ok' => true,
+                'provider' => 'constant_contact',
+                'label' => 'Constant Contact',
+            ];
         }
 
-        return false;
+        return ['ok' => false, 'provider' => $provider];
     }
 }

@@ -16,6 +16,42 @@ add_filter('mzf_recipients', static function (array $to, array $data, $env): arr
         return $to;
     }
 
+    $form_slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
+    if ($form_slug === 'contact') {
+        $interest_map = [
+            'volunteer' => ['amanda@fahass.org', 'jason@fahass.org'],
+            'sponsor' => ['amanda@fahass.org', 'jason@fahass.org'],
+            'events' => ['amanda@fahass.org', 'jason@fahass.org'],
+            'hiv-testing' => ['ashley@fahass.org'],
+            'appointments' => ['ashley@fahass.org'],
+            'free-condoms' => ['programs@fahass.org'],
+        ];
+
+        $raw_interests = $data['Interests'] ?? [];
+        if (!is_array($raw_interests)) {
+            $raw_interests = preg_split('/\s*,\s*/', trim((string) $raw_interests)) ?: [];
+        }
+
+        $mapped_recipients = [];
+        foreach ((array) $raw_interests as $interest) {
+            $interest_key = sanitize_title((string) $interest);
+            if ($interest_key === '' || empty($interest_map[$interest_key])) {
+                continue;
+            }
+            foreach ($interest_map[$interest_key] as $email) {
+                $email = sanitize_email((string) $email);
+                if (is_email($email)) {
+                    $mapped_recipients[] = $email;
+                }
+            }
+        }
+
+        $mapped_recipients = array_values(array_unique($mapped_recipients));
+        if (!empty($mapped_recipients)) {
+            return $mapped_recipients;
+        }
+    }
+
     $store = trim((string) ($data['Store'] ?? ''));
     if ($store === '' || !function_exists('mz_resolve_office_email')) {
         return $to;

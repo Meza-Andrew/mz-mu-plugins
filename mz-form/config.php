@@ -47,13 +47,206 @@ if (!function_exists('mzf_get')) {
 if (!function_exists('mzf_get_crm_group')) {
     function mzf_get_crm_group(): array
     {
-        if (!function_exists('get_field')) {
-            return [];
+        $crm = [];
+
+        if (function_exists('get_field')) {
+            $acf_crm = get_field('crm', 'option');
+            if (is_array($acf_crm)) {
+                $crm = $acf_crm;
+            } else {
+                // Backward/fallback read for environments using reversed args.
+                $acf_crm_fallback = get_field('option', 'crm');
+                if (is_array($acf_crm_fallback)) {
+                    $crm = $acf_crm_fallback;
+                }
+            }
         }
-        $crm = get_field('crm', 'option');
+
+        if (empty($crm)) {
+            $opt_crm = get_option('crm');
+            if (is_array($opt_crm)) {
+                $crm = $opt_crm;
+            }
+        }
+
         return is_array($crm) ? $crm : [];
     }
 }
+
+if (!function_exists('mzf_maybe_migrate_mailchimp_to_crm')) {
+    function mzf_maybe_migrate_mailchimp_to_crm(): void
+    {
+        static $ran = false;
+        if ($ran) {
+            return;
+        }
+        $ran = true;
+
+        $crm = mzf_get_crm_group();
+        if (!is_array($crm)) {
+            $crm = [];
+        }
+
+        $legacy_crm = get_option('crm');
+        if (!is_array($legacy_crm)) {
+            $legacy_crm = [];
+        }
+        $options_crm = get_option('options_crm');
+        if (!is_array($options_crm)) {
+            $options_crm = [];
+        }
+        $mc4wp = get_option('mc4wp');
+        if (!is_array($mc4wp)) {
+            $mc4wp = [];
+        }
+        $mc4wp_mailchimp = get_option('mc4wp_mailchimp');
+        if (!is_array($mc4wp_mailchimp)) {
+            $mc4wp_mailchimp = [];
+        }
+
+        $legacy_api_key_candidates = [
+            trim((string) ($crm['api_mailchimp'] ?? '')),
+            trim((string) ($options_crm['api_mailchimp'] ?? '')),
+            trim((string) ($legacy_crm['api_mailchimp'] ?? '')),
+            trim((string) get_option('options_crm_api_mailchimp', '')),
+            trim((string) get_option('options_mz_mc_api_key', '')),
+            trim((string) get_option('options_mailchimp_api_key', '')),
+            trim((string) get_option('mz_mc_api_key', '')),
+            trim((string) get_option('mailchimp_api_key', '')),
+            trim((string) ($mc4wp_mailchimp['api_key'] ?? '')),
+            trim((string) ($mc4wp['api_key'] ?? '')),
+            trim((string) ($mc4wp['mailchimp']['api_key'] ?? '')),
+            defined('MAILCHIMP_API_KEY') ? trim((string) MAILCHIMP_API_KEY) : '',
+        ];
+        $legacy_list_id_candidates = [
+            trim((string) ($crm['list_mailchimp'] ?? '')),
+            trim((string) ($options_crm['list_mailchimp'] ?? '')),
+            trim((string) ($legacy_crm['list_mailchimp'] ?? '')),
+            trim((string) get_option('options_crm_list_mailchimp', '')),
+            trim((string) get_option('options_mz_mc_list_id', '')),
+            trim((string) get_option('options_mailchimp_list_id', '')),
+            trim((string) get_option('mz_mc_list_id', '')),
+            trim((string) get_option('mailchimp_list_id', '')),
+            trim((string) ($mc4wp_mailchimp['list_id'] ?? '')),
+            trim((string) ($mc4wp_mailchimp['default_list'] ?? '')),
+            trim((string) ($mc4wp['mailchimp']['list_id'] ?? '')),
+            trim((string) ($mc4wp['mailchimp']['default_list'] ?? '')),
+            defined('MAILCHIMP_LIST_ID') ? trim((string) MAILCHIMP_LIST_ID) : '',
+        ];
+
+        $legacy_api_key = '';
+        foreach ($legacy_api_key_candidates as $candidate) {
+            if ($candidate !== '') {
+                $legacy_api_key = $candidate;
+                break;
+            }
+        }
+
+        $legacy_list_id = '';
+        foreach ($legacy_list_id_candidates as $candidate) {
+            if ($candidate !== '') {
+                $legacy_list_id = $candidate;
+                break;
+            }
+        }
+
+        if ($legacy_api_key === '' && $legacy_list_id === '') {
+            return;
+        }
+
+        $dirty = false;
+        if ($legacy_api_key !== '' && trim((string) ($crm['api_mailchimp'] ?? '')) === '') {
+            $crm['api_mailchimp'] = $legacy_api_key;
+            $dirty = true;
+        }
+        if ($legacy_list_id !== '' && trim((string) ($crm['list_mailchimp'] ?? '')) === '') {
+            $crm['list_mailchimp'] = $legacy_list_id;
+            $dirty = true;
+        }
+        $mailchimp_group = isset($crm['mailchimp']) && is_array($crm['mailchimp']) ? $crm['mailchimp'] : [];
+        if ($legacy_api_key !== '' && trim((string) ($mailchimp_group['api'] ?? '')) === '') {
+            $mailchimp_group['api'] = $legacy_api_key;
+            $crm['mailchimp'] = $mailchimp_group;
+            $dirty = true;
+        }
+        if ($legacy_list_id !== '' && trim((string) ($mailchimp_group['list'] ?? '')) === '') {
+            $mailchimp_group['list'] = $legacy_list_id;
+            $crm['mailchimp'] = $mailchimp_group;
+            $dirty = true;
+        }
+        $platform_raw = trim((string) ($crm['platform'] ?? ''));
+        if ($legacy_api_key !== '' && $platform_raw === '') {
+            // Match ACF select choice values so conditional sub-fields show in admin UI.
+            $crm['platform'] = 'MailChimp';
+            $dirty = true;
+        } elseif (strtolower($platform_raw) === 'mailchimp' && $platform_raw !== 'MailChimp') {
+            // Repair previously stored variants so conditional sub-fields show in admin UI.
+            $crm['platform'] = 'MailChimp';
+            $dirty = true;
+        }
+
+        if (!$dirty) {
+            return;
+        }
+
+        if (function_exists('update_field')) {
+            $saved = update_field('crm', $crm, 'option');
+            if ($saved !== false) {
+                // Keep explicit sub-field options in sync for ACF UIs reading direct option keys.
+                if (trim((string) ($crm['api_mailchimp'] ?? '')) !== '') {
+                    update_option('options_crm_api_mailchimp', (string) $crm['api_mailchimp'], false);
+                }
+                if (trim((string) ($crm['list_mailchimp'] ?? '')) !== '') {
+                    update_option('options_crm_list_mailchimp', (string) $crm['list_mailchimp'], false);
+                }
+                if (!empty($crm['mailchimp']) && is_array($crm['mailchimp'])) {
+                    update_option('options_crm_mailchimp', $crm['mailchimp'], false);
+                    if (trim((string) ($crm['mailchimp']['api'] ?? '')) !== '') {
+                        update_option('options_crm_mailchimp_api', (string) $crm['mailchimp']['api'], false);
+                    }
+                    if (trim((string) ($crm['mailchimp']['list'] ?? '')) !== '') {
+                        update_option('options_crm_mailchimp_list', (string) $crm['mailchimp']['list'], false);
+                    }
+                }
+                if (trim((string) ($crm['platform'] ?? '')) !== '') {
+                    update_option('options_crm_platform', (string) $crm['platform'], false);
+                }
+                return;
+            }
+        }
+
+        update_option('crm', $crm, false);
+        update_option('options_crm', $crm, false);
+        if (trim((string) ($crm['api_mailchimp'] ?? '')) !== '') {
+            update_option('options_crm_api_mailchimp', (string) $crm['api_mailchimp'], false);
+        }
+        if (trim((string) ($crm['list_mailchimp'] ?? '')) !== '') {
+            update_option('options_crm_list_mailchimp', (string) $crm['list_mailchimp'], false);
+        }
+        if (!empty($crm['mailchimp']) && is_array($crm['mailchimp'])) {
+            update_option('options_crm_mailchimp', $crm['mailchimp'], false);
+            if (trim((string) ($crm['mailchimp']['api'] ?? '')) !== '') {
+                update_option('options_crm_mailchimp_api', (string) $crm['mailchimp']['api'], false);
+            }
+            if (trim((string) ($crm['mailchimp']['list'] ?? '')) !== '') {
+                update_option('options_crm_mailchimp_list', (string) $crm['mailchimp']['list'], false);
+            }
+        }
+        if (trim((string) ($crm['platform'] ?? '')) !== '') {
+            update_option('options_crm_platform', (string) $crm['platform'], false);
+        }
+    }
+}
+
+add_action('acf/init', function () {
+    mzf_maybe_migrate_mailchimp_to_crm();
+}, 20);
+
+add_action('init', function () {
+    if (!did_action('acf/init')) {
+        mzf_maybe_migrate_mailchimp_to_crm();
+    }
+}, 25);
 
 if (!function_exists('mzf_normalize_crm_platform')) {
     function mzf_normalize_crm_platform(string $platform): string
@@ -101,6 +294,43 @@ if (!function_exists('mzf_crm_platform_label')) {
     }
 }
 
+if (!function_exists('mzf_crm_group_aliases')) {
+    function mzf_crm_group_aliases(string $platform): array
+    {
+        $slug = mzf_normalize_crm_platform($platform);
+        if ($slug === '') {
+            return [];
+        }
+
+        $aliases = [$slug];
+        $underscore = str_replace('-', '_', $slug);
+        if (!in_array($underscore, $aliases, true)) {
+            $aliases[] = $underscore;
+        }
+
+        return $aliases;
+    }
+}
+
+if (!function_exists('mzf_crm_group_sub_value')) {
+    function mzf_crm_group_sub_value(array $crm, string $platform, string $field): string
+    {
+        foreach (mzf_crm_group_aliases($platform) as $group_key) {
+            $group = $crm[$group_key] ?? null;
+            if (!is_array($group)) {
+                continue;
+            }
+
+            $value = trim((string) ($group[$field] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+}
+
 if (!function_exists('mzf_crm_api_key')) {
     function mzf_crm_api_key(?string $platform = null): string
     {
@@ -109,7 +339,30 @@ if (!function_exists('mzf_crm_api_key')) {
             return '';
         }
         $crm = mzf_get_crm_group();
+        $nested = mzf_crm_group_sub_value($crm, $slug, 'api');
+        if ($nested !== '') {
+            return $nested;
+        }
+
         return trim((string) ($crm['api_' . $slug] ?? ''));
+    }
+}
+
+if (!function_exists('mzf_crm_list_id')) {
+    function mzf_crm_list_id(?string $platform = null): string
+    {
+        $slug = mzf_normalize_crm_platform((string) ($platform ?? mzf_crm_platform()));
+        if ($slug === '') {
+            return '';
+        }
+
+        $crm = mzf_get_crm_group();
+        $nested = mzf_crm_group_sub_value($crm, $slug, 'list');
+        if ($nested !== '') {
+            return $nested;
+        }
+
+        return trim((string) ($crm['list_' . $slug] ?? ''));
     }
 }
 
@@ -120,11 +373,32 @@ if (!function_exists('mzf_crm_list_url')) {
         if ($slug === '') {
             return '';
         }
+
         $crm = mzf_get_crm_group();
         $url = trim((string) ($crm['list_' . $slug] ?? ''));
         if ($url === '') {
+            foreach (mzf_crm_group_aliases($slug) as $group_key) {
+                $group = $crm[$group_key] ?? null;
+                if (!is_array($group)) {
+                    continue;
+                }
+
+                $candidate = trim((string) ($group['url'] ?? ''));
+                if ($candidate !== '') {
+                    $url = $candidate;
+                    break;
+                }
+            }
+        }
+
+        if ($url === '') {
             return '';
         }
+
+        if (!preg_match('#^https?://#i', $url)) {
+            return '';
+        }
+
         return (string) esc_url_raw($url);
     }
 }
@@ -271,6 +545,7 @@ if (!function_exists('mzf_default_fields')) {
             'Comments',
             'Consent',
             'Training',
+            'Conduct',
             'Confidentiality',
             'Applicant',
             'NewsletterSignup',
