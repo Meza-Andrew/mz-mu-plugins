@@ -1554,6 +1554,20 @@ add_filter('hidden_meta_boxes', function ($hidden, $screen) {
     return array_values(array_diff((array) $hidden, ['slugdiv']));
 }, 200, 2);
 
+// Form edit screen: render core Slug in ACF's sortable "After Title" area.
+add_action('add_meta_boxes_form', function ($post) {
+    remove_meta_box('slugdiv', 'form', 'normal');
+    add_meta_box(
+        'slugdiv',
+        __('Slug'),
+        'post_slug_meta_box',
+        'form',
+        'acf_after_title',
+        'high',
+        ['__back_compat_meta_box' => true]
+    );
+}, 1000, 1);
+
 function meza_form_metabox_order_with_slug_first($order_value): string
 {
     $order = is_string($order_value) ? $order_value : '';
@@ -1570,9 +1584,19 @@ function meza_form_metabox_order_with_slug_first($order_value): string
         }));
     }
 
+    $after_title_items = [];
+    if (isset($contexts['acf_after_title'])) {
+        $after_title_items = array_map('sanitize_key', explode(',', (string) $contexts['acf_after_title']));
+        $after_title_items = array_values(array_filter($after_title_items, static function ($id) {
+            return $id !== '';
+        }));
+    }
+
     $normal_items = array_values(array_diff($normal_items, ['slugdiv']));
-    array_unshift($normal_items, 'slugdiv');
+    $after_title_items = array_values(array_diff($after_title_items, ['slugdiv']));
+    array_unshift($after_title_items, 'slugdiv');
     $contexts['normal'] = implode(',', array_values(array_unique($normal_items)));
+    $contexts['acf_after_title'] = implode(',', array_values(array_unique($after_title_items)));
 
     // Keep Publish in the side column when no order has been set.
     if (!isset($contexts['side']) || trim((string) $contexts['side']) === '') {
@@ -1605,61 +1629,6 @@ add_filter('default_user_option_meta-box-order_form', function ($default_order) 
 add_filter('get_user_option_meta-box-order_form', function ($saved_order) {
     return meza_form_metabox_order_with_slug_first($saved_order);
 }, 10, 1);
-
-// Form edit screen: physically move core Slug metabox directly under Title.
-// This is required when ACF field groups are positioned "After Title",
-// where metabox order alone cannot place slug above ACF groups.
-add_action('admin_print_footer_scripts-post.php', function () {
-    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-    if (!($screen instanceof WP_Screen)) return;
-    if ((string) ($screen->post_type ?? '') !== 'form') return;
-    ?>
-    <script>
-    (function ($) {
-      function mezaPlaceFormSlugUnderTitle() {
-        var $title = $('#titlediv');
-        var $slug = $('#slugdiv');
-        if (!$title.length || !$slug.length) return;
-        $slug.removeClass('hide-if-js closed');
-        $slug.show();
-        $slug.insertAfter($title);
-      }
-
-      $(document).ready(function () {
-        mezaPlaceFormSlugUnderTitle();
-        window.setTimeout(mezaPlaceFormSlugUnderTitle, 50);
-        window.setTimeout(mezaPlaceFormSlugUnderTitle, 300);
-      });
-    })(jQuery);
-    </script>
-    <?php
-}, 100);
-
-add_action('admin_print_footer_scripts-post-new.php', function () {
-    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-    if (!($screen instanceof WP_Screen)) return;
-    if ((string) ($screen->post_type ?? '') !== 'form') return;
-    ?>
-    <script>
-    (function ($) {
-      function mezaPlaceFormSlugUnderTitle() {
-        var $title = $('#titlediv');
-        var $slug = $('#slugdiv');
-        if (!$title.length || !$slug.length) return;
-        $slug.removeClass('hide-if-js closed');
-        $slug.show();
-        $slug.insertAfter($title);
-      }
-
-      $(document).ready(function () {
-        mezaPlaceFormSlugUnderTitle();
-        window.setTimeout(mezaPlaceFormSlugUnderTitle, 50);
-        window.setTimeout(mezaPlaceFormSlugUnderTitle, 300);
-      });
-    })(jQuery);
-    </script>
-    <?php
-}, 100);
 
 // Remove the Dashboard welcome panel for all users.
 add_action('admin_init', function () {
