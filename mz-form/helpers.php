@@ -431,6 +431,9 @@ if (!function_exists('mzf_build_footer_html')) {
         if ($addr_label === '') {
             $addr_label = $addr_display;
         }
+        if ($maps_url === '' && $addr_display !== '') {
+            $maps_url = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($addr_display);
+        }
 
         // Global footer template: always use FH-style footer across all clients.
         $footer = '<hr style="margin:24px 0;"><p><small>';
@@ -951,30 +954,29 @@ if (!function_exists('mzf_render_admin_body')) {
                     $receiving_lng = trim((string) ($data['ReceivingLongitude'] ?? ''));
                     $base_lat = trim((string) ($data['Latitude'] ?? ''));
                     $base_lng = trim((string) ($data['Longitude'] ?? ''));
-                    $has_google_maps_meta = (
-                        $place_id !== ''
-                        || $receiving_lat !== ''
-                        || $receiving_lng !== ''
-                        || $base_lat !== ''
-                        || $base_lng !== ''
-                    );
-
-                    if ($has_google_maps_meta) {
-                        $receiving_option = strtolower(trim((string) ($data['ReceivingOption'] ?? '')));
-                        $is_delivery = ($receiving_option === 'delivery' || $receiving_option === 'deliver');
-                        if ($is_delivery) {
-                            $maps_url = 'https://www.google.com/maps/dir/?api=1&origin=' . rawurlencode('My Location')
-                                . '&destination=' . rawurlencode($addr_display);
-                            if ($place_id !== '') {
-                                $maps_url .= '&destination_place_id=' . rawurlencode($place_id);
-                            }
-                        } else {
-                            $maps_url = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($addr_display);
-                        }
-                        $display = '<a href="' . esc_url($maps_url) . '" target="_blank" rel="noopener">' . esc_html($addr_display) . '</a>';
-                    } else {
-                        $display = esc_html($addr_display);
+                    $coords = '';
+                    if ($receiving_lat !== '' && $receiving_lng !== '') {
+                        $coords = $receiving_lat . ',' . $receiving_lng;
+                    } elseif ($base_lat !== '' && $base_lng !== '') {
+                        $coords = $base_lat . ',' . $base_lng;
                     }
+                    $receiving_option = strtolower(trim((string) ($data['ReceivingOption'] ?? '')));
+                    $is_delivery = ($receiving_option === 'delivery' || $receiving_option === 'deliver');
+                    if ($is_delivery) {
+                        $destination = $coords !== '' ? $coords : $addr_display;
+                        $maps_url = 'https://www.google.com/maps/dir/?api=1&origin=' . rawurlencode('My Location')
+                            . '&destination=' . rawurlencode($destination);
+                        if ($place_id !== '') {
+                            $maps_url .= '&destination_place_id=' . rawurlencode($place_id);
+                        }
+                    } else {
+                        $query = $coords !== '' ? $coords : $addr_display;
+                        $maps_url = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($query);
+                        if ($place_id !== '') {
+                            $maps_url .= '&query_place_id=' . rawurlencode($place_id);
+                        }
+                    }
+                    $display = '<a href="' . esc_url($maps_url) . '" target="_blank" rel="noopener">' . esc_html($addr_display) . '</a>';
                 } else {
                     $display = esc_html($text);
                 }

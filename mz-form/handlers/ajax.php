@@ -443,7 +443,42 @@ if (!function_exists('send_form_data')) :
         if (!empty($data['Dimensions']) && $allow_dimensions) $body .= '<p><strong>Dimensions:</strong><br>' . $h((string) $data['Dimensions']) . '</p>';
         if (!empty($data['DateNeeded'])) $body .= '<p><strong>' . $h($label_date) . ':</strong><br>' . $h($human_date((string) $data['DateNeeded'])) . '</p>';
         if (!empty($data['Duration'])) $body .= '<p><strong>' . $h($label_duration) . ':</strong><br>' . $h($format_weeks_days((string) $data['Duration'])) . '</p>';
-        if (!empty($data['LocationDisplay'])) $body .= '<p><strong>' . $h($label_location) . ':</strong><br>' . $h((string) $data['LocationDisplay']) . '</p>';
+        if (!empty($data['LocationDisplay'])) {
+            $addr_display = trim((string) $data['LocationDisplay']);
+            $addr_display_label = preg_replace('/,\s*(US|USA|United States(?: of America)?)\s*$/i', '', $addr_display);
+            $addr_display_label = trim((string) $addr_display_label);
+            if ($addr_display_label === '') {
+                $addr_display_label = $addr_display;
+            }
+            $place_id = trim((string) ($data['ReceivingPlaceID'] ?? ''));
+            $receiving_lat = trim((string) ($data['ReceivingLatitude'] ?? ''));
+            $receiving_lng = trim((string) ($data['ReceivingLongitude'] ?? ''));
+            $base_lat = trim((string) ($data['Latitude'] ?? ''));
+            $base_lng = trim((string) ($data['Longitude'] ?? ''));
+            $coords = '';
+            if ($receiving_lat !== '' && $receiving_lng !== '') {
+                $coords = $receiving_lat . ',' . $receiving_lng;
+            } elseif ($base_lat !== '' && $base_lng !== '') {
+                $coords = $base_lat . ',' . $base_lng;
+            }
+            $receiving_option = strtolower(trim((string) ($data['ReceivingOption'] ?? '')));
+            $is_delivery = ($receiving_option === 'delivery' || $receiving_option === 'deliver');
+            if ($is_delivery) {
+                $destination = $coords !== '' ? $coords : $addr_display;
+                $maps_url = 'https://www.google.com/maps/dir/?api=1&origin=' . rawurlencode('My Location')
+                    . '&destination=' . rawurlencode($destination);
+                if ($place_id !== '') {
+                    $maps_url .= '&destination_place_id=' . rawurlencode($place_id);
+                }
+            } else {
+                $query = $coords !== '' ? $coords : $addr_display;
+                $maps_url = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($query);
+                if ($place_id !== '') {
+                    $maps_url .= '&query_place_id=' . rawurlencode($place_id);
+                }
+            }
+            $body .= '<p><strong>' . $h($label_location) . ':</strong><br><a href="' . esc_url($maps_url) . '" target="_blank" rel="noopener">' . $h($addr_display_label) . '</a></p>';
+        }
         if (!empty($data['Interests'])) $body .= '<p><strong>' . $h($label_interests) . ':</strong><br>' . $h($maybe_join($data['Interests'])) . '</p>';
 
         if (!empty($data['FilesLink'])) {
