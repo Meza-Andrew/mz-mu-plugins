@@ -121,35 +121,36 @@ if (!function_exists('mzf_site_logo_absolute_url')) {
     }
 }
 
+if (!function_exists('mzf_theme_email_logo_absolute_url')) {
+    function mzf_theme_email_logo_absolute_url(): string
+    {
+        if (!function_exists('get_stylesheet') || !function_exists('get_stylesheet_directory') || !function_exists('get_stylesheet_directory_uri')) {
+            return '';
+        }
+
+        $theme_slug = sanitize_file_name((string) get_stylesheet());
+        $base_dir = trailingslashit((string) get_stylesheet_directory()) . 'public/';
+        $base_uri = trailingslashit((string) get_stylesheet_directory_uri()) . 'public/';
+        $candidates = [
+            'email_logo_' . $theme_slug . '.jpg',
+            'email_logo_' . $theme_slug . '.jpeg',
+            'email_logo_' . $theme_slug . '.png',
+        ];
+
+        foreach ($candidates as $filename) {
+            if (file_exists($base_dir . $filename)) {
+                return mzf_ensure_absolute_url($base_uri . $filename);
+            }
+        }
+
+        return '';
+    }
+}
+
 if (!function_exists('mzf_user_email_logo_url')) {
     function mzf_user_email_logo_url(array $cfg = []): string
     {
-        $raw = mzf_form_config_value($cfg, [
-            'email_user.logo_url',
-            'email_user.logo',
-            'email_logo_url',
-            'email_logo',
-            'logo_url',
-            'logo',
-        ], '');
-
-        $url = '';
-        if (is_numeric($raw)) {
-            $img = wp_get_attachment_image_url((int) $raw, 'full');
-            $url = is_string($img) ? $img : '';
-        } elseif (is_array($raw)) {
-            $candidate = (string) ($raw['url'] ?? $raw['src'] ?? '');
-            if (is_numeric($candidate)) {
-                $img = wp_get_attachment_image_url((int) $candidate, 'full');
-                $url = is_string($img) ? $img : '';
-            } else {
-                $url = $candidate;
-            }
-        } else {
-            $url = (string) $raw;
-        }
-
-        $url = mzf_ensure_absolute_url($url);
+        $url = mzf_theme_email_logo_absolute_url();
         if ($url === '') {
             $url = mzf_site_logo_absolute_url();
         }
