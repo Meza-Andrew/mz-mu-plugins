@@ -892,6 +892,91 @@ if (!function_exists('mzf_apply_subject_templates')) {
             $vocals_or_vocalist = 'vocalist';
         }
 
+        $state = trim((string) (
+            $data['ReceivingAddressState']
+            ?? $data['State']
+            ?? $data['state']
+            ?? ''
+        ));
+        if ($state === '') {
+            $address_sources = [
+                (string) ($data['LocationDisplay'] ?? ''),
+                (string) ($data['ReceivingAddressDisplay'] ?? ''),
+                (string) ($data['ReceivingAddress'] ?? ''),
+                (string) ($data['Address'] ?? ''),
+                (string) ($data['Location'] ?? ''),
+            ];
+            foreach ($address_sources as $address_source) {
+                $address_source = trim($address_source);
+                if ($address_source === '') {
+                    continue;
+                }
+                if (preg_match('/,\s*([A-Z]{2})\s+\d{5}(?:-\d{4})?(?:,|$)/', $address_source, $state_match)) {
+                    $state = (string) ($state_match[1] ?? '');
+                    break;
+                }
+            }
+        }
+        if ($state !== '') {
+            $state_map = [
+                'AL' => 'Alabama',
+                'AK' => 'Alaska',
+                'AZ' => 'Arizona',
+                'AR' => 'Arkansas',
+                'CA' => 'California',
+                'CO' => 'Colorado',
+                'CT' => 'Connecticut',
+                'DE' => 'Delaware',
+                'FL' => 'Florida',
+                'GA' => 'Georgia',
+                'HI' => 'Hawaii',
+                'ID' => 'Idaho',
+                'IL' => 'Illinois',
+                'IN' => 'Indiana',
+                'IA' => 'Iowa',
+                'KS' => 'Kansas',
+                'KY' => 'Kentucky',
+                'LA' => 'Louisiana',
+                'ME' => 'Maine',
+                'MD' => 'Maryland',
+                'MA' => 'Massachusetts',
+                'MI' => 'Michigan',
+                'MN' => 'Minnesota',
+                'MS' => 'Mississippi',
+                'MO' => 'Missouri',
+                'MT' => 'Montana',
+                'NE' => 'Nebraska',
+                'NV' => 'Nevada',
+                'NH' => 'New Hampshire',
+                'NJ' => 'New Jersey',
+                'NM' => 'New Mexico',
+                'NY' => 'New York',
+                'NC' => 'North Carolina',
+                'ND' => 'North Dakota',
+                'OH' => 'Ohio',
+                'OK' => 'Oklahoma',
+                'OR' => 'Oregon',
+                'PA' => 'Pennsylvania',
+                'RI' => 'Rhode Island',
+                'SC' => 'South Carolina',
+                'SD' => 'South Dakota',
+                'TN' => 'Tennessee',
+                'TX' => 'Texas',
+                'UT' => 'Utah',
+                'VT' => 'Vermont',
+                'VA' => 'Virginia',
+                'WA' => 'Washington',
+                'WV' => 'West Virginia',
+                'WI' => 'Wisconsin',
+                'WY' => 'Wyoming',
+                'DC' => 'District of Columbia',
+            ];
+            $state_key = strtoupper($state);
+            if (isset($state_map[$state_key])) {
+                $state = $state_map[$state_key];
+            }
+        }
+
         $tokens = [
             'name'         => $name !== '' ? $name : 'A visitor',
             'company'      => $company,
@@ -902,11 +987,13 @@ if (!function_exists('mzf_apply_subject_templates')) {
             'vocals'       => $vocals_subject,
             'vocals_or_vocalist' => $vocals_or_vocalist,
             'condom_count' => trim((string) ($data['CondomCount'] ?? '')),
+            'state'        => $state,
             'state_clause' => (trim((string) ($data['LocationDisplay'] ?? '')) !== '' ? (' for ' . trim((string) ($data['LocationDisplay'] ?? ''))) : ''),
         ];
         $rendered = mzf_render_template($template, $tokens);
         if ($slug === 'condoms') {
             $rendered = preg_replace('/\(\)\s*/', '', (string) $rendered);
+            $rendered = preg_replace('/\s+for\s*$/i', '', (string) $rendered);
         }
         return $rendered;
     }
