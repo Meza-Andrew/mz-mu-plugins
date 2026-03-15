@@ -2917,6 +2917,12 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
     if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
 
     $flush_node_id = 'meza-flush-server-cache';
+    $environment = defined('WP_ENV')
+        ? strtolower((string) WP_ENV)
+        : (function_exists('wp_get_environment_type') ? strtolower((string) wp_get_environment_type()) : 'production');
+    $is_production_like_environment = in_array($environment, ['qa', 'production'], true);
+    $wp_super_cache_plugin_file = trailingslashit((string) WP_PLUGIN_DIR) . 'wp-super-cache/wp-cache.php';
+    $has_wp_super_cache_installed = file_exists($wp_super_cache_plugin_file);
     $nodes = $wp_admin_bar->get_nodes();
     if (!is_array($nodes)) return;
 
@@ -3012,6 +3018,9 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         $wp_admin_bar->remove_node($flush_node_id);
     }
 
+    $should_show_page_cache = $has_wp_super_cache_installed && ($delete_cache_node instanceof stdClass);
+    $should_show_server_cache = !$has_wp_super_cache_installed && $is_production_like_environment;
+
     $add_clone = static function ($node, string $title_override = '', $parent_override = null) use ($wp_admin_bar): void {
         if (!($node instanceof stdClass)) return;
         $node_id = (string) ($node->id ?? '');
@@ -3053,46 +3062,39 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         $wp_admin_bar->add_node([
             'id' => $flush_node_id,
             'parent' => 'top-secondary',
-            'title' => 'Clear Server Cache',
+            'title' => 'Clear Cache',
             'href' => $flush_href,
             'group' => false,
-            'meta' => ['title' => 'Clear Server Cache'],
+            'meta' => ['title' => 'Clear Cache'],
         ]);
     };
-
-    // Preferred order: Query Monitor, Clear Page Cache, Clear Server Cache.
-    if (($query_monitor_node instanceof stdClass) && ($delete_cache_node instanceof stdClass)) {
-        $query_monitor_id = (string) ($query_monitor_node->id ?? '');
-        $delete_cache_id = (string) ($delete_cache_node->id ?? '');
-        if ($query_monitor_id !== '') $wp_admin_bar->remove_node($query_monitor_id);
-        if ($delete_cache_id !== '') $wp_admin_bar->remove_node($delete_cache_id);
-
-        $add_clone($query_monitor_node, '', 'top-secondary');
-        $add_clone($delete_cache_node, 'Clear Page Cache', 'top-secondary');
-        $add_flush();
-        return;
-    }
 
     if ($query_monitor_node instanceof stdClass) {
         $query_monitor_id = (string) ($query_monitor_node->id ?? '');
         if ($query_monitor_id !== '') $wp_admin_bar->remove_node($query_monitor_id);
         $add_clone($query_monitor_node, '', 'top-secondary');
-        $add_flush();
-        return;
     }
 
     if ($delete_cache_node instanceof stdClass) {
         $delete_cache_id = (string) ($delete_cache_node->id ?? '');
         if ($delete_cache_id !== '') $wp_admin_bar->remove_node($delete_cache_id);
-        $add_clone($delete_cache_node, 'Clear Page Cache', 'top-secondary');
-        $add_flush();
+    }
+
+    // Show exactly one cache action at a time:
+    // - page cache when WP Super Cache is installed
+    // - server cache only on qa/production when WP Super Cache is not installed
+    if ($should_show_page_cache) {
+        $add_clone($delete_cache_node, 'Clear Cache', 'top-secondary');
         return;
     }
 
-    $add_flush();
+    if ($should_show_server_cache) {
+        $add_flush();
+        return;
+    }
 }
 
-// Remove GoDaddy Quick Links and only show Clear Server Cache if that removal succeeds.
+// Remove GoDaddy Quick Links before positioning the single cache action, when applicable.
 add_action('admin_bar_menu', function ($wp_admin_bar) {
     meza_position_flush_server_cache_node($wp_admin_bar);
 }, PHP_INT_MAX);
