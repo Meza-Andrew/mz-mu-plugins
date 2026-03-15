@@ -765,9 +765,205 @@ if (!function_exists('cc_find_contact_by_email')) {
         return ['exists' => false, 'contact_id' => ''];
     }
 }
+if (!function_exists('cc_get_contact_details')) {
+    function cc_get_contact_details(string $contact_id): array
+    {
+        $contact_id = trim($contact_id);
+        if ($contact_id === '') {
+            return [];
+        }
+
+        $url = 'https://api.cc.email/v3/contacts/' . rawurlencode($contact_id) . '?include=phone_numbers,street_addresses,list_memberships';
+        $resp = cc_api_request('GET', $url);
+        if (is_wp_error($resp)) {
+            return [];
+        }
+
+        $code = (int) wp_remote_retrieve_response_code($resp);
+        if ($code < 200 || $code >= 300) {
+            return [];
+        }
+
+        $body = json_decode((string) wp_remote_retrieve_body($resp), true);
+        return is_array($body) ? $body : [];
+    }
+}
+if (!function_exists('cc_update_work_phone')) {
+    function cc_update_work_phone(string $contact_id, string $email, string $work_phone, string $list_id = '')
+    {
+        $contact_id = trim($contact_id);
+        $email = strtolower(trim($email));
+        $work_phone = trim($work_phone);
+        if ($contact_id === '' || $email === '' || $work_phone === '') {
+            return new WP_Error('cc_work_phone_missing_data', 'Missing data for Constant Contact work phone update.');
+        }
+
+        $detail = cc_get_contact_details($contact_id);
+        $payload = [
+            'email_address' => [
+                'address' => $email,
+            ],
+            'update_source' => 'Account',
+        ];
+
+        foreach (['first_name', 'last_name', 'job_title', 'company_name', 'anniversary', 'birthday_month', 'birthday_day', 'create_source'] as $core_key) {
+            if (isset($detail[$core_key]) && $detail[$core_key] !== '') {
+                $payload[$core_key] = $detail[$core_key];
+            }
+        }
+
+        $list_memberships = [];
+        if (!empty($detail['list_memberships']) && is_array($detail['list_memberships'])) {
+            foreach ($detail['list_memberships'] as $lid) {
+                $lid = trim((string) $lid);
+                if ($lid !== '') {
+                    $list_memberships[] = $lid;
+                }
+            }
+        }
+        if ($list_id !== '') {
+            $list_memberships[] = $list_id;
+        }
+        $list_memberships = array_values(array_unique(array_filter($list_memberships)));
+        if (!empty($list_memberships)) {
+            $payload['list_memberships'] = $list_memberships;
+        }
+
+        $phones = [];
+        if (!empty($detail['phone_numbers']) && is_array($detail['phone_numbers'])) {
+            foreach ($detail['phone_numbers'] as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+                $kind = trim((string) ($entry['kind'] ?? ''));
+                $number = trim((string) ($entry['phone_number'] ?? ''));
+                if ($kind === '' || $number === '') {
+                    continue;
+                }
+                $phones[] = [
+                    'kind' => $kind,
+                    'phone_number' => $number,
+                ];
+            }
+        }
+
+        $replaced = false;
+        foreach ($phones as &$entry) {
+            if (strtolower((string) ($entry['kind'] ?? '')) === 'work') {
+                $entry['phone_number'] = $work_phone;
+                $replaced = true;
+                break;
+            }
+        }
+        unset($entry);
+        if (!$replaced) {
+            $phones[] = [
+                'kind' => 'work',
+                'phone_number' => $work_phone,
+            ];
+        }
+        $payload['phone_numbers'] = $phones;
+
+        return cc_api_request('PUT', 'https://api.cc.email/v3/contacts/' . rawurlencode($contact_id), $payload);
+    }
+}
+if (!function_exists('cc_update_work_postal')) {
+    function cc_update_work_postal(string $contact_id, string $email, string $work_postal, string $country = 'US', string $list_id = '')
+    {
+        $contact_id = trim($contact_id);
+        $email = strtolower(trim($email));
+        $work_postal = strtoupper(trim($work_postal));
+        $country = strtoupper(trim($country));
+        if ($contact_id === '' || $email === '' || $work_postal === '') {
+            return new WP_Error('cc_work_postal_missing_data', 'Missing data for Constant Contact work postal update.');
+        }
+        if ($country === '') {
+            $country = 'US';
+        }
+
+        $detail = cc_get_contact_details($contact_id);
+        $payload = [
+            'email_address' => [
+                'address' => $email,
+            ],
+            'update_source' => 'Account',
+        ];
+
+        foreach (['first_name', 'last_name', 'job_title', 'company_name', 'anniversary', 'birthday_month', 'birthday_day', 'create_source'] as $core_key) {
+            if (isset($detail[$core_key]) && $detail[$core_key] !== '') {
+                $payload[$core_key] = $detail[$core_key];
+            }
+        }
+
+        $list_memberships = [];
+        if (!empty($detail['list_memberships']) && is_array($detail['list_memberships'])) {
+            foreach ($detail['list_memberships'] as $lid) {
+                $lid = trim((string) $lid);
+                if ($lid !== '') {
+                    $list_memberships[] = $lid;
+                }
+            }
+        }
+        if ($list_id !== '') {
+            $list_memberships[] = $list_id;
+        }
+        $list_memberships = array_values(array_unique(array_filter($list_memberships)));
+        if (!empty($list_memberships)) {
+            $payload['list_memberships'] = $list_memberships;
+        }
+
+        $addresses = [];
+        if (!empty($detail['street_addresses']) && is_array($detail['street_addresses'])) {
+            foreach ($detail['street_addresses'] as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+                $kind = trim((string) ($entry['kind'] ?? ''));
+                if ($kind === '') {
+                    continue;
+                }
+                $clean = ['kind' => $kind];
+                foreach (['street', 'street2', 'city', 'state', 'postal_code', 'country'] as $k) {
+                    if (isset($entry[$k]) && trim((string) $entry[$k]) !== '') {
+                        $clean[$k] = trim((string) $entry[$k]);
+                    }
+                }
+                $addresses[] = $clean;
+            }
+        }
+
+        $replaced = false;
+        foreach ($addresses as &$entry) {
+            if (strtolower((string) ($entry['kind'] ?? '')) === 'work') {
+                $entry['postal_code'] = $work_postal;
+                if (empty($entry['country'])) {
+                    $entry['country'] = $country;
+                }
+                $replaced = true;
+                break;
+            }
+        }
+        unset($entry);
+        if (!$replaced) {
+            $addresses[] = [
+                'kind' => 'work',
+                'postal_code' => $work_postal,
+                'country' => $country,
+            ];
+        }
+        $payload['street_addresses'] = $addresses;
+
+        return cc_api_request('PUT', 'https://api.cc.email/v3/contacts/' . rawurlencode($contact_id), $payload);
+    }
+}
 if (!function_exists('cc_get_contact_url')) {
     function cc_get_contact_url(string $contact_id = ''): string
     {
+        $contact_id = trim($contact_id);
+        if ($contact_id !== '') {
+            return (string) esc_url_raw('https://app.constantcontact.com/contacts/' . rawurlencode($contact_id) . '/profile');
+        }
+
         $url = '';
         if (function_exists('mzf_crm_click_url')) {
             $url = trim((string) mzf_crm_click_url('constant-contact'));
@@ -824,8 +1020,46 @@ if (!function_exists('mz_cc_add_contact')) {
         $first_name = trim((string) ($data['FirstName'] ?? $data['First name'] ?? $data['first_name'] ?? ''));
         $last_name = trim((string) ($data['LastName'] ?? $data['Last name'] ?? $data['last_name'] ?? ''));
         $company_name = trim((string) ($data['Company'] ?? $data['Company name'] ?? $data['company_name'] ?? ''));
-        $phone = trim((string) ($data['Phone'] ?? $data['WorkPhone'] ?? $data['Work phone'] ?? $data['work_phone'] ?? ''));
-        $zip = trim((string) ($data['Zip'] ?? $data['ZipCode'] ?? $data['Zip code'] ?? $data['zip_code'] ?? ''));
+        $phone = '';
+        foreach ([
+            'Phone',
+            'WorkPhone',
+            'Work phone',
+            'work_phone',
+            'phone',
+            'phone_number',
+            'PhoneNumber',
+            'phoneNumber',
+            'Work Phone',
+            'workPhone',
+        ] as $phone_key) {
+            $candidate = isset($data[$phone_key]) ? trim((string) $data[$phone_key]) : '';
+            if ($candidate !== '') {
+                $phone = $candidate;
+                break;
+            }
+        }
+
+        $zip = '';
+        foreach ([
+            'Zip',
+            'ZipCode',
+            'Zip code',
+            'zip_code',
+            'zipcode',
+            'Zipcode',
+            'zipCode',
+            'PostalCode',
+            'postal_code',
+            'Postal Code',
+            'postal',
+        ] as $zip_key) {
+            $candidate = isset($data[$zip_key]) ? trim((string) $data[$zip_key]) : '';
+            if ($candidate !== '') {
+                $zip = $candidate;
+                break;
+            }
+        }
 
         if ($first_name !== '') {
             $payload['first_name'] = sanitize_text_field($first_name);
@@ -836,21 +1070,35 @@ if (!function_exists('mz_cc_add_contact')) {
         if ($company_name !== '') {
             $payload['company_name'] = mb_substr(sanitize_text_field($company_name), 0, 50);
         }
+        $normalized_phone = '';
         if ($phone !== '') {
-            $phone_number = preg_replace('/[^\d+]/', '', $phone);
-            if ($phone_number !== '') {
-                $payload['phone_numbers'] = [[
-                    'phone_number' => $phone_number,
-                    'kind' => 'work',
-                ]];
+            $normalized_phone = trim((string) preg_replace('/[^0-9+\-\(\)\.\s]/', '', $phone));
+            if ($normalized_phone !== '') {
+                $payload['phone_number'] = $normalized_phone;
             }
         }
+        $normalized_postal = '';
+        $normalized_country = 'US';
         if ($zip !== '') {
-            $postal_code = sanitize_text_field($zip);
-            if ($postal_code !== '') {
-                $payload['street_addresses'] = [[
-                    'postal_code' => $postal_code,
-                ]];
+            $normalized_postal = strtoupper(trim((string) preg_replace('/[^A-Za-z0-9\- ]/', '', $zip)));
+            if ($normalized_postal !== '') {
+                $country = '';
+                foreach (['Country', 'country', 'ReceivingAddressCountry', 'receiving_address_country', 'AddressCountry', 'address_country'] as $country_key) {
+                    $candidate_country = isset($data[$country_key]) ? trim((string) $data[$country_key]) : '';
+                    if ($candidate_country !== '') {
+                        $country = sanitize_text_field($candidate_country);
+                        break;
+                    }
+                }
+                if ($country === '') {
+                    $country = 'US';
+                }
+                $normalized_country = strtoupper((string) $country);
+                $payload['street_address'] = [
+                    'kind' => 'work',
+                    'postal_code' => $normalized_postal,
+                    'country' => $normalized_country,
+                ];
             }
         }
 
@@ -866,6 +1114,31 @@ if (!function_exists('mz_cc_add_contact')) {
                 'url' => 'https://api.cc.email/v3/contacts/sign_up_form',
                 'payload' => $payload,
             ]];
+            if ($normalized_phone !== '') {
+                $dry_requests[] = [
+                    'method' => 'PUT',
+                    'url' => 'https://api.cc.email/v3/contacts/{contact_id}',
+                    'payload' => [
+                        'phone_numbers' => [[
+                            'kind' => 'work',
+                            'phone_number' => $normalized_phone,
+                        ]],
+                    ],
+                ];
+            }
+            if ($normalized_postal !== '') {
+                $dry_requests[] = [
+                    'method' => 'PUT',
+                    'url' => 'https://api.cc.email/v3/contacts/{contact_id}',
+                    'payload' => [
+                        'street_addresses' => [[
+                            'kind' => 'work',
+                            'postal_code' => $normalized_postal,
+                            'country' => $normalized_country,
+                        ]],
+                    ],
+                ];
+            }
             if (!empty($lead_tags)) {
                 $dry_requests[] = [
                     'method' => 'POST',
@@ -899,7 +1172,6 @@ if (!function_exists('mz_cc_add_contact')) {
         }
 
         $resp = cc_api_request('POST', 'https://api.cc.email/v3/contacts/sign_up_form', $payload);
-
         if (is_wp_error($resp)) {
             return $resp;
         }
@@ -913,11 +1185,24 @@ if (!function_exists('mz_cc_add_contact')) {
             return new WP_Error('cc_upsert_failed', 'Constant Contact upsert failed: HTTP ' . $code);
         }
 
-        $contact_id = $body['contact_id'] ?? ($body['contact']['contact_id'] ?? null);
-        if (!$contact_id) {
+        $contact_id = (string) ($body['contact_id'] ?? ($body['contact']['contact_id'] ?? ''));
+        if ($contact_id === '') {
             $contact_id = (string) ($existing['contact_id'] ?? '');
             if ($contact_id === '') {
                 return new WP_Error('cc_missing_contact_id', 'Constant Contact response did not include contact_id.');
+            }
+        }
+
+        if ($normalized_phone !== '') {
+            $work_resp = cc_update_work_phone((string) $contact_id, (string) $email, (string) $normalized_phone, (string) $list_id);
+            if (is_wp_error($work_resp) || (int) wp_remote_retrieve_response_code($work_resp) >= 300) {
+                error_log('CC work phone update failed: ' . (is_wp_error($work_resp) ? $work_resp->get_error_message() : wp_remote_retrieve_body($work_resp)));
+            }
+        }
+        if ($normalized_postal !== '') {
+            $postal_resp = cc_update_work_postal((string) $contact_id, (string) $email, (string) $normalized_postal, (string) $normalized_country, (string) $list_id);
+            if (is_wp_error($postal_resp) || (int) wp_remote_retrieve_response_code($postal_resp) >= 300) {
+                error_log('CC work postal update failed: ' . (is_wp_error($postal_resp) ? $postal_resp->get_error_message() : wp_remote_retrieve_body($postal_resp)));
             }
         }
 

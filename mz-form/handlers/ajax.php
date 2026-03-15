@@ -175,7 +175,57 @@ if (!function_exists('send_form_data')) :
             $data['Website'] = trim((string) ($data['Honeypot'] ?? ''));
         }
         if (trim((string) ($data['Phone'] ?? '')) === '') {
-            $data['Phone'] = trim((string) ($data['ContactPhone'] ?? ''));
+            $data['Phone'] = trim((string) (
+                $data['ContactPhone']
+                ?? $data['WorkPhone']
+                ?? $data['Work Phone']
+                ?? $data['work_phone']
+                ?? $data['phone_number']
+                ?? $data['PhoneNumber']
+                ?? $data['WorkPhoneNumber']
+                ?? $data['workPhone']
+                ?? ''
+            ));
+        }
+        if (trim((string) ($data['Zip'] ?? '')) === '') {
+            $data['Zip'] = trim((string) (
+                $data['ZipCode']
+                ?? $data['Zip code']
+                ?? $data['zip_code']
+                ?? $data['zipcode']
+                ?? $data['Zipcode']
+                ?? $data['zipCode']
+                ?? $data['PostalCode']
+                ?? $data['Postal Code']
+                ?? $data['postal_code']
+                ?? $data['postal']
+                ?? $data['ReceivingAddressPostal']
+                ?? $data['ReceivingAddressZip']
+                ?? ''
+            ));
+        }
+        if (trim((string) ($data['Zip'] ?? '')) === '') {
+            $address_sources = [
+                (string) ($data['LocationDisplay'] ?? ''),
+                (string) ($data['ReceivingAddressDisplay'] ?? ''),
+                (string) ($data['ReceivingAddress'] ?? ''),
+                (string) ($data['Address'] ?? ''),
+                (string) ($data['Location'] ?? ''),
+            ];
+            foreach ($address_sources as $address_source) {
+                $address_source = trim($address_source);
+                if ($address_source === '') {
+                    continue;
+                }
+                if (preg_match('/\\b(\\d{5}(?:-\\d{4})?)\\b/', $address_source, $zip_match)) {
+                    $data['Zip'] = (string) ($zip_match[1] ?? '');
+                    break;
+                }
+                if (preg_match('/\\b([A-Za-z]\\d[A-Za-z][\\s-]?\\d[A-Za-z]\\d)\\b/', $address_source, $postal_match)) {
+                    $data['Zip'] = strtoupper((string) ($postal_match[1] ?? ''));
+                    break;
+                }
+            }
         }
         $interest_values = is_array($data['Interests'] ?? null)
             ? array_map('sanitize_text_field', (array) $data['Interests'])
@@ -1009,8 +1059,8 @@ if (!function_exists('mzf_render_marketing_dry_run_alert_script')) {
                         addField(lines, 'First Name', payload.first_name || (payload.merge_fields && payload.merge_fields.FNAME));
                         addField(lines, 'Last Name', payload.last_name || (payload.merge_fields && payload.merge_fields.LNAME));
                         addField(lines, 'Company', payload.company_name || (payload.merge_fields && payload.merge_fields.COMPANY));
-                        addField(lines, 'Phone', (payload.phone_numbers && payload.phone_numbers[0] && payload.phone_numbers[0].phone_number) || (payload.merge_fields && payload.merge_fields.PHONE));
-                        addField(lines, 'Zip', (payload.street_addresses && payload.street_addresses[0] && payload.street_addresses[0].postal_code) || (payload.merge_fields && payload.merge_fields.ZIP));
+                        addField(lines, 'Phone', payload.phone_number || (payload.phone_numbers && payload.phone_numbers[0] && payload.phone_numbers[0].phone_number) || (payload.merge_fields && payload.merge_fields.PHONE));
+                        addField(lines, 'Zip', (payload.street_address && payload.street_address.postal_code) || (payload.street_addresses && payload.street_addresses[0] && payload.street_addresses[0].postal_code) || (payload.merge_fields && payload.merge_fields.ZIP));
 
                         if (Array.isArray(payload.tags)) {
                             payload.tags.forEach(function (tag) {

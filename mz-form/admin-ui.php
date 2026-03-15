@@ -203,6 +203,12 @@ if (!function_exists('mzf_submission_added_to_crm_data')) {
 
         $sync_label = trim((string) ($marketing_sync['label'] ?? ''));
         $sync_contact_url = trim((string) ($marketing_sync['contact_url'] ?? ''));
+        if ($provider === 'constant_contact') {
+            $sync_contact_id = trim((string) ($marketing_sync['contact_id'] ?? ''));
+            if ($sync_contact_id !== '') {
+                $sync_contact_url = 'https://app.constantcontact.com/contacts/' . rawurlencode($sync_contact_id) . '/profile';
+            }
+        }
         if ($sync_contact_url === '') {
             return ['text' => '', 'url' => '', 'csv' => ''];
         }
@@ -348,7 +354,6 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
 
         echo '<div class="wrap">';
         echo '<h1>Form Submission Log</h1>';
-        echo '<p>Review recent form submissions and delivery status.</p>';
         $view_labels = [
             'all' => 'All',
             'locked' => 'Locked',

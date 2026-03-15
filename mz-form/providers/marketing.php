@@ -115,12 +115,28 @@ if (!function_exists('mzf_sync_marketing_contact')) {
                     'error' => 'Constant Contact provider is unavailable.',
                 ];
             }
+            $phone_value = '';
+            foreach (['Phone', 'WorkPhone', 'Work phone', 'work_phone', 'phone', 'phone_number', 'PhoneNumber', 'phoneNumber', 'Work Phone', 'workPhone'] as $phone_key) {
+                $candidate = isset($data[$phone_key]) ? trim((string) $data[$phone_key]) : '';
+                if ($candidate !== '') {
+                    $phone_value = $candidate;
+                    break;
+                }
+            }
+            $zip_value = '';
+            foreach (['Zip', 'ZipCode', 'Zip code', 'zip_code', 'zipcode', 'Zipcode', 'zipCode', 'PostalCode', 'postal_code', 'Postal Code', 'postal'] as $zip_key) {
+                $candidate = isset($data[$zip_key]) ? trim((string) $data[$zip_key]) : '';
+                if ($candidate !== '') {
+                    $zip_value = $candidate;
+                    break;
+                }
+            }
             $result = mz_cc_add_contact([
                 'Email'        => $data['Email'] ?? '',
                 'FirstName'    => $data['FirstName'] ?? '',
                 'LastName'     => $data['LastName'] ?? '',
-                'Phone'        => $data['Phone'] ?? ($data['WorkPhone'] ?? ''),
-                'Zip'          => $data['Zip'] ?? ($data['ZipCode'] ?? ''),
+                'Phone'        => $phone_value,
+                'Zip'          => $zip_value,
                 'Company'      => $data['Company'] ?? '',
                 'LeadTags'     => $data['LeadTags'] ?? [],
             ]);
