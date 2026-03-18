@@ -427,10 +427,10 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         }
         if (isset($_GET['mzf_deleted_selected'])) {
             $deleted_selected = max(0, absint($_GET['mzf_deleted_selected']));
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d selected submission was deleted.', '%d selected submissions were deleted.', $deleted_selected), $deleted_selected)) . '</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d submission was deleted.', '%d submissions were deleted.', $deleted_selected), $deleted_selected)) . '</p></div>';
         }
         if (isset($_GET['mzf_export_selected_empty'])) {
-            echo '<div class="notice notice-warning is-dismissible"><p>No submissions were selected to export.</p></div>';
+            echo '<div class="notice notice-warning is-dismissible"><p>No submissions were chosen to export.</p></div>';
         }
         if (isset($_GET['mzf_emptied_trash'])) {
             $emptied_trash = max(0, absint($_GET['mzf_emptied_trash']));
@@ -555,19 +555,24 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             return '<a href="' . esc_url($url) . '">' . esc_html($label) . $indicator . '</a>';
         };
 
-        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" onsubmit="if (document.getElementById(\'mzf_bulk_action\').value===\'delete_selected\') return confirm(\'Are you sure you want to delete selected submissions?\'); return true;">';
+        $delete_bulk_confirmation = ($view === 'deleted')
+            ? 'Are you sure you want to permanently delete these submissions?'
+            : 'Are you sure you want to delete these submissions?';
+
+        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" onsubmit="if (document.getElementById(\'mzf_bulk_action\').value===\'delete_selected\') return confirm(\'' . esc_js($delete_bulk_confirmation) . '\'); return true;">';
         wp_nonce_field('mzf_bulk_submissions_action');
         echo '<input type="hidden" name="action" value="mzf_bulk_submissions_action">';
         echo '<input type="hidden" name="redirect_to" value="' . esc_url($current_view_url) . '">';
+        echo '<input type="hidden" name="current_view" value="' . esc_attr($view) . '">';
         echo '<div class="tablenav top mzf-table-toolbar">';
         echo '<div class="alignleft actions mzf-actions-left">';
         echo '<label class="screen-reader-text" for="mzf_bulk_action">Bulk action</label>';
         echo '<select id="mzf_bulk_action" name="mzf_bulk_action">';
         echo '<option value="">Bulk actions</option>';
-        echo '<option value="save_selected">Lock Selected</option>';
-        echo '<option value="unlock_selected">Unlock Selected</option>';
-        echo '<option value="export_selected">Export Selected to CSV</option>';
-        echo '<option value="delete_selected">Delete Selected</option>';
+        echo '<option value="save_selected">Lock</option>';
+        echo '<option value="unlock_selected">Unlock</option>';
+        echo '<option value="export_selected">Export</option>';
+        echo '<option value="delete_selected">' . (($view === 'deleted') ? 'Permanently Delete' : 'Delete') . '</option>';
         echo '</select> ';
         echo '<button type="submit" class="button action">Apply</button>';
         echo '</div>';
@@ -898,6 +903,7 @@ add_action('admin_post_mzf_bulk_submissions_action', function () {
     $bulk_action = isset($_POST['mzf_bulk_action']) ? sanitize_key((string) wp_unslash($_POST['mzf_bulk_action'])) : '';
     $selected_ids = isset($_POST['submission_ids']) ? array_map('absint', (array) wp_unslash($_POST['submission_ids'])) : [];
     $selected_ids = array_values(array_unique(array_filter($selected_ids, static fn($id) => $id > 0)));
+    $current_view = isset($_POST['current_view']) ? sanitize_key((string) wp_unslash($_POST['current_view'])) : 'all';
 
     $redirect = mzf_submissions_redirect_url();
 
@@ -937,7 +943,10 @@ add_action('admin_post_mzf_bulk_submissions_action', function () {
         foreach ($selected_ids as $id) {
             if (get_post_type($id) !== 'mzf_submission') continue;
             delete_post_meta($id, '_mzf_saved');
-            if (wp_trash_post($id) !== false) {
+            $deleted_post = ($current_view === 'deleted')
+                ? wp_delete_post($id, true)
+                : wp_trash_post($id);
+            if ($deleted_post !== false) {
                 $deleted_count++;
             }
         }
