@@ -34,11 +34,23 @@ if (!function_exists('mzf_log_submit_attempt')) :
         $client_invalid_fields = isset($_POST['mzf_client_invalid_fields'])
             ? sanitize_text_field((string) wp_unslash($_POST['mzf_client_invalid_fields']))
             : '';
+        $action = isset($_POST['action'])
+            ? sanitize_key((string) wp_unslash($_POST['action']))
+            : '';
+        $client_validation_failed = isset($_POST['mzf_client_validation_failed'])
+            && in_array(strtolower(trim((string) wp_unslash($_POST['mzf_client_validation_failed']))), ['1', 'true', 'yes'], true);
+        $is_client_validation_attempt = (
+            $action === 'mzf_log_client_validation_attempt' ||
+            $client_validation_failed ||
+            $client_invalid_fields !== ''
+        );
         $delivery_status = isset($_POST['mzf_submission_log_status'])
             ? sanitize_key((string) wp_unslash($_POST['mzf_submission_log_status']))
-            : 'error';
+            : '';
         if ($delivery_status === '') {
-            $delivery_status = 'error';
+            $delivery_status = $is_client_validation_attempt ? 'validation_client' : 'error';
+        } elseif ($delivery_status === 'error' && $is_client_validation_attempt) {
+            $delivery_status = 'validation_client';
         }
 
         $message = $attempt_message !== ''

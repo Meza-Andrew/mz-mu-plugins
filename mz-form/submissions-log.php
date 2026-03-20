@@ -67,6 +67,42 @@ if (!function_exists('mzf_prepare_submission_payload')) {
     }
 }
 
+if (!function_exists('mzf_submission_status_group')) {
+    function mzf_submission_status_group(string $raw_status): string
+    {
+        $raw_status = sanitize_key($raw_status);
+        if ($raw_status === 'success') {
+            return 'success';
+        }
+
+        if ($raw_status !== '' && strpos($raw_status, 'validation_') === 0) {
+            return 'failure_validation';
+        }
+
+        return 'failure_form_issue';
+    }
+}
+
+if (!function_exists('mzf_submission_status_label')) {
+    function mzf_submission_status_label(string $status): string
+    {
+        $status = sanitize_key($status);
+        $group = in_array($status, ['success', 'failure_validation', 'failure_form_issue'], true)
+            ? $status
+            : mzf_submission_status_group($status);
+
+        if ($group === 'success') {
+            return 'Success';
+        }
+
+        if ($group === 'failure_validation') {
+            return 'Validation Issue';
+        }
+
+        return 'Form Issue';
+    }
+}
+
 if (!function_exists('mzf_log_submission')) {
     function mzf_log_submission(array $entry): int
     {
@@ -90,6 +126,8 @@ if (!function_exists('mzf_log_submission')) {
             : [];
         $name = trim($first_name . ' ' . $last_name);
         $status = sanitize_key((string) ($entry['delivery_status'] ?? 'unknown'));
+        $status_group = mzf_submission_status_group($status);
+        $status_label = mzf_submission_status_label($status_group);
         $page_id = (int) ($entry['page_id'] ?? ($payload['PageId'] ?? $submitted['PageId'] ?? 0));
         $recipients = array_values(array_filter(array_map('sanitize_email', (array) ($entry['recipients'] ?? [])), 'is_email'));
         $admin_to = implode(', ', $recipients);
@@ -103,7 +141,7 @@ if (!function_exists('mzf_log_submission')) {
             strtoupper($form_slug ?: 'form'),
             $name,
             $email,
-            $status,
+            $status_label,
         ], static fn($v) => trim((string) $v) !== ''));
 
         $post_id = wp_insert_post([
@@ -126,6 +164,7 @@ if (!function_exists('mzf_log_submission')) {
         update_post_meta($post_id, '_mzf_form_post_id', $form_post_id);
         update_post_meta($post_id, '_mzf_admin_to', $admin_to);
         update_post_meta($post_id, '_mzf_delivery_status', $status);
+        update_post_meta($post_id, '_mzf_delivery_status_group', $status_group);
         update_post_meta($post_id, '_mzf_admin_ok', !empty($entry['admin_ok']) ? '1' : '0');
         update_post_meta($post_id, '_mzf_user_ok', !empty($entry['user_ok']) ? '1' : '0');
         update_post_meta($post_id, '_mzf_subject', sanitize_text_field((string) ($entry['subject'] ?? '')));
