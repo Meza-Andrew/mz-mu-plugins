@@ -2568,7 +2568,7 @@ function meza_force_customer_sign_generator_dashboard_position(): void
 // Final pass: collapse duplicate Customer Sign Generator entries and keep one in the Dashboard utility group.
 add_action('admin_menu', 'meza_force_customer_sign_generator_dashboard_position', PHP_INT_MAX);
 
-function meza_ensure_site_manager_woocommerce_analytics_menu(): void
+function meza_ensure_site_manager_woocommerce_analytics_submenu(): void
 {
     if (!meza_has_woocommerce_plugin()) return;
 
@@ -2589,10 +2589,7 @@ function meza_ensure_site_manager_woocommerce_analytics_menu(): void
         if (!is_array($item)) continue;
 
         $slug = strtolower((string) ($item[2] ?? ''));
-        if (
-            $slug === 'meza-woocommerce-analytics'
-            || $slug === 'wc-admin&path=/analytics/overview'
-        ) {
+        if ($slug === 'meza-woocommerce-analytics') {
             return;
         }
     }
@@ -2609,10 +2606,129 @@ function meza_ensure_site_manager_woocommerce_analytics_menu(): void
         'dashicons-chart-bar',
         57
     );
+
+    global $submenu;
+    if (!is_array($submenu)) {
+        return;
+    }
+
+    $existing_slugs = [];
+    foreach ((array) ($submenu['meza-woocommerce-analytics'] ?? []) as $item) {
+        if (!is_array($item)) continue;
+        $existing_slugs[] = strtolower((string) ($item[2] ?? ''));
+    }
+
+    $analytics_items = [
+        'meza-woocommerce-analytics-overview' => [
+            'label' => 'Overview',
+            'path' => '/analytics/overview',
+        ],
+        'meza-woocommerce-analytics-products' => [
+            'label' => 'Products',
+            'path' => '/analytics/products',
+        ],
+        'meza-woocommerce-analytics-revenue' => [
+            'label' => 'Revenue',
+            'path' => '/analytics/revenue',
+        ],
+        'meza-woocommerce-analytics-orders' => [
+            'label' => 'Orders',
+            'path' => '/analytics/orders',
+        ],
+        'meza-woocommerce-analytics-variations' => [
+            'label' => 'Variations',
+            'path' => '/analytics/variations',
+        ],
+        'meza-woocommerce-analytics-categories' => [
+            'label' => 'Categories',
+            'path' => '/analytics/categories',
+        ],
+        'meza-woocommerce-analytics-coupons' => [
+            'label' => 'Coupons',
+            'path' => '/analytics/coupons',
+        ],
+        'meza-woocommerce-analytics-taxes' => [
+            'label' => 'Taxes',
+            'path' => '/analytics/taxes',
+        ],
+        'meza-woocommerce-analytics-downloads' => [
+            'label' => 'Downloads',
+            'path' => '/analytics/downloads',
+        ],
+        'meza-woocommerce-analytics-settings' => [
+            'label' => 'Settings',
+            'path' => '/analytics/settings',
+        ],
+    ];
+
+    if (get_option('woocommerce_manage_stock') === 'yes') {
+        $analytics_items['meza-woocommerce-analytics-stock'] = [
+            'label' => 'Stock',
+            'path' => '/analytics/stock',
+        ];
+    }
+
+    foreach ($analytics_items as $slug => $item) {
+        if (in_array(strtolower($slug), $existing_slugs, true)) {
+            continue;
+        }
+
+        add_submenu_page(
+            'meza-woocommerce-analytics',
+            $item['label'],
+            $item['label'],
+            'read',
+            $slug,
+            static function () use ($item): void {
+                wp_safe_redirect(admin_url('admin.php?page=wc-admin&path=/' . ltrim((string) $item['path'], '/')));
+                exit;
+            }
+        );
+    }
 }
 
-// WooCommerce sometimes registers Analytics separately from the core menu tree; ensure site managers still get it.
-add_action('admin_menu', 'meza_ensure_site_manager_woocommerce_analytics_menu', PHP_INT_MAX - 1);
+// WooCommerce Analytics is top-level by default; add a matching top-level entry for site managers.
+add_action('admin_menu', 'meza_ensure_site_manager_woocommerce_analytics_submenu', PHP_INT_MAX - 1);
+
+function meza_remove_payments_admin_menu(): void
+{
+    global $menu, $submenu;
+
+    if (is_array($menu)) {
+        foreach ($menu as $index => $item) {
+            if (!is_array($item)) continue;
+
+            $slug = strtolower((string) ($item[2] ?? ''));
+            $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+            $is_payments_menu = $title === 'payments'
+                || str_contains($slug, 'payments');
+
+            if ($is_payments_menu) {
+                unset($menu[$index]);
+            }
+        }
+
+        $menu = array_values($menu);
+    }
+
+    if (is_array($submenu)) {
+        foreach ($submenu as $parent_slug => &$items) {
+            if (!is_array($items)) continue;
+
+            $items = array_values(array_filter($items, static function ($item): bool {
+                if (!is_array($item)) return true;
+
+                $slug = strtolower((string) ($item[2] ?? ''));
+                $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+                return $title !== 'payments' && !str_contains($slug, 'payments');
+            }));
+        }
+        unset($items);
+    }
+}
+
+// Remove Payments admin menu items globally, even after other plugins finish rebuilding menus.
+add_action('admin_menu', 'meza_remove_payments_admin_menu', PHP_INT_MAX - 1);
 
 function meza_group_woocommerce_top_level_items(): void
 {
@@ -2633,7 +2749,6 @@ function meza_group_woocommerce_top_level_items(): void
     $ordered_items = [
         'woocommerce' => null,
         'products' => null,
-        'payments' => null,
         'marketing' => null,
         'analytics' => null,
     ];
@@ -2662,18 +2777,6 @@ function meza_group_woocommerce_top_level_items(): void
         }
 
         if (
-            str_contains($slug, 'wc-settings')
-            || str_contains($slug, 'payments')
-            || $title === 'payments'
-        ) {
-            if ($ordered_items['payments'] === null) {
-                $ordered_items['payments'] = $item;
-            }
-            $matched_indexes[] = (int) $index;
-            continue;
-        }
-
-        if (
             str_contains($slug, 'wc-admin&path=/marketing')
             || str_contains($slug, 'woocommerce-marketing')
             || $title === 'marketing'
@@ -2686,15 +2789,18 @@ function meza_group_woocommerce_top_level_items(): void
         }
 
         if (
-            $slug === 'wc-admin&path=/analytics/overview'
-            || $slug === 'meza-woocommerce-analytics'
+            $slug === 'meza-woocommerce-analytics'
+            || $slug === 'wc-admin&path=/analytics/overview'
             || (str_contains($slug, 'wc-admin') && str_contains($slug, '/analytics'))
+            || $title === 'analytics'
         ) {
             if ($ordered_items['analytics'] === null) {
                 $ordered_items['analytics'] = $item;
             }
             $matched_indexes[] = (int) $index;
+            continue;
         }
+
     }
 
     $items_to_insert = array_values(array_filter($ordered_items, static function ($item): bool {
@@ -2908,7 +3014,8 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_rebuild_content_menu_group();
     meza_reorder_dashboard_utility_items();
     meza_force_customer_sign_generator_dashboard_position();
-    meza_ensure_site_manager_woocommerce_analytics_menu();
+    meza_ensure_site_manager_woocommerce_analytics_submenu();
+    meza_remove_payments_admin_menu();
     meza_group_woocommerce_top_level_items();
     meza_group_post_settings_utilities();
     meza_cleanup_menu_separators();
