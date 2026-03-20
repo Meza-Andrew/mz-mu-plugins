@@ -2,6 +2,73 @@
 
 add_action('wp_ajax_nopriv_send_form_data', 'send_form_data');
 add_action('wp_ajax_send_form_data',        'send_form_data');
+add_action('wp_ajax_nopriv_mzf_log_submit_attempt', 'mzf_log_submit_attempt');
+add_action('wp_ajax_mzf_log_submit_attempt',        'mzf_log_submit_attempt');
+add_action('wp_ajax_nopriv_mzf_log_client_validation_attempt', 'mzf_log_submit_attempt');
+add_action('wp_ajax_mzf_log_client_validation_attempt',        'mzf_log_submit_attempt');
+
+if (!function_exists('mzf_log_submit_attempt')) :
+    function mzf_log_submit_attempt()
+    {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            wp_send_json_error(['message' => 'Invalid request method.'], 405);
+        }
+
+        if (!function_exists('mzf_log_submission')) {
+            wp_send_json_error(['message' => 'Submission logger unavailable.'], 500);
+        }
+
+        global $env;
+        $env_default = (string) mzf_get('default_env', 'production');
+        $env = !empty($env) ? strtolower((string) $env) : strtolower($env_default);
+
+        $submitted_payload = function_exists('mzf_prepare_submission_payload')
+            ? mzf_prepare_submission_payload((array) $_POST)
+            : (array) wp_unslash($_POST);
+        $attempt_message = isset($_POST['mzf_submission_log_message'])
+            ? sanitize_textarea_field((string) wp_unslash($_POST['mzf_submission_log_message']))
+            : '';
+        $client_message = isset($_POST['mzf_client_validation_message'])
+            ? sanitize_textarea_field((string) wp_unslash($_POST['mzf_client_validation_message']))
+            : '';
+        $client_invalid_fields = isset($_POST['mzf_client_invalid_fields'])
+            ? sanitize_text_field((string) wp_unslash($_POST['mzf_client_invalid_fields']))
+            : '';
+        $delivery_status = isset($_POST['mzf_submission_log_status'])
+            ? sanitize_key((string) wp_unslash($_POST['mzf_submission_log_status']))
+            : 'error';
+        if ($delivery_status === '') {
+            $delivery_status = 'error';
+        }
+
+        $message = $attempt_message !== ''
+            ? $attempt_message
+            : ($client_message !== '' ? $client_message : 'Submit button clicked.');
+
+        $error_parts = array_values(array_filter([
+            $message,
+            ($client_invalid_fields !== '') ? 'Invalid fields: ' . $client_invalid_fields : '',
+        ]));
+
+        $log_id = (int) mzf_log_submission([
+            'form_slug' => sanitize_key((string) ($submitted_payload['FormSlug'] ?? '')),
+            'page_id' => isset($submitted_payload['PageId']) ? (int) $submitted_payload['PageId'] : 0,
+            'email' => sanitize_email((string) ($submitted_payload['Email'] ?? $submitted_payload['ContactEmail'] ?? '')),
+            'first_name' => sanitize_text_field((string) ($submitted_payload['FirstName'] ?? $submitted_payload['ContactFirstName'] ?? '')),
+            'last_name' => sanitize_text_field((string) ($submitted_payload['LastName'] ?? $submitted_payload['ContactLastName'] ?? '')),
+            'phone' => sanitize_text_field((string) ($submitted_payload['Phone'] ?? $submitted_payload['ContactPhone'] ?? '')),
+            'delivery_status' => $delivery_status,
+            'admin_ok' => false,
+            'user_ok' => false,
+            'env' => (string) $env,
+            'error_message' => implode(' | ', $error_parts),
+            'payload' => $submitted_payload,
+            'submitted' => $submitted_payload,
+        ]);
+
+        wp_send_json_success(['submission_log_id' => $log_id], 200);
+    }
+endif;
 
 if (!function_exists('send_form_data')) :
     function send_form_data()
@@ -38,6 +105,84 @@ if (!function_exists('send_form_data')) :
             'keys' => array_values(array_map('strval', array_keys((array) $_POST))),
         ]);
 
+        $submitted_payload = function_exists('mzf_prepare_submission_payload')
+            ? mzf_prepare_submission_payload((array) $_POST)
+            : (array) wp_unslash($_POST);
+        $data = [];
+        $log_submission_attempt = static function (array $entry) use (&$data, $env, $submitted_payload): int {
+            if (!function_exists('mzf_log_submission')) {
+                return 0;
+            }
+
+            if (!isset($entry['payload']) || !is_array($entry['payload'])) {
+                $entry['payload'] = (array) $data;
+            }
+            if (!isset($entry['submitted']) || !is_array($entry['submitted'])) {
+                $entry['submitted'] = $submitted_payload;
+            }
+            if (!isset($entry['env'])) {
+                $entry['env'] = (string) $env;
+            }
+            if (!isset($entry['form_slug'])) {
+                $entry['form_slug'] = (string) ($entry['payload']['FormSlug'] ?? $submitted_payload['FormSlug'] ?? '');
+            }
+            if (!isset($entry['page_id'])) {
+                $entry['page_id'] = (int) ($entry['payload']['PageId'] ?? $submitted_payload['PageId'] ?? 0);
+            }
+            if (!isset($entry['email'])) {
+                $entry['email'] = (string) ($entry['payload']['Email'] ?? $submitted_payload['Email'] ?? '');
+            }
+            if (!isset($entry['first_name'])) {
+                $entry['first_name'] = (string) ($entry['payload']['FirstName'] ?? $submitted_payload['FirstName'] ?? '');
+            }
+            if (!isset($entry['last_name'])) {
+                $entry['last_name'] = (string) ($entry['payload']['LastName'] ?? $submitted_payload['LastName'] ?? '');
+            }
+            if (!isset($entry['phone'])) {
+                $entry['phone'] = (string) ($entry['payload']['Phone'] ?? $submitted_payload['Phone'] ?? '');
+            }
+
+            return (int) mzf_log_submission($entry);
+        };
+        $fail_request = static function (string $message, int $status_code, string $delivery_status, array $entry = []) use ($log_submission_attempt): void {
+            if (!isset($entry['delivery_status'])) {
+                $entry['delivery_status'] = $delivery_status;
+            }
+            if (!isset($entry['error_message'])) {
+                $entry['error_message'] = $message;
+            }
+            $log_submission_attempt($entry);
+            wp_send_json_error(['message' => $message], $status_code);
+        };
+
+        $client_validation_failed = isset($_POST['mzf_client_validation_failed'])
+            && in_array(strtolower(trim((string) wp_unslash($_POST['mzf_client_validation_failed']))), ['1', 'true', 'yes'], true);
+        if ($client_validation_failed) {
+            $client_message = isset($_POST['mzf_client_validation_message'])
+                ? sanitize_textarea_field((string) wp_unslash($_POST['mzf_client_validation_message']))
+                : 'Client-side validation failed.';
+            $client_invalid_fields = isset($_POST['mzf_client_invalid_fields'])
+                ? sanitize_text_field((string) wp_unslash($_POST['mzf_client_invalid_fields']))
+                : '';
+
+            $error_parts = array_values(array_filter([
+                $client_message,
+                ($client_invalid_fields !== '') ? 'Invalid fields: ' . $client_invalid_fields : '',
+            ]));
+
+            $submission_log_id = $log_submission_attempt([
+                'delivery_status' => 'validation_client',
+                'admin_ok' => false,
+                'user_ok' => false,
+                'error_message' => implode(' | ', $error_parts),
+                'submitted' => $submitted_payload,
+            ]);
+
+            wp_send_json_success([
+                'submission_log_id' => $submission_log_id,
+            ], 200);
+        }
+
         // --- reCAPTCHA v3 ---
         $recaptcha_disabled_default = defined('DS_RECAPTCHA_DISABLE') && DS_RECAPTCHA_DISABLE === true;
         if (in_array($env, ['development', 'local'], true)) {
@@ -49,13 +194,13 @@ if (!function_exists('send_form_data')) :
             $recaptcha_token = isset($_POST['g-recaptcha-response']) ? sanitize_text_field($_POST['g-recaptcha-response']) : '';
             if ($recaptcha_token === '') {
                 error_log('reCAPTCHA: token missing');
-                wp_send_json_error(['message' => 'reCAPTCHA token missing.'], 400);
+                $fail_request('reCAPTCHA token missing.', 400, 'error_recaptcha_token_missing');
             }
 
             $recaptcha_secret_key = defined('GRECAPTCHA_SECRET_KEY') ? GRECAPTCHA_SECRET_KEY : '';
             if ($recaptcha_secret_key === '') {
                 error_log('reCAPTCHA: secret key missing');
-                wp_send_json_error(['message' => 'Server configuration error (reCAPTCHA).'], 500);
+                $fail_request('Server configuration error (reCAPTCHA).', 500, 'error_recaptcha_config');
             }
 
             $resp = wp_remote_post(
@@ -72,7 +217,9 @@ if (!function_exists('send_form_data')) :
 
             if (is_wp_error($resp)) {
                 error_log('reCAPTCHA: HTTP error - ' . $resp->get_error_message());
-                wp_send_json_error(['message' => 'reCAPTCHA HTTP error.'], 400);
+                $fail_request('reCAPTCHA HTTP error.', 400, 'error_recaptcha_http', [
+                    'error_message' => 'reCAPTCHA HTTP error: ' . $resp->get_error_message(),
+                ]);
             }
 
             $result = json_decode(wp_remote_retrieve_body($resp), true);
@@ -80,7 +227,9 @@ if (!function_exists('send_form_data')) :
 
             if (empty($result['success']) || $score < 0.5) {
                 error_log('reCAPTCHA: failed, score=' . ($score ?? 'N/A'));
-                wp_send_json_error(['message' => 'Failed bot check.'], 400);
+                $fail_request('Failed bot check.', 400, 'error_recaptcha_failed', [
+                    'error_message' => 'Failed bot check. Score=' . ($score ?? 'N/A'),
+                ]);
             }
         }
 
@@ -114,7 +263,6 @@ if (!function_exists('send_form_data')) :
 
         $src  = $_POST;
         $strict_mode = function_exists('mzf_is_strict_mode') ? mzf_is_strict_mode() : false;
-        $data = [];
         $legacy_keys = function_exists('mzf_find_legacy_keys') ? mzf_find_legacy_keys((array) $src) : [];
         if (!empty($legacy_keys)) {
             do_action('mzf_deprecated_keys_detected', $legacy_keys, $src);
@@ -127,7 +275,7 @@ if (!function_exists('send_form_data')) :
                 $pairs[] = $legacy . '->' . $canonical;
             }
             $debug_log('legacy_keys_rejected', ['legacy_keys' => $legacy_keys]);
-            wp_send_json_error(['message' => 'Legacy fields are not allowed. Use canonical keys: ' . implode(', ', $pairs)], 400);
+            $fail_request('Legacy fields are not allowed. Use canonical keys: ' . implode(', ', $pairs), 400, 'validation_legacy_keys');
         }
 
         if (function_exists('mzf_reject_unknown_fields') && mzf_reject_unknown_fields()) {
@@ -149,7 +297,7 @@ if (!function_exists('send_form_data')) :
             }
             if (!empty($unknown)) {
                 $debug_log('unknown_fields_rejected', ['unknown' => $unknown]);
-                wp_send_json_error(['message' => 'Unknown fields are not allowed: ' . implode(', ', $unknown)], 400);
+                $fail_request('Unknown fields are not allowed: ' . implode(', ', $unknown), 400, 'validation_unknown_fields');
             }
         }
 
@@ -299,7 +447,7 @@ if (!function_exists('send_form_data')) :
             ? mzf_normalize_form_slug($raw_slug)
             : $raw_slug;
         if (!function_exists('mzf_is_registered_slug') || !mzf_is_registered_slug((string) $data['FormSlug'])) {
-            wp_send_json_error(['message' => 'Unsupported FormSlug: ' . (string) $data['FormSlug']], 400);
+            $fail_request('Unsupported FormSlug: ' . (string) $data['FormSlug'], 400, 'validation_unsupported_form_slug');
         }
         $legacy_slug_target = function_exists('mzf_legacy_slug_target')
             ? mzf_legacy_slug_target($raw_slug)
@@ -310,14 +458,14 @@ if (!function_exists('send_form_data')) :
             if ($log_deprecations) {
                 error_log('MZF deprecated FormSlug alias: ' . $raw_slug . '->' . $legacy_slug_target);
             }
-            wp_send_json_error(['message' => 'Legacy FormSlug alias is not allowed. Use: ' . $legacy_slug_target], 400);
+            $fail_request('Legacy FormSlug alias is not allowed. Use: ' . $legacy_slug_target, 400, 'validation_legacy_form_slug');
         }
         if ($strict_mode) {
             if ($raw_slug === '') {
-                wp_send_json_error(['message' => 'Missing required field: FormSlug'], 400);
+                $fail_request('Missing required field: FormSlug', 400, 'validation_missing_form_slug');
             }
             if ($data['FormSlug'] !== $raw_slug) {
-                wp_send_json_error(['message' => 'Non-canonical FormSlug provided. Use: ' . $data['FormSlug']], 400);
+                $fail_request('Non-canonical FormSlug provided. Use: ' . $data['FormSlug'], 400, 'validation_noncanonical_form_slug');
             }
         }
 
@@ -327,7 +475,7 @@ if (!function_exists('send_form_data')) :
                     continue;
                 }
                 if (!is_array($src[$array_key])) {
-                    wp_send_json_error(['message' => $array_key . ' must be submitted as an array in strict mode.'], 400);
+                    $fail_request($array_key . ' must be submitted as an array in strict mode.', 400, 'validation_invalid_array_shape');
                 }
             }
         }
@@ -355,7 +503,7 @@ if (!function_exists('send_form_data')) :
         foreach ($required_fields as $rf) {
             if (empty($data[$rf])) {
                 error_log("Form: missing required field {$rf}");
-                wp_send_json_error(['message' => "Missing required field: {$rf}"], 400);
+                $fail_request("Missing required field: {$rf}", 400, 'validation_missing_required_field');
             }
         }
 
@@ -364,32 +512,32 @@ if (!function_exists('send_form_data')) :
         if (!empty($honeypot_field) && !empty($data[$honeypot_field])) {
             error_log("Form: honeypot tripped");
             $debug_log('honeypot_blocked', ['field' => (string) $honeypot_field]);
-            wp_send_json_error(['message' => 'Spam detected.'], 400);
+            $fail_request('Spam detected.', 400, 'validation_honeypot');
         }
 
         $data['Email'] = sanitize_email($data['Email']);
         if (!is_email($data['Email'])) {
             error_log('Form: invalid email ' . $data['Email']);
             $debug_log('invalid_email', ['email' => (string) $data['Email']]);
-            wp_send_json_error(['message' => 'Invalid email address.'], 400);
+            $fail_request('Invalid email address.', 400, 'validation_invalid_email');
         }
 
         $validation_result = apply_filters('mzf_validate_data', true, $data);
         if (is_wp_error($validation_result)) {
-            wp_send_json_error(['message' => $validation_result->get_error_message()], 400);
+            $fail_request($validation_result->get_error_message(), 400, 'validation_custom');
         } elseif ($validation_result === false) {
-            wp_send_json_error(['message' => 'Invalid form submission.'], 400);
+            $fail_request('Invalid form submission.', 400, 'validation_custom');
         }
         if (function_exists('mzf_validate_commercial_submission')) {
             $commercial_validation = mzf_validate_commercial_submission($data);
             if (is_wp_error($commercial_validation)) {
-                wp_send_json_error(['message' => $commercial_validation->get_error_message()], 400);
+                $fail_request($commercial_validation->get_error_message(), 400, 'validation_commercial');
             }
         }
         if (function_exists('mzf_validate_volunteer_submission')) {
             $volunteer_validation = mzf_validate_volunteer_submission($data);
             if (is_wp_error($volunteer_validation)) {
-                wp_send_json_error(['message' => $volunteer_validation->get_error_message()], 400);
+                $fail_request($volunteer_validation->get_error_message(), 400, 'validation_volunteer');
             }
         }
 
@@ -660,6 +808,10 @@ if (!function_exists('send_form_data')) :
         $admin_headers = ['From: ' . $site_name . ' <' . $from_email . '>', 'Reply-To: ' . ($full_name ?: 'Form Submitter') . ' <' . $data['Email'] . '>'];
         $user_from     = $org_email_hdr ?: $from_email;
         $user_headers  = ['From: ' . $site_name . ' <' . $user_from . '>', 'Reply-To: ' . $site_name . ' <' . $user_from . '>'];
+        $attachments    = [];
+        $attached_names = [];
+        $attached_meta  = [];
+        $file_errors    = [];
 
         // Standardized recipients: non-live tester, then form config recipients, then option/admin fallback.
         $meza_admin = sanitize_email((string) mzf_get('admin_bcc_email', 'info@meza.design'));
@@ -697,25 +849,15 @@ if (!function_exists('send_form_data')) :
         if (empty($to)) {
             error_log('Mail: no admin recipients resolved');
             $debug_log('no_recipients', ['form_slug' => (string) ($data['FormSlug'] ?? ''), 'env' => (string) $env]);
-            if (function_exists('mzf_log_submission')) {
-                mzf_log_submission([
-                    'form_slug' => (string) ($data['FormSlug'] ?? ''),
-                    'page_id' => (int) ($data['PageId'] ?? 0),
-                    'name' => (string) $full_name,
-                    'email' => (string) ($data['Email'] ?? ''),
-                    'delivery_status' => 'error_no_recipients',
-                    'admin_ok' => false,
-                    'user_ok' => false,
-                    'subject' => (string) $subject,
-                    'env' => (string) $env,
-                    'error_message' => 'No admin recipients configured.',
-                    'payload' => (array) $data,
-                    'submitted' => function_exists('mzf_prepare_submission_payload') ? mzf_prepare_submission_payload((array) $_POST) : (array) $_POST,
-                    'recipients' => [],
-                    'attachments' => (array) $attached_meta,
-                ]);
-            }
-            wp_send_json_error(['message' => 'No admin recipients configured.'], 500);
+            $fail_request('No admin recipients configured.', 500, 'error_no_recipients', [
+                'name' => (string) $full_name,
+                'email' => (string) ($data['Email'] ?? ''),
+                'admin_ok' => false,
+                'user_ok' => false,
+                'subject' => (string) $subject,
+                'recipients' => [],
+                'attachments' => (array) $attached_meta,
+            ]);
         }
 
         $admin_headers = (array) apply_filters('mzf_admin_headers', $admin_headers, $data, $env, $to);
@@ -736,11 +878,6 @@ if (!function_exists('send_form_data')) :
                 $admin_headers[] = 'Bcc: ' . $default_bcc;
             }
         }
-
-        $attachments    = [];
-        $attached_names = [];
-        $attached_meta  = [];
-        $file_errors    = [];
 
         if (!empty($_FILES) && is_array($_FILES)) {
 
@@ -894,7 +1031,15 @@ if (!function_exists('send_form_data')) :
         // If any file failed → return a 400 with details (so UI shows it immediately)
         if ($file_errors) {
             $debug_log('upload_errors', ['errors' => $file_errors]);
-            wp_send_json_error(['message' => implode('<br>', $file_errors)], 400);
+            $fail_request(implode('<br>', $file_errors), 400, 'error_upload', [
+                'name' => (string) $full_name,
+                'email' => (string) ($data['Email'] ?? ''),
+                'admin_ok' => false,
+                'user_ok' => false,
+                'subject' => (string) $subject,
+                'attachments' => (array) $attached_meta,
+                'error_message' => implode(' | ', array_map('wp_strip_all_tags', $file_errors)),
+            ]);
         }
 
         if (!empty($attached_meta)) {
@@ -967,26 +1112,24 @@ if (!function_exists('send_form_data')) :
         $partial_success = (bool) apply_filters('mzf_partial_success', $admin_ok, $admin_ok, $user_ok, $data);
         $delivery_status = $delivery_success ? 'success' : ($partial_success ? 'partial' : 'failed');
         $submission_log_id = 0;
-        if (function_exists('mzf_log_submission')) {
-            $submission_log_id = (int) mzf_log_submission([
-                'form_slug' => (string) ($data['FormSlug'] ?? ''),
-                'page_id' => (int) ($data['PageId'] ?? 0),
-                'name' => (string) $full_name,
-                'email' => (string) ($data['Email'] ?? ''),
-                'delivery_status' => (string) $delivery_status,
-                'admin_ok' => (bool) $admin_ok,
-                'user_ok' => (bool) $user_ok,
-                'subject' => (string) $subject,
-                'env' => (string) $env,
-                'crm_platform' => function_exists('mzf_crm_platform') ? (string) mzf_crm_platform() : '',
-                'newsletter_opt_in' => !empty($newsletter_opt_in),
-                'marketing_sync' => is_array($marketing_sync) ? $marketing_sync : [],
-                'payload' => (array) $data,
-                'submitted' => function_exists('mzf_prepare_submission_payload') ? mzf_prepare_submission_payload((array) $_POST) : (array) $_POST,
-                'recipients' => (array) $to,
-                'attachments' => (array) $attached_meta,
-            ]);
-        }
+        $submission_log_id = $log_submission_attempt([
+            'form_slug' => (string) ($data['FormSlug'] ?? ''),
+            'page_id' => (int) ($data['PageId'] ?? 0),
+            'name' => (string) $full_name,
+            'email' => (string) ($data['Email'] ?? ''),
+            'delivery_status' => (string) $delivery_status,
+            'admin_ok' => (bool) $admin_ok,
+            'user_ok' => (bool) $user_ok,
+            'subject' => (string) $subject,
+            'env' => (string) $env,
+            'crm_platform' => function_exists('mzf_crm_platform') ? (string) mzf_crm_platform() : '',
+            'newsletter_opt_in' => !empty($newsletter_opt_in),
+            'marketing_sync' => is_array($marketing_sync) ? $marketing_sync : [],
+            'payload' => (array) $data,
+            'submitted' => $submitted_payload,
+            'recipients' => (array) $to,
+            'attachments' => (array) $attached_meta,
+        ]);
         $debug_payload = [
             'env' => (string) $env,
             'form_slug' => (string) ($data['FormSlug'] ?? ''),

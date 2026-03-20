@@ -52,6 +52,11 @@ if (!function_exists('mzf_prepare_submission_payload')) {
             'security',
             'g-recaptcha-response',
             'debug_key',
+            'mzf_submission_log_status',
+            'mzf_submission_log_message',
+            'mzf_client_validation_failed',
+            'mzf_client_invalid_fields',
+            'mzf_client_validation_message',
         ];
 
         foreach ($excluded as $key) {
@@ -72,7 +77,7 @@ if (!function_exists('mzf_log_submission')) {
         $payload = (array) ($entry['payload'] ?? []);
         $submitted = (array) ($entry['submitted'] ?? []);
 
-        $form_slug = sanitize_key((string) ($entry['form_slug'] ?? ($payload['FormSlug'] ?? '')));
+        $form_slug = sanitize_key((string) ($entry['form_slug'] ?? ($payload['FormSlug'] ?? $submitted['FormSlug'] ?? '')));
         $email = sanitize_email((string) ($entry['email'] ?? ($payload['Email'] ?? $submitted['Email'] ?? '')));
         $first_name = sanitize_text_field((string) ($entry['first_name'] ?? ($payload['FirstName'] ?? $submitted['FirstName'] ?? '')));
         $last_name = sanitize_text_field((string) ($entry['last_name'] ?? ($payload['LastName'] ?? $submitted['LastName'] ?? '')));
@@ -85,7 +90,7 @@ if (!function_exists('mzf_log_submission')) {
             : [];
         $name = trim($first_name . ' ' . $last_name);
         $status = sanitize_key((string) ($entry['delivery_status'] ?? 'unknown'));
-        $page_id = (int) ($entry['page_id'] ?? ($payload['PageId'] ?? 0));
+        $page_id = (int) ($entry['page_id'] ?? ($payload['PageId'] ?? $submitted['PageId'] ?? 0));
         $recipients = array_values(array_filter(array_map('sanitize_email', (array) ($entry['recipients'] ?? [])), 'is_email'));
         $admin_to = implode(', ', $recipients);
         $form_post_id = 0;
