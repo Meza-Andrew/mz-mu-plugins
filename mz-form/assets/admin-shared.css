@@ -139,6 +139,10 @@
     color: #00a32a;
 }
 
+.mzf-status-link-spam_detected .dashicons {
+    color: #dba617;
+}
+
 .mzf-status-link-failure_validation .dashicons,
 .mzf-status-link-failure_form_issue .dashicons {
     color: #d63638;

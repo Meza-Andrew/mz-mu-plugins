@@ -71,12 +71,16 @@ if (!function_exists('mzf_submission_status_group')) {
     function mzf_submission_status_group(string $raw_status): string
     {
         $raw_status = sanitize_key($raw_status);
-        if (in_array($raw_status, ['success', 'failure_validation', 'failure_form_issue'], true)) {
+        if (in_array($raw_status, ['success', 'spam_detected', 'failure_validation', 'failure_form_issue'], true)) {
             return $raw_status;
         }
 
         if ($raw_status === 'success') {
             return 'success';
+        }
+
+        if (in_array($raw_status, ['validation_honeypot', 'error_recaptcha_failed', 'error_recaptcha_token_missing'], true)) {
+            return 'spam_detected';
         }
 
         if ($raw_status !== '' && strpos($raw_status, 'validation_') === 0) {
@@ -91,12 +95,16 @@ if (!function_exists('mzf_submission_status_label')) {
     function mzf_submission_status_label(string $status): string
     {
         $status = sanitize_key($status);
-        $group = in_array($status, ['success', 'failure_validation', 'failure_form_issue'], true)
+        $group = in_array($status, ['success', 'spam_detected', 'failure_validation', 'failure_form_issue'], true)
             ? $status
             : mzf_submission_status_group($status);
 
         if ($group === 'success') {
             return 'Success';
+        }
+
+        if ($group === 'spam_detected') {
+            return 'Spam Detected';
         }
 
         if ($group === 'failure_validation') {

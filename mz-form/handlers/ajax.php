@@ -218,7 +218,9 @@ if (!function_exists('send_form_data')) :
             $recaptcha_token = isset($_POST['g-recaptcha-response']) ? sanitize_text_field($_POST['g-recaptcha-response']) : '';
             if ($recaptcha_token === '') {
                 error_log('reCAPTCHA: token missing');
-                $fail_request('reCAPTCHA token missing.', 400, 'error_recaptcha_token_missing');
+                $fail_request('reCAPTCHA token missing.', 400, 'error_recaptcha_token_missing', [
+                    'error_message' => 'Spam trigger: reCAPTCHA token missing.',
+                ]);
             }
 
             $recaptcha_secret_key = defined('GRECAPTCHA_SECRET_KEY') ? GRECAPTCHA_SECRET_KEY : '';
@@ -252,7 +254,7 @@ if (!function_exists('send_form_data')) :
             if (empty($result['success']) || $score < 0.5) {
                 error_log('reCAPTCHA: failed, score=' . ($score ?? 'N/A'));
                 $fail_request('Failed bot check.', 400, 'error_recaptcha_failed', [
-                    'error_message' => 'Failed bot check. Score=' . ($score ?? 'N/A'),
+                    'error_message' => 'Spam trigger: reCAPTCHA failed. Score=' . ($score ?? 'N/A'),
                 ]);
             }
         }
@@ -536,7 +538,9 @@ if (!function_exists('send_form_data')) :
         if (!empty($honeypot_field) && !empty($data[$honeypot_field])) {
             error_log("Form: honeypot tripped");
             $debug_log('honeypot_blocked', ['field' => (string) $honeypot_field]);
-            $fail_request('Spam detected.', 400, 'validation_honeypot');
+            $fail_request('Spam detected.', 400, 'validation_honeypot', [
+                'error_message' => 'Spam trigger: honeypot field "' . sanitize_text_field((string) $honeypot_field) . '" was filled.',
+            ]);
         }
 
         $data['Email'] = sanitize_email($data['Email']);

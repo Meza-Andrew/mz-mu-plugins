@@ -154,11 +154,27 @@ if (!function_exists('mzf_submission_status_query_clause')) {
             ];
         }
 
-        if ($group === 'failure_validation') {
+        if ($group === 'spam_detected') {
             return [
                 'key' => '_mzf_delivery_status',
-                'value' => '^validation_',
+                'value' => '^(validation_honeypot|error_recaptcha_failed|error_recaptcha_token_missing)$',
                 'compare' => 'REGEXP',
+            ];
+        }
+
+        if ($group === 'failure_validation') {
+            return [
+                'relation' => 'AND',
+                [
+                    'key' => '_mzf_delivery_status',
+                    'value' => '^(validation_honeypot)$',
+                    'compare' => 'NOT REGEXP',
+                ],
+                [
+                    'key' => '_mzf_delivery_status',
+                    'value' => '^validation_',
+                    'compare' => 'REGEXP',
+                ],
             ];
         }
 
@@ -168,6 +184,11 @@ if (!function_exists('mzf_submission_status_query_clause')) {
                 'key' => '_mzf_delivery_status',
                 'value' => 'success',
                 'compare' => '!=',
+            ],
+            [
+                'key' => '_mzf_delivery_status',
+                'value' => '^(validation_honeypot|error_recaptcha_failed|error_recaptcha_token_missing)$',
+                'compare' => 'NOT REGEXP',
             ],
             [
                 'key' => '_mzf_delivery_status',
@@ -1110,7 +1131,13 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 echo '<tr>';
                 echo '<td class="column-cb"><input type="checkbox" class="mzf-select-row" name="submission_ids[]" value="' . esc_attr((string) $id) . '" aria-label="Select submission #' . esc_attr((string) $id) . '"></td>';
                 echo '<td class="column-mzf_lock">' . ($is_saved ? '<span class="dashicons dashicons-lock" aria-hidden="true"></span><span class="screen-reader-text">Saved</span>' : '&mdash;') . '</td>';
-                $status_icon = ($status_group === 'success') ? 'dashicons-yes-alt' : 'dashicons-dismiss';
+                if ($status_group === 'success') {
+                    $status_icon = 'dashicons-yes-alt';
+                } elseif ($status_group === 'spam_detected') {
+                    $status_icon = 'dashicons-shield-alt';
+                } else {
+                    $status_icon = 'dashicons-dismiss';
+                }
                 $lock_url = wp_nonce_url(
                     add_query_arg([
                         'action' => 'mzf_toggle_submission_lock',
