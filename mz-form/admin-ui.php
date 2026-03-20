@@ -183,6 +183,89 @@ if (!function_exists('mzf_submission_zip_code')) {
     }
 }
 
+if (!function_exists('mzf_submission_sources')) {
+    function mzf_submission_sources(int $submission_id): array
+    {
+        $payload = get_post_meta($submission_id, '_mzf_payload', true);
+        $submitted = get_post_meta($submission_id, '_mzf_submitted', true);
+
+        return [
+            'payload' => is_array($payload) ? $payload : [],
+            'submitted' => is_array($submitted) ? $submitted : [],
+        ];
+    }
+}
+
+if (!function_exists('mzf_submission_text_value')) {
+    function mzf_submission_text_value(int $submission_id, array $keys, string $meta_key = ''): string
+    {
+        if ($meta_key !== '') {
+            $meta_value = trim((string) get_post_meta($submission_id, $meta_key, true));
+            if ($meta_value !== '') {
+                return $meta_value;
+            }
+        }
+
+        $sources = mzf_submission_sources($submission_id);
+        foreach (['payload', 'submitted'] as $source_key) {
+            $source = (array) ($sources[$source_key] ?? []);
+            foreach ($keys as $key) {
+                $candidates = array_values(array_unique(array_filter([
+                    (string) $key,
+                    sanitize_key((string) $key),
+                    strtolower((string) $key),
+                ])));
+                foreach ($candidates as $candidate_key) {
+                    if (!array_key_exists($candidate_key, $source)) {
+                        continue;
+                    }
+                    $value = trim((string) $source[$candidate_key]);
+                    if ($value !== '') {
+                        return $value;
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('mzf_submission_int_value')) {
+    function mzf_submission_int_value(int $submission_id, array $keys, string $meta_key = ''): int
+    {
+        if ($meta_key !== '') {
+            $meta_value = (int) get_post_meta($submission_id, $meta_key, true);
+            if ($meta_value > 0) {
+                return $meta_value;
+            }
+        }
+
+        $sources = mzf_submission_sources($submission_id);
+        foreach (['payload', 'submitted'] as $source_key) {
+            $source = (array) ($sources[$source_key] ?? []);
+            foreach ($keys as $key) {
+                $candidates = array_values(array_unique(array_filter([
+                    (string) $key,
+                    sanitize_key((string) $key),
+                    strtolower((string) $key),
+                ])));
+                foreach ($candidates as $candidate_key) {
+                    if (!array_key_exists($candidate_key, $source)) {
+                        continue;
+                    }
+                    $value = (int) $source[$candidate_key];
+                    if ($value > 0) {
+                        return $value;
+                    }
+                }
+            }
+        }
+
+        return 0;
+    }
+}
+
 if (!function_exists('mzf_submission_added_to_crm_data')) {
     function mzf_submission_added_to_crm_data(int $submission_id): array
     {
@@ -618,16 +701,16 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             while ($query->have_posts()) {
                 $query->the_post();
                 $id = get_the_ID();
-                $first_name = (string) get_post_meta($id, '_mzf_first_name', true);
-                $last_name = (string) get_post_meta($id, '_mzf_last_name', true);
-                $form_slug = (string) get_post_meta($id, '_mzf_form_slug', true);
-                $email = (string) get_post_meta($id, '_mzf_email', true);
-                $phone = (string) get_post_meta($id, '_mzf_phone', true);
+                $first_name = mzf_submission_text_value($id, ['FirstName', 'ContactFirstName'], '_mzf_first_name');
+                $last_name = mzf_submission_text_value($id, ['LastName', 'ContactLastName'], '_mzf_last_name');
+                $form_slug = sanitize_key(mzf_submission_text_value($id, ['FormSlug'], '_mzf_form_slug'));
+                $email = mzf_submission_text_value($id, ['Email', 'ContactEmail'], '_mzf_email');
+                $phone = mzf_submission_text_value($id, ['Phone', 'ContactPhone'], '_mzf_phone');
                 $zip_code = mzf_submission_zip_code($id);
-                $page_id = (int) get_post_meta($id, '_mzf_page_id', true);
+                $page_id = mzf_submission_int_value($id, ['PageId'], '_mzf_page_id');
                 $page_link = ($page_id > 0) ? get_permalink($page_id) : '';
                 $page_title = ($page_id > 0) ? get_the_title($page_id) : '';
-                $form_post_id = (int) get_post_meta($id, '_mzf_form_post_id', true);
+                $form_post_id = mzf_submission_int_value($id, ['FormPostId'], '_mzf_form_post_id');
                 if ($form_post_id <= 0 && $form_slug !== '') {
                     $form_post = get_page_by_path($form_slug, OBJECT, 'form');
                     if ($form_post instanceof WP_Post) $form_post_id = (int) $form_post->ID;
@@ -999,15 +1082,17 @@ add_action('admin_post_mzf_bulk_submissions_action', function () {
             $entry = get_post($id);
             if (!($entry instanceof WP_Post)) continue;
 
-            $first_name = (string) get_post_meta($id, '_mzf_first_name', true);
-            $last_name = (string) get_post_meta($id, '_mzf_last_name', true);
-            $email = (string) get_post_meta($id, '_mzf_email', true);
-            $phone = (string) get_post_meta($id, '_mzf_phone', true);
+            $first_name = mzf_submission_text_value($id, ['FirstName', 'ContactFirstName'], '_mzf_first_name');
+            $last_name = mzf_submission_text_value($id, ['LastName', 'ContactLastName'], '_mzf_last_name');
+            $email = mzf_submission_text_value($id, ['Email', 'ContactEmail'], '_mzf_email');
+            $phone = mzf_submission_text_value($id, ['Phone', 'ContactPhone'], '_mzf_phone');
             $zip_code = mzf_submission_zip_code($id);
-            $page_id = (int) get_post_meta($id, '_mzf_page_id', true);
+            $page_id = mzf_submission_int_value($id, ['PageId'], '_mzf_page_id');
             $page_url = ($page_id > 0) ? (string) get_permalink($page_id) : '';
-            $form_post_id = (int) get_post_meta($id, '_mzf_form_post_id', true);
-            $form_name = ($form_post_id > 0) ? ((string) get_the_title($form_post_id)) : (string) get_post_meta($id, '_mzf_form_slug', true);
+            $form_post_id = mzf_submission_int_value($id, ['FormPostId'], '_mzf_form_post_id');
+            $form_name = ($form_post_id > 0)
+                ? ((string) get_the_title($form_post_id))
+                : mzf_submission_text_value($id, ['FormSlug'], '_mzf_form_slug');
             $form_edit_url = ($form_post_id > 0) ? (string) get_edit_post_link($form_post_id) : '';
             $added_to_crm = mzf_submission_added_to_crm_data($id);
             $admin_to = (string) get_post_meta($id, '_mzf_admin_to', true);
@@ -1143,15 +1228,17 @@ add_action('admin_post_mzf_export_single_submission_csv', function () {
         'Status',
     ]);
 
-    $first_name = (string) get_post_meta($id, '_mzf_first_name', true);
-    $last_name = (string) get_post_meta($id, '_mzf_last_name', true);
-    $email = (string) get_post_meta($id, '_mzf_email', true);
-    $phone = (string) get_post_meta($id, '_mzf_phone', true);
+    $first_name = mzf_submission_text_value($id, ['FirstName', 'ContactFirstName'], '_mzf_first_name');
+    $last_name = mzf_submission_text_value($id, ['LastName', 'ContactLastName'], '_mzf_last_name');
+    $email = mzf_submission_text_value($id, ['Email', 'ContactEmail'], '_mzf_email');
+    $phone = mzf_submission_text_value($id, ['Phone', 'ContactPhone'], '_mzf_phone');
     $zip_code = mzf_submission_zip_code($id);
-    $page_id = (int) get_post_meta($id, '_mzf_page_id', true);
+    $page_id = mzf_submission_int_value($id, ['PageId'], '_mzf_page_id');
     $page_url = ($page_id > 0) ? (string) get_permalink($page_id) : '';
-    $form_post_id = (int) get_post_meta($id, '_mzf_form_post_id', true);
-    $form_name = ($form_post_id > 0) ? ((string) get_the_title($form_post_id)) : (string) get_post_meta($id, '_mzf_form_slug', true);
+    $form_post_id = mzf_submission_int_value($id, ['FormPostId'], '_mzf_form_post_id');
+    $form_name = ($form_post_id > 0)
+        ? ((string) get_the_title($form_post_id))
+        : mzf_submission_text_value($id, ['FormSlug'], '_mzf_form_slug');
     $form_edit_url = ($form_post_id > 0) ? (string) get_edit_post_link($form_post_id) : '';
     $added_to_crm = mzf_submission_added_to_crm_data($id);
     $admin_to = (string) get_post_meta($id, '_mzf_admin_to', true);
