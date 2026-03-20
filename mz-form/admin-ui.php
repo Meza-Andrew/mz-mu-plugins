@@ -20,10 +20,33 @@ add_action('admin_enqueue_scripts', function (): void {
     if ($page !== 'mzf-submissions') return;
 
     $css_path = __DIR__ . '/assets/admin-shared.css';
-    $css_url = plugins_url('assets/admin-shared.css', __FILE__);
+    $css_url = '';
+    if (defined('WPMU_PLUGIN_DIR') && defined('WPMU_PLUGIN_URL')) {
+        $relative_css_path = str_replace(wp_normalize_path(WPMU_PLUGIN_DIR) . '/', '', wp_normalize_path($css_path));
+        $css_url = trailingslashit(WPMU_PLUGIN_URL) . ltrim($relative_css_path, '/');
+    } else {
+        $css_url = content_url('mu-plugins/mz-mu-plugins/mz-form/assets/admin-shared.css');
+    }
     $css_ver = file_exists($css_path) ? (string) filemtime($css_path) : null;
     wp_enqueue_style('mzf-admin-shared', $css_url, [], $css_ver);
 });
+
+if (!function_exists('mzf_render_submission_log_inline_styles')) {
+    function mzf_render_submission_log_inline_styles(): void
+    {
+        $css_path = __DIR__ . '/assets/admin-shared.css';
+        if (!is_readable($css_path)) {
+            return;
+        }
+
+        $css = file_get_contents($css_path);
+        if (!is_string($css) || $css === '') {
+            return;
+        }
+
+        echo "<style id='mzf-admin-shared-inline'>\n" . $css . "\n</style>";
+    }
+}
 
 if (!function_exists('mzf_bool_to_label')) {
     function mzf_bool_to_label(string $value): string
@@ -479,6 +502,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         );
 
         echo '<div class="wrap">';
+        mzf_render_submission_log_inline_styles();
         echo '<h1>Form Submission Log</h1>';
         $view_labels = [
             'all' => 'All',

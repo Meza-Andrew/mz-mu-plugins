@@ -32,14 +32,19 @@
 
 /* Match mz-admin's hard-width admin column treatment on the submissions log. */
 .mzf-submissions-table-wrap {
-    max-width: 100%;
+    display: block;
+    width: 100%;
+    max-width: calc(100vw - 180px);
+    min-width: 0;
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
 }
 
 .mzf-submissions-table {
-    width: auto;
-    min-width: 1726px !important;
+    width: 100%;
+    max-width: 100%;
     border-collapse: collapse;
 }
 
