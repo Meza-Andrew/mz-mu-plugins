@@ -79,6 +79,64 @@ if (!function_exists('mzf_submission_export_filename')) {
     }
 }
 
+if (!function_exists('mzf_submission_sort_value')) {
+    function mzf_submission_sort_value(int $submission_id, string $sort): string
+    {
+        if ($sort === 'last_name') {
+            return strtolower(trim(mzf_submission_text_value($submission_id, ['LastName', 'ContactLastName'], '_mzf_last_name')));
+        }
+
+        return strtolower(trim(mzf_submission_text_value($submission_id, ['FirstName', 'ContactFirstName'], '_mzf_first_name')));
+    }
+}
+
+if (!function_exists('mzf_compare_submission_ids_by_name')) {
+    function mzf_compare_submission_ids_by_name(int $left_id, int $right_id, string $sort, string $order): int
+    {
+        $sort = ($sort === 'last_name') ? 'last_name' : 'first_name';
+        $secondary_sort = ($sort === 'last_name') ? 'first_name' : 'last_name';
+        $direction = (strtolower($order) === 'desc') ? -1 : 1;
+
+        $left_primary = mzf_submission_sort_value($left_id, $sort);
+        $right_primary = mzf_submission_sort_value($right_id, $sort);
+        $left_primary_blank = ($left_primary === '');
+        $right_primary_blank = ($right_primary === '');
+        if ($left_primary_blank !== $right_primary_blank) {
+            return $left_primary_blank ? 1 : -1;
+        }
+
+        if ($left_primary !== $right_primary) {
+            return ($left_primary < $right_primary) ? -1 * $direction : 1 * $direction;
+        }
+
+        $left_secondary = mzf_submission_sort_value($left_id, $secondary_sort);
+        $right_secondary = mzf_submission_sort_value($right_id, $secondary_sort);
+        $left_secondary_blank = ($left_secondary === '');
+        $right_secondary_blank = ($right_secondary === '');
+        if ($left_secondary_blank !== $right_secondary_blank) {
+            return $left_secondary_blank ? 1 : -1;
+        }
+
+        if ($left_secondary !== $right_secondary) {
+            return ($left_secondary < $right_secondary) ? -1 * $direction : 1 * $direction;
+        }
+
+        $left_post = get_post($left_id);
+        $right_post = get_post($right_id);
+        $left_date = ($left_post instanceof WP_Post) ? strtotime((string) $left_post->post_date_gmt) : 0;
+        $right_date = ($right_post instanceof WP_Post) ? strtotime((string) $right_post->post_date_gmt) : 0;
+        if ($left_date !== $right_date) {
+            return ($left_date > $right_date) ? -1 : 1;
+        }
+
+        if ($left_id === $right_id) {
+            return 0;
+        }
+
+        return ($left_id > $right_id) ? -1 : 1;
+    }
+}
+
 if (!function_exists('mzf_submission_status_query_clause')) {
     function mzf_submission_status_query_clause(string $status): array
     {
@@ -327,6 +385,58 @@ if (!function_exists('mzf_submission_int_value')) {
         }
 
         return 0;
+    }
+}
+
+if (!function_exists('mzf_submission_humanize_status_reason')) {
+    function mzf_submission_humanize_status_reason(string $raw_status): string
+    {
+        $raw_status = sanitize_key($raw_status);
+        if ($raw_status === '') {
+            return '';
+        }
+
+        if (strpos($raw_status, 'validation_') === 0) {
+            $raw_status = substr($raw_status, strlen('validation_'));
+        } elseif (strpos($raw_status, 'error_') === 0) {
+            $raw_status = substr($raw_status, strlen('error_'));
+        }
+
+        return mzf_title_case_slug_value($raw_status);
+    }
+}
+
+if (!function_exists('mzf_submission_status_tooltip')) {
+    function mzf_submission_status_tooltip(int $submission_id, string $raw_status = ''): string
+    {
+        $raw_status = sanitize_key($raw_status !== '' ? $raw_status : (string) get_post_meta($submission_id, '_mzf_delivery_status', true));
+        $status_group = mzf_submission_status_group($raw_status);
+        if ($status_group === 'success') {
+            return '';
+        }
+
+        $status_label = mzf_submission_status_label($raw_status);
+        $error_message = trim((string) get_post_meta($submission_id, '_mzf_error_message', true));
+        if ($error_message !== '') {
+            $error_lines = preg_split('/\s*\|\s*/', $error_message) ?: [$error_message];
+            $error_lines = array_values(array_filter($error_lines, static function ($line): bool {
+                return stripos(trim((string) $line), 'Invalid fields:') !== 0;
+            }));
+            $error_message = implode("\n", $error_lines);
+            $error_message = preg_replace('/\s*\|\s*/', "\n", $error_message) ?: $error_message;
+            if ($error_message !== '') {
+                return $status_label . "\n" . $error_message;
+            }
+
+            return $status_label;
+        }
+
+        $reason = mzf_submission_humanize_status_reason($raw_status);
+        if ($reason !== '') {
+            return $status_label . "\n" . $reason;
+        }
+
+        return $status_label;
     }
 }
 
@@ -648,14 +758,9 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             'no_found_rows' => false,
         ];
 
-        if ($sort === 'first_name') {
-            $query_args['meta_key'] = '_mzf_first_name';
-            $query_args['orderby'] = ['meta_value' => strtoupper($order), 'date' => 'DESC'];
-            $query_args['order'] = strtoupper($order);
-        } elseif ($sort === 'last_name') {
-            $query_args['meta_key'] = '_mzf_last_name';
-            $query_args['orderby'] = ['meta_value' => strtoupper($order), 'date' => 'DESC'];
-            $query_args['order'] = strtoupper($order);
+        if ($sort === 'first_name' || $sort === 'last_name') {
+            $query_args['orderby'] = 'date';
+            $query_args['order'] = 'DESC';
         } else {
             $query_args['orderby'] = 'date';
             $query_args['order'] = strtoupper($order);
@@ -724,6 +829,11 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
 
         if ($view === 'crm_entries') {
             $crm_entry_ids = mzf_submission_query_ids_with_crm_entries($query_args);
+            if (in_array($sort, ['first_name', 'last_name'], true)) {
+                usort($crm_entry_ids, static function ($left_id, $right_id) use ($sort, $order): int {
+                    return mzf_compare_submission_ids_by_name((int) $left_id, (int) $right_id, $sort, $order);
+                });
+            }
             $total_crm_entries = count($crm_entry_ids);
             $paged_crm_entry_ids = array_slice($crm_entry_ids, max(0, ($paged - 1) * 50), 50);
 
@@ -737,6 +847,31 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             ]);
             $query->found_posts = $total_crm_entries;
             $query->max_num_pages = ($total_crm_entries > 0) ? (int) ceil($total_crm_entries / 50) : 0;
+        } elseif (in_array($sort, ['first_name', 'last_name'], true)) {
+            $sorted_query_args = $query_args;
+            $sorted_query_args['posts_per_page'] = -1;
+            $sorted_query_args['paged'] = 1;
+            $sorted_query_args['no_found_rows'] = true;
+            $sorted_query_args['fields'] = 'ids';
+
+            $sorted_query = new WP_Query($sorted_query_args);
+            $sorted_ids = array_map('intval', (array) $sorted_query->posts);
+            usort($sorted_ids, static function ($left_id, $right_id) use ($sort, $order): int {
+                return mzf_compare_submission_ids_by_name((int) $left_id, (int) $right_id, $sort, $order);
+            });
+
+            $total_sorted = count($sorted_ids);
+            $paged_sorted_ids = array_slice($sorted_ids, max(0, ($paged - 1) * 50), 50);
+            $query = new WP_Query([
+                'post_type' => 'mzf_submission',
+                'post_status' => $query_args['post_status'],
+                'post__in' => !empty($paged_sorted_ids) ? $paged_sorted_ids : [0],
+                'orderby' => 'post__in',
+                'posts_per_page' => !empty($paged_sorted_ids) ? count($paged_sorted_ids) : 1,
+                'no_found_rows' => true,
+            ]);
+            $query->found_posts = $total_sorted;
+            $query->max_num_pages = ($total_sorted > 0) ? (int) ceil($total_sorted / 50) : 0;
         } else {
             $query = new WP_Query($query_args);
         }
@@ -936,7 +1071,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                     echo '<div class="row-actions visible">' . implode(' | ', $row_actions) . '</div>';
                 }
                 echo '</td>';
-                echo '<td class="column-mzf_last_name">' . esc_html($last_name) . '</td>';
+                echo '<td class="column-mzf_last_name">' . (($last_name !== '') ? esc_html($last_name) : '&mdash;') . '</td>';
                 echo '<td class="column-mzf_email">';
                 if ($email !== '' && is_email($email)) {
                     echo '<a href="mailto:' . esc_attr($email) . '">' . esc_html($email) . '</a>';
@@ -988,7 +1123,9 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 echo '</td>';
                 echo '<td class="column-mzf_status">';
                 $status_filter_url = $build_admin_url(['filter_status' => $status_group], ['paged']);
-                echo '<a class="mzf-status-link mzf-status-link-' . esc_attr($status_group) . '" href="' . esc_url($status_filter_url) . '">';
+                $status_tooltip = mzf_submission_status_tooltip($id, $raw_status);
+                $status_tooltip_attr = ($status_tooltip !== '') ? ' title="' . esc_attr($status_tooltip) . '"' : '';
+                echo '<a class="mzf-status-link mzf-status-link-' . esc_attr($status_group) . '" href="' . esc_url($status_filter_url) . '"' . $status_tooltip_attr . '>';
                 echo '<span class="dashicons ' . esc_attr($status_icon) . '" aria-hidden="true"></span>';
                 echo '<span class="mzf-status-text">' . esc_html($status) . '</span>';
                 echo '</a>';

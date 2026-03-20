@@ -57,6 +57,18 @@ if (!function_exists('mzf_log_submit_attempt')) :
             ? $attempt_message
             : ($client_message !== '' ? $client_message : 'Submit button clicked.');
 
+        $is_generic_click_log = (
+            !$is_client_validation_attempt
+            && $delivery_status === 'error'
+            && $message === 'Submit button clicked.'
+        );
+        if ($is_generic_click_log) {
+            wp_send_json_success([
+                'submission_log_id' => 0,
+                'ignored' => true,
+            ], 200);
+        }
+
         $error_parts = array_values(array_filter([
             $message,
             ($client_invalid_fields !== '') ? 'Invalid fields: ' . $client_invalid_fields : '',

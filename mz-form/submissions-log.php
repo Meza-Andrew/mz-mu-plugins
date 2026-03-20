@@ -71,6 +71,10 @@ if (!function_exists('mzf_submission_status_group')) {
     function mzf_submission_status_group(string $raw_status): string
     {
         $raw_status = sanitize_key($raw_status);
+        if (in_array($raw_status, ['success', 'failure_validation', 'failure_form_issue'], true)) {
+            return $raw_status;
+        }
+
         if ($raw_status === 'success') {
             return 'success';
         }
