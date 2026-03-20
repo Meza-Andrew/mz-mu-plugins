@@ -439,6 +439,7 @@ function meza_normalize_datetime_columns(array $columns): array
 
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
     $post_type = ($screen instanceof WP_Screen) ? (string) ($screen->post_type ?? '') : '';
+    if ($post_type === 'product') return $columns;
     $supports_thumbnail = ($post_type !== '' && post_type_supports($post_type, 'thumbnail'));
     $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
     $show_organization_url_column = ($post_type === 'organization');
@@ -585,17 +586,127 @@ function meza_normalize_datetime_columns(array $columns): array
         }
     }
 
-    $append('mz_modified');
-    $append('modified');
-    $append('mz_published');
-    $append('date');
-
     // Append any remaining columns in their original order.
     foreach (array_keys($updated) as $key) {
         $append((string) $key);
     }
 
+    $append('mz_modified');
+    $append('modified');
+    $append('mz_published');
+    $append('date');
+
     return $ordered;
+}
+
+function meza_resolve_admin_column_key(array $columns, array $aliases): string
+{
+    foreach ($aliases as $alias) {
+        $alias = (string) $alias;
+        if ($alias !== '' && array_key_exists($alias, $columns)) return $alias;
+    }
+
+    return '';
+}
+
+function meza_customize_product_admin_columns(array $columns): array
+{
+    if (!is_array($columns)) return $columns;
+
+    $columns['mz_product_type'] = __('Product Type');
+    $columns['mz_page_link'] = __('Link');
+    $columns['mz_page_headline'] = __('Page Headline (H1)');
+    $columns['mz_page_cta'] = __('Page CTA');
+    $columns['mz_modified'] = __('Modified');
+    $columns['mz_published'] = __('Published');
+
+    if (defined('WPSEO_VERSION')) {
+        if (!isset($columns['wpseo-title'])) $columns['wpseo-title'] = __('Meta Title');
+        if (!isset($columns['wpseo-metadesc'])) $columns['wpseo-metadesc'] = __('Meta Description');
+    }
+
+    if (taxonomy_exists('product_brand')) {
+        $brand_taxonomy = get_taxonomy('product_brand');
+        $brand_label = ($brand_taxonomy && isset($brand_taxonomy->labels->name)) ? (string) $brand_taxonomy->labels->name : __('Brands');
+        if (!isset($columns['taxonomy-product_brand']) && !isset($columns['product_brand'])) {
+            $columns['taxonomy-product_brand'] = $brand_label;
+        }
+    }
+
+    $ordered = [];
+    $append = static function (array $aliases, ?string $fallback_key = null, ?string $fallback_label = null) use (&$ordered, $columns): void {
+        $resolved_key = meza_resolve_admin_column_key($columns, $aliases);
+        if ($resolved_key !== '') {
+            $ordered[$resolved_key] = $columns[$resolved_key];
+            return;
+        }
+
+        if ($fallback_key !== null && $fallback_label !== null) {
+            $ordered[$fallback_key] = $fallback_label;
+        }
+    };
+
+    $append(['cb']);
+    $append(['featured'], 'featured', __('Featured'));
+    $append(['thumb', 'mz_thumbnail'], 'thumb', __('Image'));
+    $append(['name', 'title'], 'name', __('Name'));
+    $append(['price'], 'price', __('Price'));
+    $append(['is_in_stock'], 'is_in_stock', __('Stock'));
+    $append(['taxonomy-product_brand', 'product_brand']);
+    $append(['mz_product_type'], 'mz_product_type', __('Product Type'));
+    $append(['sku'], 'sku', __('SKU'));
+    $append(['product_cat', 'taxonomy-product_cat'], 'product_cat', __('Categories'));
+    $append(['product_tag', 'taxonomy-product_tag'], 'product_tag', __('Tags'));
+    $append(['mz_page_link'], 'mz_page_link', __('Link'));
+    $append(['wpseo-title']);
+    $append(['wpseo-metadesc']);
+    $append(['mz_page_headline'], 'mz_page_headline', __('Page Headline (H1)'));
+    $append(['mz_page_cta'], 'mz_page_cta', __('Page CTA'));
+    $append(['mz_modified'], 'mz_modified', __('Modified'));
+    $append(['mz_published'], 'mz_published', __('Published'));
+
+    return $ordered;
+}
+
+function meza_get_product_admin_columns_for_visibility(): array
+{
+    $columns = [
+        'cb' => '<input type="checkbox" />',
+        'thumb' => __('Image'),
+        'name' => __('Name'),
+        'sku' => __('SKU'),
+        'is_in_stock' => __('Stock'),
+        'price' => __('Price'),
+        'product_cat' => __('Categories'),
+        'product_tag' => __('Tags'),
+        'featured' => __('Featured'),
+        'date' => __('Date'),
+    ];
+
+    if (taxonomy_exists('product_brand')) {
+        $brand_taxonomy = get_taxonomy('product_brand');
+        $columns['taxonomy-product_brand'] = ($brand_taxonomy && isset($brand_taxonomy->labels->name)) ? (string) $brand_taxonomy->labels->name : __('Brands');
+    }
+
+    $resolved = apply_filters('manage_product_posts_columns', $columns);
+    return is_array($resolved) ? $resolved : [];
+}
+
+function meza_product_admin_column_is_visible(WP_Screen $screen, array $aliases): bool
+{
+    if ($screen->id !== 'edit-product') return false;
+
+    $columns = meza_get_product_admin_columns_for_visibility();
+    $hidden = array_map('strval', get_hidden_columns($screen));
+
+    foreach ($aliases as $alias) {
+        $alias = (string) $alias;
+        if ($alias === '' || !array_key_exists($alias, $columns)) continue;
+        if (in_array($alias, $hidden, true)) continue;
+        return true;
+    }
+
+    return false;
 }
 
 function meza_register_datetime_sortable_columns(array $cols): array
@@ -609,6 +720,8 @@ function meza_register_datetime_sortable_columns(array $cols): array
     $cols['mz_modified'] = ['modified', true];
     return $cols;
 }
+
+add_filter('manage_product_posts_columns', 'meza_customize_product_admin_columns', 1000);
 
 function meza_register_taxonomy_sortable_columns(array $cols): array
 {
@@ -660,6 +773,28 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     if ($column === 'mz_slug') {
         $slug = (string) ($post->post_name ?? '');
         echo ($slug !== '') ? esc_html($slug) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_product_type') {
+        $product_type = '';
+        if (function_exists('wc_get_product')) {
+            $product = wc_get_product((int) $post_id);
+            if ($product instanceof WC_Product) {
+                if (function_exists('wc_get_product_type_label')) {
+                    $product_type = (string) wc_get_product_type_label($product);
+                } else {
+                    $product_type_key = (string) $product->get_type();
+                    $product_types = function_exists('wc_get_product_types') ? wc_get_product_types() : [];
+
+                    if ($product_type_key !== '' && isset($product_types[$product_type_key])) {
+                        $product_type = (string) $product_types[$product_type_key];
+                    } elseif ($product_type_key !== '') {
+                        $product_type = ucwords(str_replace(['-', '_'], ' ', $product_type_key));
+                    }
+                }
+            }
+        }
+        echo ($product_type !== '') ? esc_html($product_type) : '&mdash;';
         return;
     }
     if ($column === 'mz_summary') {
@@ -954,6 +1089,39 @@ add_action('current_screen', function ($screen) {
     add_filter("manage_edit-{$post_type}_sortable_columns", 'meza_register_datetime_sortable_columns', 1000);
     add_filter("manage_edit-{$post_type}_sortable_columns", 'meza_register_taxonomy_sortable_columns', 1001);
 });
+
+add_action('current_screen', function ($screen) {
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'edit-product') return;
+
+    $wpseo_meta_columns = $GLOBALS['wpseo_meta_columns'] ?? null;
+    if ($wpseo_meta_columns instanceof WPSEO_Meta_Columns) {
+        remove_action('restrict_manage_posts', [$wpseo_meta_columns, 'posts_filter_dropdown']);
+        remove_action('restrict_manage_posts', [$wpseo_meta_columns, 'posts_filter_dropdown_readability']);
+    }
+}, 1000);
+
+add_filter('woocommerce_products_admin_list_table_filters', function ($filters) {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'edit-product') return $filters;
+
+    if (!meza_product_admin_column_is_visible($screen, ['taxonomy-product_brand', 'product_brand'])) {
+        unset($filters['product_brand']);
+    }
+
+    if (!meza_product_admin_column_is_visible($screen, ['product_cat', 'taxonomy-product_cat'])) {
+        unset($filters['product_category']);
+    }
+
+    if (!meza_product_admin_column_is_visible($screen, ['mz_product_type'])) {
+        unset($filters['product_type']);
+    }
+
+    if (!meza_product_admin_column_is_visible($screen, ['is_in_stock'])) {
+        unset($filters['stock_status']);
+    }
+
+    return $filters;
+}, 1000);
 
 // Keep explicit event start-date sorting. Global default ordering is set below.
 add_action('pre_get_posts', function (WP_Query $q) {
@@ -3454,7 +3622,6 @@ add_action('admin_head-edit.php', function () {
 
     $post_type = (string) ($screen->post_type ?? '');
     $is_acf_screen = meza_is_acf_admin_post_type((string) ($screen->post_type ?? ''));
-    $is_product_screen = ($post_type === 'product');
 
     echo '<style id="meza-admin-list-column-widths">' .
         '.wp-list-table .column-mz_id{width:75px;}' .
@@ -3475,21 +3642,26 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:175px;max-width:175px;}' .
         '</style>';
 
-    if ($is_product_screen) {
+    if ($post_type === 'product') {
         echo '<style id="meza-product-admin-column-widths">' .
-            'table.wp-list-table.fixed{table-layout:fixed!important;}' .
-            '.wp-list-table th.column-title,.wp-list-table td.column-title{width:225px!important;min-width:225px!important;max-width:225px!important;}' .
-            '.wp-list-table th.column-mz_page_link,.wp-list-table td.column-mz_page_link{width:250px!important;min-width:250px!important;max-width:250px!important;}' .
-            '.wp-list-table th.column-wpseo-title,.wp-list-table td.column-wpseo-title{width:245px!important;min-width:245px!important;max-width:245px!important;}' .
-            '.wp-list-table th.column-wpseo-metadesc,.wp-list-table td.column-wpseo-metadesc{width:285px!important;min-width:285px!important;max-width:285px!important;}' .
-            '.wp-list-table th.column-mz_modified,.wp-list-table td.column-mz_modified,.wp-list-table th.column-mz_published,.wp-list-table td.column-mz_published{width:225px!important;min-width:225px!important;max-width:225px!important;}' .
-            '.wp-list-table th.column-thumb,.wp-list-table td.column-thumb,.wp-list-table th.column-mz_thumbnail,.wp-list-table td.column-mz_thumbnail{width:78px!important;min-width:78px!important;max-width:78px!important;}' .
-            '.wp-list-table th.column-is_in_stock,.wp-list-table td.column-is_in_stock{width:100px!important;min-width:100px!important;max-width:100px!important;white-space:nowrap;}' .
-            '.wp-list-table th.column-price,.wp-list-table td.column-price{width:90px!important;min-width:90px!important;max-width:90px!important;white-space:nowrap;}' .
-            '.wp-list-table th.column-taxonomy-product_tag,.wp-list-table td.column-taxonomy-product_tag{width:170px!important;min-width:170px!important;max-width:170px!important;}' .
-            '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:56px!important;min-width:56px!important;max-width:56px!important;text-align:center;}' .
-            '.wp-list-table td.column-mz_page_link a:first-child,.wp-list-table td.column-wpseo-title,.wp-list-table td.column-wpseo-metadesc,.wp-list-table td.column-taxonomy-product_tag{display:block;overflow:hidden;text-overflow:ellipsis;white-space:normal;overflow-wrap:anywhere;word-break:break-word;}' .
-            '.wp-list-table th.column-mz_page_link,.wp-list-table th.column-wpseo-title,.wp-list-table th.column-wpseo-metadesc,.wp-list-table th.column-taxonomy-product_tag{white-space:normal;}' .
+            '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px!important;min-width:48px!important;max-width:48px!important;text-align:center;}' .
+            '.wp-list-table th.column-thumb,.wp-list-table td.column-thumb{width:78px!important;min-width:78px!important;max-width:78px!important;}' .
+            '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px!important;min-width:240px!important;max-width:240px!important;}' .
+            '.wp-list-table th.column-price,.wp-list-table td.column-price{width:90px!important;min-width:90px!important;max-width:90px!important;white-space:nowrap!important;}' .
+            '.wp-list-table th.column-is_in_stock,.wp-list-table td.column-is_in_stock{width:110px!important;min-width:110px!important;max-width:110px!important;white-space:nowrap!important;}' .
+            '.wp-list-table th.column-taxonomy-product_brand,.wp-list-table td.column-taxonomy-product_brand{width:130px!important;min-width:130px!important;max-width:130px!important;}' .
+            '.wp-list-table th.column-mz_product_type,.wp-list-table td.column-mz_product_type{width:140px!important;min-width:140px!important;max-width:140px!important;}' .
+            '.wp-list-table th.column-sku,.wp-list-table td.column-sku{width:190px!important;min-width:190px!important;max-width:190px!important;}' .
+            '.wp-list-table th.column-product_cat,.wp-list-table td.column-product_cat,.wp-list-table th.column-taxonomy-product_cat,.wp-list-table td.column-taxonomy-product_cat{width:190px!important;min-width:190px!important;max-width:190px!important;}' .
+            '.wp-list-table th.column-product_tag,.wp-list-table td.column-product_tag,.wp-list-table th.column-taxonomy-product_tag,.wp-list-table td.column-taxonomy-product_tag{width:180px!important;min-width:180px!important;max-width:180px!important;}' .
+            '.wp-list-table th.column-mz_page_link,.wp-list-table td.column-mz_page_link{width:320px!important;min-width:320px!important;max-width:320px!important;}' .
+            '.wp-list-table th.column-wpseo-title,.wp-list-table td.column-wpseo-title{width:260px!important;min-width:260px!important;max-width:260px!important;}' .
+            '.wp-list-table th.column-wpseo-metadesc,.wp-list-table td.column-wpseo-metadesc{width:320px!important;min-width:320px!important;max-width:320px!important;}' .
+            '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:260px!important;min-width:260px!important;max-width:260px!important;}' .
+            '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:220px!important;min-width:220px!important;max-width:220px!important;}' .
+            '.wp-list-table th.column-mz_modified,.wp-list-table td.column-mz_modified,.wp-list-table th.column-mz_published,.wp-list-table td.column-mz_published{width:220px!important;min-width:220px!important;max-width:220px!important;vertical-align:top!important;}' .
+            '.wp-list-table td.column-sku,.wp-list-table td.column-product_cat,.wp-list-table td.column-taxonomy-product_cat,.wp-list-table td.column-product_tag,.wp-list-table td.column-taxonomy-product_tag,.wp-list-table td.column-mz_page_link,.wp-list-table td.column-wpseo-title,.wp-list-table td.column-wpseo-metadesc,.wp-list-table td.column-mz_page_headline,.wp-list-table td.column-mz_page_cta{white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;vertical-align:top!important;}' .
+            '.wp-list-table td.column-mz_page_link a:first-child{display:block;white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;}' .
             '</style>';
     }
 
@@ -3532,52 +3704,6 @@ add_action('admin_print_footer_scripts-edit.php', function () {
         '}' .
         '});' .
         '});' .
-        '</script>';
-});
-
-add_action('admin_print_footer_scripts-edit.php', function () {
-    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit' || (string) ($screen->post_type ?? '') !== 'product') return;
-
-    echo '<script id="meza-product-admin-inline-widths">' .
-        '(function(){' .
-        'var applyWidth=function(selector,width,extra){' .
-            'document.querySelectorAll(selector).forEach(function(node){' .
-                'node.style.width=width;' .
-                'node.style.minWidth=width;' .
-                'node.style.maxWidth=width;' .
-                'if(extra){Object.keys(extra).forEach(function(key){node.style[key]=extra[key];});}' .
-            '});' .
-        '};' .
-        'var applyTextWrap=function(selector){' .
-            'document.querySelectorAll(selector).forEach(function(node){' .
-                'node.style.display="block";' .
-                'node.style.overflow="hidden";' .
-                'node.style.textOverflow="ellipsis";' .
-                'node.style.whiteSpace="normal";' .
-                'node.style.overflowWrap="anywhere";' .
-                'node.style.wordBreak="break-word";' .
-            '});' .
-        '};' .
-        'var run=function(){' .
-            'document.querySelectorAll("table.wp-list-table.fixed").forEach(function(table){table.style.tableLayout="fixed";});' .
-            'applyWidth("th.column-title,td.column-title,col.column-title","225px");' .
-            'applyWidth("th.column-mz_page_link,td.column-mz_page_link,col.column-mz_page_link","250px");' .
-            'applyWidth("th.column-wpseo-title,td.column-wpseo-title,col.column-wpseo-title","245px");' .
-            'applyWidth("th.column-wpseo-metadesc,td.column-wpseo-metadesc,col.column-wpseo-metadesc","285px");' .
-            'applyWidth("th.column-mz_modified,td.column-mz_modified,col.column-mz_modified,th.column-mz_published,td.column-mz_published,col.column-mz_published","225px");' .
-            'applyWidth("th.column-thumb,td.column-thumb,col.column-thumb,th.column-mz_thumbnail,td.column-mz_thumbnail,col.column-mz_thumbnail","78px");' .
-            'applyWidth("th.column-is_in_stock,td.column-is_in_stock,col.column-is_in_stock","100px",{whiteSpace:"nowrap"});' .
-            'applyWidth("th.column-price,td.column-price,col.column-price","90px",{whiteSpace:"nowrap"});' .
-            'applyWidth("th.column-taxonomy-product_tag,td.column-taxonomy-product_tag,col.column-taxonomy-product_tag","170px");' .
-            'applyWidth("th.column-featured,td.column-featured,col.column-featured","56px",{textAlign:"center"});' .
-            'applyTextWrap("td.column-mz_page_link a:first-child,td.column-wpseo-title,td.column-wpseo-metadesc,td.column-taxonomy-product_tag");' .
-            'document.querySelectorAll("th.column-mz_page_link,th.column-wpseo-title,th.column-wpseo-metadesc,th.column-taxonomy-product_tag").forEach(function(node){node.style.whiteSpace="normal";});' .
-        '};' .
-        'run();' .
-        'window.setTimeout(run,100);' .
-        'window.setTimeout(run,400);' .
-        '})();' .
         '</script>';
 });
 
