@@ -30,6 +30,74 @@
     margin-top: 0;
 }
 
+/* Match mz-admin's hard-width admin column treatment on the submissions log. */
+.mzf-submissions-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.mzf-submissions-table {
+    width: auto;
+    min-width: 1726px !important;
+    border-collapse: collapse;
+}
+
+.mzf-submissions-table th,
+.mzf-submissions-table td {
+    vertical-align: top;
+}
+
+.mzf-submissions-table th.column-cb {
+    width: 32px;
+    min-width: 32px;
+    max-width: 32px;
+}
+
+.mzf-submissions-table th.column-mzf_lock {
+    width: 75px;
+    min-width: 75px;
+    max-width: 75px;
+    text-align: center;
+}
+
+.mzf-submissions-table th.column-mzf_date {
+    width: 225px;
+    min-width: 225px;
+    max-width: 225px;
+}
+
+.mzf-submissions-table th.column-mzf_first_name,
+.mzf-submissions-table th.column-mzf_last_name {
+    width: 150px;
+    min-width: 150px;
+    max-width: 150px;
+}
+
+.mzf-submissions-table th.column-mzf_email,
+.mzf-submissions-table th.column-mzf_admin {
+    width: 225px;
+    min-width: 225px;
+    max-width: 225px;
+}
+
+.mzf-submissions-table th.column-mzf_phone,
+.mzf-submissions-table th.column-mzf_zip,
+.mzf-submissions-table th.column-mzf_page,
+.mzf-submissions-table th.column-mzf_form,
+.mzf-submissions-table th.column-mzf_crm,
+.mzf-submissions-table th.column-mzf_status {
+    width: 175px;
+    min-width: 175px;
+    max-width: 175px;
+}
+
+.mzf-submissions-table th.column-mzf_actions {
+    width: 325px;
+    min-width: 325px;
+    max-width: 325px;
+}
+
 /* Reusable admin filter chip UI */
 .mzf-table-toolbar .mzf-filter-wrap,
 .mz-admin-filter-wrap {
