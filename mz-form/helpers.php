@@ -659,6 +659,24 @@ if (!function_exists('mzf_render_admin_body')) {
                 }
             }
         }
+        $print_color_value = trim((string) $value_for('PrintColor'));
+        if ($print_color_value !== '' && !in_array('PrintColor', $layout, true)) {
+            $insert_before = array_search('Quantity', $layout, true);
+            if ($insert_before === false) {
+                $insert_before = array_search('Dimensions', $layout, true);
+            }
+            if ($insert_before === false) {
+                $insert_before = array_search('FilesLink', $layout, true);
+            }
+            if ($insert_before === false) {
+                $insert_before = array_search('Comments', $layout, true);
+            }
+            if ($insert_before !== false) {
+                array_splice($layout, (int) $insert_before, 0, ['PrintColor']);
+            } else {
+                $layout[] = 'PrintColor';
+            }
+        }
 
         $body = '';
         $contact_rows = [];
