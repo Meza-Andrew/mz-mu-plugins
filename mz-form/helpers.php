@@ -1033,6 +1033,8 @@ if (!function_exists('mzf_render_admin_body')) {
         $crm_platform = function_exists('mzf_crm_platform') ? mzf_crm_platform() : '';
         $crm_label = function_exists('mzf_crm_platform_label') ? mzf_crm_platform_label($crm_platform) : '';
         $crm_url = function_exists('mzf_crm_click_url') ? mzf_crm_click_url($crm_platform) : '';
+        $env = function_exists('wp_get_environment_type') ? strtolower((string) wp_get_environment_type()) : 'production';
+        $is_live_env = in_array($env, ['production', 'qa'], true);
         if ($crm_label === '') {
             $crm_label = 'Zeffy';
         }
@@ -1048,7 +1050,7 @@ if (!function_exists('mzf_render_admin_body')) {
             $sync_link_text = trim((string) ($marketing_sync['link_text'] ?? ''));
             $sync_action = strtolower(trim((string) ($marketing_sync['action'] ?? '')));
             if ($sync_ok && $sync_label !== '') {
-                if ($sync_url !== '') {
+                if ($is_live_env && $sync_url !== '') {
                     if ($sync_link_text === '') {
                         if (in_array($sync_action, ['update', 'updated'], true)) {
                             $sync_link_text = 'Updated in ' . $sync_label;
@@ -1058,9 +1060,9 @@ if (!function_exists('mzf_render_admin_body')) {
                     }
                     $newsletter_line .= ' (<a href="' . esc_url($sync_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($sync_link_text) . '</a>)';
                 }
-            } elseif ($crm_url !== '') {
+            } elseif ($is_live_env && $crm_url !== '') {
                 $newsletter_line .= ' (<a href="' . esc_url($crm_url) . '" target="_blank" rel="noopener noreferrer">Click to add to ' . esc_html($crm_label) . '</a>)';
-            } else {
+            } elseif ($is_live_env) {
                 $newsletter_line .= ' (Click to add to ' . esc_html($crm_label) . ')';
             }
             $marketing_rows[] = '<p><strong>' . esc_html((string) ($labels['NewsletterSignup'] ?? 'Signed Up for Newsletter')) . ':</strong><br>' . $newsletter_line . '</p>';

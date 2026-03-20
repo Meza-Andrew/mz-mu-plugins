@@ -515,39 +515,83 @@ if (!function_exists('mzf_submission_added_to_crm_data')) {
     function mzf_submission_added_to_crm_data(int $submission_id): array
     {
         $marketing_sync = get_post_meta($submission_id, '_mzf_marketing_sync', true);
-        if (!is_array($marketing_sync)) {
-            return ['text' => '', 'url' => '', 'csv' => ''];
+        $env = strtolower(trim((string) get_post_meta($submission_id, '_mzf_env', true)));
+        if ($env === '') {
+            $env = function_exists('wp_get_environment_type')
+                ? strtolower((string) wp_get_environment_type())
+                : 'production';
         }
+        $is_live_env = in_array($env, ['production', 'qa'], true);
 
-        $sync_ok = mzf_submission_meta_truthy((string) ($marketing_sync['ok'] ?? ''));
-        if (!$sync_ok) {
-            return ['text' => '', 'url' => '', 'csv' => ''];
-        }
-
-        $provider = strtolower(trim((string) ($marketing_sync['provider'] ?? '')));
-        if (!in_array($provider, ['mailchimp', 'constant_contact'], true)) {
-            return ['text' => '', 'url' => '', 'csv' => ''];
-        }
-
-        $sync_label = trim((string) ($marketing_sync['label'] ?? ''));
-        $sync_contact_url = trim((string) ($marketing_sync['contact_url'] ?? ''));
-        if ($provider === 'constant_contact') {
-            $sync_contact_id = trim((string) ($marketing_sync['contact_id'] ?? ''));
-            if ($sync_contact_id !== '') {
-                $sync_contact_url = 'https://app.constantcontact.com/contacts/' . rawurlencode($sync_contact_id) . '/profile';
+        $newsletter_opt_in = ((string) get_post_meta($submission_id, '_mzf_newsletter_opt_in', true) === '1');
+        if (!$newsletter_opt_in) {
+            $sources = function_exists('mzf_submission_sources') ? mzf_submission_sources($submission_id) : ['payload' => [], 'submitted' => []];
+            foreach (['payload', 'submitted'] as $source_key) {
+                $source = (array) ($sources[$source_key] ?? []);
+                foreach (['NewsletterSignup', 'newslettersignup', 'newsletter_signup'] as $key) {
+                    if (array_key_exists($key, $source) && mzf_submission_meta_truthy($source[$key])) {
+                        $newsletter_opt_in = true;
+                        break 2;
+                    }
+                }
             }
         }
-        if ($sync_contact_url === '') {
+
+        if (!$is_live_env && !$newsletter_opt_in) {
             return ['text' => '', 'url' => '', 'csv' => ''];
         }
 
-        $connected_label = $sync_label !== ''
-            ? $sync_label
-            : (($provider === 'mailchimp') ? 'Mailchimp' : 'Constant Contact');
+        if (is_array($marketing_sync)) {
+            $sync_ok = mzf_submission_meta_truthy((string) ($marketing_sync['ok'] ?? ''));
+            if ($sync_ok) {
+                $provider = strtolower(trim((string) ($marketing_sync['provider'] ?? '')));
+                if (in_array($provider, ['mailchimp', 'constant_contact'], true)) {
+                    $sync_label = trim((string) ($marketing_sync['label'] ?? ''));
+                    $sync_contact_url = trim((string) ($marketing_sync['contact_url'] ?? ''));
+                    if ($provider === 'constant_contact') {
+                        $sync_contact_id = trim((string) ($marketing_sync['contact_id'] ?? ''));
+                        if ($sync_contact_id !== '') {
+                            $sync_contact_url = 'https://app.constantcontact.com/contacts/' . rawurlencode($sync_contact_id) . '/profile';
+                        }
+                    }
+                    if ($sync_contact_url !== '') {
+                        $connected_label = $sync_label !== ''
+                            ? $sync_label
+                            : (($provider === 'mailchimp') ? 'Mailchimp' : 'Constant Contact');
+                        return [
+                            'text' => $connected_label,
+                            'url' => $sync_contact_url,
+                            'csv' => $connected_label,
+                        ];
+                    }
+                }
+            }
+        }
+
+        if ($is_live_env || !$newsletter_opt_in) {
+            return ['text' => '', 'url' => '', 'csv' => ''];
+        }
+
+        $crm_platform = (string) get_post_meta($submission_id, '_mzf_crm_platform', true);
+        if ($crm_platform === '' && is_array($marketing_sync)) {
+            $crm_platform = (string) ($marketing_sync['provider'] ?? '');
+        }
+        if ($crm_platform === '' && function_exists('mzf_crm_platform')) {
+            $crm_platform = (string) mzf_crm_platform();
+        }
+        if ($crm_platform === '' && function_exists('mzf_marketing_provider')) {
+            $crm_platform = (string) mzf_marketing_provider();
+        }
+
+        $crm_label = function_exists('mzf_crm_platform_label') ? mzf_crm_platform_label($crm_platform) : '';
+        if ($crm_label === '') {
+            return ['text' => '', 'url' => '', 'csv' => ''];
+        }
+
         return [
-            'text' => $connected_label,
-            'url' => $sync_contact_url,
-            'csv' => $connected_label,
+            'text' => $crm_label,
+            'url' => '',
+            'csv' => $crm_label,
         ];
     }
 }
@@ -557,7 +601,7 @@ if (!function_exists('mzf_submission_has_crm_entry')) {
     {
         $added_to_crm = mzf_submission_added_to_crm_data($submission_id);
 
-        return $added_to_crm['text'] !== '' && $added_to_crm['url'] !== '';
+        return $added_to_crm['text'] !== '';
     }
 }
 
