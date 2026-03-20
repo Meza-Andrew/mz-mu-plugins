@@ -9,8 +9,8 @@ if (!function_exists('mzf_register_submission_log_post_type')) {
     {
         register_post_type('mzf_submission', [
             'labels' => [
-                'name' => 'MZ Form Submissions',
-                'singular_name' => 'MZ Form Submission',
+                'name' => 'Form Submissions',
+                'singular_name' => 'Form Submission',
             ],
             'public' => false,
             'show_ui' => false,
