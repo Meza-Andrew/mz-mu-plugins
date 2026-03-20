@@ -964,15 +964,15 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         echo '<option value="">Bulk actions</option>';
         if ($view === 'deleted') {
             echo '<option value="unlock_selected">Restore</option>';
+            echo '<option value="delete_selected">Delete</option>';
             echo '<option value="export_selected">Export</option>';
-            echo '<option value="delete_selected">Delete Permanently</option>';
         } elseif ($view === 'locked') {
             echo '<option value="unlock_selected">Unsave</option>';
             echo '<option value="export_selected">Export</option>';
         } else {
             echo '<option value="save_selected">Save</option>';
-            echo '<option value="export_selected">Export</option>';
             echo '<option value="delete_selected">Delete</option>';
+            echo '<option value="export_selected">Export</option>';
         }
         echo '</select> ';
         echo '<button type="submit" class="button action">Apply</button>';
@@ -1002,8 +1002,8 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         echo '<th class="column-cb" style="width:32px;min-width:32px;max-width:32px;"><input type="checkbox" id="mzf-select-all" aria-label="Select all submissions"></th>';
         echo '<th class="column-mzf_lock" style="width:32px;min-width:32px;max-width:32px;" aria-label="Saved status"></th>';
         echo '<th class="column-mzf_date" style="width:150px;min-width:150px;max-width:150px;">' . $sortable_header('Date/Time', 'date', $sort, $order, $build_admin_url) . '</th>';
-        echo '<th class="column-mzf_first_name" style="width:225px;min-width:225px;max-width:225px;">' . $sortable_header('First Name', 'first_name', $sort, $order, $build_admin_url) . '</th>';
-        echo '<th class="column-mzf_last_name" style="width:150px;min-width:150px;max-width:150px;">' . $sortable_header('Last Name', 'last_name', $sort, $order, $build_admin_url) . '</th>';
+        echo '<th class="column-mzf_first_name" style="width:175px;min-width:175px;max-width:175px;">' . $sortable_header('First Name', 'first_name', $sort, $order, $build_admin_url) . '</th>';
+        echo '<th class="column-mzf_last_name" style="width:175px;min-width:175px;max-width:175px;">' . $sortable_header('Last Name', 'last_name', $sort, $order, $build_admin_url) . '</th>';
         echo '<th class="column-mzf_email" style="width:225px;min-width:225px;max-width:225px;">Email</th>';
         echo '<th class="column-mzf_phone" style="width:125px;min-width:125px;max-width:125px;">Phone</th>';
         echo '<th class="column-mzf_zip" style="width:125px;min-width:125px;max-width:125px;">Zip Code</th>';
@@ -1104,15 +1104,15 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 $row_actions = [];
                 if ($post_status === 'trash') {
                     $row_actions[] = '<span class="restore"><a href="' . esc_url($restore_single_url) . '">Restore</a></span>';
-                    $row_actions[] = '<span class="delete"><a href="' . esc_url($delete_single_url) . '" onclick="return confirm(\'Are you sure you want to permanently delete this submission?\');">Delete Permanently</a></span>';
-                    $row_actions[] = '<span class="export"><a href="' . esc_url($export_single_url) . '">Export to CSV</a></span>';
+                    $row_actions[] = '<span class="delete"><a href="' . esc_url($delete_single_url) . '" onclick="return confirm(\'Are you sure you want to permanently delete this submission?\');">Delete</a></span>';
+                    $row_actions[] = '<span class="export"><a href="' . esc_url($export_single_url) . '">Export</a></span>';
                 } elseif ($is_saved) {
                     $row_actions[] = '<span class="edit"><a href="' . esc_url($lock_url) . '">Unsave</a></span>';
-                    $row_actions[] = '<span class="export"><a href="' . esc_url($export_single_url) . '">Export to CSV</a></span>';
+                    $row_actions[] = '<span class="export"><a href="' . esc_url($export_single_url) . '">Export</a></span>';
                 } else {
                     $row_actions[] = '<span class="edit"><a href="' . esc_url($lock_url) . '">Save</a></span>';
                     $row_actions[] = '<span class="trash"><a href="' . esc_url($delete_single_url) . '" onclick="return confirm(\'Are you sure you want to move this submission to the Trash?\');">Delete</a></span>';
-                    $row_actions[] = '<span class="export"><a href="' . esc_url($export_single_url) . '">Export to CSV</a></span>';
+                    $row_actions[] = '<span class="export"><a href="' . esc_url($export_single_url) . '">Export</a></span>';
                 }
                 echo '<td class="column-mzf_date">' . esc_html(get_the_date('F j, Y')) . '<br>at ' . esc_html(get_the_date('g:i A')) . '</td>';
                 echo '<td class="column-mzf_first_name">';
