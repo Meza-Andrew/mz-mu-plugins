@@ -392,46 +392,27 @@ add_filter('manage_plugins-network_columns', function ($columns) {
     return $columns;
 });
 
-// Keep plugin byline consistent: Version | By [author_link] | View details.
+// Show only real plugin metadata from headers and omit the default details modal link.
 add_filter('plugin_row_meta', function ($plugin_meta, $plugin_file, $plugin_data, $status) {
     $plugin_meta = [];
 
     $version = isset($plugin_data['Version']) ? trim((string)$plugin_data['Version']) : '';
     if ($version !== '') {
         $plugin_meta[] = 'Version ' . esc_html($version);
-    } else {
-        $plugin_meta[] = 'Version';
     }
 
     $author_text = isset($plugin_data['AuthorName']) ? trim((string)$plugin_data['AuthorName']) : '';
     if ($author_text === '') {
         $author_text = isset($plugin_data['Author']) ? trim(wp_strip_all_tags((string)$plugin_data['Author'])) : '';
     }
-    if ($author_text === '') {
-        $author_text = 'Unknown';
+    if ($author_text !== '') {
+        $author_uri = isset($plugin_data['AuthorURI']) ? trim((string)$plugin_data['AuthorURI']) : '';
+        if ($author_uri !== '') {
+            $plugin_meta[] = 'By <a href="' . esc_url($author_uri) . '" target="_blank" rel="noopener noreferrer">' . esc_html($author_text) . '</a>';
+        } else {
+            $plugin_meta[] = 'By ' . esc_html($author_text);
+        }
     }
-    $author_uri = isset($plugin_data['AuthorURI']) ? trim((string)$plugin_data['AuthorURI']) : '';
-    if ($author_uri !== '') {
-        $plugin_meta[] = 'By <a href="' . esc_url($author_uri) . '" target="_blank" rel="noopener noreferrer">' . esc_html($author_text) . '</a>';
-    } else {
-        $plugin_meta[] = 'By ' . esc_html($author_text);
-    }
-
-    $slug = '';
-    $dir = dirname((string)$plugin_file);
-    if ($dir !== '' && $dir !== '.') {
-        $slug = $dir;
-    } elseif (!empty($plugin_data['TextDomain'])) {
-        $slug = (string)$plugin_data['TextDomain'];
-    } else {
-        $slug = basename((string)$plugin_file, '.php');
-    }
-    $details_url = admin_url(
-        'plugin-install.php?tab=plugin-information&plugin=' . rawurlencode($slug) . '&TB_iframe=true&width=600&height=550'
-    );
-    $plugin_meta[] = '<a href="' . esc_url($details_url) . '" class="thickbox open-plugin-details-modal" aria-label="' .
-        esc_attr(sprintf(__('More information about %s'), isset($plugin_data['Name']) ? $plugin_data['Name'] : $slug)) .
-        '">' . esc_html__('View details') . '</a>';
 
     return $plugin_meta;
 }, PHP_INT_MAX, 4);
