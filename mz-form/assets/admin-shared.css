@@ -72,15 +72,19 @@
     max-width: 225px;
 }
 
-.mzf-submissions-table th.column-mzf_first_name,
+.mzf-submissions-table th.column-mzf_first_name {
+    width: 225px;
+    min-width: 225px;
+    max-width: 225px;
+}
+
 .mzf-submissions-table th.column-mzf_last_name {
     width: 150px;
     min-width: 150px;
     max-width: 150px;
 }
 
-.mzf-submissions-table th.column-mzf_email,
-.mzf-submissions-table th.column-mzf_admin {
+.mzf-submissions-table th.column-mzf_email {
     width: 225px;
     min-width: 225px;
     max-width: 225px;
@@ -97,10 +101,11 @@
     max-width: 175px;
 }
 
-.mzf-submissions-table th.column-mzf_actions {
-    width: 325px;
-    min-width: 325px;
-    max-width: 325px;
+.mzf-submissions-table .column-mzf_first_name .row-actions {
+    position: static;
+    left: auto;
+    margin-top: 4px;
+    visibility: visible;
 }
 
 /* Reusable admin filter chip UI */

@@ -758,7 +758,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         echo '<th class="column-cb" style="width:32px;min-width:32px;max-width:32px;"><input type="checkbox" id="mzf-select-all" aria-label="Select all submissions"></th>';
         echo '<th class="column-mzf_lock" style="width:32px;min-width:32px;max-width:32px;" aria-label="Saved status"></th>';
         echo '<th class="column-mzf_date" style="width:150px;min-width:150px;max-width:150px;">' . $sortable_header('Date/Time', 'date', $sort, $order, $build_admin_url) . '</th>';
-        echo '<th class="column-mzf_first_name" style="width:150px;min-width:150px;max-width:150px;">' . $sortable_header('First Name', 'first_name', $sort, $order, $build_admin_url) . '</th>';
+        echo '<th class="column-mzf_first_name" style="width:225px;min-width:225px;max-width:225px;">' . $sortable_header('First Name', 'first_name', $sort, $order, $build_admin_url) . '</th>';
         echo '<th class="column-mzf_last_name" style="width:150px;min-width:150px;max-width:150px;">' . $sortable_header('Last Name', 'last_name', $sort, $order, $build_admin_url) . '</th>';
         echo '<th class="column-mzf_email" style="width:225px;min-width:225px;max-width:225px;">Email</th>';
         echo '<th class="column-mzf_phone" style="width:125px;min-width:125px;max-width:125px;">Phone</th>';
@@ -766,9 +766,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         echo '<th class="column-mzf_page" style="width:125px;min-width:125px;max-width:125px;">Page</th>';
         echo '<th class="column-mzf_form" style="width:125px;min-width:125px;max-width:125px;">Form</th>';
         echo '<th class="column-mzf_crm" style="width:125px;min-width:125px;max-width:125px;">CRM Entry</th>';
-        echo '<th class="column-mzf_admin" style="width:225px;min-width:225px;max-width:225px;">Admin</th>';
         echo '<th class="column-mzf_status" style="width:100px;min-width:100px;max-width:100px;">Status</th>';
-        echo '<th class="column-mzf_actions" style="width:175px;min-width:175px;max-width:175px;">Actions</th>';
         echo '</tr></thead><tbody>';
 
         if (!$query->have_posts()) {
@@ -780,7 +778,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             } elseif ($view === 'unlocked') {
                 $empty_message = 'No unsaved submissions found.';
             }
-            echo '<tr><td colspan="14"><em>' . esc_html($empty_message) . '</em></td></tr>';
+            echo '<tr><td colspan="12"><em>' . esc_html($empty_message) . '</em></td></tr>';
         } else {
             while ($query->have_posts()) {
                 $query->the_post();
@@ -809,7 +807,6 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 } elseif ($form_post_id > 0) {
                     $form_label = (string) get_the_title($form_post_id);
                 }
-                $admin_to = (string) get_post_meta($id, '_mzf_admin_to', true);
                 $raw_status = (string) get_post_meta($id, '_mzf_delivery_status', true);
                 $status = mzf_submission_status_label($raw_status);
                 $status_group = mzf_submission_status_group($raw_status);
@@ -824,7 +821,59 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 echo '<td class="column-cb"><input type="checkbox" class="mzf-select-row" name="submission_ids[]" value="' . esc_attr((string) $id) . '" aria-label="Select submission #' . esc_attr((string) $id) . '"></td>';
                 echo '<td class="column-mzf_lock">' . ($is_saved ? '<span class="dashicons dashicons-saved" aria-hidden="true"></span><span class="screen-reader-text">Saved</span>' : '&mdash;') . '</td>';
                 echo '<td class="column-mzf_date">' . esc_html(get_the_date('F j, Y')) . '<br>at ' . esc_html(get_the_date('g:i A')) . '</td>';
-                echo '<td class="column-mzf_first_name">' . esc_html($first_name) . '</td>';
+                $lock_url = wp_nonce_url(
+                    add_query_arg([
+                        'action' => 'mzf_toggle_submission_lock',
+                        'submission_id' => $id,
+                        'lock' => $is_saved ? 0 : 1,
+                        'redirect_to' => $current_view_url,
+                    ], admin_url('admin-post.php')),
+                    'mzf_toggle_submission_lock_' . $id
+                );
+                $export_single_url = wp_nonce_url(
+                    add_query_arg([
+                        'action' => 'mzf_export_single_submission_csv',
+                        'submission_id' => $id,
+                    ], admin_url('admin-post.php')),
+                    'mzf_export_single_submission_csv_' . $id
+                );
+                $delete_single_url = wp_nonce_url(
+                    add_query_arg([
+                        'action' => 'mzf_delete_submission',
+                        'submission_id' => $id,
+                        'force' => ($post_status === 'trash') ? 1 : 0,
+                        'redirect_to' => $current_view_url,
+                        'return_view' => $view,
+                        ], admin_url('admin-post.php')),
+                    'mzf_delete_submission_' . $id
+                );
+                $restore_single_url = wp_nonce_url(
+                    add_query_arg([
+                        'action' => 'mzf_restore_submission',
+                        'submission_id' => $id,
+                        'redirect_to' => $current_view_url,
+                    ], admin_url('admin-post.php')),
+                    'mzf_restore_submission_' . $id
+                );
+                $row_actions = [];
+                if ($post_status === 'trash') {
+                    $row_actions[] = '<span class="restore"><a href="' . esc_url($restore_single_url) . '">Restore</a></span>';
+                    $row_actions[] = '<span class="export"><a href="' . esc_url($export_single_url) . '">Export to CSV</a></span>';
+                    $row_actions[] = '<span class="delete"><a href="' . esc_url($delete_single_url) . '" onclick="return confirm(\'Are you sure you want to delete this cleared submission?\');">Delete</a></span>';
+                } elseif ($is_saved) {
+                    $row_actions[] = '<span class="edit"><a href="' . esc_url($lock_url) . '">Unsave</a></span>';
+                    $row_actions[] = '<span class="export"><a href="' . esc_url($export_single_url) . '">Export to CSV</a></span>';
+                } else {
+                    $row_actions[] = '<span class="edit"><a href="' . esc_url($lock_url) . '">Save</a></span>';
+                    $row_actions[] = '<span class="export"><a href="' . esc_url($export_single_url) . '">Export to CSV</a></span>';
+                    $row_actions[] = '<span class="trash"><a href="' . esc_url($delete_single_url) . '" onclick="return confirm(\'Are you sure you want to clear this submission from the log?\');">Clear</a></span>';
+                }
+                echo '<td class="column-mzf_first_name">';
+                echo ($first_name !== '') ? esc_html($first_name) : '&mdash;';
+                if (!empty($row_actions)) {
+                    echo '<div class="row-actions visible">' . implode(' | ', $row_actions) . '</div>';
+                }
+                echo '</td>';
                 echo '<td class="column-mzf_last_name">' . esc_html($last_name) . '</td>';
                 echo '<td class="column-mzf_email">';
                 if ($email !== '' && is_email($email)) {
@@ -875,66 +924,9 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                     echo '&mdash;';
                 }
                 echo '</td>';
-                echo '<td class="column-mzf_admin">';
-                if ($admin_to !== '') {
-                    $admin_filter_url = $build_admin_url(['filter_admin' => $admin_to], ['paged']);
-                    echo '<a href="' . esc_url($admin_filter_url) . '">' . esc_html($admin_to) . '</a>';
-                } else {
-                    echo '—';
-                }
-                echo '</td>';
                 echo '<td class="column-mzf_status">';
                 $status_filter_url = $build_admin_url(['filter_status' => $status_group], ['paged']);
                 echo '<a href="' . esc_url($status_filter_url) . '">' . esc_html($status) . '</a>';
-                echo '</td>';
-                echo '<td class="column-mzf_actions">';
-                $lock_url = wp_nonce_url(
-                    add_query_arg([
-                        'action' => 'mzf_toggle_submission_lock',
-                        'submission_id' => $id,
-                        'lock' => $is_saved ? 0 : 1,
-                        'redirect_to' => $current_view_url,
-                    ], admin_url('admin-post.php')),
-                    'mzf_toggle_submission_lock_' . $id
-                );
-                $export_single_url = wp_nonce_url(
-                    add_query_arg([
-                        'action' => 'mzf_export_single_submission_csv',
-                        'submission_id' => $id,
-                    ], admin_url('admin-post.php')),
-                    'mzf_export_single_submission_csv_' . $id
-                );
-                $delete_single_url = wp_nonce_url(
-                    add_query_arg([
-                        'action' => 'mzf_delete_submission',
-                        'submission_id' => $id,
-                        'force' => ($post_status === 'trash') ? 1 : 0,
-                        'redirect_to' => $current_view_url,
-                        'return_view' => $view,
-                        ], admin_url('admin-post.php')),
-                    'mzf_delete_submission_' . $id
-                );
-                $restore_single_url = wp_nonce_url(
-                    add_query_arg([
-                        'action' => 'mzf_restore_submission',
-                        'submission_id' => $id,
-                        'redirect_to' => $current_view_url,
-                    ], admin_url('admin-post.php')),
-                    'mzf_restore_submission_' . $id
-                );
-                if ($post_status === 'trash') {
-                    echo '<a href="' . esc_url($restore_single_url) . '">Restore</a> | ';
-                    echo '<a href="' . esc_url($export_single_url) . '">Export to CSV</a>';
-                    echo ' | ';
-                    echo '<a href="' . esc_url($delete_single_url) . '" onclick="return confirm(\'Are you sure you want to delete this cleared submission?\');">Delete</a>';
-                } elseif ($is_saved) {
-                    echo '<a href="' . esc_url($lock_url) . '">Unsave</a> | ';
-                    echo '<a href="' . esc_url($export_single_url) . '">Export to CSV</a>';
-                } else {
-                    echo '<a href="' . esc_url($lock_url) . '">Save</a> | ';
-                    echo '<a href="' . esc_url($export_single_url) . '">Export to CSV</a> | ';
-                    echo '<a href="' . esc_url($delete_single_url) . '" onclick="return confirm(\'Are you sure you want to clear this submission from the log?\');">Clear</a>';
-                }
                 echo '</td>';
                 echo '</tr>';
             }
