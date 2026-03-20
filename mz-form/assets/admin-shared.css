@@ -94,11 +94,40 @@
 .mzf-submissions-table th.column-mzf_zip,
 .mzf-submissions-table th.column-mzf_page,
 .mzf-submissions-table th.column-mzf_form,
-.mzf-submissions-table th.column-mzf_crm,
-.mzf-submissions-table th.column-mzf_status {
+.mzf-submissions-table th.column-mzf_crm {
     width: 175px;
     min-width: 175px;
     max-width: 175px;
+}
+
+.mzf-submissions-table th.column-mzf_status,
+.mzf-submissions-table td.column-mzf_status {
+    width: 150px;
+    min-width: 150px;
+    max-width: 150px;
+}
+
+.mzf-status-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+}
+
+.mzf-status-link .dashicons {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    line-height: 16px;
+}
+
+.mzf-status-link-success .dashicons {
+    color: #00a32a;
+}
+
+.mzf-status-link-failure_validation .dashicons,
+.mzf-status-link-failure_form_issue .dashicons {
+    color: #d63638;
 }
 
 .mzf-submissions-table .column-mzf_first_name .row-actions {

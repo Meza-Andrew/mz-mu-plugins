@@ -766,7 +766,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         echo '<th class="column-mzf_page" style="width:125px;min-width:125px;max-width:125px;">Page</th>';
         echo '<th class="column-mzf_form" style="width:125px;min-width:125px;max-width:125px;">Form</th>';
         echo '<th class="column-mzf_crm" style="width:125px;min-width:125px;max-width:125px;">CRM Entry</th>';
-        echo '<th class="column-mzf_status" style="width:100px;min-width:100px;max-width:100px;">Status</th>';
+        echo '<th class="column-mzf_status" style="width:130px;min-width:130px;max-width:130px;">Status</th>';
         echo '</tr></thead><tbody>';
 
         if (!$query->have_posts()) {
@@ -819,8 +819,8 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
 
                 echo '<tr>';
                 echo '<td class="column-cb"><input type="checkbox" class="mzf-select-row" name="submission_ids[]" value="' . esc_attr((string) $id) . '" aria-label="Select submission #' . esc_attr((string) $id) . '"></td>';
-                echo '<td class="column-mzf_lock">' . ($is_saved ? '<span class="dashicons dashicons-saved" aria-hidden="true"></span><span class="screen-reader-text">Saved</span>' : '&mdash;') . '</td>';
-                echo '<td class="column-mzf_date">' . esc_html(get_the_date('F j, Y')) . '<br>at ' . esc_html(get_the_date('g:i A')) . '</td>';
+                echo '<td class="column-mzf_lock">' . ($is_saved ? '<span class="dashicons dashicons-lock" aria-hidden="true"></span><span class="screen-reader-text">Saved</span>' : '&mdash;') . '</td>';
+                $status_icon = ($status_group === 'success') ? 'dashicons-yes-alt' : 'dashicons-dismiss';
                 $lock_url = wp_nonce_url(
                     add_query_arg([
                         'action' => 'mzf_toggle_submission_lock',
@@ -868,6 +868,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                     $row_actions[] = '<span class="export"><a href="' . esc_url($export_single_url) . '">Export to CSV</a></span>';
                     $row_actions[] = '<span class="trash"><a href="' . esc_url($delete_single_url) . '" onclick="return confirm(\'Are you sure you want to clear this submission from the log?\');">Clear</a></span>';
                 }
+                echo '<td class="column-mzf_date">' . esc_html(get_the_date('F j, Y')) . '<br>at ' . esc_html(get_the_date('g:i A')) . '</td>';
                 echo '<td class="column-mzf_first_name">';
                 echo ($first_name !== '') ? esc_html($first_name) : '&mdash;';
                 if (!empty($row_actions)) {
@@ -926,7 +927,10 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 echo '</td>';
                 echo '<td class="column-mzf_status">';
                 $status_filter_url = $build_admin_url(['filter_status' => $status_group], ['paged']);
-                echo '<a href="' . esc_url($status_filter_url) . '">' . esc_html($status) . '</a>';
+                echo '<a class="mzf-status-link mzf-status-link-' . esc_attr($status_group) . '" href="' . esc_url($status_filter_url) . '">';
+                echo '<span class="dashicons ' . esc_attr($status_icon) . '" aria-hidden="true"></span>';
+                echo '<span class="mzf-status-text">' . esc_html($status) . '</span>';
+                echo '</a>';
                 echo '</td>';
                 echo '</tr>';
             }
