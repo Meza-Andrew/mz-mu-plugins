@@ -52,6 +52,60 @@ if (!function_exists('meza_backup_manager_capability')) {
     }
 }
 
+if (!function_exists('meza_has_woocommerce_plugin')) {
+    function meza_has_woocommerce_plugin(): bool
+    {
+        if (class_exists('WooCommerce')) {
+            return true;
+        }
+
+        if (!defined('WP_PLUGIN_DIR')) {
+            return false;
+        }
+
+        return file_exists(WP_PLUGIN_DIR . '/woocommerce/woocommerce.php');
+    }
+}
+
+if (!function_exists('meza_woocommerce_capabilities')) {
+    function meza_woocommerce_capabilities(): array
+    {
+        if (!meza_has_woocommerce_plugin()) {
+            return [];
+        }
+
+        $caps = [
+            'manage_woocommerce',
+            'create_customers',
+            'view_woocommerce_reports',
+        ];
+
+        foreach (['product', 'shop_order', 'shop_coupon'] as $capability_type) {
+            $caps = array_merge($caps, [
+                "edit_{$capability_type}",
+                "read_{$capability_type}",
+                "delete_{$capability_type}",
+                "edit_{$capability_type}s",
+                "edit_others_{$capability_type}s",
+                "publish_{$capability_type}s",
+                "read_private_{$capability_type}s",
+                "delete_{$capability_type}s",
+                "delete_private_{$capability_type}s",
+                "delete_published_{$capability_type}s",
+                "delete_others_{$capability_type}s",
+                "edit_private_{$capability_type}s",
+                "edit_published_{$capability_type}s",
+                "manage_{$capability_type}_terms",
+                "edit_{$capability_type}_terms",
+                "delete_{$capability_type}_terms",
+                "assign_{$capability_type}_terms",
+            ]);
+        }
+
+        return array_values(array_unique($caps));
+    }
+}
+
 if (!function_exists('meza_customer_sign_generator_capability')) {
     function meza_customer_sign_generator_capability(): string
     {
@@ -87,6 +141,10 @@ if (!function_exists('meza_site_manager_capabilities')) {
         ];
 
         foreach ($site_manager_extras as $cap) {
+            $caps[$cap] = true;
+        }
+
+        foreach (meza_woocommerce_capabilities() as $cap) {
             $caps[$cap] = true;
         }
 
@@ -142,6 +200,17 @@ if (!function_exists('meza_sync_site_manager_role')) {
             if (!$administrator_role->has_cap(meza_customer_sign_generator_capability())) {
                 $administrator_role->add_cap(meza_customer_sign_generator_capability());
             }
+        }
+
+        $current_user = wp_get_current_user();
+        if (
+            $current_user instanceof WP_User
+            && (
+                in_array($role_key, (array) $current_user->roles, true)
+                || in_array('administrator', (array) $current_user->roles, true)
+            )
+        ) {
+            $current_user->get_role_caps();
         }
     }
 }
@@ -2499,6 +2568,181 @@ function meza_force_customer_sign_generator_dashboard_position(): void
 // Final pass: collapse duplicate Customer Sign Generator entries and keep one in the Dashboard utility group.
 add_action('admin_menu', 'meza_force_customer_sign_generator_dashboard_position', PHP_INT_MAX);
 
+function meza_ensure_site_manager_woocommerce_analytics_menu(): void
+{
+    if (!meza_has_woocommerce_plugin()) return;
+
+    $user = wp_get_current_user();
+    $is_site_manager_user = $user instanceof WP_User
+        && in_array(meza_site_manager_role_key(), (array) $user->roles, true);
+
+    if (!$is_site_manager_user) {
+        return;
+    }
+
+    global $menu;
+    if (!is_array($menu)) {
+        return;
+    }
+
+    foreach ($menu as $item) {
+        if (!is_array($item)) continue;
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        if (
+            $slug === 'meza-woocommerce-analytics'
+            || $slug === 'wc-admin&path=/analytics/overview'
+        ) {
+            return;
+        }
+    }
+
+    add_menu_page(
+        'Analytics',
+        'Analytics',
+        'read',
+        'meza-woocommerce-analytics',
+        static function (): void {
+            wp_safe_redirect(admin_url('admin.php?page=wc-admin&path=/analytics/overview'));
+            exit;
+        },
+        'dashicons-chart-bar',
+        57
+    );
+}
+
+// WooCommerce sometimes registers Analytics separately from the core menu tree; ensure site managers still get it.
+add_action('admin_menu', 'meza_ensure_site_manager_woocommerce_analytics_menu', PHP_INT_MAX - 1);
+
+function meza_group_woocommerce_top_level_items(): void
+{
+    global $menu;
+
+    if (!is_array($menu) || empty($menu)) return;
+
+    $appearance_index = null;
+    foreach ($menu as $index => $item) {
+        if (is_array($item) && ((string) ($item[2] ?? '')) === 'themes.php') {
+            $appearance_index = (int) $index;
+            break;
+        }
+    }
+
+    if ($appearance_index === null) return;
+
+    $ordered_items = [
+        'woocommerce' => null,
+        'products' => null,
+        'payments' => null,
+        'marketing' => null,
+        'analytics' => null,
+    ];
+    $matched_indexes = [];
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item)) continue;
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+        if ($slug === 'woocommerce' || $title === 'woocommerce') {
+            if ($ordered_items['woocommerce'] === null) {
+                $ordered_items['woocommerce'] = $item;
+            }
+            $matched_indexes[] = (int) $index;
+            continue;
+        }
+
+        if ($slug === 'edit.php?post_type=product' || $title === 'products') {
+            if ($ordered_items['products'] === null) {
+                $ordered_items['products'] = $item;
+            }
+            $matched_indexes[] = (int) $index;
+            continue;
+        }
+
+        if (
+            str_contains($slug, 'wc-settings')
+            || str_contains($slug, 'payments')
+            || $title === 'payments'
+        ) {
+            if ($ordered_items['payments'] === null) {
+                $ordered_items['payments'] = $item;
+            }
+            $matched_indexes[] = (int) $index;
+            continue;
+        }
+
+        if (
+            str_contains($slug, 'wc-admin&path=/marketing')
+            || str_contains($slug, 'woocommerce-marketing')
+            || $title === 'marketing'
+        ) {
+            if ($ordered_items['marketing'] === null) {
+                $ordered_items['marketing'] = $item;
+            }
+            $matched_indexes[] = (int) $index;
+            continue;
+        }
+
+        if (
+            $slug === 'wc-admin&path=/analytics/overview'
+            || $slug === 'meza-woocommerce-analytics'
+            || (str_contains($slug, 'wc-admin') && str_contains($slug, '/analytics'))
+        ) {
+            if ($ordered_items['analytics'] === null) {
+                $ordered_items['analytics'] = $item;
+            }
+            $matched_indexes[] = (int) $index;
+        }
+    }
+
+    $items_to_insert = array_values(array_filter($ordered_items, static function ($item): bool {
+        return is_array($item);
+    }));
+
+    if (empty($items_to_insert) || empty($matched_indexes)) return;
+
+    rsort($matched_indexes, SORT_NUMERIC);
+    foreach ($matched_indexes as $matched_index) {
+        array_splice($menu, $matched_index, 1);
+    }
+
+    foreach ($menu as $index => $item) {
+        if (is_array($item) && ((string) ($item[2] ?? '')) === 'themes.php') {
+            $appearance_index = (int) $index;
+            break;
+        }
+    }
+
+    $block = [
+        [
+            '',
+            'read',
+            'separator-meza-woocommerce-start',
+            '',
+            'wp-menu-separator',
+        ],
+    ];
+
+    foreach ($items_to_insert as $item) {
+        $block[] = $item;
+    }
+
+    $block[] = [
+        '',
+        'read',
+        'separator-meza-woocommerce-end',
+        '',
+        'wp-menu-separator',
+    ];
+
+    array_splice($menu, $appearance_index, 0, $block);
+}
+
+// Keep WooCommerce-related top-level menus together directly above Appearance.
+add_action('admin_menu', 'meza_group_woocommerce_top_level_items', PHP_INT_MAX);
+
 function meza_group_post_settings_utilities(): void
 {
     global $menu;
@@ -2664,6 +2908,8 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_rebuild_content_menu_group();
     meza_reorder_dashboard_utility_items();
     meza_force_customer_sign_generator_dashboard_position();
+    meza_ensure_site_manager_woocommerce_analytics_menu();
+    meza_group_woocommerce_top_level_items();
     meza_group_post_settings_utilities();
     meza_cleanup_menu_separators();
 }, PHP_INT_MAX);
