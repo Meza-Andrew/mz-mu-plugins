@@ -371,6 +371,41 @@ if (!function_exists('mzf_submission_added_to_crm_data')) {
     }
 }
 
+if (!function_exists('mzf_submission_has_crm_entry')) {
+    function mzf_submission_has_crm_entry(int $submission_id): bool
+    {
+        $added_to_crm = mzf_submission_added_to_crm_data($submission_id);
+
+        return $added_to_crm['text'] !== '' && $added_to_crm['url'] !== '';
+    }
+}
+
+if (!function_exists('mzf_submission_query_ids_with_crm_entries')) {
+    function mzf_submission_query_ids_with_crm_entries(array $query_args): array
+    {
+        $query_args['posts_per_page'] = -1;
+        $query_args['paged'] = 1;
+        $query_args['no_found_rows'] = true;
+        $query_args['fields'] = 'ids';
+
+        $query = new WP_Query($query_args);
+        $matching_ids = [];
+
+        foreach ((array) $query->posts as $submission_id) {
+            $submission_id = (int) $submission_id;
+            if ($submission_id <= 0) {
+                continue;
+            }
+
+            if (mzf_submission_has_crm_entry($submission_id)) {
+                $matching_ids[] = $submission_id;
+            }
+        }
+
+        return $matching_ids;
+    }
+}
+
 if (!function_exists('mzf_render_submission_log_admin_page')) {
     function mzf_render_submission_log_admin_page(): void
     {
@@ -387,7 +422,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         if (!in_array($sort, $allowed_sorts, true)) $sort = 'date';
         if (!in_array($order, ['asc', 'desc'], true)) $order = 'desc';
         $view = isset($_GET['view']) ? sanitize_key((string) wp_unslash($_GET['view'])) : 'all';
-        $allowed_views = ['all', 'locked', 'unlocked', 'deleted'];
+        $allowed_views = ['all', 'locked', 'unlocked', 'crm_entries', 'deleted'];
         if (!in_array($view, $allowed_views, true)) $view = 'all';
         $active_statuses = ['private', 'publish', 'draft', 'pending', 'future'];
 
@@ -508,6 +543,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             'all' => 'All',
             'locked' => 'Saved',
             'unlocked' => 'Unsaved',
+            'crm_entries' => 'CRM Entries',
             'deleted' => 'Cleared',
         ];
         $view_counts = [];
@@ -521,6 +557,8 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             ];
             if ($view_key === 'deleted') {
                 $view_query_args['post_status'] = 'trash';
+            } elseif ($view_key === 'crm_entries') {
+                $view_query_args['post_status'] = $active_statuses;
             } else {
                 $view_query_args['post_status'] = $active_statuses;
                 if ($view_key === 'locked') {
@@ -546,8 +584,12 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                     ];
                 }
             }
-            $view_count_query = new WP_Query($view_query_args);
-            $view_counts[$view_key] = (int) $view_count_query->found_posts;
+            if ($view_key === 'crm_entries') {
+                $view_counts[$view_key] = count(mzf_submission_query_ids_with_crm_entries($view_query_args));
+            } else {
+                $view_count_query = new WP_Query($view_query_args);
+                $view_counts[$view_key] = (int) $view_count_query->found_posts;
+            }
         }
         echo '<ul class="subsubsub mzf-submissions-tabs">';
         $view_index = 0;
@@ -565,15 +607,15 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         echo '<br class="clear">';
         if (isset($_GET['mzf_deleted'])) {
             $deleted = max(0, absint($_GET['mzf_deleted']));
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d unsaved submission was cleared.', '%d unsaved submissions were cleared.', $deleted), $deleted)) . '</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d submission was cleared.', '%d submissions were cleared.', $deleted), $deleted)) . '</p></div>';
         }
         if (isset($_GET['mzf_saved_count'])) {
             $saved_count = max(0, absint($_GET['mzf_saved_count']));
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d submission was marked as saved.', '%d submissions were marked as saved.', $saved_count), $saved_count)) . '</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d submission was saved.', '%d submissions were saved.', $saved_count), $saved_count)) . '</p></div>';
         }
         if (isset($_GET['mzf_unlocked_count'])) {
             $unlocked_count = max(0, absint($_GET['mzf_unlocked_count']));
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d submission was removed from saved.', '%d submissions were removed from saved.', $unlocked_count), $unlocked_count)) . '</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d submission was unsaved.', '%d submissions were unsaved.', $unlocked_count), $unlocked_count)) . '</p></div>';
         }
         if (isset($_GET['mzf_deleted_selected'])) {
             $deleted_selected = max(0, absint($_GET['mzf_deleted_selected']));
@@ -584,19 +626,19 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         }
         if (isset($_GET['mzf_emptied_trash'])) {
             $emptied_trash = max(0, absint($_GET['mzf_emptied_trash']));
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d cleared submission was deleted.', '%d cleared submissions were deleted.', $emptied_trash), $emptied_trash)) . '</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d submission was deleted.', '%d submissions were deleted.', $emptied_trash), $emptied_trash)) . '</p></div>';
         }
         if (isset($_GET['mzf_entry_locked'])) {
-            echo '<div class="notice notice-success is-dismissible"><p>Submission marked as saved.</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>Submission saved.</p></div>';
         }
         if (isset($_GET['mzf_entry_unlocked'])) {
-            echo '<div class="notice notice-success is-dismissible"><p>Submission removed from saved.</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>Submission unsaved.</p></div>';
         }
         if (isset($_GET['mzf_entry_deleted'])) {
             echo '<div class="notice notice-success is-dismissible"><p>Submission cleared.</p></div>';
         }
         if (isset($_GET['mzf_entry_restored'])) {
-            echo '<div class="notice notice-success is-dismissible"><p>Submission restored to the log.</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>Submission restored.</p></div>';
         }
         $query_args = [
             'post_type' => 'mzf_submission',
@@ -680,7 +722,24 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             $query_args['meta_query'] = $meta_query;
         }
 
-        $query = new WP_Query($query_args);
+        if ($view === 'crm_entries') {
+            $crm_entry_ids = mzf_submission_query_ids_with_crm_entries($query_args);
+            $total_crm_entries = count($crm_entry_ids);
+            $paged_crm_entry_ids = array_slice($crm_entry_ids, max(0, ($paged - 1) * 50), 50);
+
+            $query = new WP_Query([
+                'post_type' => 'mzf_submission',
+                'post_status' => $active_statuses,
+                'post__in' => !empty($paged_crm_entry_ids) ? $paged_crm_entry_ids : [0],
+                'orderby' => 'post__in',
+                'posts_per_page' => !empty($paged_crm_entry_ids) ? count($paged_crm_entry_ids) : 1,
+                'no_found_rows' => true,
+            ]);
+            $query->found_posts = $total_crm_entries;
+            $query->max_num_pages = ($total_crm_entries > 0) ? (int) ceil($total_crm_entries / 50) : 0;
+        } else {
+            $query = new WP_Query($query_args);
+        }
 
         $sortable_header = static function (string $label, string $column, string $current_sort, string $current_order, callable $url_builder): string {
             $next_order = 'asc';
@@ -777,6 +836,8 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 $empty_message = 'No saved submissions found.';
             } elseif ($view === 'unlocked') {
                 $empty_message = 'No unsaved submissions found.';
+            } elseif ($view === 'crm_entries') {
+                $empty_message = 'No CRM entries found.';
             }
             echo '<tr><td colspan="12"><em>' . esc_html($empty_message) . '</em></td></tr>';
         } else {
@@ -844,7 +905,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                         'force' => ($post_status === 'trash') ? 1 : 0,
                         'redirect_to' => $current_view_url,
                         'return_view' => $view,
-                        ], admin_url('admin-post.php')),
+                    ], admin_url('admin-post.php')),
                     'mzf_delete_submission_' . $id
                 );
                 $restore_single_url = wp_nonce_url(
@@ -1372,7 +1433,7 @@ add_action('admin_post_mzf_delete_submission', function () {
     }
 
     $return_view = isset($_GET['return_view']) ? sanitize_key((string) wp_unslash($_GET['return_view'])) : '';
-    $allowed_views = ['all', 'locked', 'unlocked', 'deleted'];
+    $allowed_views = ['all', 'locked', 'unlocked', 'crm_entries', 'deleted'];
     if (!in_array($return_view, $allowed_views, true)) {
         $return_view = 'all';
     }
