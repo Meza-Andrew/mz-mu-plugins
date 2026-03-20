@@ -31,6 +31,201 @@ if (!function_exists('str_starts_with')) {
     }
 }
 
+if (!function_exists('meza_submission_manager_capability')) {
+    function meza_submission_manager_capability(): string
+    {
+        return 'mzf_manage_submissions';
+    }
+}
+
+if (!function_exists('meza_site_manager_role_key')) {
+    function meza_site_manager_role_key(): string
+    {
+        return 'site_manager';
+    }
+}
+
+if (!function_exists('meza_backup_manager_capability')) {
+    function meza_backup_manager_capability(): string
+    {
+        return 'meza_manage_backups';
+    }
+}
+
+if (!function_exists('meza_site_manager_capabilities')) {
+    function meza_site_manager_capabilities(): array
+    {
+        $caps = [
+            'read' => true,
+            meza_submission_manager_capability() => true,
+        ];
+
+        $editor_role = get_role('editor');
+        if ($editor_role instanceof WP_Role) {
+            foreach ((array) $editor_role->capabilities as $cap => $grant) {
+                if ($grant) {
+                    $caps[(string) $cap] = true;
+                }
+            }
+        }
+
+        $site_manager_extras = [
+            meza_submission_manager_capability(),
+            'edit_theme_options',
+            'list_users',
+            'import',
+            'export',
+        ];
+
+        foreach ($site_manager_extras as $cap) {
+            $caps[$cap] = true;
+        }
+
+        return $caps;
+    }
+}
+
+if (!function_exists('meza_sync_site_manager_role')) {
+    function meza_sync_site_manager_role(): void
+    {
+        $role_key = meza_site_manager_role_key();
+        $target_caps = meza_site_manager_capabilities();
+        $role = get_role($role_key);
+
+        if (!($role instanceof WP_Role)) {
+            add_role($role_key, 'Site Manager', $target_caps);
+            $role = get_role($role_key);
+        }
+
+        if ($role instanceof WP_Role) {
+            foreach ($target_caps as $cap => $grant) {
+                if ((bool) $grant && !$role->has_cap($cap)) {
+                    $role->add_cap($cap);
+                }
+            }
+
+            foreach ((array) $role->capabilities as $cap => $grant) {
+                if (array_key_exists($cap, $target_caps)) {
+                    if ((bool) $grant !== (bool) $target_caps[$cap]) {
+                        if ($target_caps[$cap]) {
+                            $role->add_cap($cap);
+                        } else {
+                            $role->remove_cap($cap);
+                        }
+                    }
+                    continue;
+                }
+
+                $role->remove_cap($cap);
+            }
+        }
+
+        $administrator_role = get_role('administrator');
+        if ($administrator_role instanceof WP_Role) {
+            if (!$administrator_role->has_cap(meza_submission_manager_capability())) {
+                $administrator_role->add_cap(meza_submission_manager_capability());
+            }
+
+            if (!$administrator_role->has_cap(meza_backup_manager_capability())) {
+                $administrator_role->add_cap(meza_backup_manager_capability());
+            }
+        }
+    }
+}
+add_action('init', 'meza_sync_site_manager_role', 20);
+
+add_filter('option_page_capability_updraft-options-group', function (): string {
+    return meza_backup_manager_capability();
+});
+
+add_filter('acf/get_options_page', function ($page, $slug) {
+    if ($slug === 'crm' && is_array($page)) {
+        $page['capability'] = 'manage_options';
+    }
+
+    return $page;
+}, 20, 2);
+
+add_filter('wpseo_submenu_pages', function (array $submenu_pages): array {
+    $user = wp_get_current_user();
+    if ($user instanceof WP_User && in_array(meza_site_manager_role_key(), (array) $user->roles, true)) {
+        return [];
+    }
+
+    return array_values(array_filter($submenu_pages, function ($item): bool {
+        if (!is_array($item)) {
+            return true;
+        }
+
+        $slug = (string) ($item[4] ?? '');
+        return !in_array($slug, ['wpseo_workouts', 'wpseo_redirects'], true);
+    }));
+}, PHP_INT_MAX);
+
+add_action('admin_menu', function (): void {
+    remove_submenu_page('wpseo_dashboard', 'wpseo_workouts');
+    remove_submenu_page('wpseo_dashboard', 'wpseo_redirects');
+}, 99);
+
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $user = wp_get_current_user();
+    if ($user instanceof WP_User && in_array(meza_site_manager_role_key(), (array) $user->roles, true)) {
+        $site_manager_page = isset($_GET['page']) ? sanitize_key((string) $_GET['page']) : '';
+        if (str_starts_with($site_manager_page, 'wpseo')) {
+            wp_safe_redirect(admin_url());
+            exit;
+        }
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) $_GET['page']) : '';
+    if (!in_array($page, ['wpseo_workouts', 'wpseo_redirects'], true)) {
+        return;
+    }
+
+    wp_safe_redirect(admin_url('admin.php?page=wpseo_dashboard'));
+    exit;
+}, 1);
+
+add_action('admin_menu', function (): void {
+    $user = wp_get_current_user();
+    if (!($user instanceof WP_User) || !in_array(meza_site_manager_role_key(), (array) $user->roles, true)) {
+        return;
+    }
+
+    remove_menu_page('wpseo_dashboard');
+
+    global $menu;
+    if (!is_array($menu)) {
+        return;
+    }
+
+    foreach ($menu as $item) {
+        $slug = (string) ($item[2] ?? '');
+        if ($slug !== '' && str_starts_with($slug, 'wpseo')) {
+            remove_menu_page($slug);
+        }
+    }
+}, PHP_INT_MAX);
+
+add_action('admin_head-themes.php', function (): void {
+    $user = wp_get_current_user();
+    if (!($user instanceof WP_User) || !in_array(meza_site_manager_role_key(), (array) $user->roles, true)) {
+        return;
+    }
+    ?>
+    <style>
+        .theme-browser .theme.active .theme-actions .customize,
+        .theme-overlay .theme-actions .customize {
+            display: none !important;
+        }
+    </style>
+    <?php
+});
+
 /** ================================
  *  EVENT ADMIN SORTING
  *  ================================ */

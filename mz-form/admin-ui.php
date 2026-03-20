@@ -4,12 +4,30 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+if (!function_exists('mzf_manage_submissions_capability')) {
+    function mzf_manage_submissions_capability(): string
+    {
+        if (function_exists('meza_submission_manager_capability')) {
+            return (string) meza_submission_manager_capability();
+        }
+
+        return 'mzf_manage_submissions';
+    }
+}
+
+if (!function_exists('mzf_user_can_manage_submissions')) {
+    function mzf_user_can_manage_submissions(): bool
+    {
+        return current_user_can('manage_options') || current_user_can(mzf_manage_submissions_capability());
+    }
+}
+
 add_action('admin_menu', function () {
     add_submenu_page(
         'edit.php?post_type=form',
         'Form Submission Log',
         'Submissions',
-        'manage_options',
+        mzf_manage_submissions_capability(),
         'mzf-submissions',
         'mzf_render_submission_log_admin_page'
     );
@@ -667,7 +685,7 @@ if (!function_exists('mzf_submission_query_ids_with_crm_entries')) {
 if (!function_exists('mzf_render_submission_log_admin_page')) {
     function mzf_render_submission_log_admin_page(): void
     {
-        if (!current_user_can('manage_options')) return;
+        if (!mzf_user_can_manage_submissions()) return;
 
         $base_admin_url = add_query_arg([
             'post_type' => 'form',
@@ -1290,7 +1308,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
 }
 
 add_action('admin_post_mzf_export_submissions_csv', function () {
-    if (!current_user_can('manage_options')) {
+    if (!mzf_user_can_manage_submissions()) {
         wp_die('Unauthorized', 'Unauthorized', 403);
     }
     check_admin_referer('mzf_export_submissions_csv');
@@ -1372,7 +1390,7 @@ add_action('admin_post_mzf_export_submissions_csv', function () {
 });
 
 add_action('admin_post_mzf_clear_all_submissions', function () {
-    if (!current_user_can('manage_options')) {
+    if (!mzf_user_can_manage_submissions()) {
         wp_die('Unauthorized', 'Unauthorized', 403);
     }
     check_admin_referer('mzf_clear_all_submissions');
@@ -1404,7 +1422,7 @@ add_action('admin_post_mzf_clear_all_submissions', function () {
 });
 
 add_action('admin_post_mzf_bulk_submissions_action', function () {
-    if (!current_user_can('manage_options')) {
+    if (!mzf_user_can_manage_submissions()) {
         wp_die('Unauthorized', 'Unauthorized', 403);
     }
     check_admin_referer('mzf_bulk_submissions_action');
@@ -1543,7 +1561,7 @@ add_action('admin_post_mzf_bulk_submissions_action', function () {
 });
 
 add_action('admin_post_mzf_empty_trash_submissions', function () {
-    if (!current_user_can('manage_options')) {
+    if (!mzf_user_can_manage_submissions()) {
         wp_die('Unauthorized', 'Unauthorized', 403);
     }
     check_admin_referer('mzf_empty_trash_submissions');
@@ -1574,7 +1592,7 @@ add_action('admin_post_mzf_empty_trash_submissions', function () {
 });
 
 add_action('admin_post_mzf_toggle_submission_lock', function () {
-    if (!current_user_can('manage_options')) {
+    if (!mzf_user_can_manage_submissions()) {
         wp_die('Unauthorized', 'Unauthorized', 403);
     }
 
@@ -1607,7 +1625,7 @@ add_action('admin_post_mzf_toggle_submission_lock', function () {
 });
 
 add_action('admin_post_mzf_export_single_submission_csv', function () {
-    if (!current_user_can('manage_options')) {
+    if (!mzf_user_can_manage_submissions()) {
         wp_die('Unauthorized', 'Unauthorized', 403);
     }
 
@@ -1684,7 +1702,7 @@ add_action('admin_post_mzf_export_single_submission_csv', function () {
 });
 
 add_action('admin_post_mzf_delete_submission', function () {
-    if (!current_user_can('manage_options')) {
+    if (!mzf_user_can_manage_submissions()) {
         wp_die('Unauthorized', 'Unauthorized', 403);
     }
 
@@ -1714,7 +1732,7 @@ add_action('admin_post_mzf_delete_submission', function () {
 });
 
 add_action('admin_post_mzf_restore_submission', function () {
-    if (!current_user_can('manage_options')) {
+    if (!mzf_user_can_manage_submissions()) {
         wp_die('Unauthorized', 'Unauthorized', 403);
     }
 
