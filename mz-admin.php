@@ -52,12 +52,20 @@ if (!function_exists('meza_backup_manager_capability')) {
     }
 }
 
+if (!function_exists('meza_customer_sign_generator_capability')) {
+    function meza_customer_sign_generator_capability(): string
+    {
+        return 'manage_client_sign_creator';
+    }
+}
+
 if (!function_exists('meza_site_manager_capabilities')) {
     function meza_site_manager_capabilities(): array
     {
         $caps = [
             'read' => true,
             meza_submission_manager_capability() => true,
+            meza_customer_sign_generator_capability() => true,
         ];
 
         $editor_role = get_role('editor');
@@ -71,6 +79,7 @@ if (!function_exists('meza_site_manager_capabilities')) {
 
         $site_manager_extras = [
             meza_submission_manager_capability(),
+            meza_customer_sign_generator_capability(),
             'edit_theme_options',
             'list_users',
             'import',
@@ -129,6 +138,10 @@ if (!function_exists('meza_sync_site_manager_role')) {
             if (!$administrator_role->has_cap(meza_backup_manager_capability())) {
                 $administrator_role->add_cap(meza_backup_manager_capability());
             }
+
+            if (!$administrator_role->has_cap(meza_customer_sign_generator_capability())) {
+                $administrator_role->add_cap(meza_customer_sign_generator_capability());
+            }
         }
     }
 }
@@ -175,7 +188,7 @@ add_action('admin_init', function (): void {
     $user = wp_get_current_user();
     if ($user instanceof WP_User && in_array(meza_site_manager_role_key(), (array) $user->roles, true)) {
         $site_manager_page = isset($_GET['page']) ? sanitize_key((string) $_GET['page']) : '';
-        if (str_starts_with($site_manager_page, 'wpseo')) {
+        if (str_starts_with($site_manager_page, 'wpseo') || str_contains($site_manager_page, 'updraft')) {
             wp_safe_redirect(admin_url());
             exit;
         }
@@ -197,6 +210,8 @@ add_action('admin_menu', function (): void {
     }
 
     remove_menu_page('wpseo_dashboard');
+    remove_menu_page('updraftplus');
+    remove_menu_page('updraftcentral');
 
     global $menu;
     if (!is_array($menu)) {
@@ -205,7 +220,14 @@ add_action('admin_menu', function (): void {
 
     foreach ($menu as $item) {
         $slug = (string) ($item[2] ?? '');
-        if ($slug !== '' && str_starts_with($slug, 'wpseo')) {
+        $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+        $is_yoast = ($slug !== '' && str_starts_with($slug, 'wpseo'))
+            || str_contains(strtolower($slug), 'wpseo')
+            || str_contains($title, 'seo');
+        $is_updraft = str_contains(strtolower($slug), 'updraft')
+            || in_array($title, ['backups', 'updraft', 'updraftplus'], true);
+
+        if ($is_yoast || $is_updraft) {
             remove_menu_page($slug);
         }
     }
@@ -2308,6 +2330,10 @@ function meza_reorder_dashboard_utility_items(): void
 
     if (!is_array($menu) || empty($menu)) return;
 
+    $user = wp_get_current_user();
+    $is_site_manager_user = $user instanceof WP_User
+        && in_array(meza_site_manager_role_key(), (array) $user->roles, true);
+
     $dashboard_index = null;
     $ordered_items = [
         'web_analytics' => null,
@@ -2340,26 +2366,34 @@ function meza_reorder_dashboard_utility_items(): void
         $is_customer_sign_generator = str_contains($slug, 'client-sign-generator')
             || $title === 'customer sign generator';
 
-        if ($is_site_kit && $ordered_items['web_analytics'] === null) {
-            $ordered_items['web_analytics'] = $item;
+        if ($is_site_kit) {
+            if ($ordered_items['web_analytics'] === null) {
+                $ordered_items['web_analytics'] = $item;
+            }
             $matched_indexes[] = (int) $index;
             continue;
         }
 
-        if ($is_yoast && $ordered_items['seo'] === null) {
-            $ordered_items['seo'] = $item;
+        if ($is_yoast) {
+            if (!$is_site_manager_user && $ordered_items['seo'] === null) {
+                $ordered_items['seo'] = $item;
+            }
             $matched_indexes[] = (int) $index;
             continue;
         }
 
-        if ($is_updraft && $ordered_items['backups'] === null) {
-            $ordered_items['backups'] = $item;
+        if ($is_updraft) {
+            if (!$is_site_manager_user && $ordered_items['backups'] === null) {
+                $ordered_items['backups'] = $item;
+            }
             $matched_indexes[] = (int) $index;
             continue;
         }
 
-        if ($is_customer_sign_generator && $ordered_items['customer_sign_generator'] === null) {
-            $ordered_items['customer_sign_generator'] = $item;
+        if ($is_customer_sign_generator) {
+            if ($ordered_items['customer_sign_generator'] === null) {
+                $ordered_items['customer_sign_generator'] = $item;
+            }
             $matched_indexes[] = (int) $index;
         }
     }
@@ -2389,6 +2423,81 @@ function meza_reorder_dashboard_utility_items(): void
 
 // Keep utility plugins grouped with Dashboard in a fixed order before the content separator.
 add_action('admin_menu', 'meza_reorder_dashboard_utility_items', PHP_INT_MAX);
+
+function meza_force_customer_sign_generator_dashboard_position(): void
+{
+    global $menu;
+
+    if (!is_array($menu) || empty($menu)) return;
+
+    $customer_sign_item = null;
+    $matched_indexes = [];
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item)) continue;
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+        $is_customer_sign_generator = str_contains($slug, 'client-sign-generator')
+            || $title === 'customer sign generator';
+
+        if (!$is_customer_sign_generator) continue;
+
+        if ($customer_sign_item === null) {
+            $customer_sign_item = $item;
+        }
+
+        $matched_indexes[] = (int) $index;
+    }
+
+    if (!is_array($customer_sign_item) || empty($matched_indexes)) return;
+
+    rsort($matched_indexes, SORT_NUMERIC);
+    foreach ($matched_indexes as $matched_index) {
+        array_splice($menu, $matched_index, 1);
+    }
+
+    $dashboard_index = null;
+    foreach ($menu as $index => $item) {
+        if (is_array($item) && ((string) ($item[2] ?? '')) === 'index.php') {
+            $dashboard_index = (int) $index;
+            break;
+        }
+    }
+
+    if ($dashboard_index === null) {
+        $menu[] = $customer_sign_item;
+        return;
+    }
+
+    $insert_at = $dashboard_index + 1;
+
+    for ($i = $dashboard_index + 1, $count = count($menu); $i < $count; $i++) {
+        $item = $menu[$i] ?? null;
+        if (!is_array($item)) break;
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+        $is_separator = str_starts_with($slug, 'separator')
+            || str_contains(strtolower((string) ($item[4] ?? '')), 'wp-menu-separator');
+        $is_dashboard_utility = str_contains($slug, 'googlesitekit')
+            || str_contains($slug, 'google-site-kit')
+            || str_contains($slug, 'site-kit')
+            || str_contains($slug, 'wpseo')
+            || str_contains($slug, 'wordpress-seo')
+            || str_contains($slug, 'updraft')
+            || in_array($title, ['web analytics', 'site kit', 'site kit by google', 'seo', 'backups', 'updraft', 'updraftplus'], true);
+
+        if ($is_separator || !$is_dashboard_utility) break;
+
+        $insert_at = $i + 1;
+    }
+
+    array_splice($menu, $insert_at, 0, [$customer_sign_item]);
+}
+
+// Final pass: collapse duplicate Customer Sign Generator entries and keep one in the Dashboard utility group.
+add_action('admin_menu', 'meza_force_customer_sign_generator_dashboard_position', PHP_INT_MAX);
 
 function meza_group_post_settings_utilities(): void
 {
@@ -2554,6 +2663,7 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_normalize_admin_plugin_menus();
     meza_rebuild_content_menu_group();
     meza_reorder_dashboard_utility_items();
+    meza_force_customer_sign_generator_dashboard_position();
     meza_group_post_settings_utilities();
     meza_cleanup_menu_separators();
 }, PHP_INT_MAX);
