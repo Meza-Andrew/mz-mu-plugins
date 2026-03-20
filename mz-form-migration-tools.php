@@ -31,6 +31,7 @@ if (!function_exists('mzf_mt_map_legacy_section_form')) {
 
         $success = (string) ($legacy['message_success'] ?? 'Your message was sent successfully. We will be in touch with you shortly.');
         $error = (string) ($legacy['message_error'] ?? 'Your message failed to send. Please try again.');
+        $validation = (string) ($legacy['message_validation'] ?? 'Please review the highlighted fields and try again.');
 
         $email_subject = trim((string) ($legacy['email_subject'] ?? 'Thank you for your request!'));
         $email_intro = trim((string) ($legacy['email_intro'] ?? 'Hey'));
@@ -51,6 +52,7 @@ if (!function_exists('mzf_mt_map_legacy_section_form')) {
             'messages' => [
                 'success' => $success,
                 'error' => $error,
+                'validation' => $validation,
             ],
             'email_user' => [
                 'subject' => $email_subject,
@@ -68,6 +70,7 @@ if (!function_exists('mzf_mt_map_legacy_section_form')) {
                 'text_sent' => $sent,
                 'message_success' => $success,
                 'message_error' => $error,
+                'message_validation' => $validation,
                 'email_subject' => $email_subject,
                 'email_intro' => $email_intro,
                 'email_content' => $email_body,

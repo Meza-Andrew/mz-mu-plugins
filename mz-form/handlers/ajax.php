@@ -168,7 +168,38 @@ if (!function_exists('send_form_data')) :
 
             return (int) mzf_log_submission($entry);
         };
-        $fail_request = static function (string $message, int $status_code, string $delivery_status, array $entry = []) use ($log_submission_attempt): void {
+        $build_error_response = static function (string $message, string $delivery_status): array {
+            $delivery_status = sanitize_key($delivery_status);
+            $payload = [
+                'message' => $message,
+                'delivery_status' => $delivery_status,
+            ];
+
+            $invalid_fields = [];
+
+            if ($delivery_status === 'validation_missing_required_field' && preg_match('/Missing required field:\s*([A-Za-z0-9_\-\[\]]+)/', $message, $matches)) {
+                $invalid_fields[] = (string) ($matches[1] ?? '');
+            } elseif ($delivery_status === 'validation_missing_form_slug') {
+                $invalid_fields[] = 'FormSlug';
+            } elseif ($delivery_status === 'validation_invalid_email') {
+                $invalid_fields[] = 'Email';
+            } elseif ($delivery_status === 'validation_invalid_phone' && preg_match('/^([A-Za-z0-9_\-\[\]]+)/', $message, $matches)) {
+                $invalid_fields[] = (string) ($matches[1] ?? '');
+            } elseif ($delivery_status === 'validation_invalid_array_shape' && preg_match('/^([A-Za-z0-9_\-\[\]]+)/', $message, $matches)) {
+                $invalid_fields[] = (string) ($matches[1] ?? '');
+            }
+
+            $invalid_fields = array_values(array_filter(array_map(static function ($field): string {
+                return trim((string) $field);
+            }, $invalid_fields)));
+
+            if (!empty($invalid_fields)) {
+                $payload['invalid_fields'] = $invalid_fields;
+            }
+
+            return $payload;
+        };
+        $fail_request = static function (string $message, int $status_code, string $delivery_status, array $entry = []) use ($log_submission_attempt, $build_error_response): void {
             if (!isset($entry['delivery_status'])) {
                 $entry['delivery_status'] = $delivery_status;
             }
@@ -176,7 +207,8 @@ if (!function_exists('send_form_data')) :
                 $entry['error_message'] = $message;
             }
             $log_submission_attempt($entry);
-            wp_send_json_error(['message' => $message], $status_code);
+            $response = $build_error_response($message, $delivery_status);
+            wp_send_json_error($response, $status_code);
         };
 
         $client_validation_failed = isset($_POST['mzf_client_validation_failed'])
@@ -548,6 +580,23 @@ if (!function_exists('send_form_data')) :
             error_log('Form: invalid email ' . $data['Email']);
             $debug_log('invalid_email', ['email' => (string) $data['Email']]);
             $fail_request('Invalid email address.', 400, 'validation_invalid_email');
+        }
+
+        foreach (['Phone', 'ContactPhone'] as $phone_field) {
+            $phone_value = trim((string) ($data[$phone_field] ?? ''));
+            if ($phone_value === '') {
+                continue;
+            }
+
+            $phone_digits = preg_replace('/\D+/', '', $phone_value);
+            if (strlen((string) $phone_digits) !== 10) {
+                error_log('Form: invalid phone ' . $phone_field . ' ' . $phone_value);
+                $debug_log('invalid_phone', [
+                    'field' => (string) $phone_field,
+                    'value' => (string) $phone_value,
+                ]);
+                $fail_request($phone_field . ' must contain exactly 10 digits.', 400, 'validation_invalid_phone');
+            }
         }
 
         $validation_result = apply_filters('mzf_validate_data', true, $data);
