@@ -560,7 +560,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         }
         if (isset($_GET['mzf_emptied_trash'])) {
             $emptied_trash = max(0, absint($_GET['mzf_emptied_trash']));
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d cleared submission was permanently removed.', '%d cleared submissions were permanently removed.', $emptied_trash), $emptied_trash)) . '</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(_n('%d cleared submission was deleted.', '%d cleared submissions were deleted.', $emptied_trash), $emptied_trash)) . '</p></div>';
         }
         if (isset($_GET['mzf_entry_locked'])) {
             echo '<div class="notice notice-success is-dismissible"><p>Submission marked as saved.</p></div>';
@@ -681,7 +681,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         };
 
         $delete_bulk_confirmation = ($view === 'deleted')
-            ? 'Are you sure you want to permanently remove these cleared submissions?'
+            ? 'Are you sure you want to delete these cleared submissions?'
             : 'Are you sure you want to clear these submissions from the log?';
 
         echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" onsubmit="if (document.getElementById(\'mzf_bulk_action\').value===\'delete_selected\') return confirm(\'' . esc_js($delete_bulk_confirmation) . '\'); return true;">';
@@ -694,10 +694,18 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         echo '<label class="screen-reader-text" for="mzf_bulk_action">Bulk action</label>';
         echo '<select id="mzf_bulk_action" name="mzf_bulk_action">';
         echo '<option value="">Bulk actions</option>';
-        echo '<option value="save_selected">Save</option>';
-        echo '<option value="unlock_selected">Remove Save</option>';
-        echo '<option value="export_selected">Export</option>';
-        echo '<option value="delete_selected">' . (($view === 'deleted') ? 'Remove Permanently' : 'Clear') . '</option>';
+        if ($view === 'deleted') {
+            echo '<option value="unlock_selected">Restore</option>';
+            echo '<option value="export_selected">Export</option>';
+            echo '<option value="delete_selected">Delete</option>';
+        } elseif ($view === 'locked') {
+            echo '<option value="unlock_selected">Unsave</option>';
+            echo '<option value="export_selected">Export</option>';
+        } else {
+            echo '<option value="save_selected">Save</option>';
+            echo '<option value="export_selected">Export</option>';
+            echo '<option value="delete_selected">Clear</option>';
+        }
         echo '</select> ';
         echo '<button type="submit" class="button action">Apply</button>';
         echo '</div>';
@@ -713,9 +721,10 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             echo '</span>';
         }
         if ($view === 'deleted') {
-            echo '<a class="button button-secondary" href="' . esc_url($empty_trash_url) . '" onclick="return confirm(\'Are you sure you want to permanently remove all cleared submissions?\');">Remove All Cleared</a> ';
-        } else {
-            echo '<a class="button button-secondary" href="' . esc_url($clear_all_url) . '" onclick="return confirm(\'Are you sure you want to clear all submissions except saved submissions?\');">Clear All Unsaved</a> ';
+            echo '<a class="button button-secondary" href="' . esc_url($empty_trash_url) . '" onclick="return confirm(\'Are you sure you want to delete all cleared submissions?\');">Delete All</a> ';
+        } elseif ($view !== 'locked') {
+            $clear_all_label = ($view === 'all') ? 'Clear All Unsaved' : 'Clear All';
+            echo '<a class="button button-secondary" href="' . esc_url($clear_all_url) . '" onclick="return confirm(\'Are you sure you want to clear all submissions except saved submissions?\');">' . esc_html($clear_all_label) . '</a> ';
         }
         echo '<a class="button button-primary" href="' . esc_url($export_url) . '">Export All to CSV</a>';
         echo '</div></div>';
@@ -890,10 +899,15 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                     'mzf_restore_submission_' . $id
                 );
                 if ($post_status === 'trash') {
-                    echo '<a href="' . esc_url($restore_single_url) . '">Restore to Log</a> | ';
+                    echo '<a href="' . esc_url($restore_single_url) . '">Restore</a> | ';
+                    echo '<a href="' . esc_url($export_single_url) . '">Export to CSV</a>';
+                    echo ' | ';
+                    echo '<a href="' . esc_url($delete_single_url) . '" onclick="return confirm(\'Are you sure you want to delete this cleared submission?\');">Delete</a>';
+                } elseif ($is_saved) {
+                    echo '<a href="' . esc_url($lock_url) . '">Unsave</a> | ';
                     echo '<a href="' . esc_url($export_single_url) . '">Export to CSV</a>';
                 } else {
-                    echo '<a href="' . esc_url($lock_url) . '">' . esc_html($is_saved ? 'Remove Save' : 'Save') . '</a> | ';
+                    echo '<a href="' . esc_url($lock_url) . '">Save</a> | ';
                     echo '<a href="' . esc_url($export_single_url) . '">Export to CSV</a> | ';
                     echo '<a href="' . esc_url($delete_single_url) . '" onclick="return confirm(\'Are you sure you want to clear this submission from the log?\');">Clear</a>';
                 }
