@@ -605,7 +605,15 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         echo '</tr></thead><tbody>';
 
         if (!$query->have_posts()) {
-            echo '<tr><td colspan="14"><em>No submissions logged yet.</em></td></tr>';
+            $empty_message = 'No submissions logged yet.';
+            if ($view === 'deleted') {
+                $empty_message = 'Trash is empty.';
+            } elseif ($view === 'locked') {
+                $empty_message = 'No locked submissions found.';
+            } elseif ($view === 'unlocked') {
+                $empty_message = 'No unlocked submissions found.';
+            }
+            echo '<tr><td colspan="14"><em>' . esc_html($empty_message) . '</em></td></tr>';
         } else {
             while ($query->have_posts()) {
                 $query->the_post();
