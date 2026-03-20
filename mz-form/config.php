@@ -50,14 +50,34 @@ if (!function_exists('mzf_get_crm_group')) {
         $crm = [];
 
         if (function_exists('get_field')) {
-            $acf_crm = get_field('crm', 'option');
-            if (is_array($acf_crm)) {
-                $crm = $acf_crm;
-            } else {
-                // Backward/fallback read for environments using reversed args.
-                $acf_crm_fallback = get_field('option', 'crm');
-                if (is_array($acf_crm_fallback)) {
-                    $crm = $acf_crm_fallback;
+            $platform = get_field('platform', 'option');
+            $constant_contact = get_field('constant-contact', 'option');
+            if (!is_array($constant_contact)) {
+                $constant_contact = get_field('constant_contact', 'option');
+            }
+            $mailchimp = get_field('mailchimp', 'option');
+
+            if ($platform !== null || is_array($constant_contact) || is_array($mailchimp)) {
+                $crm['platform'] = is_scalar($platform) ? (string) $platform : '';
+                if (is_array($constant_contact)) {
+                    $crm['constant-contact'] = $constant_contact;
+                    $crm['constant_contact'] = $constant_contact;
+                }
+                if (is_array($mailchimp)) {
+                    $crm['mailchimp'] = $mailchimp;
+                }
+            }
+
+            if (empty($crm)) {
+                $acf_crm = get_field('crm', 'option');
+                if (is_array($acf_crm)) {
+                    $crm = $acf_crm;
+                } else {
+                    // Backward/fallback read for environments using reversed args.
+                    $acf_crm_fallback = get_field('option', 'crm');
+                    if (is_array($acf_crm_fallback)) {
+                        $crm = $acf_crm_fallback;
+                    }
                 }
             }
         }
@@ -273,6 +293,47 @@ if (!function_exists('mzf_crm_platform')) {
     {
         $crm = mzf_get_crm_group();
         $platform = (string) ($crm['platform'] ?? '');
+        return mzf_normalize_crm_platform($platform);
+    }
+}
+
+if (!function_exists('mzf_selected_crm_platform')) {
+    function mzf_selected_crm_platform(): string
+    {
+        $platform = '';
+
+        if (function_exists('get_field')) {
+            $platform_value = get_field('platform', 'option');
+            if (is_scalar($platform_value)) {
+                $platform = (string) $platform_value;
+            }
+
+            if ($platform === '') {
+                $acf_crm = get_field('crm', 'option');
+                if (is_array($acf_crm)) {
+                    $platform = (string) ($acf_crm['platform'] ?? '');
+                }
+            }
+
+            if ($platform === '') {
+                $acf_crm = get_field('option', 'crm');
+                if (is_array($acf_crm)) {
+                    $platform = (string) ($acf_crm['platform'] ?? '');
+                }
+            }
+        }
+
+        if ($platform === '') {
+            $crm = get_option('crm');
+            if (is_array($crm)) {
+                $platform = (string) ($crm['platform'] ?? '');
+            }
+        }
+
+        if ($platform === '') {
+            $platform = (string) get_option('crm_platform', '');
+        }
+
         return mzf_normalize_crm_platform($platform);
     }
 }

@@ -1140,6 +1140,20 @@ if (!function_exists('send_form_data')) :
         $partial_success = (bool) apply_filters('mzf_partial_success', $admin_ok, $admin_ok, $user_ok, $data);
         $delivery_status = $delivery_success ? 'success' : ($partial_success ? 'partial' : 'failed');
         $submission_log_id = 0;
+        $crm_platform_for_log = function_exists('mzf_selected_crm_platform') ? (string) mzf_selected_crm_platform() : '';
+        if ($crm_platform_for_log === '' && function_exists('mzf_crm_platform')) {
+            $crm_platform_for_log = (string) mzf_crm_platform();
+        }
+        if ($crm_platform_for_log === '' && is_array($marketing_sync)) {
+            $crm_platform_for_log = (string) ($marketing_sync['provider'] ?? '');
+        }
+        if ($crm_platform_for_log === '' && function_exists('mzf_marketing_provider')) {
+            $crm_platform_for_log = (string) mzf_marketing_provider();
+        }
+        $crm_platform_label_for_log = '';
+        if ($crm_platform_for_log !== '' && function_exists('mzf_crm_platform_label')) {
+            $crm_platform_label_for_log = (string) mzf_crm_platform_label($crm_platform_for_log);
+        }
         $submission_log_id = $log_submission_attempt([
             'form_slug' => (string) ($data['FormSlug'] ?? ''),
             'page_id' => (int) ($data['PageId'] ?? 0),
@@ -1150,7 +1164,8 @@ if (!function_exists('send_form_data')) :
             'user_ok' => (bool) $user_ok,
             'subject' => (string) $subject,
             'env' => (string) $env,
-            'crm_platform' => function_exists('mzf_crm_platform') ? (string) mzf_crm_platform() : '',
+            'crm_platform' => $crm_platform_for_log,
+            'crm_platform_label' => $crm_platform_label_for_log,
             'newsletter_opt_in' => !empty($newsletter_opt_in),
             'marketing_sync' => is_array($marketing_sync) ? $marketing_sync : [],
             'payload' => (array) $data,

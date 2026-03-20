@@ -132,6 +132,7 @@ if (!function_exists('mzf_log_submission')) {
         $phone = sanitize_text_field((string) ($entry['phone'] ?? ($payload['Phone'] ?? $submitted['Phone'] ?? '')));
         $crm_platform_raw = (string) ($entry['crm_platform'] ?? '');
         $crm_platform = sanitize_key(str_replace('-', '_', strtolower(trim($crm_platform_raw))));
+        $crm_platform_label = sanitize_text_field((string) ($entry['crm_platform_label'] ?? ''));
         $newsletter_opt_in = !empty($entry['newsletter_opt_in']);
         $marketing_sync = isset($entry['marketing_sync']) && is_array($entry['marketing_sync'])
             ? mzf_log_normalize_value((array) $entry['marketing_sync'])
@@ -187,6 +188,7 @@ if (!function_exists('mzf_log_submission')) {
         update_post_meta($post_id, '_mzf_submitted', mzf_log_normalize_value($submitted));
         update_post_meta($post_id, '_mzf_attachments', mzf_log_normalize_value((array) ($entry['attachments'] ?? [])));
         update_post_meta($post_id, '_mzf_crm_platform', $crm_platform);
+        update_post_meta($post_id, '_mzf_crm_platform_label', $crm_platform_label);
         update_post_meta($post_id, '_mzf_newsletter_opt_in', $newsletter_opt_in ? '1' : '0');
         update_post_meta($post_id, '_mzf_marketing_sync', $marketing_sync);
 

@@ -593,9 +593,21 @@ if (!function_exists('mzf_submission_added_to_crm_data')) {
             return ['text' => '', 'url' => '', 'csv' => ''];
         }
 
+        $stored_crm_label = trim((string) get_post_meta($submission_id, '_mzf_crm_platform_label', true));
+        if ($stored_crm_label !== '') {
+            return [
+                'text' => $stored_crm_label,
+                'url' => '',
+                'csv' => $stored_crm_label,
+            ];
+        }
+
         $crm_platform = (string) get_post_meta($submission_id, '_mzf_crm_platform', true);
         if ($crm_platform === '' && is_array($marketing_sync)) {
             $crm_platform = (string) ($marketing_sync['provider'] ?? '');
+        }
+        if ($crm_platform === '' && function_exists('mzf_selected_crm_platform')) {
+            $crm_platform = (string) mzf_selected_crm_platform();
         }
         if ($crm_platform === '' && function_exists('mzf_crm_platform')) {
             $crm_platform = (string) mzf_crm_platform();

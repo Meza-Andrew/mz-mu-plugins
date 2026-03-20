@@ -44,9 +44,15 @@ if (!function_exists('mzf_marketing_provider')) {
         if ($provider === 'none') {
             $crm_provider_raw = '';
             if (function_exists('get_field')) {
-                $crm_acf = get_field('crm', 'option');
-                if (is_array($crm_acf)) {
-                    $crm_provider_raw = (string) ($crm_acf['platform'] ?? '');
+                $platform_value = get_field('platform', 'option');
+                if (is_scalar($platform_value)) {
+                    $crm_provider_raw = (string) $platform_value;
+                }
+                if ($crm_provider_raw === '') {
+                    $crm_acf = get_field('crm', 'option');
+                    if (is_array($crm_acf)) {
+                        $crm_provider_raw = (string) ($crm_acf['platform'] ?? '');
+                    }
                 }
             }
             if ($crm_provider_raw === '') {
