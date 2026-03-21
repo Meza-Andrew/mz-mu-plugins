@@ -3661,6 +3661,13 @@ add_action('admin_head-edit.php', function () {
 
     echo '<style id="meza-admin-list-column-widths">' .
         $product_screen_css .
+        '.meza-admin-table-scroll{width:100%;max-width:100%;max-height:calc(100vh - 260px);overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid #c3c4c7;box-sizing:border-box;background:#fff;}' .
+        '.meza-admin-table-scroll table.wp-list-table{min-width:max-content;border-collapse:separate;border-spacing:0;border:none!important;box-shadow:none!important;}' .
+        '.meza-admin-table-scroll table.wp-list-table thead,.meza-admin-table-scroll table.wp-list-table tfoot{position:relative;z-index:4;}' .
+        '.meza-admin-table-scroll table.wp-list-table thead th,.meza-admin-table-scroll table.wp-list-table thead td{position:sticky;top:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 -1px 0 #ccd0d4;background-clip:padding-box;}' .
+        '.meza-admin-table-scroll table.wp-list-table tfoot th,.meza-admin-table-scroll table.wp-list-table tfoot td{position:sticky;bottom:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 1px 0 #ccd0d4;background-clip:padding-box;}' .
+        '.meza-admin-table-scroll table.wp-list-table tbody td{position:relative;z-index:1;background-clip:padding-box;}' .
+        '.meza-admin-table-scroll table.wp-list-table thead .check-column{position:sticky;top:0;left:0;z-index:6;background:#fff;border-right:none!important;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 -1px 0 #ccd0d4;background-clip:padding-box;}' .
         '.wp-list-table .column-mz_id{width:75px;}' .
         '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_organization_url{width:125px;max-width:125px;}' .
@@ -3681,13 +3688,6 @@ add_action('admin_head-edit.php', function () {
 
     if ($post_type === 'product') {
         echo '<style id="meza-product-admin-column-widths">' .
-            '.meza-product-table-scroll{width:100%;max-width:100%;max-height:calc(100vh - 260px);overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid #c3c4c7;box-sizing:border-box;background:#fff;}' .
-            '.meza-product-table-scroll table.wp-list-table{min-width:max-content;border-collapse:separate;border-spacing:0;border:none!important;box-shadow:none!important;}' .
-            '.meza-product-table-scroll table.wp-list-table thead,.meza-product-table-scroll table.wp-list-table tfoot{position:relative;z-index:4;}' .
-            '.meza-product-table-scroll table.wp-list-table thead th,.meza-product-table-scroll table.wp-list-table thead td{position:sticky;top:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 -1px 0 #ccd0d4;background-clip:padding-box;}' .
-            '.meza-product-table-scroll table.wp-list-table tfoot th,.meza-product-table-scroll table.wp-list-table tfoot td{position:sticky;bottom:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 1px 0 #ccd0d4;background-clip:padding-box;}' .
-            '.meza-product-table-scroll table.wp-list-table tbody td{position:relative;z-index:1;background-clip:padding-box;}' .
-            '.meza-product-table-scroll table.wp-list-table thead .check-column{position:sticky;top:0;left:0;z-index:6;background:#fff;border-right:none!important;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 -1px 0 #ccd0d4;background-clip:padding-box;}' .
             '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px!important;min-width:48px!important;max-width:48px!important;text-align:center;}' .
             '.wp-list-table th.column-thumb,.wp-list-table td.column-thumb{width:78px!important;min-width:78px!important;max-width:78px!important;}' .
             '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px!important;min-width:240px!important;max-width:240px!important;}' .
@@ -3756,15 +3756,15 @@ add_action('admin_print_footer_scripts-edit.php', function () {
 
 add_action('admin_footer-edit.php', function () {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-    if (!($screen instanceof WP_Screen) || $screen->id !== 'edit-product') return;
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
 
-    echo '<script id="meza-product-table-scroll-wrap">' .
+    echo '<script id="meza-admin-table-scroll-wrap">' .
         '(function(){' .
         'var table=document.querySelector("#posts-filter table.wp-list-table");' .
         'if(!table)return;' .
-        'if(table.parentElement&&table.parentElement.classList.contains("meza-product-table-scroll"))return;' .
+        'if(table.parentElement&&table.parentElement.classList.contains("meza-admin-table-scroll"))return;' .
         'var wrapper=document.createElement("div");' .
-        'wrapper.className="meza-product-table-scroll";' .
+        'wrapper.className="meza-admin-table-scroll";' .
         'table.parentNode.insertBefore(wrapper,table);' .
         'wrapper.appendChild(table);' .
         '})();' .
