@@ -1116,14 +1116,56 @@ add_action('current_screen', function ($screen) {
     add_filter("manage_edit-{$post_type}_sortable_columns", 'meza_register_taxonomy_sortable_columns', 1001);
 });
 
-add_action('current_screen', function ($screen) {
-    if (!($screen instanceof WP_Screen) || $screen->id !== 'edit-product') return;
-
+function meza_remove_yoast_score_filters(): void
+{
     $wpseo_meta_columns = $GLOBALS['wpseo_meta_columns'] ?? null;
-    if ($wpseo_meta_columns instanceof WPSEO_Meta_Columns) {
+    if (!is_object($wpseo_meta_columns)) return;
+
+    if (method_exists($wpseo_meta_columns, 'posts_filter_dropdown')) {
         remove_action('restrict_manage_posts', [$wpseo_meta_columns, 'posts_filter_dropdown']);
+    }
+
+    if (method_exists($wpseo_meta_columns, 'posts_filter_dropdown_readability')) {
         remove_action('restrict_manage_posts', [$wpseo_meta_columns, 'posts_filter_dropdown_readability']);
     }
+}
+
+function meza_disable_yoast_cornerstone_option($options)
+{
+    if (!is_array($options)) return $options;
+
+    $options['enable_cornerstone_content'] = false;
+
+    return $options;
+}
+
+function meza_remove_yoast_edit_view_tabs($views)
+{
+    if (!is_array($views)) return $views;
+
+    foreach (array_keys($views) as $key) {
+        if (str_starts_with((string) $key, 'yoast_')) {
+            unset($views[$key]);
+        }
+    }
+
+    return $views;
+}
+
+add_filter('option_wpseo', 'meza_disable_yoast_cornerstone_option', 1000);
+add_filter('wpseo_cornerstone_post_types', '__return_empty_array', 1000);
+
+add_action('current_screen', function ($screen) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
+
+    meza_remove_yoast_score_filters();
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if ($post_type !== '') {
+        add_filter("views_edit-{$post_type}", 'meza_remove_yoast_edit_view_tabs', 9999);
+    }
+
+    if ($screen->id !== 'edit-product') return;
 
     if (class_exists(\Automattic\WooCommerce\Internal\Admin\Loader::class)) {
         remove_action('in_admin_header', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'embed_page_header']);
@@ -1260,7 +1302,7 @@ add_action('current_screen', function ($screen) {
     add_filter("manage_{$post_type}_posts_columns", function ($cols) {
         if (!is_array($cols)) return $cols;
 
-        foreach (['wpseo-links', 'wpseo-linked'] as $column_id) {
+        foreach (['wpseo-links', 'wpseo-linked', 'wpseo-score', 'wpseo-score-readability'] as $column_id) {
             if (array_key_exists($column_id, $cols)) unset($cols[$column_id]);
         }
 
@@ -1299,6 +1341,8 @@ add_action('current_screen', function ($screen) {
         foreach (array_keys($cols) as $key) {
             $normalized = strtolower((string) $key);
             if (
+                ($normalized === 'wpseo-score') ||
+                ($normalized === 'wpseo-score-readability') ||
                 str_contains($normalized, 'metadesc') ||
                 str_contains($normalized, 'meta-desc') ||
                 ($normalized === 'wpseo-metadesc')
