@@ -936,7 +936,9 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         $actions[] = '<span class="view"><a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('View') . '</a></span>';
         $actions[] = '<span class="copy"><a href="#" class="mz-copy-link" data-copy-text="' . esc_attr($url) . '">' . esc_html__('Copy URL') . '</a></span>';
 
-        echo '<div class="row-actions">' . implode('', $actions) . '</div>';
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $separator = ($screen instanceof WP_Screen && $screen->id === 'edit-product') ? '' : ' | ';
+        echo '<div class="row-actions">' . implode($separator, $actions) . '</div>';
         return;
     }
 
@@ -3706,9 +3708,9 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table th.column-mz_modified,.wp-list-table td.column-mz_modified,.wp-list-table th.column-mz_published,.wp-list-table td.column-mz_published{width:220px!important;min-width:220px!important;max-width:220px!important;vertical-align:top!important;}' .
             '.wp-list-table td.column-sku,.wp-list-table td.column-product_cat,.wp-list-table td.column-taxonomy-product_cat,.wp-list-table td.column-product_tag,.wp-list-table td.column-taxonomy-product_tag,.wp-list-table td.column-mz_page_link,.wp-list-table td.column-wpseo-title,.wp-list-table td.column-wpseo-metadesc,.wp-list-table td.column-mz_page_headline,.wp-list-table td.column-mz_page_cta{white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;vertical-align:top!important;}' .
             '.wp-list-table td.column-mz_page_link a:first-child{display:block;white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;}' .
-            '.wp-list-table td.column-mz_page_link .row-actions{display:flex;flex-wrap:wrap;align-items:center;gap:4px 0;line-height:1.3;}' .
+            '.wp-list-table td.column-mz_page_link .row-actions{display:flex;flex-wrap:wrap;align-items:center;gap:0;line-height:1.3;}' .
             '.wp-list-table td.column-mz_page_link .row-actions>span{display:inline-flex;align-items:center;}' .
-            '.wp-list-table td.column-mz_page_link .row-actions>span+span::before{content:"|";color:#646970;margin:0 6px;}' .
+            '.wp-list-table td.column-mz_page_link .row-actions>span+span::before{content:"|";color:#646970;display:inline-block;margin:0 .25em;}' .
             '</style>';
     }
 
