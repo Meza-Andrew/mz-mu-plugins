@@ -1098,6 +1098,14 @@ add_action('current_screen', function ($screen) {
         remove_action('restrict_manage_posts', [$wpseo_meta_columns, 'posts_filter_dropdown']);
         remove_action('restrict_manage_posts', [$wpseo_meta_columns, 'posts_filter_dropdown_readability']);
     }
+
+    if (class_exists(\Automattic\WooCommerce\Internal\Admin\Loader::class)) {
+        remove_action('in_admin_header', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'embed_page_header']);
+        remove_filter('admin_body_class', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'add_admin_body_classes']);
+        remove_action('admin_head', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'remove_notices']);
+        remove_action('admin_notices', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'inject_before_notices'], -9999);
+        remove_action('admin_notices', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'inject_after_notices'], PHP_INT_MAX);
+    }
 }, 1000);
 
 add_filter('woocommerce_products_admin_list_table_filters', function ($filters) {
@@ -2576,7 +2584,6 @@ function meza_reorder_dashboard_utility_items(): void
         'web_analytics' => null,
         'seo' => null,
         'backups' => null,
-        'customer_sign_generator' => null,
     ];
     $matched_indexes = [];
 
@@ -2600,8 +2607,6 @@ function meza_reorder_dashboard_utility_items(): void
             || str_contains($title, 'seo');
         $is_updraft = str_contains($slug, 'updraft')
             || in_array($title, ['backups', 'updraft', 'updraftplus'], true);
-        $is_customer_sign_generator = str_contains($slug, 'client-sign-generator')
-            || $title === 'customer sign generator';
 
         if ($is_site_kit) {
             if ($ordered_items['web_analytics'] === null) {
@@ -2622,14 +2627,6 @@ function meza_reorder_dashboard_utility_items(): void
         if ($is_updraft) {
             if (!$is_site_manager_user && $ordered_items['backups'] === null) {
                 $ordered_items['backups'] = $item;
-            }
-            $matched_indexes[] = (int) $index;
-            continue;
-        }
-
-        if ($is_customer_sign_generator) {
-            if ($ordered_items['customer_sign_generator'] === null) {
-                $ordered_items['customer_sign_generator'] = $item;
             }
             $matched_indexes[] = (int) $index;
         }
@@ -2661,7 +2658,7 @@ function meza_reorder_dashboard_utility_items(): void
 // Keep utility plugins grouped with Dashboard in a fixed order before the content separator.
 add_action('admin_menu', 'meza_reorder_dashboard_utility_items', PHP_INT_MAX);
 
-function meza_force_customer_sign_generator_dashboard_position(): void
+function meza_group_customer_sign_generator_under_dashboard(): void
 {
     global $menu;
 
@@ -2707,7 +2704,7 @@ function meza_force_customer_sign_generator_dashboard_position(): void
         return;
     }
 
-    $insert_at = $dashboard_index + 1;
+    $dashboard_group_end = $dashboard_index + 1;
 
     for ($i = $dashboard_index + 1, $count = count($menu); $i < $count; $i++) {
         $item = $menu[$i] ?? null;
@@ -2727,14 +2724,24 @@ function meza_force_customer_sign_generator_dashboard_position(): void
 
         if ($is_separator || !$is_dashboard_utility) break;
 
-        $insert_at = $i + 1;
+        $dashboard_group_end = $i + 1;
     }
 
-    array_splice($menu, $insert_at, 0, [$customer_sign_item]);
+    $items_to_insert = [[
+        '',
+        'read',
+        'separator-meza-dashboard-customer-sign-generator',
+        '',
+        'wp-menu-separator',
+    ]];
+
+    $items_to_insert[] = $customer_sign_item;
+
+    array_splice($menu, $dashboard_group_end, 0, $items_to_insert);
 }
 
-// Final pass: collapse duplicate Customer Sign Generator entries and keep one in the Dashboard utility group.
-add_action('admin_menu', 'meza_force_customer_sign_generator_dashboard_position', PHP_INT_MAX);
+// Keep Customer Sign Generator in its own block directly below the Dashboard utility group.
+add_action('admin_menu', 'meza_group_customer_sign_generator_under_dashboard', PHP_INT_MAX);
 
 function meza_ensure_site_manager_woocommerce_analytics_submenu(): void
 {
@@ -3181,7 +3188,7 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_normalize_admin_plugin_menus();
     meza_rebuild_content_menu_group();
     meza_reorder_dashboard_utility_items();
-    meza_force_customer_sign_generator_dashboard_position();
+    meza_group_customer_sign_generator_under_dashboard();
     meza_ensure_site_manager_woocommerce_analytics_submenu();
     meza_remove_payments_admin_menu();
     meza_group_woocommerce_top_level_items();
@@ -3623,7 +3630,13 @@ add_action('admin_head-edit.php', function () {
     $post_type = (string) ($screen->post_type ?? '');
     $is_acf_screen = meza_is_acf_admin_post_type((string) ($screen->post_type ?? ''));
 
+    $product_screen_css = '';
+    if ($post_type === 'product') {
+        $product_screen_css = '#wpbody{margin-top:0!important;}';
+    }
+
     echo '<style id="meza-admin-list-column-widths">' .
+        $product_screen_css .
         '.wp-list-table .column-mz_id{width:75px;}' .
         '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_organization_url{width:125px;max-width:125px;}' .
