@@ -801,13 +801,14 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     }
     if ($column === 'mz_product_type') {
         $product_type = '';
+        $product_type_key = '';
         if (function_exists('wc_get_product')) {
             $product = wc_get_product((int) $post_id);
             if ($product instanceof WC_Product) {
+                $product_type_key = (string) $product->get_type();
                 if (function_exists('wc_get_product_type_label')) {
                     $product_type = (string) wc_get_product_type_label($product);
                 } else {
-                    $product_type_key = (string) $product->get_type();
                     $product_types = function_exists('wc_get_product_types') ? wc_get_product_types() : [];
 
                     if ($product_type_key !== '' && isset($product_types[$product_type_key])) {
@@ -818,7 +819,22 @@ function meza_render_posts_list_column(string $column, int $post_id): void
                 }
             }
         }
-        echo ($product_type !== '') ? esc_html($product_type) : '&mdash;';
+        if ($product_type === '') {
+            echo '&mdash;';
+            return;
+        }
+
+        if ($product_type_key === '') {
+            echo esc_html($product_type);
+            return;
+        }
+
+        $filter_url = add_query_arg([
+            'post_type' => 'product',
+            'product_type' => $product_type_key,
+        ], admin_url('edit.php'));
+
+        echo '<a href="' . esc_url($filter_url) . '">' . esc_html($product_type) . '</a>';
         return;
     }
     if ($column === 'mz_summary') {
