@@ -3682,7 +3682,12 @@ add_action('admin_head-edit.php', function () {
     if ($post_type === 'product') {
         echo '<style id="meza-product-admin-column-widths">' .
             '.meza-product-table-scroll{width:100%;max-width:100%;max-height:calc(100vh - 260px);overflow:auto;-webkit-overflow-scrolling:touch;}' .
-            '.meza-product-table-scroll table.wp-list-table{min-width:max-content;}' .
+            '.meza-product-table-scroll table.wp-list-table{min-width:max-content;border-collapse:separate;border-spacing:0;}' .
+            '.meza-product-table-scroll table.wp-list-table thead,.meza-product-table-scroll table.wp-list-table tfoot{position:relative;z-index:4;}' .
+            '.meza-product-table-scroll table.wp-list-table thead th,.meza-product-table-scroll table.wp-list-table thead td{position:sticky;top:0;z-index:5;background:#fff;box-shadow:inset 0 -1px 0 #ccd0d4;}' .
+            '.meza-product-table-scroll table.wp-list-table tfoot th,.meza-product-table-scroll table.wp-list-table tfoot td{position:sticky;bottom:0;z-index:5;background:#fff;box-shadow:inset 0 1px 0 #ccd0d4;}' .
+            '.meza-product-table-scroll table.wp-list-table tbody td{position:relative;z-index:1;background-clip:padding-box;}' .
+            '.meza-product-table-scroll table.wp-list-table thead .check-column{position:sticky;top:0;left:0;z-index:6;background:#fff;box-shadow:inset -1px 0 0 #ccd0d4,inset 0 -1px 0 #ccd0d4;}' .
             '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px!important;min-width:48px!important;max-width:48px!important;text-align:center;}' .
             '.wp-list-table th.column-thumb,.wp-list-table td.column-thumb{width:78px!important;min-width:78px!important;max-width:78px!important;}' .
             '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px!important;min-width:240px!important;max-width:240px!important;}' .
