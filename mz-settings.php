@@ -55,7 +55,7 @@ const MEZA_POSTS_PER_PAGE      = 10;
 const MEZA_POSTS_PER_RSS       = 10;
 const MEZA_UPLOADS_YM_FOLDERS  = 1;
 const MEZA_PERMALINK_STRUCTURE = '/%postname%/';
-const MEZA_ADMIN_ITEMS_PER_PAGE = 100;
+const MEZA_ADMIN_ITEMS_PER_PAGE = 200;
 
 /** Editor defaults */
 const MEZA_DEFAULT_EDITOR      = 'classic';
@@ -654,6 +654,26 @@ function meza_admin_per_page_option_keys(): array
     return array_values(array_unique($options));
 }
 
+/** Count admin-visible items for a post type so pagination UI only appears when needed. */
+function meza_post_type_admin_item_count(string $post_type): int
+{
+    $counts = wp_count_posts($post_type, 'readable');
+    if (!is_object($counts)) {
+        return 0;
+    }
+
+    $total = 0;
+    foreach (get_object_vars($counts) as $status => $count) {
+        if ($status === 'auto-draft') {
+            continue;
+        }
+
+        $total += (int) $count;
+    }
+
+    return $total;
+}
+
 /** Force admin "items per page" to one value across post types/taxonomies/list tables. */
 add_action('admin_init', function () {
     foreach (meza_admin_per_page_option_keys() as $option_key) {
@@ -668,6 +688,19 @@ add_filter('set-screen-option', function ($status, $option, $value) {
     if (!in_array((string)$option, meza_admin_per_page_option_keys(), true)) return $status;
     return MEZA_ADMIN_ITEMS_PER_PAGE;
 }, 9999, 3);
+
+/** Hide the Pagination screen option on post lists that do not exceed the forced page size. */
+add_action('admin_head', function () {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if ($post_type === '') return;
+
+    if (meza_post_type_admin_item_count($post_type) > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+
+    $screen->remove_option('per_page');
+}, 1);
 
 /**
  * Yoast SEO columns:
