@@ -1168,6 +1168,15 @@ function meza_remove_yoast_edit_view_tabs($views)
     return $views;
 }
 
+function meza_remove_sorting_view_tab($views)
+{
+    if (!is_array($views)) return $views;
+
+    unset($views['byorder']);
+
+    return $views;
+}
+
 add_filter('option_wpseo', 'meza_disable_yoast_cornerstone_option', 1000);
 add_filter('wpseo_cornerstone_post_types', '__return_empty_array', 1000);
 
@@ -1179,6 +1188,7 @@ add_action('current_screen', function ($screen) {
     $post_type = (string) ($screen->post_type ?? '');
     if ($post_type !== '') {
         add_filter("views_edit-{$post_type}", 'meza_remove_yoast_edit_view_tabs', 9999);
+        add_filter("views_edit-{$post_type}", 'meza_remove_sorting_view_tab', 100000);
     }
 
     if ($screen->id !== 'edit-product') return;
