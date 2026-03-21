@@ -709,6 +709,30 @@ function meza_product_admin_column_is_visible(WP_Screen $screen, array $aliases)
     return false;
 }
 
+function meza_get_forced_hidden_product_admin_columns(): array
+{
+    return [
+        'product_tag',
+        'taxonomy-product_tag',
+        'mz_page_link',
+        'wpseo-title',
+        'wpseo-metadesc',
+    ];
+}
+
+add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
+    unset($use_defaults);
+
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'edit-product') return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+
+    return array_values(array_unique(array_merge(
+        $hidden,
+        meza_get_forced_hidden_product_admin_columns()
+    )));
+}, 1000, 3);
+
 function meza_register_datetime_sortable_columns(array $cols): array
 {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
@@ -912,7 +936,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         $actions[] = '<span class="view"><a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('View') . '</a></span>';
         $actions[] = '<span class="copy"><a href="#" class="mz-copy-link" data-copy-text="' . esc_attr($url) . '">' . esc_html__('Copy URL') . '</a></span>';
 
-        echo '<div class="row-actions">' . implode(' | ', $actions) . '</div>';
+        echo '<div class="row-actions">' . implode('', $actions) . '</div>';
         return;
     }
 
@@ -3657,6 +3681,8 @@ add_action('admin_head-edit.php', function () {
 
     if ($post_type === 'product') {
         echo '<style id="meza-product-admin-column-widths">' .
+            '.meza-product-table-scroll{width:100%;max-width:100%;max-height:calc(100vh - 260px);overflow:auto;-webkit-overflow-scrolling:touch;}' .
+            '.meza-product-table-scroll table.wp-list-table{min-width:max-content;}' .
             '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px!important;min-width:48px!important;max-width:48px!important;text-align:center;}' .
             '.wp-list-table th.column-thumb,.wp-list-table td.column-thumb{width:78px!important;min-width:78px!important;max-width:78px!important;}' .
             '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px!important;min-width:240px!important;max-width:240px!important;}' .
@@ -3675,6 +3701,9 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table th.column-mz_modified,.wp-list-table td.column-mz_modified,.wp-list-table th.column-mz_published,.wp-list-table td.column-mz_published{width:220px!important;min-width:220px!important;max-width:220px!important;vertical-align:top!important;}' .
             '.wp-list-table td.column-sku,.wp-list-table td.column-product_cat,.wp-list-table td.column-taxonomy-product_cat,.wp-list-table td.column-product_tag,.wp-list-table td.column-taxonomy-product_tag,.wp-list-table td.column-mz_page_link,.wp-list-table td.column-wpseo-title,.wp-list-table td.column-wpseo-metadesc,.wp-list-table td.column-mz_page_headline,.wp-list-table td.column-mz_page_cta{white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;vertical-align:top!important;}' .
             '.wp-list-table td.column-mz_page_link a:first-child{display:block;white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;}' .
+            '.wp-list-table td.column-mz_page_link .row-actions{display:flex;flex-wrap:wrap;align-items:center;gap:4px 0;line-height:1.3;}' .
+            '.wp-list-table td.column-mz_page_link .row-actions>span{display:inline-flex;align-items:center;}' .
+            '.wp-list-table td.column-mz_page_link .row-actions>span+span::before{content:"|";color:#646970;margin:0 6px;}' .
             '</style>';
     }
 
@@ -3717,6 +3746,23 @@ add_action('admin_print_footer_scripts-edit.php', function () {
         '}' .
         '});' .
         '});' .
+        '</script>';
+});
+
+add_action('admin_footer-edit.php', function () {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'edit-product') return;
+
+    echo '<script id="meza-product-table-scroll-wrap">' .
+        '(function(){' .
+        'var table=document.querySelector("#posts-filter table.wp-list-table");' .
+        'if(!table)return;' .
+        'if(table.parentElement&&table.parentElement.classList.contains("meza-product-table-scroll"))return;' .
+        'var wrapper=document.createElement("div");' .
+        'wrapper.className="meza-product-table-scroll";' .
+        'table.parentNode.insertBefore(wrapper,table);' .
+        'wrapper.appendChild(table);' .
+        '})();' .
         '</script>';
 });
 
