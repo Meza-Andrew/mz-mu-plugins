@@ -702,6 +702,18 @@ add_action('admin_head', function () {
     $screen->remove_option('per_page');
 }, 1);
 
+/** Force compact view mode for all post-type list tables. */
+add_action('current_screen', function ($screen) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
+
+    if (headers_sent()) return;
+
+    set_user_setting('posts_list_mode', 'list');
+}, 1);
+
+/** Remove the View mode screen option for all post-type list tables. */
+add_filter('view_mode_post_types', '__return_empty_array', 9999);
+
 /**
  * Yoast SEO columns:
  * - Keep "SEO Title" + "Meta Desc." checked by default on post list screens.
