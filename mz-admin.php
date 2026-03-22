@@ -1771,7 +1771,7 @@ add_action('current_screen', function ($screen) {
     add_filter("manage_{$post_type}_posts_columns", function ($cols) {
         if (!is_array($cols)) return $cols;
 
-        foreach (['wpseo-links', 'wpseo-linked', 'wpseo-score', 'wpseo-score-readability'] as $column_id) {
+        foreach (['wpseo-links', 'wpseo-linked', 'wpseo-score', 'wpseo-score-readability', 'wpseo-focuskw'] as $column_id) {
             if (array_key_exists($column_id, $cols)) unset($cols[$column_id]);
         }
 
@@ -1829,6 +1829,7 @@ add_action('current_screen', function ($screen) {
             if (
                 ($normalized === 'wpseo-score') ||
                 ($normalized === 'wpseo-score-readability') ||
+                ($normalized === 'wpseo-focuskw') ||
                 str_contains($normalized, 'metadesc') ||
                 str_contains($normalized, 'meta-desc') ||
                 ($normalized === 'wpseo-metadesc')

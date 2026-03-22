@@ -732,7 +732,7 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     }
 
     // Force-hide Yoast link-related columns.
-    foreach (['wpseo-links', 'wpseo-linked'] as $column_id) {
+    foreach (['wpseo-links', 'wpseo-linked', 'wpseo-focuskw'] as $column_id) {
         if (!in_array($column_id, $hidden, true)) $hidden[] = $column_id;
     }
 
