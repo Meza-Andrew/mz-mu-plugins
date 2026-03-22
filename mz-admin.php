@@ -449,7 +449,10 @@ function meza_normalize_datetime_columns(array $columns): array
         $post_type !== ''
         && !in_array($post_type, ['page', 'attachment'], true)
         && !meza_is_acf_admin_post_type($post_type)
-        && meza_post_type_has_permalink($post_type)
+        && (
+            $post_type === 'cta'
+            || meza_post_type_has_permalink($post_type)
+        )
     );
 
     $has_modified = false;
@@ -483,7 +486,7 @@ function meza_normalize_datetime_columns(array $columns): array
             if ($supports_thumbnail) $updated['mz_thumbnail'] = __('Image');
             $updated[$key] = ($post_type === 'cta') ? __('Headline (H2)') : $label;
             if ($show_organization_url_column) $updated['mz_organization_url'] = __('URL');
-            if ($show_summary_column) $updated['mz_summary'] = __('Summary');
+            if ($show_summary_column) $updated['mz_summary'] = ($post_type === 'cta') ? __('Subhead') : __('Summary');
             if ($show_form_slug_column) $updated['mz_slug'] = __('Slug');
             if ($show_review_columns) {
                 $updated['mz_review_quote'] = __('Quote');
@@ -3526,11 +3529,44 @@ function meza_get_preview_post_label($post): string
     return sprintf(__('Preview %s'), meza_get_post_type_singular_label($post));
 }
 
-function meza_update_admin_action_link(string $html, string $label = ''): string
+function meza_strip_post_type_from_action_label(string $label, $post = null): string
+{
+    $normalized = trim(wp_strip_all_tags($label));
+    if ($normalized === '') return $normalized;
+
+    $candidates = [];
+
+    if ($post instanceof WP_Post) {
+        $post_type_obj = get_post_type_object((string) $post->post_type);
+        if (is_object($post_type_obj) && isset($post_type_obj->labels)) {
+            $singular = trim((string) ($post_type_obj->labels->singular_name ?? ''));
+            $name = trim((string) ($post_type_obj->labels->name ?? ''));
+            if ($singular !== '') $candidates[] = $singular;
+            if ($name !== '') $candidates[] = $name;
+        }
+
+        $slug_label = trim(str_replace(['-', '_'], ' ', (string) $post->post_type));
+        if ($slug_label !== '') $candidates[] = ucwords($slug_label);
+    }
+
+    $candidates = array_values(array_unique(array_filter($candidates, static fn($candidate) => is_string($candidate) && trim($candidate) !== '')));
+
+    foreach ($candidates as $candidate) {
+        $updated = preg_replace('/\s+' . preg_quote($candidate, '/') . '$/i', '', $normalized);
+        if ($updated === null) continue;
+
+        $updated = trim(preg_replace('/\s+/', ' ', $updated) ?? $updated);
+        if ($updated !== '' && $updated !== $normalized) return $updated;
+    }
+
+    return $normalized;
+}
+
+function meza_update_admin_action_link(string $html, $post = null, string $label = ''): string
 {
     if (trim($html) === '') return $html;
 
-    return preg_replace_callback('/<a\b([^>]*)>(.*?)<\/a>/is', static function ($matches) use ($label) {
+    return preg_replace_callback('/<a\b([^>]*)>(.*?)<\/a>/is', static function ($matches) use ($label, $post) {
         $attrs = (string) ($matches[1] ?? '');
         $text = (string) ($matches[2] ?? '');
 
@@ -3541,7 +3577,8 @@ function meza_update_admin_action_link(string $html, string $label = ''): string
             $attrs .= ' rel="noopener noreferrer"';
         }
 
-        if ($label !== '') $text = esc_html($label);
+        $new_label = $label !== '' ? $label : meza_strip_post_type_from_action_label($text, $post);
+        if ($new_label !== '') $text = esc_html($new_label);
         return '<a' . $attrs . '>' . $text . '</a>';
     }, $html, 1) ?? $html;
 }
@@ -3551,14 +3588,20 @@ function meza_remove_quick_edit_action(array $actions, $post = null): array
     if (isset($actions['inline hide-if-no-js'])) unset($actions['inline hide-if-no-js']);
     if (isset($actions['inline'])) unset($actions['inline']);
 
-    if (isset($actions['edit']) && is_string($actions['edit'])) {
-        $actions['edit'] = meza_update_admin_action_link($actions['edit']);
+    if ($post instanceof WP_Post && $post->post_type === 'product') {
+        if (isset($actions['duplicate_post'])) unset($actions['duplicate_post']);
+
+        foreach ($actions as $key => $action) {
+            if (!is_string($action)) continue;
+            if (str_contains($action, 'class="m4c-duplicate-post"') || str_contains($action, "class='m4c-duplicate-post'")) {
+                unset($actions[$key]);
+            }
+        }
     }
-    if (isset($actions['view']) && is_string($actions['view'])) {
-        $actions['view'] = meza_update_admin_action_link($actions['view'], meza_get_view_post_label($post));
-    }
-    if (isset($actions['preview']) && is_string($actions['preview'])) {
-        $actions['preview'] = meza_update_admin_action_link($actions['preview'], meza_get_preview_post_label($post));
+
+    foreach ($actions as $key => $action) {
+        if (!is_string($action)) continue;
+        $actions[$key] = meza_update_admin_action_link($action, $post);
     }
 
     return $actions;
