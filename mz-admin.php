@@ -2643,6 +2643,8 @@ function meza_normalize_admin_plugin_menus(): void
             || $title === 'godaddy';
         $is_customer_sign_generator = str_contains($slug, 'client-sign-generator')
             || $title === 'customer sign generator';
+        $is_woocommerce = $slug === 'woocommerce'
+            || $title === 'woocommerce';
         $is_make = str_contains($slug, 'ds-make')
             || $title === 'make';
 
@@ -2692,6 +2694,12 @@ function meza_normalize_admin_plugin_menus(): void
             continue;
         }
 
+        if ($is_woocommerce) {
+            $item[0] = 'Ecommerce';
+            if (isset($item[3])) $item[3] = 'Ecommerce';
+            continue;
+        }
+
         if ($is_make) {
             $item[0] = 'Make';
             if (isset($item[3])) $item[3] = 'Make';
@@ -2736,6 +2744,12 @@ function meza_normalize_admin_plugin_menus(): void
 
             if ($is_wp_mail_smtp_menu && !in_array($title, ['settings', 'tools'], true)) {
                 unset($items[$index]);
+                continue;
+            }
+
+            if ($parent_slug === 'woocommerce' && $title === 'woocommerce') {
+                $item[0] = 'Ecommerce';
+                if (isset($item[3])) $item[3] = 'Ecommerce';
                 continue;
             }
 
