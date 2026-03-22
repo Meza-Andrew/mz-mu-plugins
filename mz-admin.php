@@ -431,13 +431,36 @@ add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, arr
         return $caps;
     }
 
-    if (!in_array($cap, ['googlesitekit_view_dashboard', 'googlesitekit_view_splash', 'googlesitekit_view_posts_insights'], true) || $user_id <= 0) {
+    $dashboard_caps = [
+        'googlesitekit_view_dashboard',
+        'googlesitekit_view_splash',
+        'googlesitekit_view_posts_insights',
+    ];
+    $widget_caps = [
+        'googlesitekit_view_wp_dashboard_widget',
+        'googlesitekit_view_admin_bar_menu',
+    ];
+
+    if (!in_array($cap, array_merge($dashboard_caps, $widget_caps), true) || $user_id <= 0) {
         return $caps;
     }
 
     $mapping_site_kit_caps = true;
     $can_view_shared_dashboard = user_can($user_id, 'googlesitekit_view_shared_dashboard');
+    $can_view_shared_widget = false;
+    if ($can_view_shared_dashboard && in_array($cap, $widget_caps, true)) {
+        $can_view_shared_widget = user_can($user_id, 'googlesitekit_read_shared_module_data', 'analytics-4')
+            || user_can($user_id, 'googlesitekit_read_shared_module_data', 'search-console');
+    }
     $mapping_site_kit_caps = false;
+
+    if (in_array($cap, $widget_caps, true)) {
+        if (!$can_view_shared_widget) {
+            return $caps;
+        }
+
+        return ['read'];
+    }
 
     if (!$can_view_shared_dashboard) {
         return $caps;
@@ -460,12 +483,19 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
         'googlesitekit_view_splash',
         'googlesitekit_view_shared_dashboard',
         'googlesitekit_read_shared_module_data',
+        'googlesitekit_view_wp_dashboard_widget',
+        'googlesitekit_view_admin_bar_menu',
     ], true)) {
         return $allcaps;
     }
 
     $bridging_site_kit_caps = true;
     $can_view_shared_dashboard = user_can($user->ID, 'googlesitekit_view_shared_dashboard');
+    $can_view_shared_widget = false;
+    if ($can_view_shared_dashboard) {
+        $can_view_shared_widget = user_can($user->ID, 'googlesitekit_read_shared_module_data', 'analytics-4')
+            || user_can($user->ID, 'googlesitekit_read_shared_module_data', 'search-console');
+    }
     $bridging_site_kit_caps = false;
 
     if (!$can_view_shared_dashboard) {
@@ -475,6 +505,10 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
     $allcaps['googlesitekit_view_posts_insights'] = true;
     $allcaps['googlesitekit_view_dashboard'] = true;
     $allcaps['googlesitekit_view_splash'] = true;
+    if ($can_view_shared_widget) {
+        $allcaps['googlesitekit_view_wp_dashboard_widget'] = true;
+        $allcaps['googlesitekit_view_admin_bar_menu'] = true;
+    }
 
     return $allcaps;
 }, 20, 4);
