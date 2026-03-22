@@ -2907,8 +2907,8 @@ function meza_normalize_admin_plugin_menus(): void
         }
 
         if ($is_woocommerce) {
-            $item[0] = 'Ecommerce';
-            if (isset($item[3])) $item[3] = 'Ecommerce';
+            $item[0] = 'Store';
+            if (isset($item[3])) $item[3] = 'Store';
             continue;
         }
 
@@ -2960,8 +2960,8 @@ function meza_normalize_admin_plugin_menus(): void
             }
 
             if ($parent_slug === 'woocommerce' && $title === 'woocommerce') {
-                $item[0] = 'Ecommerce';
-                if (isset($item[3])) $item[3] = 'Ecommerce';
+                $item[0] = 'Store';
+                if (isset($item[3])) $item[3] = 'Store';
                 continue;
             }
 
@@ -3557,18 +3557,6 @@ add_action('admin_head', function (): void {
     global $parent_file, $submenu_file;
     $parent_file = 'woocommerce';
     $submenu_file = 'wc-admin&path=/analytics/overview';
-
-    echo '<style id="meza-woocommerce-analytics-nav-css">' .
-        '.meza-woocommerce-analytics-nav-wrap{margin:14px 20px 0 0;}' .
-        '.meza-woocommerce-analytics-nav-wrap .nav-tab-wrapper{margin:0;border-bottom:1px solid #c3c4c7;}' .
-        '.meza-woocommerce-analytics-nav-wrap .nav-tab{margin-left:0;}' .
-        '.meza-woocommerce-analytics-nav-wrap .nav-tab:focus{box-shadow:none;outline:2px solid #2271b1;outline-offset:-2px;}' .
-        '@media screen and (max-width:782px){' .
-        '.meza-woocommerce-analytics-nav-wrap{margin:10px 10px 0 0;overflow-x:auto;}' .
-        '.meza-woocommerce-analytics-nav-wrap .nav-tab-wrapper{display:flex;flex-wrap:nowrap;width:max-content;min-width:100%;}' .
-        '.meza-woocommerce-analytics-nav-wrap .nav-tab{white-space:nowrap;}' .
-        '}' .
-        '</style>';
 }, 1001);
 
 add_action('admin_head', function (): void {
@@ -3645,39 +3633,6 @@ add_action('admin_head', function (): void {
     <?php
 }, 1002);
 
-add_action('in_admin_header', function (): void {
-    if (!meza_is_woocommerce_analytics_screen()) {
-        return;
-    }
-
-    $current_path = meza_get_wc_admin_path();
-    if ($current_path === '') {
-        $current_path = '/analytics/overview';
-    }
-
-    echo '<div class="wrap meza-woocommerce-analytics-nav-wrap"><nav class="nav-tab-wrapper" aria-label="Analytics">';
-
-    foreach (meza_get_woocommerce_analytics_nav_items() as $item) {
-        $path = (string) ($item['path'] ?? '');
-        $label = (string) ($item['label'] ?? '');
-        if ($path === '' || $label === '') continue;
-
-        $classes = ['nav-tab'];
-        if ($current_path === $path) {
-            $classes[] = 'nav-tab-active';
-        }
-
-        printf(
-            '<a class="%1$s" href="%2$s">%3$s</a>',
-            esc_attr(implode(' ', $classes)),
-            esc_url(admin_url('admin.php?page=wc-admin&path=' . ltrim($path, '/'))),
-            esc_html($label)
-        );
-    }
-
-    echo '</nav></div>';
-}, 20);
-
 function meza_ensure_woocommerce_customers_submenu(): void
 {
     if (!meza_has_woocommerce_plugin() || !current_user_can('view_woocommerce_reports')) {
@@ -3722,98 +3677,115 @@ function meza_reorder_woocommerce_submenu_items(): void
     }
 
     $items = array_values($submenu['woocommerce']);
-    $analytics_item = null;
-    $analytics_indexes = [];
-    $coupon_item = null;
-    $coupon_indexes = [];
-    $settings_index = null;
+    $ordered_buckets = [
+        'orders' => null,
+        'customers' => null,
+        'coupons' => null,
+        'analytics' => null,
+        'status' => null,
+        'settings' => null,
+    ];
+    $home_item = null;
+    $remaining_items = [];
 
-    foreach ($items as $index => $item) {
+    foreach ($items as $item) {
         if (!is_array($item)) continue;
 
         $slug = strtolower((string) ($item[2] ?? ''));
         $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
 
-        $is_analytics = $slug === 'wc-admin&path=/analytics/overview'
-            || $slug === 'admin.php?page=wc-admin&path=/analytics/overview'
-            || str_contains($slug, '/analytics/overview');
+        $is_orders = $slug === 'wc-orders'
+            || $slug === 'admin.php?page=wc-orders'
+            || $slug === 'edit.php?post_type=shop_order'
+            || str_contains($slug, 'post_type=shop_order');
+        $is_customers = $slug === 'wc-admin&path=/customers'
+            || $slug === 'admin.php?page=wc-admin&path=/customers'
+            || str_contains($slug, '/customers');
         $is_coupon = $slug === 'edit.php?post_type=shop_coupon'
             || str_contains($slug, 'post_type=shop_coupon')
             || $slug === 'coupons-moved';
+        $is_analytics = $slug === 'wc-admin&path=/analytics/overview'
+            || $slug === 'admin.php?page=wc-admin&path=/analytics/overview'
+            || str_contains($slug, '/analytics/overview');
+        $is_status = $slug === 'wc-status'
+            || $slug === 'admin.php?page=wc-status'
+            || str_contains($slug, 'page=wc-status')
+            || $label === 'status';
         $is_settings = $slug === 'wc-settings'
             || $slug === 'admin.php?page=wc-settings'
             || str_contains($slug, 'page=wc-settings')
             || $label === 'settings';
+        $is_home = $slug === 'wc-admin'
+            || $slug === 'admin.php?page=wc-admin'
+            || $slug === 'admin.php?page=wc-admin&path=/home'
+            || str_contains($slug, 'wc-admin&path=/home')
+            || $label === 'home';
 
-        if ($is_analytics) {
-            if ($analytics_item === null) {
-                $analytics_item = $item;
+        if ($is_orders) {
+            if ($ordered_buckets['orders'] === null) {
+                $ordered_buckets['orders'] = $item;
             }
+            continue;
+        }
 
-            $analytics_indexes[] = (int) $index;
+        if ($is_customers) {
+            if ($ordered_buckets['customers'] === null) {
+                $ordered_buckets['customers'] = $item;
+            }
             continue;
         }
 
         if ($is_coupon) {
-            if ($slug !== 'coupons-moved' && $coupon_item === null) {
-                $coupon_item = $item;
+            if ($slug !== 'coupons-moved' && $ordered_buckets['coupons'] === null) {
+                $ordered_buckets['coupons'] = $item;
             }
-
-            $coupon_indexes[] = (int) $index;
             continue;
         }
 
-        if ($is_settings && $settings_index === null) {
-            $settings_index = (int) $index;
-        }
-    }
-
-    if (!is_array($analytics_item) && !is_array($coupon_item)) {
-        return;
-    }
-
-    $indexes_to_remove = array_merge($analytics_indexes, $coupon_indexes);
-    rsort($indexes_to_remove, SORT_NUMERIC);
-    foreach ($indexes_to_remove as $menu_index) {
-        array_splice($items, $menu_index, 1);
-    }
-
-    if ($settings_index !== null) {
-        foreach ($items as $index => $item) {
-            if (!is_array($item)) continue;
-
-            $slug = strtolower((string) ($item[2] ?? ''));
-            $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
-            $is_settings = $slug === 'wc-settings'
-                || $slug === 'admin.php?page=wc-settings'
-                || str_contains($slug, 'page=wc-settings')
-                || $label === 'settings';
-
-            if ($is_settings) {
-                $settings_index = (int) $index;
-                break;
+        if ($is_analytics) {
+            if ($ordered_buckets['analytics'] === null) {
+                $ordered_buckets['analytics'] = $item;
             }
+            continue;
         }
-    }
 
-    $items_to_insert = [];
-    if (is_array($analytics_item)) {
-        $items_to_insert[] = $analytics_item;
-    }
-
-    if (is_array($coupon_item)) {
-        $items_to_insert[] = $coupon_item;
-    }
-
-    if ($settings_index === null) {
-        foreach ($items_to_insert as $item_to_insert) {
-            $items[] = $item_to_insert;
+        if ($is_status) {
+            if ($ordered_buckets['status'] === null) {
+                $ordered_buckets['status'] = $item;
+            }
+            continue;
         }
-    } else {
-        array_splice($items, $settings_index, 0, $items_to_insert);
+
+        if ($is_settings) {
+            if ($ordered_buckets['settings'] === null) {
+                $ordered_buckets['settings'] = $item;
+            }
+            continue;
+        }
+
+        if ($is_home) {
+            if ($home_item === null) {
+                $home_item = $item;
+            }
+            continue;
+        }
+
+        $remaining_items[] = $item;
     }
 
-    $submenu['woocommerce'] = array_values($items);
+    $reordered_items = array_values(array_filter($ordered_buckets, static function ($item): bool {
+        return is_array($item);
+    }));
+
+    foreach ($remaining_items as $item) {
+        $reordered_items[] = $item;
+    }
+
+    if (is_array($home_item)) {
+        $reordered_items[] = $home_item;
+    }
+
+    $submenu['woocommerce'] = array_values($reordered_items);
 }
 add_action('admin_menu', 'meza_reorder_woocommerce_submenu_items', PHP_INT_MAX);
 
