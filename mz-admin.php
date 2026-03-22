@@ -3973,10 +3973,18 @@ add_action('admin_head', function (): void {
 
     echo '<style id="meza-hide-woocommerce-embedded-header">' .
         '#woocommerce-embedded-root,.woocommerce-layout__header,.woocommerce-layout__header-wrapper,.woocommerce-layout-header{display:none!important;}' .
-        '.woocommerce_page_wc-admin .wrap.meza-woocommerce-customers-title-wrap h1{margin:0;font-size:23px;line-height:1.3;font-weight:400;}' .
+        '.woocommerce_page_wc-admin.meza-wc-admin-customers #adminmenumain,' .
+        '.woocommerce_page_wc-admin.meza-wc-admin-customers #adminmenuback,' .
+        '.woocommerce_page_wc-admin.meza-wc-admin-customers #adminmenuwrap,' .
+        '.woocommerce_page_wc-admin.meza-wc-admin-customers #adminmenu{' .
+        'margin-top:0!important;padding-top:0!important;top:0!important;' .
+        '}' .
+        '.woocommerce_page_wc-admin.meza-wc-admin-customers #adminmenu #menu-dashboard{margin-top:2px!important;}' .
+        '.woocommerce_page_wc-admin .wrap.meza-woocommerce-customers-title-wrap{margin:10px 20px 0 0!important;margin-left:0!important;padding:0!important;}' .
+        '.woocommerce_page_wc-admin .wrap.meza-woocommerce-customers-title-wrap h1{margin:2px 0 0 2px;font-size:23px;line-height:1.3;font-weight:400;}' .
         '.woocommerce_page_wc-admin .woocommerce-layout__main{padding-right:0!important;}' .
         '.woocommerce_page_wc-admin .woocommerce-layout__primary{margin-left:0!important;margin-top:20px!important;}' .
-        '.woocommerce_page_wc-admin.meza-wc-admin-customers .woocommerce-layout__primary{margin-top:12px!important;}' .
+        '.woocommerce_page_wc-admin.meza-wc-admin-customers .woocommerce-layout__primary{margin-top:8px!important;}' .
         '.woocommerce_page_wc-admin .woocommerce-filters-label{margin-top:0!important;}' .
         '.woocommerce_page_wc-admin .woocommerce-filters-filter{min-height:0!important;}' .
         '</style>';
@@ -4010,15 +4018,6 @@ add_action('admin_head', function (): void {
     </script>
     <?php
 }, 1002);
-
-// Keep WooCommerce's native Analytics page registered for access checks, but hide the duplicate top-level menu item.
-add_action('admin_head', function (): void {
-    if (!is_admin()) {
-        return;
-    }
-
-    echo '<style id="meza-adminmenu-top-reset">#adminmenu{margin-top:0!important;}</style>';
-}, 999);
 
 add_action('admin_head', function (): void {
     if (!is_admin()) {
