@@ -1502,21 +1502,67 @@ function meza_is_woocommerce_admin_list_screen($screen): bool
     return in_array($screen->id, ['edit-product', 'edit-shop_coupon', 'edit-shop_order', 'woocommerce_page_wc-orders'], true);
 }
 
+function meza_is_woocommerce_admin_screen($screen): bool
+{
+    if (!($screen instanceof WP_Screen)) return false;
+    if (meza_is_woocommerce_admin_list_screen($screen)) return true;
+
+    $screen_id = (string) $screen->id;
+    $screen_base = (string) $screen->base;
+    $post_type = (string) ($screen->post_type ?? '');
+    $taxonomy = (string) ($screen->taxonomy ?? '');
+
+    if ($screen_base === 'post' && in_array($post_type, ['product', 'shop_coupon', 'shop_order'], true)) {
+        return true;
+    }
+
+    if (in_array($screen_id, ['edit-product_cat', 'edit-product_tag', 'product_page_product_attributes', 'woocommerce_page_product-reviews', 'product_page_product-reviews'], true)) {
+        return true;
+    }
+
+    if ($screen_base === 'edit-tags' && ($taxonomy === 'product_cat' || $taxonomy === 'product_tag' || str_starts_with($taxonomy, 'pa_'))) {
+        return true;
+    }
+
+    if ($screen_base === 'edit-comments' || $screen_base === 'comment') {
+        $comment_type = isset($_GET['comment_type']) ? sanitize_key(wp_unslash((string) $_GET['comment_type'])) : '';
+        if ($comment_type === 'review') {
+            return true;
+        }
+    }
+
+    if (
+        str_starts_with($screen_id, 'admin_page_meza-woocommerce-analytics')
+        || str_starts_with($screen_base, 'admin_page_meza-woocommerce-analytics')
+        || str_starts_with($screen_id, 'admin_page_woocommerce-marketing')
+        || str_starts_with($screen_base, 'admin_page_woocommerce-marketing')
+        || str_starts_with($screen_id, 'woocommerce_page_woocommerce-marketing')
+        || str_starts_with($screen_base, 'woocommerce_page_woocommerce-marketing')
+    ) {
+        return true;
+    }
+
+    return str_starts_with($screen_id, 'woocommerce_page_wc-')
+        || str_starts_with($screen_base, 'woocommerce_page_wc-');
+}
+
 add_filter('option_wpseo', 'meza_disable_yoast_cornerstone_option', 1000);
 add_filter('wpseo_cornerstone_post_types', '__return_empty_array', 1000);
 
 add_action('current_screen', function ($screen) {
-    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
+    if (!($screen instanceof WP_Screen)) return;
 
-    meza_remove_yoast_score_filters();
+    if ($screen->base === 'edit') {
+        meza_remove_yoast_score_filters();
 
-    $post_type = (string) ($screen->post_type ?? '');
-    if ($post_type !== '') {
-        add_filter("views_edit-{$post_type}", 'meza_remove_yoast_edit_view_tabs', 9999);
-        add_filter("views_edit-{$post_type}", 'meza_remove_sorting_view_tab', 100000);
+        $post_type = (string) ($screen->post_type ?? '');
+        if ($post_type !== '') {
+            add_filter("views_edit-{$post_type}", 'meza_remove_yoast_edit_view_tabs', 9999);
+            add_filter("views_edit-{$post_type}", 'meza_remove_sorting_view_tab', 100000);
+        }
     }
 
-    if (!meza_is_woocommerce_admin_list_screen($screen)) return;
+    if (!meza_is_woocommerce_admin_screen($screen)) return;
 
     if (class_exists(\Automattic\WooCommerce\Internal\Admin\Loader::class)) {
         remove_action('in_admin_header', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'embed_page_header']);
@@ -1526,6 +1572,78 @@ add_action('current_screen', function ($screen) {
         remove_action('admin_notices', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'inject_after_notices'], PHP_INT_MAX);
     }
 }, 1000);
+
+add_action('admin_head', function () {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!meza_is_woocommerce_admin_screen($screen)) return;
+
+    echo '<style id="meza-woocommerce-admin-layout-reset">#wpbody{margin-top:0!important;}</style>';
+}, 1000);
+
+add_action('admin_head', function () {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!meza_is_woocommerce_admin_screen($screen)) return;
+    ?>
+    <script id="meza-woocommerce-admin-title-case">
+        (() => {
+            const smallWords = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'en', 'for', 'if', 'in', 'of', 'on', 'or', 'the', 'to', 'v', 'via', 'vs']);
+            const selectors = [
+                'h1',
+                '.woocommerce-layout__header-title',
+                '.wrap .wp-heading-inline'
+            ];
+
+            const titleCaseText = (text) => {
+                const normalized = String(text || '').trim().replace(/\s+/g, ' ');
+                if (!normalized) return '';
+
+                const words = normalized.toLowerCase().split(' ');
+                return words.map((word, index) => {
+                    if (!word) return word;
+
+                    const parts = word.split(/([\/-])/);
+                    const transformed = parts.map((part) => {
+                        if (part === '/' || part === '-') return part;
+                        if (!part) return part;
+
+                        if (index > 0 && smallWords.has(part)) {
+                            return part;
+                        }
+
+                        return part.charAt(0).toUpperCase() + part.slice(1);
+                    });
+
+                    return transformed.join('');
+                }).join(' ');
+            };
+
+            const applyTitleCase = () => {
+                const seen = new Set();
+
+                document.querySelectorAll(selectors.join(',')).forEach((node) => {
+                    if (!(node instanceof HTMLElement) || seen.has(node)) return;
+                    seen.add(node);
+
+                    const text = node.textContent || '';
+                    const updated = titleCaseText(text);
+                    if (updated && updated !== text.trim()) {
+                        node.textContent = updated;
+                    }
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', applyTitleCase, { once: true });
+            } else {
+                applyTitleCase();
+            }
+
+            const observer = new MutationObserver(() => applyTitleCase());
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+        })();
+    </script>
+    <?php
+}, 1001);
 
 add_filter('woocommerce_products_admin_list_table_filters', function ($filters) {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
@@ -4271,13 +4389,7 @@ add_action('admin_head-edit.php', function () {
     $post_type = (string) ($screen->post_type ?? '');
     $is_acf_screen = meza_is_acf_admin_post_type((string) ($screen->post_type ?? ''));
 
-    $product_screen_css = '';
-    if ($post_type === 'product') {
-        $product_screen_css = '#wpbody{margin-top:0!important;}';
-    }
-
     echo '<style id="meza-admin-list-column-widths">' .
-        $product_screen_css .
         '.meza-admin-table-scroll{width:100%;max-width:100%;max-height:calc(100vh - 260px);overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid #c3c4c7;box-sizing:border-box;background:#fff;}' .
         '.meza-admin-table-scroll table.wp-list-table{min-width:max-content;border-collapse:separate;border-spacing:0;border:none!important;box-shadow:none!important;}' .
         '.meza-admin-table-scroll table.wp-list-table thead,.meza-admin-table-scroll table.wp-list-table tfoot{position:relative;z-index:4;}' .
