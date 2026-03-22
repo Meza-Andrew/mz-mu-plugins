@@ -424,6 +424,28 @@ if (!function_exists('meza_sync_site_kit_dashboard_sharing')) {
 }
 add_action('init', 'meza_sync_site_kit_dashboard_sharing', 25);
 
+add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, array $args): array {
+    static $mapping_site_kit_caps = false;
+
+    if ($mapping_site_kit_caps) {
+        return $caps;
+    }
+
+    if (!in_array($cap, ['googlesitekit_view_dashboard', 'googlesitekit_view_splash'], true) || $user_id <= 0) {
+        return $caps;
+    }
+
+    $mapping_site_kit_caps = true;
+    $can_view_shared_dashboard = user_can($user_id, 'googlesitekit_view_shared_dashboard');
+    $mapping_site_kit_caps = false;
+
+    if (!$can_view_shared_dashboard) {
+        return $caps;
+    }
+
+    return ['read'];
+}, 20, 4);
+
 add_action('admin_init', function (): void {
     if (!is_admin()) {
         return;
@@ -454,15 +476,15 @@ add_action('admin_init', function (): void {
     exit;
 }, 5);
 
-add_action('admin_menu', function (): void {
-    if (!current_user_can('googlesitekit_view_splash') || current_user_can('googlesitekit_view_dashboard')) {
-        return;
-    }
+if (!function_exists('meza_get_site_kit_menu_icon')) {
+    function meza_get_site_kit_menu_icon(): string
+    {
+        global $menu;
 
-    global $menu;
+        if (!is_array($menu)) {
+            return 'dashicons-chart-area';
+        }
 
-    $icon = 'dashicons-chart-area';
-    if (is_array($menu)) {
         foreach ($menu as $item) {
             if (!is_array($item) || (($item[2] ?? '') !== 'googlesitekit-dashboard')) {
                 continue;
@@ -470,26 +492,112 @@ add_action('admin_menu', function (): void {
 
             $candidate_icon = (string) ($item[6] ?? '');
             if ($candidate_icon !== '') {
-                $icon = $candidate_icon;
+                return $candidate_icon;
             }
+
             break;
         }
+
+        return 'dashicons-chart-area';
+    }
+}
+
+if (!function_exists('meza_has_site_kit_top_level_menu_item')) {
+    function meza_has_site_kit_top_level_menu_item(): bool
+    {
+        global $menu;
+
+        if (!is_array($menu)) {
+            return false;
+        }
+
+        foreach ($menu as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = strtolower((string) ($item[2] ?? ''));
+            $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+            $is_site_kit = $slug === 'meza-web-analytics'
+                || str_contains($slug, 'googlesitekit')
+                || str_contains($slug, 'google-site-kit')
+                || str_contains($slug, 'site-kit')
+                || in_array($title, ['web analytics', 'site kit', 'site kit by google'], true);
+
+            if ($is_site_kit) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_restore_site_kit_admin_menu')) {
+    function meza_restore_site_kit_admin_menu(): void
+    {
+        $can_view_splash = current_user_can('googlesitekit_view_splash');
+        $can_view_dashboard = current_user_can('googlesitekit_view_dashboard');
+        $can_view_shared_dashboard = current_user_can('googlesitekit_view_shared_dashboard');
+        $has_dashboard_access = $can_view_dashboard || $can_view_shared_dashboard;
+        $use_custom_menu = !current_user_can('manage_options');
+
+        if (!$can_view_splash && !$has_dashboard_access) {
+            return;
+        }
+
+        remove_menu_page('meza-web-analytics');
+
+        if ($use_custom_menu || !$has_dashboard_access) {
+            remove_menu_page('googlesitekit-dashboard');
+        }
+
+        if (!$use_custom_menu && $has_dashboard_access && meza_has_site_kit_top_level_menu_item()) {
+            return;
+        }
+
+        $target_page = $has_dashboard_access ? 'googlesitekit-dashboard' : 'googlesitekit-splash';
+
+        add_menu_page(
+            'Web Analytics',
+            'Web Analytics',
+            'read',
+            'meza-web-analytics',
+            static function () use ($target_page): void {
+                wp_safe_redirect(admin_url('admin.php?page=' . $target_page));
+                exit;
+            },
+            meza_get_site_kit_menu_icon()
+        );
+    }
+}
+add_action('admin_menu', 'meza_restore_site_kit_admin_menu', PHP_INT_MAX - 3);
+
+add_filter('parent_file', function ($parent_file) {
+    if (!is_admin() || current_user_can('manage_options')) {
+        return $parent_file;
     }
 
-    remove_menu_page('googlesitekit-dashboard');
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash((string) $_GET['page'])) : '';
+    if (!in_array($page, ['meza-web-analytics', 'googlesitekit-dashboard', 'googlesitekit-splash'], true)) {
+        return $parent_file;
+    }
 
-    add_menu_page(
-        'Web Analytics',
-        'Web Analytics',
-        'googlesitekit_view_splash',
-        'meza-web-analytics',
-        static function (): void {
-            wp_safe_redirect(admin_url('admin.php?page=googlesitekit-splash'));
-            exit;
-        },
-        $icon
-    );
-}, PHP_INT_MAX - 3);
+    return 'meza-web-analytics';
+}, PHP_INT_MAX);
+
+add_filter('submenu_file', function ($submenu_file) {
+    if (!is_admin() || current_user_can('manage_options')) {
+        return $submenu_file;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash((string) $_GET['page'])) : '';
+    if (!in_array($page, ['meza-web-analytics', 'googlesitekit-dashboard', 'googlesitekit-splash'], true)) {
+        return $submenu_file;
+    }
+
+    return 'meza-web-analytics';
+}, PHP_INT_MAX - 1);
 
 add_filter('option_page_capability_updraft-options-group', function (): string {
     return meza_backup_manager_capability();
@@ -4742,6 +4850,7 @@ add_filter('menu_order', function ($menu_order) {
 
 // Admin Menu Editor swaps in its custom menu after admin_menu, so reapply these mutations then as well.
 add_action('admin_menu_editor-menu_replaced', function () {
+    meza_restore_site_kit_admin_menu();
     meza_normalize_admin_plugin_menus();
     meza_rebuild_content_menu_group();
     meza_reorder_dashboard_utility_items();
