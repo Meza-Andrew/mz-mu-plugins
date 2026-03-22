@@ -3425,7 +3425,7 @@ function meza_get_woocommerce_analytics_nav_items(): array
 {
     $items = [
         [
-            'label' => 'Overview',
+            'label' => 'Analytics Overview',
             'path' => '/analytics/overview',
         ],
         [
