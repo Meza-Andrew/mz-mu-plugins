@@ -216,6 +216,68 @@ if (!function_exists('meza_sync_site_manager_role')) {
 }
 add_action('init', 'meza_sync_site_manager_role', 20);
 
+if (!function_exists('meza_sync_shop_manager_role_label')) {
+    function meza_sync_shop_manager_role_label(): void
+    {
+        if (!meza_has_woocommerce_plugin()) {
+            return;
+        }
+
+        $wp_roles = wp_roles();
+        if (!($wp_roles instanceof WP_Roles)) {
+            return;
+        }
+
+        $role_key = 'shop_manager';
+        $target_name = 'Shop Manager';
+        $role = $wp_roles->roles[$role_key] ?? null;
+
+        if (!is_array($role) || ($role['name'] ?? '') === $target_name) {
+            return;
+        }
+
+        $wp_roles->roles[$role_key]['name'] = $target_name;
+        $wp_roles->role_names[$role_key] = $target_name;
+
+        update_option($wp_roles->role_key, $wp_roles->roles);
+    }
+}
+add_action('init', 'meza_sync_shop_manager_role_label', 21);
+
+add_filter('gettext_with_context', function ($translation, $text, $context, $domain) {
+    if ($context === 'User role' && $text === 'Shop manager') {
+        return 'Shop Manager';
+    }
+
+    return $translation;
+}, 20, 4);
+
+add_filter('editable_roles', function (array $roles): array {
+    if (!is_admin()) {
+        return $roles;
+    }
+
+    global $pagenow;
+
+    if ($pagenow !== 'user-edit.php') {
+        return $roles;
+    }
+
+    uasort($roles, static function ($left, $right): int {
+        $left_name = wp_strip_all_tags((string) ($left['name'] ?? ''));
+        $right_name = wp_strip_all_tags((string) ($right['name'] ?? ''));
+        $comparison = strcasecmp($right_name, $left_name);
+
+        if ($comparison !== 0) {
+            return $comparison;
+        }
+
+        return strcasecmp((string) ($right['name'] ?? ''), (string) ($left['name'] ?? ''));
+    });
+
+    return $roles;
+}, 1000);
+
 add_filter('option_page_capability_updraft-options-group', function (): string {
     return meza_backup_manager_capability();
 });
