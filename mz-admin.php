@@ -446,6 +446,37 @@ add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, arr
     return ['read'];
 }, 20, 4);
 
+add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, WP_User $user): array {
+    static $bridging_site_kit_caps = false;
+
+    if ($bridging_site_kit_caps || !($user instanceof WP_User) || $user->ID <= 0) {
+        return $allcaps;
+    }
+
+    $requested_cap = (string) ($args[0] ?? '');
+    if (!in_array($requested_cap, [
+        'googlesitekit_view_dashboard',
+        'googlesitekit_view_splash',
+        'googlesitekit_view_shared_dashboard',
+        'googlesitekit_read_shared_module_data',
+    ], true)) {
+        return $allcaps;
+    }
+
+    $bridging_site_kit_caps = true;
+    $can_view_shared_dashboard = user_can($user->ID, 'googlesitekit_view_shared_dashboard');
+    $bridging_site_kit_caps = false;
+
+    if (!$can_view_shared_dashboard) {
+        return $allcaps;
+    }
+
+    $allcaps['googlesitekit_view_dashboard'] = true;
+    $allcaps['googlesitekit_view_splash'] = true;
+
+    return $allcaps;
+}, 20, 4);
+
 add_action('admin_init', function (): void {
     if (!is_admin()) {
         return;
