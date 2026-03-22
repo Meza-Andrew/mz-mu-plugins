@@ -4944,6 +4944,50 @@ function meza_get_primary_nav_menu_id(): int
     return 0;
 }
 
+function meza_title_case_label(string $label): string
+{
+    $normalized = trim(preg_replace('/\s+/', ' ', str_replace(['-', '_'], ' ', $label)));
+    if ($normalized === '') {
+        return '';
+    }
+
+    return ucwords(strtolower($normalized));
+}
+
+/** Limit Menus screen object pickers to content types that actually expose front-end permalinks. */
+function meza_nav_menu_object_has_permalink($object): bool
+{
+    if ($object instanceof WP_Post_Type) {
+        if (!empty($object->_builtin) && in_array($object->name, ['post', 'page'], true)) {
+            return true;
+        }
+
+        return $object->public && is_array($object->rewrite) && !empty($object->rewrite['slug']);
+    }
+
+    if ($object instanceof WP_Taxonomy) {
+        if ($object->name === 'post_tag') {
+            return false;
+        }
+
+        return $object->public
+            && $object->publicly_queryable
+            && is_array($object->rewrite)
+            && !empty($object->rewrite['slug']);
+    }
+
+    return false;
+}
+
+// Only register Menus screen object panels for post types and taxonomies that have front-end permalinks.
+add_filter('nav_menu_meta_box_object', function ($object) {
+    if (!($object instanceof WP_Post_Type) && !($object instanceof WP_Taxonomy)) {
+        return $object;
+    }
+
+    return meza_nav_menu_object_has_permalink($object) ? $object : false;
+}, 1000);
+
 // Default Appearance > Menus to the Primary menu unless a specific menu or tab was requested.
 add_action('load-nav-menus.php', function (): void {
     if (!current_user_can('edit_theme_options')) return;
@@ -4960,102 +5004,271 @@ add_action('load-nav-menus.php', function (): void {
     exit;
 }, 1);
 
-// Normalize the Menus screen so add-item panels open collapsed and default to alphabetized View All lists.
+add_action('load-nav-menus.php', function (): void {
+    if (!current_user_can('edit_theme_options')) return;
+
+    ob_start(static function (string $html): string {
+        $html = preg_replace(
+            '/(<li class="control-section accordion-section\s+)([^"]*\s)?open(\s[^"]*)?(" id="[^"]+">)/',
+            '$1$2$3$4',
+            $html,
+            1
+        );
+
+        $html = preg_replace(
+            '/(<button type="button" class="accordion-trigger" )aria-expanded="true"/',
+            '$1aria-expanded="false"',
+            $html,
+            1
+        );
+
+        return $html;
+    });
+}, 2);
+
+// Remove WooCommerce's custom endpoints box from Appearance > Menus and Screen Options.
 add_action('admin_head-nav-menus.php', function (): void {
-    ?>
-    <script id="meza-nav-menus-defaults">
-        (() => {
-            const hideMostRecentTabs = (section) => {
-                if (!(section instanceof HTMLElement)) return;
+    remove_meta_box('woocommerce_endpoints_nav_link', 'nav-menus', 'side');
+}, 1000);
 
-                Array.from(section.querySelectorAll('.add-menu-item-tabs li')).forEach((tab) => {
-                    const link = tab.querySelector('a.nav-tab-link');
-                    const text = ((link && link.textContent) || '').trim().toLowerCase();
-                    const type = ((link && link.dataset && link.dataset.type) || '').toLowerCase();
+// Menus screen: hide the "Manage with Live Preview" action.
+add_action('admin_head-nav-menus.php', function (): void {
+    echo '<style id="meza-nav-menus-hide-live-preview">.nav-menus-php .page-title-action.hide-if-no-customize{display:none!important;}</style>';
+}, 1000);
 
-                    if (text === 'most recent' || type.includes('most-recent')) {
-                        tab.style.display = 'none';
-                    }
-                });
-            };
+// Menus screen: show all remaining Add Menu Items panels by default for first-load users.
+add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'nav-menus') return $hidden;
 
-            const activateViewAllPanel = (section) => {
-                if (!(section instanceof HTMLElement)) return;
+    return [];
+}, 200, 2);
 
-                const panels = Array.from(section.querySelectorAll('.tabs-panel'));
-                const activePanel = panels.find((panel) => panel.classList.contains('tabs-panel-view-all')) || null;
-                if (!(activePanel instanceof HTMLElement)) return;
+// Menus screen: keep all remaining Add Menu Items panels visible for all users.
+add_filter('hidden_meta_boxes', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'nav-menus') return $hidden;
 
-                panels.forEach((panel) => {
-                    panel.classList.remove('tabs-panel-active');
-                    panel.classList.add('tabs-panel-inactive');
-                });
+    return [];
+}, 200, 2);
 
-                activePanel.classList.remove('tabs-panel-inactive');
-                activePanel.classList.add('tabs-panel-active');
+// Menus screen: keep all advanced menu item properties enabled for first-load users.
+add_filter('default_hidden_columns', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'nav-menus') return $hidden;
 
-                Array.from(section.querySelectorAll('.add-menu-item-tabs li')).forEach((tab) => {
-                    tab.classList.remove('tabs');
-                });
+    $advanced_fields = ['link-target', 'title-attribute', 'css-classes', 'xfn', 'description'];
+    return array_values(array_diff((array) $hidden, $advanced_fields));
+}, 200, 2);
 
-                const viewAllLink = Array.from(section.querySelectorAll('.add-menu-item-tabs a.nav-tab-link')).find((link) => {
-                    const text = (link.textContent || '').trim().toLowerCase();
-                    const type = (link.dataset.type || '').toLowerCase();
-                    const href = (link.getAttribute('href') || '').toLowerCase();
+// Menus screen: keep all advanced menu item properties enabled for all users.
+add_filter('hidden_columns', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'nav-menus') return $hidden;
 
-                    return text === 'view all' || type.endsWith('-all') || href.includes('-all');
-                });
+    $advanced_fields = ['link-target', 'title-attribute', 'css-classes', 'xfn', 'description'];
+    return array_values(array_diff((array) $hidden, $advanced_fields));
+}, 200, 2);
 
-                if (viewAllLink && viewAllLink.parentElement) {
-                    viewAllLink.parentElement.classList.add('tabs');
-                }
+// Menus screen: remove the "Show advanced menu properties" section from Screen Options.
+add_filter('manage_nav-menus_columns', function ($columns) {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'nav-menus') {
+        return $columns;
+    }
 
-                const wrapper = activePanel.closest('.accordion-section-content');
-                if (wrapper instanceof HTMLElement) {
-                    wrapper.classList.toggle('has-no-menu-item', !activePanel.querySelector('.menu-item-title'));
-                }
-            };
+    return [];
+}, 1000);
 
-            const closeSection = (section) => {
-                if (!(section instanceof HTMLElement)) return;
+// Menus screen: keep the Pages "All" list in straight alphabetical order.
+add_filter('nav_menu_items_page', function ($posts) {
+    if (!is_array($posts)) {
+        return $posts;
+    }
 
-                section.classList.remove('open');
+    usort($posts, function ($a, $b): int {
+        $a_title = trim((string) (($a->post_title ?? $a->title ?? $a->label ?? '')));
+        $b_title = trim((string) (($b->post_title ?? $b->title ?? $b->label ?? '')));
 
-                const content = section.querySelector('.accordion-section-content');
-                if (content instanceof HTMLElement) {
-                    content.style.display = 'none';
-                }
+        return strcasecmp($a_title, $b_title);
+    });
 
-                const title = section.querySelector('.accordion-section-title');
-                if (title instanceof HTMLElement) {
-                    title.setAttribute('aria-expanded', 'false');
-                }
-            };
+    return $posts;
+}, 1000);
 
-            const applyDefaults = () => {
-                document.querySelectorAll('#nav-menu-meta .accordion-section').forEach((section) => {
-                    hideMostRecentTabs(section);
-                    activateViewAllPanel(section);
-                    closeSection(section);
-                });
-            };
+function meza_force_nav_menu_default_tab(string $tab_name, string $search_key): array
+{
+    $had_tab = array_key_exists($tab_name, $_REQUEST);
+    $original_tab = $had_tab ? $_REQUEST[$tab_name] : null;
 
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', () => {
-                    window.requestAnimationFrame(() => {
-                        window.requestAnimationFrame(applyDefaults);
-                    });
-                }, { once: true });
-                return;
+    if (!$had_tab && empty($_REQUEST[$search_key])) {
+        $_REQUEST[$tab_name] = 'all';
+    }
+
+    return [
+        'had_tab' => $had_tab,
+        'original_tab' => $original_tab,
+    ];
+}
+
+function meza_restore_nav_menu_default_tab(string $tab_name, array $state): void
+{
+    if (!empty($state['had_tab'])) {
+        $_REQUEST[$tab_name] = $state['original_tab'];
+        return;
+    }
+
+    unset($_REQUEST[$tab_name]);
+}
+
+function meza_customize_nav_menu_tab_list_markup(string $html): string
+{
+    return (string) preg_replace_callback(
+        '/(<ul[^>]*class="[^"]*add-menu-item-tabs[^"]*"[^>]*>)(.*?)(<\/ul>)/s',
+        static function ($matches): string {
+            preg_match_all('/<li\b.*?<\/li>/s', $matches[2], $items);
+            $tabs = $items[0] ?? [];
+
+            usort($tabs, static function (string $a, string $b): int {
+                $rank = static function (string $tab): int {
+                    $text = strtolower(trim((string) wp_strip_all_tags($tab)));
+
+                    if (str_starts_with($text, 'all ') || $text === 'view all') return 0;
+                    if ($text === 'most used' || $text === 'most recent') return 1;
+                    if ($text === 'search') return 2;
+
+                    return 99;
+                };
+
+                return $rank($a) <=> $rank($b);
+            });
+
+            return $matches[1] . implode('', $tabs) . $matches[3];
+        },
+        $html,
+        1
+    );
+}
+
+function meza_customize_post_type_nav_menu_markup(string $html, string $title, string $post_type_name): string
+{
+    $html = str_replace('>View All<', '>' . esc_html('All ' . meza_title_case_label($title)) . '<', $html);
+    $html = preg_replace(
+        '/<li\b[^>]*>\s*<a class="nav-tab-link"[^>]*data-type="' . preg_quote("tabs-panel-posttype-{$post_type_name}-most-recent", '/') . '".*?<\/li>\s*/s',
+        '',
+        $html
+    );
+    $html = preg_replace(
+        '/<div id="' . preg_quote("tabs-panel-posttype-{$post_type_name}-most-recent", '/') . '"[\s\S]*?<\/div><!-- \/.tabs-panel -->\s*/',
+        '',
+        $html
+    );
+
+    return meza_customize_nav_menu_tab_list_markup($html);
+}
+
+function meza_customize_taxonomy_nav_menu_markup(string $html, string $title): string
+{
+    $html = str_replace('>View All<', '>' . esc_html('All ' . meza_title_case_label($title)) . '<', $html);
+
+    return meza_customize_nav_menu_tab_list_markup($html);
+}
+
+function meza_nav_menu_item_post_type_meta_box($data_object, $box): void
+{
+    $post_type_name = (string) ($box['args']->name ?? '');
+    $tab_name = $post_type_name . '-tab';
+    $search_key = "quick-search-posttype-{$post_type_name}";
+    $state = meza_force_nav_menu_default_tab($tab_name, $search_key);
+
+    ob_start();
+    wp_nav_menu_item_post_type_meta_box($data_object, $box);
+    $html = (string) ob_get_clean();
+
+    meza_restore_nav_menu_default_tab($tab_name, $state);
+
+    echo meza_customize_post_type_nav_menu_markup($html, trim(wp_strip_all_tags((string) ($box['title'] ?? ''))), $post_type_name);
+}
+
+function meza_nav_menu_item_taxonomy_meta_box($data_object, $box): void
+{
+    $taxonomy_name = (string) ($box['args']->name ?? '');
+    $tab_name = $taxonomy_name . '-tab';
+    $search_key = "quick-search-taxonomy-{$taxonomy_name}";
+    $state = meza_force_nav_menu_default_tab($tab_name, $search_key);
+
+    ob_start();
+    wp_nav_menu_item_taxonomy_meta_box($data_object, $box);
+    $html = (string) ob_get_clean();
+
+    meza_restore_nav_menu_default_tab($tab_name, $state);
+
+    echo meza_customize_taxonomy_nav_menu_markup($html, trim(wp_strip_all_tags((string) ($box['title'] ?? ''))));
+}
+
+function meza_get_sorted_nav_menu_meta_boxes(): array
+{
+    global $wp_meta_boxes;
+
+    $sorted = [];
+    $side_boxes = $wp_meta_boxes['nav-menus']['side'] ?? [];
+
+    foreach ((array) $side_boxes as $priority => $boxes) {
+        foreach ((array) $boxes as $id => $box) {
+            if (!is_array($box)) continue;
+            if ($id === 'woocommerce_endpoints_nav_link') continue;
+
+            $title = trim(wp_strip_all_tags((string) ($box['title'] ?? '')));
+            $sort_title = strtolower($title);
+            $is_custom_links = $id === 'add-custom-links' || $sort_title === 'custom links';
+
+            if (($box['callback'] ?? null) === 'wp_nav_menu_item_post_type_meta_box') {
+                $box['callback'] = 'meza_nav_menu_item_post_type_meta_box';
+            } elseif (($box['callback'] ?? null) === 'wp_nav_menu_item_taxonomy_meta_box') {
+                $box['callback'] = 'meza_nav_menu_item_taxonomy_meta_box';
             }
 
-            window.requestAnimationFrame(() => {
-                window.requestAnimationFrame(applyDefaults);
-            });
-        })();
-    </script>
-    <?php
-}, 1000);
+            $box['title'] = meza_title_case_label($title);
+
+            $box['_meza_sort_title'] = $sort_title;
+            $box['_meza_custom_links'] = $is_custom_links;
+            $sorted[$id] = $box;
+        }
+    }
+
+    uasort($sorted, static function (array $a, array $b): int {
+        $a_custom = !empty($a['_meza_custom_links']);
+        $b_custom = !empty($b['_meza_custom_links']);
+
+        if ($a_custom && !$b_custom) return 1;
+        if (!$a_custom && $b_custom) return -1;
+
+        return strcmp((string) ($a['_meza_sort_title'] ?? ''), (string) ($b['_meza_sort_title'] ?? ''));
+    });
+
+    foreach ($sorted as &$box) {
+        unset($box['_meza_sort_title'], $box['_meza_custom_links']);
+    }
+    unset($box);
+
+    return $sorted;
+}
+
+function meza_customize_nav_menu_meta_boxes(): void
+{
+    global $wp_meta_boxes;
+
+    if (!isset($wp_meta_boxes['nav-menus']['side'])) {
+        return;
+    }
+
+    $wp_meta_boxes['nav-menus']['side'] = [
+        'default' => meza_get_sorted_nav_menu_meta_boxes(),
+    ];
+}
+add_action('admin_head-nav-menus.php', 'meza_customize_nav_menu_meta_boxes', 1001);
+
+// Menus screen: keep Add Menu Items panels collapsed by default.
+add_filter('get_user_option_closedpostboxes_nav-menus', function ($value) {
+    $boxes = meza_get_sorted_nav_menu_meta_boxes();
+    return array_keys($boxes);
+});
 
 /** ================================
  *  THEME-AGNOSTIC EDITORIAL BEHAVIOR
