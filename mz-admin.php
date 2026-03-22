@@ -3405,6 +3405,25 @@ add_action('admin_menu', function () {
     $submenu['tools.php'] = array_values($submenu['tools.php']);
 }, 100001);
 
+// Keep Tools > Import highlighted on the WordPress importer screen.
+add_filter('parent_file', function ($parent_file) {
+    if (!is_admin()) return $parent_file;
+
+    $importer = isset($_GET['import']) ? sanitize_key(wp_unslash($_GET['import'])) : '';
+    if ($importer !== 'wordpress') return $parent_file;
+
+    return 'tools.php';
+});
+
+add_filter('submenu_file', function ($submenu_file) {
+    if (!is_admin()) return $submenu_file;
+
+    $importer = isset($_GET['import']) ? sanitize_key(wp_unslash($_GET['import'])) : '';
+    if ($importer !== 'wordpress') return $submenu_file;
+
+    return 'admin.php?import=wordpress';
+});
+
 // Normalize post-type "Add New" submenu labels to "Add {Post Type}".
 add_action('admin_menu', function () {
     global $submenu;
