@@ -427,6 +427,13 @@ if (!function_exists('mzf_submission_int_value')) {
     }
 }
 
+if (!function_exists('mzf_submission_display_name')) {
+    function mzf_submission_display_name(string $first_name, string $last_name): string
+    {
+        return trim($first_name . ' ' . $last_name);
+    }
+}
+
 if (!function_exists('mzf_submission_form_identifiers')) {
     function mzf_submission_form_identifiers(int $submission_id): array
     {
@@ -694,7 +701,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
 
         $sort = isset($_GET['sort']) ? sanitize_key((string) wp_unslash($_GET['sort'])) : 'date';
         $order = isset($_GET['order']) ? strtolower(sanitize_key((string) wp_unslash($_GET['order']))) : 'desc';
-        $allowed_sorts = ['date', 'first_name', 'last_name'];
+        $allowed_sorts = ['date', 'name'];
         if (!in_array($sort, $allowed_sorts, true)) $sort = 'date';
         if (!in_array($order, ['asc', 'desc'], true)) $order = 'desc';
         $view = isset($_GET['view']) ? sanitize_key((string) wp_unslash($_GET['view'])) : 'all';
@@ -924,7 +931,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             'no_found_rows' => false,
         ];
 
-        if ($sort === 'first_name' || $sort === 'last_name') {
+        if ($sort === 'name') {
             $query_args['orderby'] = 'date';
             $query_args['order'] = 'DESC';
         } else {
@@ -965,7 +972,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             $filter_status !== ''
         );
 
-        if ($view === 'crm_entries' || in_array($sort, ['first_name', 'last_name'], true) || $has_manual_submission_filters) {
+        if ($view === 'crm_entries' || $sort === 'name' || $has_manual_submission_filters) {
             $manual_query_args = $query_args;
             $manual_query_args['posts_per_page'] = -1;
             $manual_query_args['paged'] = 1;
@@ -998,9 +1005,9 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 }));
             }
 
-            if (in_array($sort, ['first_name', 'last_name'], true)) {
+            if ($sort === 'name') {
                 usort($matching_ids, static function ($left_id, $right_id) use ($sort, $order): int {
-                    return mzf_compare_submission_ids_by_name((int) $left_id, (int) $right_id, $sort, $order);
+                    return mzf_compare_submission_ids_by_name((int) $left_id, (int) $right_id, 'first_name', $order);
                 });
             }
 
@@ -1097,8 +1104,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         echo '<th class="column-cb" style="width:32px;min-width:32px;max-width:32px;"><input type="checkbox" id="mzf-select-all" aria-label="Select all submissions"></th>';
         echo '<th class="column-mzf_lock" style="width:32px;min-width:32px;max-width:32px;" aria-label="Saved status"></th>';
         echo '<th class="column-mzf_date" style="width:150px;min-width:150px;max-width:150px;">' . $sortable_header('Date/Time', 'date', $sort, $order, $build_admin_url) . '</th>';
-        echo '<th class="column-mzf_first_name" style="width:175px;min-width:175px;max-width:175px;">' . $sortable_header('First Name', 'first_name', $sort, $order, $build_admin_url) . '</th>';
-        echo '<th class="column-mzf_last_name" style="width:175px;min-width:175px;max-width:175px;">' . $sortable_header('Last Name', 'last_name', $sort, $order, $build_admin_url) . '</th>';
+        echo '<th class="column-mzf_name" style="width:175px;min-width:175px;max-width:175px;">' . $sortable_header('Name', 'name', $sort, $order, $build_admin_url) . '</th>';
         echo '<th class="column-mzf_email" style="width:225px;min-width:225px;max-width:225px;">Email</th>';
         echo '<th class="column-mzf_phone" style="width:125px;min-width:125px;max-width:125px;">Phone</th>';
         echo '<th class="column-mzf_zip" style="width:125px;min-width:125px;max-width:125px;">Zip Code</th>';
@@ -1119,7 +1125,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             } elseif ($view === 'crm_entries') {
                 $empty_message = 'No CRM entries found.';
             }
-            echo '<tr><td colspan="12"><em>' . esc_html($empty_message) . '</em></td></tr>';
+            echo '<tr><td colspan="11"><em>' . esc_html($empty_message) . '</em></td></tr>';
         } else {
             while ($query->have_posts()) {
                 $query->the_post();
@@ -1216,13 +1222,13 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                     $row_actions[] = '<span class="export"><a href="' . esc_url($export_single_url) . '">Export</a></span>';
                 }
                 echo '<td class="column-mzf_date">' . esc_html(get_the_date('F j, Y')) . '<br>at ' . esc_html(get_the_date('g:i A')) . '</td>';
-                echo '<td class="column-mzf_first_name">';
-                echo ($first_name !== '') ? esc_html($first_name) : '&mdash;';
+                $display_name = mzf_submission_display_name($first_name, $last_name);
+                echo '<td class="column-mzf_name">';
+                echo ($display_name !== '') ? esc_html($display_name) : '&mdash;';
                 if (!empty($row_actions)) {
                     echo '<div class="row-actions visible">' . implode(' | ', $row_actions) . '</div>';
                 }
                 echo '</td>';
-                echo '<td class="column-mzf_last_name">' . (($last_name !== '') ? esc_html($last_name) : '&mdash;') . '</td>';
                 echo '<td class="column-mzf_email">';
                 if ($email !== '' && is_email($email)) {
                     echo '<a href="mailto:' . esc_attr($email) . '">' . esc_html($email) . '</a>';
