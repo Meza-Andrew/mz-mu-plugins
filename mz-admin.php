@@ -2760,7 +2760,7 @@ function meza_admin_menu_content_group(string $menu_slug): string
         return 'without';
     }
 
-    if ($menu_slug === 'upload.php' || $menu_slug === 'edit.php') {
+    if ($menu_slug === 'edit.php') {
         return 'with';
     }
 
@@ -2770,6 +2770,7 @@ function meza_admin_menu_content_group(string $menu_slug): string
     parse_str($post_type, $query_args);
     $post_type = (string) ($query_args['post_type'] ?? '');
     if ($post_type === '') return '';
+    if ($post_type === 'product') return 'with';
     if (function_exists('meza_is_acf_admin_post_type') && meza_is_acf_admin_post_type($post_type)) return '';
 
     $post_type_object = get_post_type_object($post_type);
@@ -3036,11 +3037,17 @@ function meza_rebuild_content_menu_group(): void
 
     $with_permalink = [];
     $without_permalink = [];
+    $media_items = [];
 
     foreach ($menu as $item) {
         if (!is_array($item)) continue;
 
         $slug = (string) ($item[2] ?? '');
+        if ($slug === 'upload.php') {
+            $media_items[] = $item;
+            continue;
+        }
+
         $group = meza_admin_menu_content_group($slug);
         if ($group === '') continue;
 
@@ -3088,6 +3095,22 @@ function meza_rebuild_content_menu_group(): void
         $grouped_items[] = $entry['item'];
     }
 
+    if (!empty($media_items)) {
+        if (!empty($grouped_items)) {
+            $grouped_items[] = [
+                '',
+                'read',
+                'separator-meza-content-media',
+                '',
+                'wp-menu-separator',
+            ];
+        }
+
+        foreach ($media_items as $media_item) {
+            $grouped_items[] = $media_item;
+        }
+    }
+
     $rebuilt = [];
     $inserted = false;
 
@@ -3098,7 +3121,7 @@ function meza_rebuild_content_menu_group(): void
         }
 
         $slug = (string) ($item[2] ?? '');
-        if (meza_admin_menu_content_group($slug) !== '') {
+        if ($slug === 'upload.php' || meza_admin_menu_content_group($slug) !== '') {
             continue;
         }
 
@@ -3616,7 +3639,7 @@ function meza_remove_woocommerce_marketing_overview_submenu(): void
                 return false;
             }
 
-            if ($is_woocommerce_parent && ($is_extensions_slug || $title === 'extensions')) {
+            if ($is_woocommerce_parent && ($is_extensions_slug || preg_match('/^extensions\b/i', $title))) {
                 return false;
             }
 
@@ -3654,7 +3677,6 @@ function meza_group_woocommerce_top_level_items(): void
 
     $ordered_items = [
         'woocommerce' => null,
-        'products' => null,
         'marketing' => null,
         'analytics' => null,
     ];
@@ -3669,14 +3691,6 @@ function meza_group_woocommerce_top_level_items(): void
         if ($slug === 'woocommerce' || $title === 'woocommerce') {
             if ($ordered_items['woocommerce'] === null) {
                 $ordered_items['woocommerce'] = $item;
-            }
-            $matched_indexes[] = (int) $index;
-            continue;
-        }
-
-        if ($slug === 'edit.php?post_type=product' || $title === 'products') {
-            if ($ordered_items['products'] === null) {
-                $ordered_items['products'] = $item;
             }
             $matched_indexes[] = (int) $index;
             continue;
@@ -3913,6 +3927,36 @@ function meza_cleanup_menu_separators(): void
 
 // Final top-level menu cleanup pass.
 add_action('admin_menu', 'meza_cleanup_menu_separators', PHP_INT_MAX);
+
+// Preserve the rebuilt top-level menu order after WooCommerce's menu_order filter runs.
+add_filter('custom_menu_order', '__return_true', PHP_INT_MAX);
+add_filter('menu_order', function ($menu_order) {
+    global $menu;
+
+    if (!is_array($menu) || empty($menu)) {
+        return $menu_order;
+    }
+
+    $ordered_slugs = [];
+
+    foreach ($menu as $item) {
+        if (!is_array($item)) continue;
+
+        $slug = (string) ($item[2] ?? '');
+        if ($slug === '' || in_array($slug, $ordered_slugs, true)) continue;
+
+        $ordered_slugs[] = $slug;
+    }
+
+    foreach ((array) $menu_order as $slug) {
+        $slug = (string) $slug;
+        if ($slug === '' || in_array($slug, $ordered_slugs, true)) continue;
+
+        $ordered_slugs[] = $slug;
+    }
+
+    return $ordered_slugs;
+}, PHP_INT_MAX);
 
 // Admin Menu Editor swaps in its custom menu after admin_menu, so reapply these mutations then as well.
 add_action('admin_menu_editor-menu_replaced', function () {
