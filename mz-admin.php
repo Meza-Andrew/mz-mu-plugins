@@ -4312,6 +4312,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
     if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
 
     $flush_node_id = 'meza-flush-server-cache';
+    $toolbar_parent = false;
     $environment = defined('WP_ENV')
         ? strtolower((string) WP_ENV)
         : (function_exists('wp_get_environment_type') ? strtolower((string) wp_get_environment_type()) : 'production');
@@ -4456,7 +4457,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
 
         $wp_admin_bar->add_node([
             'id' => $flush_node_id,
-            'parent' => 'top-secondary',
+            'parent' => $toolbar_parent,
             'title' => 'Clear Cache',
             'href' => $flush_href,
             'group' => false,
@@ -4467,7 +4468,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
     if ($query_monitor_node instanceof stdClass) {
         $query_monitor_id = (string) ($query_monitor_node->id ?? '');
         if ($query_monitor_id !== '') $wp_admin_bar->remove_node($query_monitor_id);
-        $add_clone($query_monitor_node, '', 'top-secondary');
+        $add_clone($query_monitor_node, '', $toolbar_parent);
     }
 
     if ($delete_cache_node instanceof stdClass) {
@@ -4479,7 +4480,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
     // - page cache when WP Super Cache is installed
     // - server cache only on qa/production when WP Super Cache is not installed
     if ($should_show_page_cache) {
-        $add_clone($delete_cache_node, 'Clear Cache', 'top-secondary');
+        $add_clone($delete_cache_node, 'Clear Cache', $toolbar_parent);
         return;
     }
 
