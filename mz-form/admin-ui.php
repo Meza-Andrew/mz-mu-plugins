@@ -505,6 +505,21 @@ if (!function_exists('mzf_submission_matches_filters')) {
     }
 }
 
+if (!function_exists('mzf_submission_matches_view')) {
+    function mzf_submission_matches_view(int $submission_id, string $view): bool
+    {
+        if ($view === 'phone') {
+            return mzf_submission_text_value($submission_id, ['Phone', 'ContactPhone'], '_mzf_phone') !== '';
+        }
+
+        if ($view === 'zip_code') {
+            return mzf_submission_zip_code($submission_id) !== '';
+        }
+
+        return true;
+    }
+}
+
 if (!function_exists('mzf_submission_humanize_status_reason')) {
     function mzf_submission_humanize_status_reason(string $raw_status): string
     {
@@ -826,6 +841,8 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             'all' => 'All',
             'locked' => 'Saved',
             'unlocked' => 'Unsaved',
+            'phone' => 'Phone',
+            'zip_code' => 'Zip Code',
             'crm_entries' => 'CRM Entries',
             'deleted' => 'Trash',
         ];
@@ -869,6 +886,15 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             }
             if ($view_key === 'crm_entries') {
                 $view_counts[$view_key] = count(mzf_submission_query_ids_with_crm_entries($view_query_args));
+            } elseif ($view_key === 'phone' || $view_key === 'zip_code') {
+                $view_query_args['posts_per_page'] = -1;
+                $view_query_args['paged'] = 1;
+                $view_query_args['no_found_rows'] = true;
+                $view_count_query = new WP_Query($view_query_args);
+                $view_ids = array_map('intval', (array) $view_count_query->posts);
+                $view_counts[$view_key] = count(array_filter($view_ids, static function ($submission_id) use ($view_key): bool {
+                    return mzf_submission_matches_view((int) $submission_id, $view_key);
+                }));
             } else {
                 $view_count_query = new WP_Query($view_query_args);
                 $view_counts[$view_key] = (int) $view_count_query->found_posts;
@@ -972,7 +998,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             $filter_status !== ''
         );
 
-        if ($view === 'crm_entries' || $sort === 'name' || $has_manual_submission_filters) {
+        if ($view === 'crm_entries' || $view === 'phone' || $view === 'zip_code' || $sort === 'name' || $has_manual_submission_filters) {
             $manual_query_args = $query_args;
             $manual_query_args['posts_per_page'] = -1;
             $manual_query_args['paged'] = 1;
@@ -984,6 +1010,12 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             } else {
                 $manual_query = new WP_Query($manual_query_args);
                 $matching_ids = array_map('intval', (array) $manual_query->posts);
+            }
+
+            if ($view === 'phone' || $view === 'zip_code') {
+                $matching_ids = array_values(array_filter($matching_ids, static function ($submission_id) use ($view): bool {
+                    return mzf_submission_matches_view((int) $submission_id, $view);
+                }));
             }
 
             if ($has_manual_submission_filters) {
@@ -1122,6 +1154,10 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 $empty_message = 'No saved submissions found.';
             } elseif ($view === 'unlocked') {
                 $empty_message = 'No unsaved submissions found.';
+            } elseif ($view === 'phone') {
+                $empty_message = 'No submissions with phone numbers found.';
+            } elseif ($view === 'zip_code') {
+                $empty_message = 'No submissions with zip codes found.';
             } elseif ($view === 'crm_entries') {
                 $empty_message = 'No CRM entries found.';
             }
