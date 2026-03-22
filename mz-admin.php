@@ -3370,6 +3370,8 @@ function meza_remove_woocommerce_marketing_overview_submenu(): void
     remove_submenu_page('woocommerce-marketing', 'wc-admin&path=/marketing/overview');
     remove_submenu_page('admin.php?page=wc-admin&path=/marketing', 'admin.php?page=wc-admin&path=/marketing/overview');
     remove_submenu_page('admin.php?page=wc-admin&path=/marketing', 'wc-admin&path=/marketing/overview');
+    remove_submenu_page('woocommerce', 'wc-addons');
+    remove_submenu_page('woocommerce', 'admin.php?page=wc-addons');
 
     if (!is_array($submenu)) {
         return;
@@ -3381,12 +3383,13 @@ function meza_remove_woocommerce_marketing_overview_submenu(): void
         $normalized_parent_slug = strtolower((string) $parent_slug);
         $is_marketing_parent = $normalized_parent_slug === 'woocommerce-marketing'
             || str_contains($normalized_parent_slug, 'wc-admin&path=/marketing');
+        $is_woocommerce_parent = $normalized_parent_slug === 'woocommerce';
 
-        if (!$is_marketing_parent) {
+        if (!$is_marketing_parent && !$is_woocommerce_parent) {
             continue;
         }
 
-        $items = array_values(array_filter($items, static function ($item): bool {
+        $items = array_values(array_filter($items, static function ($item) use ($is_marketing_parent, $is_woocommerce_parent): bool {
             if (!is_array($item)) return true;
 
             $slug = strtolower((string) ($item[2] ?? ''));
@@ -3395,8 +3398,19 @@ function meza_remove_woocommerce_marketing_overview_submenu(): void
             $is_overview_slug = $slug === 'admin.php?page=wc-admin&path=/marketing/overview'
                 || $slug === 'wc-admin&path=/marketing/overview'
                 || str_contains($slug, '/marketing/overview');
+            $is_extensions_slug = $slug === 'wc-addons'
+                || $slug === 'admin.php?page=wc-addons'
+                || str_contains($slug, 'wc-addons');
 
-            return !$is_overview_slug && $title !== 'overview';
+            if ($is_marketing_parent && ($is_overview_slug || $title === 'overview')) {
+                return false;
+            }
+
+            if ($is_woocommerce_parent && ($is_extensions_slug || $title === 'extensions')) {
+                return false;
+            }
+
+            return true;
         }));
     }
     unset($items);
