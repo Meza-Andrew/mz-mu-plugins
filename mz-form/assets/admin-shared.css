@@ -148,11 +148,22 @@
     color: #d63638;
 }
 
-.mzf-submissions-table .column-mzf_first_name .row-actions {
+.mzf-submissions-table .column-mzf_name {
+    position: relative;
+}
+
+.mzf-submissions-table .column-mzf_name .row-actions {
     position: static;
     left: auto;
     margin-top: 4px;
+    visibility: hidden;
+    opacity: 0;
+}
+
+.mzf-submissions-table tr:hover .column-mzf_name .row-actions,
+.mzf-submissions-table .column-mzf_name:focus-within .row-actions {
     visibility: visible;
+    opacity: 1;
 }
 
 /* Reusable admin filter chip UI */
