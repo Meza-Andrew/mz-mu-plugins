@@ -996,10 +996,13 @@ function meza_get_menu_order_admin_column_default_visible_post_types(): array
     // Project-level defaults. Update this list for future client projects.
     return [
         'customer',
+        'location',
         'office',
+        'organization',
         'product',
         'service',
         'sign',
+        'team-member',
     ];
 }
 
