@@ -3508,6 +3508,17 @@ function meza_is_woocommerce_analytics_screen($screen = null): bool
     return false;
 }
 
+function meza_is_woocommerce_headerless_wc_admin_screen(): bool
+{
+    $wc_admin_path = meza_get_wc_admin_path();
+    if ($wc_admin_path === '') {
+        return false;
+    }
+
+    return str_starts_with($wc_admin_path, '/analytics/')
+        || $wc_admin_path === '/customers';
+}
+
 function meza_ensure_woocommerce_analytics_submenu(): void
 {
     if (!meza_has_woocommerce_plugin() || !current_user_can('view_woocommerce_reports')) return;
@@ -3559,6 +3570,45 @@ add_action('admin_head', function (): void {
         '}' .
         '</style>';
 }, 1001);
+
+add_action('admin_head', function (): void {
+    if (!meza_is_woocommerce_headerless_wc_admin_screen()) {
+        return;
+    }
+
+    echo '<style id="meza-hide-woocommerce-embedded-header">' .
+        '#woocommerce-embedded-root,.woocommerce-layout__header,.woocommerce-layout__header-wrapper,.woocommerce-layout-header{display:none!important;}' .
+        '</style>';
+    ?>
+    <script id="meza-remove-woocommerce-embedded-header">
+        (() => {
+            const selectors = [
+                '#woocommerce-embedded-root',
+                '.woocommerce-layout__header',
+                '.woocommerce-layout__header-wrapper',
+                '.woocommerce-layout-header'
+            ];
+
+            const removeEmbeddedHeader = () => {
+                document.querySelectorAll(selectors.join(',')).forEach((node) => {
+                    if (node instanceof HTMLElement) {
+                        node.remove();
+                    }
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', removeEmbeddedHeader, { once: true });
+            } else {
+                removeEmbeddedHeader();
+            }
+
+            const observer = new MutationObserver(() => removeEmbeddedHeader());
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+        })();
+    </script>
+    <?php
+}, 1002);
 
 // Keep WooCommerce's native Analytics page registered for access checks, but hide the duplicate top-level menu item.
 add_action('admin_head', function (): void {
