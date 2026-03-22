@@ -4,6 +4,14 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+if (!defined('MZF_SUBMISSIONS_PAGE_SLUG')) {
+    define('MZF_SUBMISSIONS_PAGE_SLUG', 'submissions');
+}
+
+if (!defined('MZF_SUBMISSIONS_PAGE_LEGACY_SLUG')) {
+    define('MZF_SUBMISSIONS_PAGE_LEGACY_SLUG', 'mzf-submissions');
+}
+
 if (!function_exists('mzf_manage_submissions_capability')) {
     function mzf_manage_submissions_capability(): string
     {
@@ -28,14 +36,38 @@ add_action('admin_menu', function () {
         'Form Submission Log',
         'Submissions',
         mzf_manage_submissions_capability(),
-        'mzf-submissions',
+        MZF_SUBMISSIONS_PAGE_SLUG,
         'mzf_render_submission_log_admin_page'
     );
 });
 
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page !== MZF_SUBMISSIONS_PAGE_LEGACY_SLUG) {
+        return;
+    }
+
+    if (!mzf_user_can_manage_submissions()) {
+        return;
+    }
+
+    $redirect_args = wp_unslash($_GET);
+    if (!is_array($redirect_args)) {
+        $redirect_args = [];
+    }
+    $redirect_args['page'] = MZF_SUBMISSIONS_PAGE_SLUG;
+
+    wp_safe_redirect(add_query_arg($redirect_args, admin_url('edit.php')));
+    exit;
+});
+
 add_action('admin_enqueue_scripts', function (): void {
     $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
-    if ($page !== 'mzf-submissions') return;
+    if (!in_array($page, [MZF_SUBMISSIONS_PAGE_SLUG, MZF_SUBMISSIONS_PAGE_LEGACY_SLUG], true)) return;
 
     $css_path = __DIR__ . '/assets/admin-shared.css';
     $css_url = '';
@@ -312,7 +344,7 @@ if (!function_exists('mzf_submissions_redirect_url')) {
     {
         $default_url = add_query_arg(array_merge([
             'post_type' => 'form',
-            'page' => 'mzf-submissions',
+            'page' => MZF_SUBMISSIONS_PAGE_SLUG,
         ], $default_args), admin_url('edit.php'));
 
         $candidates = [];
@@ -326,7 +358,10 @@ if (!function_exists('mzf_submissions_redirect_url')) {
 
         foreach ($candidates as $candidate) {
             if ($candidate === '') continue;
-            if (strpos($candidate, 'page=mzf-submissions') !== false) {
+            if (
+                strpos($candidate, 'page=' . MZF_SUBMISSIONS_PAGE_SLUG) !== false ||
+                strpos($candidate, 'page=' . MZF_SUBMISSIONS_PAGE_LEGACY_SLUG) !== false
+            ) {
                 return $candidate;
             }
         }
@@ -790,7 +825,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
 
         $base_admin_url = add_query_arg([
             'post_type' => 'form',
-            'page' => 'mzf-submissions',
+            'page' => MZF_SUBMISSIONS_PAGE_SLUG,
         ], admin_url('edit.php'));
 
         $sort = isset($_GET['sort']) ? sanitize_key((string) wp_unslash($_GET['sort'])) : 'date';
