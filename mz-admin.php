@@ -3372,6 +3372,8 @@ function meza_remove_woocommerce_marketing_overview_submenu(): void
     remove_submenu_page('admin.php?page=wc-admin&path=/marketing', 'wc-admin&path=/marketing/overview');
     remove_submenu_page('woocommerce', 'wc-addons');
     remove_submenu_page('woocommerce', 'admin.php?page=wc-addons');
+    remove_submenu_page('woocommerce', 'wc-reports');
+    remove_submenu_page('woocommerce', 'admin.php?page=wc-reports');
 
     if (!is_array($submenu)) {
         return;
@@ -3401,12 +3403,19 @@ function meza_remove_woocommerce_marketing_overview_submenu(): void
             $is_extensions_slug = $slug === 'wc-addons'
                 || $slug === 'admin.php?page=wc-addons'
                 || str_contains($slug, 'wc-addons');
+            $is_reports_slug = $slug === 'wc-reports'
+                || $slug === 'admin.php?page=wc-reports'
+                || str_contains($slug, 'wc-reports');
 
             if ($is_marketing_parent && ($is_overview_slug || $title === 'overview')) {
                 return false;
             }
 
             if ($is_woocommerce_parent && ($is_extensions_slug || $title === 'extensions')) {
+                return false;
+            }
+
+            if ($is_woocommerce_parent && ($is_reports_slug || $title === 'reports')) {
                 return false;
             }
 
