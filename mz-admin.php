@@ -1217,7 +1217,10 @@ function meza_customize_product_admin_columns(array $columns): array
 {
     if (!is_array($columns)) return $columns;
 
+    unset($columns['thumb']);
+
     $columns['mz_menu_order'] = __('#');
+    $columns['mz_thumbnail'] = __('Image');
     $columns['mz_product_type'] = __('Product Type');
     $columns['mz_page_link'] = __('Link');
     $columns['mz_page_headline'] = __('Page Headline (H1)');
@@ -1254,7 +1257,7 @@ function meza_customize_product_admin_columns(array $columns): array
     $append(['cb']);
     $append(['mz_menu_order'], 'mz_menu_order', __('#'));
     $append(['featured'], 'featured', __('Featured'));
-    $append(['thumb', 'mz_thumbnail'], 'thumb', __('Image'));
+    $append(['mz_thumbnail'], 'mz_thumbnail', __('Image'));
     $append(['name', 'title'], 'name', __('Name'));
     $append(['price'], 'price', __('Price'));
     $append(['is_in_stock'], 'is_in_stock', __('Stock'));
@@ -1278,8 +1281,8 @@ function meza_get_product_admin_columns_for_visibility(): array
 {
     $columns = [
         'cb' => '<input type="checkbox" />',
-        'thumb' => __('Image'),
         'mz_menu_order' => __('#'),
+        'mz_thumbnail' => __('Image'),
         'name' => __('Name'),
         'sku' => __('SKU'),
         'is_in_stock' => __('Stock'),
@@ -5678,7 +5681,10 @@ add_action('admin_head-edit.php', function () {
     if ($post_type === 'product') {
         echo '<style id="meza-product-admin-column-widths">' .
             '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px!important;min-width:48px!important;max-width:48px!important;text-align:center;}' .
-            '.wp-list-table th.column-thumb,.wp-list-table td.column-thumb{width:78px!important;min-width:78px!important;max-width:78px!important;}' .
+            '.wp-list-table th.column-mz_thumbnail,.wp-list-table td.column-mz_thumbnail{width:78px!important;min-width:78px!important;max-width:78px!important;}' .
+            '.wp-list-table td.column-mz_thumbnail{vertical-align:top!important;}' .
+            '.wp-list-table td.column-mz_thumbnail > a:first-child{display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important;height:78px!important;margin:0 0 6px!important;overflow:hidden!important;}' .
+            '.wp-list-table td.column-mz_thumbnail img{display:block!important;width:100%!important;height:78px!important;max-width:100%!important;max-height:78px!important;object-fit:contain!important;object-position:center center!important;margin:0!important;}' .
             '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px!important;min-width:240px!important;max-width:240px!important;}' .
             '.wp-list-table th.column-price,.wp-list-table td.column-price{width:90px!important;min-width:90px!important;max-width:90px!important;white-space:nowrap!important;}' .
             '.wp-list-table th.column-is_in_stock,.wp-list-table td.column-is_in_stock{width:110px!important;min-width:110px!important;max-width:110px!important;white-space:nowrap!important;}' .
