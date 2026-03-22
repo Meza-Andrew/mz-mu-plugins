@@ -45,6 +45,20 @@ if (!function_exists('meza_site_manager_role_key')) {
     }
 }
 
+if (!function_exists('meza_events_manager_role_key')) {
+    function meza_events_manager_role_key(): string
+    {
+        return 'events_manager';
+    }
+}
+
+if (!function_exists('meza_events_editor_role_key')) {
+    function meza_events_editor_role_key(): string
+    {
+        return 'events_editor';
+    }
+}
+
 if (!function_exists('meza_backup_manager_capability')) {
     function meza_backup_manager_capability(): string
     {
@@ -238,6 +252,388 @@ if (!function_exists('meza_sync_site_manager_role')) {
 }
 add_action('init', 'meza_sync_site_manager_role', 20);
 
+if (!function_exists('meza_get_post_type_capabilities')) {
+    function meza_get_post_type_capabilities(string $post_type): array
+    {
+        $post_type = trim($post_type);
+        if ($post_type === '') {
+            return [];
+        }
+
+        $post_type_object = get_post_type_object($post_type);
+        if (!($post_type_object instanceof WP_Post_Type) || !isset($post_type_object->cap)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            'strval',
+            (array) $post_type_object->cap
+        ))));
+    }
+}
+
+if (!function_exists('meza_get_event_post_capability_source_map')) {
+    function meza_get_event_post_capability_source_map(): array
+    {
+        return [
+            'edit_event' => 'edit_post',
+            'read_event' => 'read_post',
+            'delete_event' => 'delete_post',
+            'edit_events' => 'edit_posts',
+            'create_events' => 'edit_posts',
+            'edit_others_events' => 'edit_others_posts',
+            'publish_events' => 'publish_posts',
+            'read_private_events' => 'read_private_posts',
+            'delete_events' => 'delete_posts',
+            'delete_private_events' => 'delete_private_posts',
+            'delete_published_events' => 'delete_published_posts',
+            'delete_others_events' => 'delete_others_posts',
+            'edit_private_events' => 'edit_private_posts',
+            'edit_published_events' => 'edit_published_posts',
+        ];
+    }
+}
+
+if (!function_exists('meza_get_post_type_taxonomy_capabilities')) {
+    function meza_get_post_type_taxonomy_capabilities(string $post_type): array
+    {
+        $caps = [];
+
+        foreach (get_object_taxonomies($post_type, 'objects') as $taxonomy) {
+            if (!($taxonomy instanceof WP_Taxonomy) || !isset($taxonomy->cap)) {
+                continue;
+            }
+
+            foreach ((array) $taxonomy->cap as $cap) {
+                $cap = trim((string) $cap);
+                if ($cap !== '') {
+                    $caps[] = $cap;
+                }
+            }
+        }
+
+        return array_values(array_unique($caps));
+    }
+}
+
+if (!function_exists('meza_is_events_limited_role')) {
+    function meza_is_events_limited_role($user = null): bool
+    {
+        if ($user === null) {
+            $user = wp_get_current_user();
+        } elseif (is_numeric($user)) {
+            $user = get_userdata((int) $user);
+        }
+
+        if (!($user instanceof WP_User)) {
+            return false;
+        }
+
+        $role_keys = [
+            meza_events_manager_role_key(),
+            meza_events_editor_role_key(),
+        ];
+
+        foreach ($role_keys as $role_key) {
+            if (in_array($role_key, (array) $user->roles, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_is_events_editor_role')) {
+    function meza_is_events_editor_role($user = null): bool
+    {
+        if ($user === null) {
+            $user = wp_get_current_user();
+        } elseif (is_numeric($user)) {
+            $user = get_userdata((int) $user);
+        }
+
+        return $user instanceof WP_User
+            && in_array(meza_events_editor_role_key(), (array) $user->roles, true);
+    }
+}
+
+if (!function_exists('meza_user_has_any_role')) {
+    function meza_user_has_any_role($user, array $roles): bool
+    {
+        if ($user === null) {
+            $user = wp_get_current_user();
+        } elseif (is_numeric($user)) {
+            $user = get_userdata((int) $user);
+        }
+
+        if (!($user instanceof WP_User)) {
+            return false;
+        }
+
+        foreach ($roles as $role) {
+            if (in_array((string) $role, (array) $user->roles, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_can_access_profile_two_factor')) {
+    function meza_can_access_profile_two_factor($user = null): bool
+    {
+        if ($user === null) {
+            $user = wp_get_current_user();
+        } elseif (is_numeric($user)) {
+            $user = get_userdata((int) $user);
+        }
+
+        if (!($user instanceof WP_User)) {
+            return false;
+        }
+
+        if (in_array('administrator', (array) $user->roles, true)) {
+            return true;
+        }
+
+        return meza_user_has_any_role($user, [
+            'seo_manager',
+            meza_site_manager_role_key(),
+            'shop_manager',
+        ]);
+    }
+}
+
+if (!function_exists('meza_can_access_clear_cache')) {
+    function meza_can_access_clear_cache($user = null): bool
+    {
+        return meza_user_has_any_role($user, [
+            'administrator',
+            meza_site_manager_role_key(),
+        ]);
+    }
+}
+
+if (!function_exists('meza_can_access_admin_bar_new_content_node')) {
+    function meza_can_access_admin_bar_new_content_node($node): bool
+    {
+        if (!is_object($node)) {
+            return false;
+        }
+
+        $node_id = (string) ($node->id ?? '');
+        $href = (string) ($node->href ?? '');
+
+        if (meza_is_events_limited_role()) {
+            $allowed_node_ids = [
+                'new-event',
+                'new-media',
+            ];
+
+            if (!meza_is_events_editor_role()) {
+                $allowed_node_ids[] = 'new-post';
+            }
+
+            if (in_array($node_id, $allowed_node_ids, true)) {
+                return true;
+            }
+
+            if (str_contains($href, 'media-new.php')) {
+                return true;
+            }
+
+            if (str_contains($href, 'post-new.php')) {
+                $query = (string) parse_url($href, PHP_URL_QUERY);
+                if ($query !== '') {
+                    parse_str($query, $query_args);
+                    $post_type = sanitize_key((string) ($query_args['post_type'] ?? 'post'));
+
+                    if ($post_type === 'event') {
+                        return true;
+                    }
+
+                    if ($post_type === 'post' && !meza_is_events_editor_role()) {
+                        return true;
+                    }
+                } else {
+                    return !meza_is_events_editor_role();
+                }
+            }
+
+            return false;
+        }
+
+        if ($node_id === 'new-media' || str_contains($href, 'media-new.php')) {
+            return current_user_can('upload_files');
+        }
+
+        if (str_contains($href, 'post-new.php')) {
+            $post_type = 'post';
+
+            $query = (string) parse_url($href, PHP_URL_QUERY);
+            if ($query !== '') {
+                parse_str($query, $query_args);
+                if (!empty($query_args['post_type']) && is_string($query_args['post_type'])) {
+                    $post_type = sanitize_key($query_args['post_type']);
+                }
+            }
+
+            $post_type_object = get_post_type_object($post_type);
+            if (!($post_type_object instanceof WP_Post_Type) || !isset($post_type_object->cap)) {
+                return false;
+            }
+
+            $create_cap = (string) ($post_type_object->cap->create_posts ?? '');
+            if ($create_cap !== '') {
+                return current_user_can($create_cap);
+            }
+
+            $edit_cap = (string) ($post_type_object->cap->edit_posts ?? '');
+            return $edit_cap !== '' && current_user_can($edit_cap);
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('meza_get_events_role_capabilities')) {
+    function meza_get_events_role_capabilities(bool $include_posts = true): array
+    {
+        $caps = [
+            'read' => true,
+            'upload_files' => true,
+        ];
+
+        $post_types = ['event', 'attachment'];
+        if ($include_posts) {
+            $post_types[] = 'post';
+        }
+
+        foreach ($post_types as $post_type) {
+            foreach (meza_get_post_type_capabilities($post_type) as $cap) {
+                $caps[$cap] = true;
+            }
+
+            foreach (meza_get_post_type_taxonomy_capabilities($post_type) as $cap) {
+                $caps[$cap] = true;
+            }
+        }
+
+        return $caps;
+    }
+}
+
+if (!function_exists('meza_sync_events_roles')) {
+    function meza_sync_events_roles(): void
+    {
+        $roles_to_sync = [
+            meza_events_manager_role_key() => [
+                'label' => 'Events Manager',
+                'caps' => meza_get_events_role_capabilities(true),
+            ],
+            meza_events_editor_role_key() => [
+                'label' => 'Events Editor',
+                'caps' => meza_get_events_role_capabilities(false),
+            ],
+        ];
+
+        foreach ($roles_to_sync as $role_key => $config) {
+            $target_caps = (array) ($config['caps'] ?? []);
+            $role = get_role($role_key);
+
+            if (!($role instanceof WP_Role)) {
+                add_role($role_key, (string) ($config['label'] ?? $role_key), $target_caps);
+                $role = get_role($role_key);
+            }
+
+            if (!($role instanceof WP_Role)) {
+                continue;
+            }
+
+            foreach ($target_caps as $cap => $grant) {
+                if ((bool) $grant && !$role->has_cap($cap)) {
+                    $role->add_cap($cap);
+                }
+            }
+
+            foreach ((array) $role->capabilities as $cap => $grant) {
+                if (array_key_exists($cap, $target_caps)) {
+                    if ((bool) $grant !== (bool) $target_caps[$cap]) {
+                        if ($target_caps[$cap]) {
+                            $role->add_cap($cap);
+                        } else {
+                            $role->remove_cap($cap);
+                        }
+                    }
+                    continue;
+                }
+
+                $role->remove_cap($cap);
+            }
+        }
+
+        $current_user = wp_get_current_user();
+        if (meza_is_events_limited_role($current_user)) {
+            $current_user->get_role_caps();
+        }
+    }
+}
+add_action('init', 'meza_sync_events_roles', 20);
+
+if (!function_exists('meza_sync_event_capabilities_from_post_access')) {
+    function meza_sync_event_capabilities_from_post_access(): void
+    {
+        $wp_roles = wp_roles();
+        if (!($wp_roles instanceof WP_Roles)) {
+            return;
+        }
+
+        $skip_roles = [
+            meza_events_manager_role_key(),
+            meza_events_editor_role_key(),
+        ];
+
+        foreach (array_keys((array) $wp_roles->roles) as $role_key) {
+            $role_key = (string) $role_key;
+            if ($role_key === '' || in_array($role_key, $skip_roles, true)) {
+                continue;
+            }
+
+            $role = get_role($role_key);
+            if (!($role instanceof WP_Role)) {
+                continue;
+            }
+
+            foreach (meza_get_event_post_capability_source_map() as $target_cap => $source_cap) {
+                $target_cap = trim((string) $target_cap);
+                $source_cap = trim((string) $source_cap);
+                if ($target_cap === '' || $source_cap === '') {
+                    continue;
+                }
+
+                if ($role->has_cap($source_cap)) {
+                    if (!$role->has_cap($target_cap)) {
+                        $role->add_cap($target_cap);
+                    }
+                    continue;
+                }
+
+                if ($role->has_cap($target_cap)) {
+                    $role->remove_cap($target_cap);
+                }
+            }
+        }
+
+        $current_user = wp_get_current_user();
+        if ($current_user instanceof WP_User) {
+            $current_user->get_role_caps();
+        }
+    }
+}
+add_action('init', 'meza_sync_event_capabilities_from_post_access', 21);
+
 if (!function_exists('meza_sync_shop_manager_role_label')) {
     function meza_sync_shop_manager_role_label(): void
     {
@@ -310,6 +706,17 @@ if (!function_exists('meza_get_post_type_add_item_label')) {
 }
 
 add_filter('register_post_type_args', function (array $args, string $post_type): array {
+    if ($post_type === 'event') {
+        $args['capability_type'] = ['event', 'events'];
+        $args['map_meta_cap'] = true;
+
+        $capabilities = isset($args['capabilities']) && is_array($args['capabilities'])
+            ? $args['capabilities']
+            : [];
+        $capabilities['create_posts'] = 'create_events';
+        $args['capabilities'] = $capabilities;
+    }
+
     $labels = isset($args['labels']) && is_array($args['labels']) ? $args['labels'] : [];
     if ($labels === []) {
         return $args;
@@ -5155,6 +5562,241 @@ add_filter('menu_order', function ($menu_order) {
     return $ordered_slugs;
 }, PHP_INT_MAX);
 
+function meza_filter_events_role_admin_menu(): void
+{
+    if (!meza_is_events_limited_role()) {
+        return;
+    }
+
+    global $menu, $submenu;
+
+    if (is_array($menu)) {
+        $allowed_lookup = [
+            'index.php' => null,
+            'edit.php?post_type=event' => null,
+            'upload.php' => null,
+            'profile.php' => null,
+            'users.php' => null,
+        ];
+
+        if (!meza_is_events_editor_role()) {
+            $allowed_lookup['edit.php'] = null;
+        }
+
+        foreach ($menu as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            if (array_key_exists($slug, $allowed_lookup) && $allowed_lookup[$slug] === null) {
+                $allowed_lookup[$slug] = $item;
+            }
+        }
+
+        $rebuilt_menu = [];
+
+        if (is_array($allowed_lookup['index.php'])) {
+            $rebuilt_menu[] = $allowed_lookup['index.php'];
+        }
+
+        $content_group = [];
+        foreach (['edit.php?post_type=event', 'edit.php', 'upload.php'] as $slug) {
+            if (isset($allowed_lookup[$slug]) && is_array($allowed_lookup[$slug])) {
+                $content_group[] = $allowed_lookup[$slug];
+            }
+        }
+
+        if (!empty($rebuilt_menu) && !empty($content_group)) {
+            $rebuilt_menu[] = [
+                '',
+                'read',
+                'separator-meza-events-content-start',
+                '',
+                'wp-menu-separator',
+            ];
+        }
+
+        foreach ($content_group as $item) {
+            $rebuilt_menu[] = $item;
+        }
+
+        $profile_item = null;
+        foreach (['profile.php', 'users.php'] as $slug) {
+            if (isset($allowed_lookup[$slug]) && is_array($allowed_lookup[$slug])) {
+                $profile_item = $allowed_lookup[$slug];
+                break;
+            }
+        }
+
+        if (!empty($content_group) && is_array($profile_item)) {
+            $rebuilt_menu[] = [
+                '',
+                'read',
+                'separator-meza-events-profile-start',
+                '',
+                'wp-menu-separator',
+            ];
+        }
+
+        if (is_array($profile_item)) {
+            $rebuilt_menu[] = $profile_item;
+        }
+
+        $menu = $rebuilt_menu;
+    }
+
+    if (!is_array($submenu)) {
+        return;
+    }
+
+    foreach ($submenu as $parent_slug => $items) {
+        if (!is_array($items)) {
+            continue;
+        }
+
+        if (in_array($parent_slug, ['users.php', 'profile.php'], true)) {
+            $submenu[$parent_slug] = array_values(array_filter($items, static function ($item): bool {
+                if (!is_array($item)) {
+                    return false;
+                }
+
+                $slug = (string) ($item[2] ?? '');
+                return in_array($slug, ['profile.php', 'users.php'], true);
+            }));
+            continue;
+        }
+
+        if ($parent_slug === 'edit.php' && meza_is_events_editor_role()) {
+            unset($submenu[$parent_slug]);
+            continue;
+        }
+
+        if (!in_array($parent_slug, ['index.php', 'edit.php', 'edit.php?post_type=event', 'upload.php'], true)) {
+            unset($submenu[$parent_slug]);
+        }
+    }
+}
+add_action('admin_menu', 'meza_filter_events_role_admin_menu', PHP_INT_MAX);
+
+function meza_get_current_admin_post_type(): string
+{
+    $post_type = isset($_GET['post_type']) ? sanitize_key(wp_unslash((string) $_GET['post_type'])) : '';
+    if ($post_type !== '') {
+        return $post_type;
+    }
+
+    $post_id = isset($_GET['post']) ? (int) $_GET['post'] : 0;
+    if ($post_id > 0) {
+        $resolved_post_type = get_post_type($post_id);
+        return is_string($resolved_post_type) ? $resolved_post_type : '';
+    }
+
+    global $pagenow;
+    if (in_array($pagenow, ['post-new.php', 'post.php'], true)) {
+        return 'post';
+    }
+
+    return '';
+}
+
+add_action('admin_init', function (): void {
+    if (!is_admin() || !meza_is_events_limited_role()) {
+        return;
+    }
+
+    global $pagenow;
+
+    if (in_array($pagenow, ['options-general.php', 'tools.php'], true)) {
+        wp_safe_redirect(admin_url());
+        exit;
+    }
+
+    if (!meza_is_events_editor_role()) {
+        return;
+    }
+
+    $post_type = meza_get_current_admin_post_type();
+    if ($post_type === 'post' && in_array($pagenow, ['edit.php', 'post-new.php', 'post.php'], true)) {
+        wp_safe_redirect(admin_url('edit.php?post_type=event'));
+        exit;
+    }
+}, 1);
+
+add_filter('wp_is_application_passwords_available_for_user', function (bool $available, $user): bool {
+    if (!$available) {
+        return false;
+    }
+
+    if ($user === null) {
+        $user = wp_get_current_user();
+    } elseif (is_numeric($user)) {
+        $user = get_userdata((int) $user);
+    }
+
+    return $user instanceof WP_User && in_array('administrator', (array) $user->roles, true);
+}, 10, 2);
+
+add_action('admin_head-profile.php', function (): void {
+    $can_see_two_factor = meza_can_access_profile_two_factor() ? 'true' : 'false';
+    $can_see_application_passwords = meza_user_has_any_role(wp_get_current_user(), ['administrator']) ? 'true' : 'false';
+    ?>
+    <script id="meza-profile-access-cleanup">
+        (() => {
+            const canSeeTwoFactor = <?php echo $can_see_two_factor; ?>;
+            const canSeeApplicationPasswords = <?php echo $can_see_application_passwords; ?>;
+
+            const normalize = (text) => String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+            const hideProfileSectionByHeading = (headingText) => {
+                const target = normalize(headingText);
+                document.querySelectorAll('h2, label').forEach((node) => {
+                    if (normalize(node.textContent) !== target) return;
+
+                    let current = node;
+                    while (current) {
+                        const next = current.nextElementSibling;
+                        current.style.display = 'none';
+                        if (!next) break;
+                        if (next.matches('h2')) break;
+                        current = next;
+                    }
+                });
+            };
+
+            const hideAiFeatureSection = () => {
+                document.querySelectorAll('label').forEach((label) => {
+                    if (normalize(label.textContent) !== 'ai features') return;
+
+                    const row = label.closest('tr') || label.parentElement;
+                    if (row instanceof HTMLElement) {
+                        row.style.display = 'none';
+                    }
+                });
+            };
+
+            const apply = () => {
+                if (!canSeeApplicationPasswords) {
+                    hideProfileSectionByHeading('Application Passwords');
+                }
+
+                if (!canSeeTwoFactor) {
+                    hideProfileSectionByHeading('Two Factor Authentication');
+                }
+
+                hideAiFeatureSection();
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', apply, { once: true });
+            } else {
+                apply();
+            }
+        })();
+    </script>
+    <?php
+}, 1000);
+
 // Admin Menu Editor swaps in its custom menu after admin_menu, so reapply these mutations then as well.
 add_action('admin_menu_editor-menu_replaced', function () {
     meza_restore_site_kit_admin_menu();
@@ -5168,6 +5810,7 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_group_woocommerce_top_level_items();
     meza_group_post_settings_utilities();
     meza_cleanup_menu_separators();
+    meza_filter_events_role_admin_menu();
 }, PHP_INT_MAX);
 
 // Move Site Health from Tools to Dashboard, directly under Updates.
@@ -5968,6 +6611,19 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
     $should_show_page_cache = $has_wp_super_cache_installed && ($delete_cache_node instanceof stdClass);
     $should_show_server_cache = !$has_wp_super_cache_installed && $is_production_like_environment;
 
+    if (!meza_can_access_clear_cache()) {
+        $wp_admin_bar->remove_node($flush_node_id);
+
+        if ($delete_cache_node instanceof stdClass) {
+            $delete_cache_id = (string) ($delete_cache_node->id ?? '');
+            if ($delete_cache_id !== '') {
+                $wp_admin_bar->remove_node($delete_cache_id);
+            }
+        }
+
+        return;
+    }
+
     $add_clone = static function ($node, string $title_override = '', $parent_override = null) use ($wp_admin_bar): void {
         if (!($node instanceof stdClass)) return;
         $node_id = (string) ($node->id ?? '');
@@ -6096,29 +6752,34 @@ add_action('wp_before_admin_bar_render', function () {
     meza_move_howdy_to_right_side_end($wp_admin_bar);
 }, PHP_INT_MAX);
 
-// Keep the "New" admin-bar dropdown in alphabetical order.
-add_action('admin_bar_menu', function ($wp_admin_bar) {
+function meza_filter_admin_bar_new_content_menu($wp_admin_bar): void
+{
     if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
 
     $nodes = $wp_admin_bar->get_nodes();
     if (!is_array($nodes)) return;
 
+    $all_children = [];
     $children = [];
     foreach ($nodes as $node) {
         if (!is_object($node) || (($node->parent ?? '') !== 'new-content')) continue;
+        $all_children[] = $node;
+        if (!meza_can_access_admin_bar_new_content_node($node)) continue;
         $children[] = $node;
     }
 
-    if (count($children) < 2) return;
+    if (empty($all_children)) return;
 
-    usort($children, static function ($a, $b) {
-        $title_a = strtolower(trim(wp_strip_all_tags((string) ($a->title ?? ''))));
-        $title_b = strtolower(trim(wp_strip_all_tags((string) ($b->title ?? ''))));
-        return strnatcmp($title_a, $title_b);
-    });
-
-    foreach ($children as $child) {
+    foreach ($all_children as $child) {
         $wp_admin_bar->remove_node((string) $child->id);
+    }
+
+    if (count($children) >= 2) {
+        usort($children, static function ($a, $b) {
+            $title_a = strtolower(trim(wp_strip_all_tags((string) ($a->title ?? ''))));
+            $title_b = strtolower(trim(wp_strip_all_tags((string) ($b->title ?? ''))));
+            return strnatcmp($title_a, $title_b);
+        });
     }
 
     foreach ($children as $child) {
@@ -6131,7 +6792,21 @@ add_action('admin_bar_menu', function ($wp_admin_bar) {
             'meta' => is_array($child->meta ?? null) ? $child->meta : [],
         ]);
     }
-}, 100000);
+
+    if (empty($children)) {
+        $wp_admin_bar->remove_node('new-content');
+    }
+}
+
+// Keep the "New" admin-bar dropdown limited to allowed items and alphabetized.
+add_action('admin_bar_menu', function ($wp_admin_bar) {
+    meza_filter_admin_bar_new_content_menu($wp_admin_bar);
+}, PHP_INT_MAX);
+
+add_action('wp_before_admin_bar_render', function () {
+    global $wp_admin_bar;
+    meza_filter_admin_bar_new_content_menu($wp_admin_bar);
+}, PHP_INT_MAX);
 
 function meza_get_custom_logo_url(): string
 {
