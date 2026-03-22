@@ -431,7 +431,7 @@ add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, arr
         return $caps;
     }
 
-    if (!in_array($cap, ['googlesitekit_view_dashboard', 'googlesitekit_view_splash'], true) || $user_id <= 0) {
+    if (!in_array($cap, ['googlesitekit_view_dashboard', 'googlesitekit_view_splash', 'googlesitekit_view_posts_insights'], true) || $user_id <= 0) {
         return $caps;
     }
 
@@ -455,6 +455,7 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
 
     $requested_cap = (string) ($args[0] ?? '');
     if (!in_array($requested_cap, [
+        'googlesitekit_view_posts_insights',
         'googlesitekit_view_dashboard',
         'googlesitekit_view_splash',
         'googlesitekit_view_shared_dashboard',
@@ -471,6 +472,7 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
         return $allcaps;
     }
 
+    $allcaps['googlesitekit_view_posts_insights'] = true;
     $allcaps['googlesitekit_view_dashboard'] = true;
     $allcaps['googlesitekit_view_splash'] = true;
 
@@ -512,8 +514,12 @@ if (!function_exists('meza_get_site_kit_menu_icon')) {
     {
         global $menu;
 
+        $google_icon_class = '\Google\Site_Kit\Core\Util\Google_Icon';
+
         if (!is_array($menu)) {
-            return 'dashicons-chart-area';
+            return class_exists($google_icon_class)
+                ? 'data:image/svg+xml;base64,' . $google_icon_class::to_base64()
+                : 'dashicons-chart-area';
         }
 
         foreach ($menu as $item) {
@@ -529,7 +535,9 @@ if (!function_exists('meza_get_site_kit_menu_icon')) {
             break;
         }
 
-        return 'dashicons-chart-area';
+        return class_exists($google_icon_class)
+            ? 'data:image/svg+xml;base64,' . $google_icon_class::to_base64()
+            : 'dashicons-chart-area';
     }
 }
 
