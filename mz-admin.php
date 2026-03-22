@@ -278,6 +278,137 @@ add_filter('editable_roles', function (array $roles): array {
     return $roles;
 }, 1000);
 
+if (!function_exists('meza_sync_site_kit_dashboard_sharing')) {
+    function meza_sync_site_kit_dashboard_sharing(): void
+    {
+        if (!defined('WP_PLUGIN_DIR') || !file_exists(WP_PLUGIN_DIR . '/google-site-kit/google-site-kit.php')) {
+            return;
+        }
+
+        $option_name = 'googlesitekit_dashboard_sharing';
+        $sharing_settings = get_option($option_name);
+        if (!is_array($sharing_settings)) {
+            $sharing_settings = [];
+        }
+
+        $shared_roles = array_values(array_filter(array_unique([
+            'shop_manager',
+            meza_site_manager_role_key(),
+        ]), static function ($role_slug): bool {
+            $role = get_role((string) $role_slug);
+            return $role instanceof WP_Role && $role->has_cap('edit_posts');
+        }));
+
+        if (empty($shared_roles)) {
+            return;
+        }
+
+        $target_modules = [
+            'pagespeed-insights' => 'all_admins',
+            'analytics-4' => 'owner',
+            'search-console' => 'owner',
+        ];
+
+        $changed = false;
+
+        foreach ($target_modules as $module_slug => $default_management) {
+            $module_settings = $sharing_settings[$module_slug] ?? [];
+            if (!is_array($module_settings)) {
+                $module_settings = [];
+            }
+
+            $existing_shared_roles = $module_settings['sharedRoles'] ?? [];
+            if (!is_array($existing_shared_roles)) {
+                $existing_shared_roles = [];
+            }
+
+            $normalized_shared_roles = array_values(array_filter(array_unique(array_map(
+                'strval',
+                array_merge($existing_shared_roles, $shared_roles)
+            ))));
+
+            if (($module_settings['sharedRoles'] ?? null) !== $normalized_shared_roles) {
+                $module_settings['sharedRoles'] = $normalized_shared_roles;
+                $changed = true;
+            }
+
+            if (!isset($module_settings['management']) || !is_string($module_settings['management']) || $module_settings['management'] === '') {
+                $module_settings['management'] = $default_management;
+                $changed = true;
+            }
+
+            $sharing_settings[$module_slug] = $module_settings;
+        }
+
+        if ($changed) {
+            update_option($option_name, $sharing_settings, false);
+        }
+    }
+}
+add_action('init', 'meza_sync_site_kit_dashboard_sharing', 25);
+
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) $_GET['page']) : '';
+    if ($page !== 'googlesitekit-dashboard') {
+        return;
+    }
+
+    if (current_user_can('googlesitekit_view_dashboard') || !current_user_can('googlesitekit_view_splash')) {
+        return;
+    }
+
+    $redirect_args = ['page' => 'googlesitekit-splash'];
+    foreach (['notification', 'panel'] as $arg) {
+        if (!isset($_GET[$arg])) {
+            continue;
+        }
+
+        $value = sanitize_text_field(wp_unslash((string) $_GET[$arg]));
+        if ($value !== '') {
+            $redirect_args[$arg] = $value;
+        }
+    }
+
+    wp_safe_redirect(add_query_arg($redirect_args, admin_url('admin.php')));
+    exit;
+}, 5);
+
+add_action('admin_menu', function (): void {
+    if (!current_user_can('googlesitekit_view_splash') || current_user_can('googlesitekit_view_dashboard')) {
+        return;
+    }
+
+    global $menu, $submenu;
+
+    if (is_array($menu)) {
+        foreach ($menu as &$item) {
+            if (!is_array($item) || (($item[2] ?? '') !== 'googlesitekit-dashboard')) {
+                continue;
+            }
+
+            $item[1] = 'googlesitekit_view_splash';
+            $item[2] = 'googlesitekit-splash';
+            if (isset($item[4]) && is_string($item[4])) {
+                $item[4] = str_replace('toplevel_page_googlesitekit-dashboard', 'toplevel_page_googlesitekit-splash', $item[4]);
+            }
+            if (isset($item[5]) && is_string($item[5])) {
+                $item[5] = 'toplevel_page_googlesitekit-splash';
+            }
+            break;
+        }
+        unset($item);
+    }
+
+    if (is_array($submenu) && isset($submenu['googlesitekit-dashboard']) && !isset($submenu['googlesitekit-splash'])) {
+        $submenu['googlesitekit-splash'] = $submenu['googlesitekit-dashboard'];
+        unset($submenu['googlesitekit-dashboard']);
+    }
+}, PHP_INT_MAX - 3);
+
 add_filter('option_page_capability_updraft-options-group', function (): string {
     return meza_backup_manager_capability();
 });
@@ -290,9 +421,95 @@ add_filter('acf/get_options_page', function ($page, $slug) {
     return $page;
 }, 20, 2);
 
+if (!function_exists('meza_should_hide_yoast_admin_menu_for_user')) {
+    function meza_should_hide_yoast_admin_menu_for_user($user = null): bool
+    {
+        if (!($user instanceof WP_User)) {
+            $user = wp_get_current_user();
+        }
+
+        if (!($user instanceof WP_User) || $user->ID <= 0) {
+            return false;
+        }
+
+        return !user_can($user, 'manage_options');
+    }
+}
+
+if (!function_exists('meza_remove_yoast_admin_menu_entries')) {
+    function meza_remove_yoast_admin_menu_entries(): void
+    {
+        if (!meza_should_hide_yoast_admin_menu_for_user()) {
+            return;
+        }
+
+        global $menu, $submenu;
+
+        remove_menu_page('wpseo_dashboard');
+
+        if (is_array($menu)) {
+            foreach ($menu as $index => $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $slug = strtolower((string) ($item[2] ?? ''));
+                $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+                $is_yoast = ($slug !== '' && str_starts_with($slug, 'wpseo'))
+                    || str_contains($slug, 'wpseo')
+                    || str_contains($slug, 'wordpress-seo')
+                    || str_contains($title, 'yoast')
+                    || $title === 'seo';
+
+                if ($is_yoast) {
+                    unset($menu[$index]);
+                }
+            }
+
+            $menu = array_values($menu);
+        }
+
+        if (!is_array($submenu)) {
+            return;
+        }
+
+        foreach ($submenu as $parent_slug => &$items) {
+            if (!is_array($items)) {
+                continue;
+            }
+
+            $normalized_parent_slug = strtolower((string) $parent_slug);
+            $parent_is_yoast = ($normalized_parent_slug !== '' && str_starts_with($normalized_parent_slug, 'wpseo'))
+                || str_contains($normalized_parent_slug, 'wpseo')
+                || str_contains($normalized_parent_slug, 'wordpress-seo');
+
+            if ($parent_is_yoast) {
+                unset($submenu[$parent_slug]);
+                continue;
+            }
+
+            $items = array_values(array_filter($items, static function ($item): bool {
+                if (!is_array($item)) {
+                    return true;
+                }
+
+                $slug = strtolower((string) ($item[2] ?? ''));
+                $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+                $is_yoast = ($slug !== '' && str_starts_with($slug, 'wpseo'))
+                    || str_contains($slug, 'wpseo')
+                    || str_contains($slug, 'wordpress-seo')
+                    || str_contains($title, 'yoast')
+                    || $title === 'seo';
+
+                return !$is_yoast;
+            }));
+        }
+        unset($items);
+    }
+}
+
 add_filter('wpseo_submenu_pages', function (array $submenu_pages): array {
-    $user = wp_get_current_user();
-    if ($user instanceof WP_User && in_array(meza_site_manager_role_key(), (array) $user->roles, true)) {
+    if (meza_should_hide_yoast_admin_menu_for_user()) {
         return [];
     }
 
@@ -317,15 +534,22 @@ add_action('admin_init', function (): void {
     }
 
     $user = wp_get_current_user();
-    if ($user instanceof WP_User && in_array(meza_site_manager_role_key(), (array) $user->roles, true)) {
-        $site_manager_page = isset($_GET['page']) ? sanitize_key((string) $_GET['page']) : '';
-        if (str_starts_with($site_manager_page, 'wpseo') || str_contains($site_manager_page, 'updraft')) {
-            wp_safe_redirect(admin_url());
-            exit;
-        }
+    $page = isset($_GET['page']) ? sanitize_key((string) $_GET['page']) : '';
+
+    if (meza_should_hide_yoast_admin_menu_for_user($user) && str_starts_with($page, 'wpseo')) {
+        wp_safe_redirect(admin_url());
+        exit;
     }
 
-    $page = isset($_GET['page']) ? sanitize_key((string) $_GET['page']) : '';
+    if (
+        $user instanceof WP_User
+        && in_array(meza_site_manager_role_key(), (array) $user->roles, true)
+        && str_contains($page, 'updraft')
+    ) {
+        wp_safe_redirect(admin_url());
+        exit;
+    }
+
     if (!in_array($page, ['wpseo_workouts', 'wpseo_redirects'], true)) {
         return;
     }
@@ -335,12 +559,13 @@ add_action('admin_init', function (): void {
 }, 1);
 
 add_action('admin_menu', function (): void {
+    meza_remove_yoast_admin_menu_entries();
+
     $user = wp_get_current_user();
     if (!($user instanceof WP_User) || !in_array(meza_site_manager_role_key(), (array) $user->roles, true)) {
         return;
     }
 
-    remove_menu_page('wpseo_dashboard');
     remove_menu_page('updraftplus');
     remove_menu_page('updraftcentral');
 
@@ -352,13 +577,10 @@ add_action('admin_menu', function (): void {
     foreach ($menu as $item) {
         $slug = (string) ($item[2] ?? '');
         $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
-        $is_yoast = ($slug !== '' && str_starts_with($slug, 'wpseo'))
-            || str_contains(strtolower($slug), 'wpseo')
-            || str_contains($title, 'seo');
         $is_updraft = str_contains(strtolower($slug), 'updraft')
             || in_array($title, ['backups', 'updraft', 'updraftplus'], true);
 
-        if ($is_yoast || $is_updraft) {
+        if ($is_updraft) {
             remove_menu_page($slug);
         }
     }
@@ -2776,6 +2998,7 @@ function meza_reorder_dashboard_utility_items(): void
     if (!is_array($menu) || empty($menu)) return;
 
     $user = wp_get_current_user();
+    $hide_yoast_menu = meza_should_hide_yoast_admin_menu_for_user($user);
     $is_site_manager_user = $user instanceof WP_User
         && in_array(meza_site_manager_role_key(), (array) $user->roles, true);
 
@@ -2817,7 +3040,7 @@ function meza_reorder_dashboard_utility_items(): void
         }
 
         if ($is_yoast) {
-            if (!$is_site_manager_user && $ordered_items['seo'] === null) {
+            if (!$hide_yoast_menu && $ordered_items['seo'] === null) {
                 $ordered_items['seo'] = $item;
             }
             $matched_indexes[] = (int) $index;
@@ -3388,6 +3611,7 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_normalize_admin_plugin_menus();
     meza_rebuild_content_menu_group();
     meza_reorder_dashboard_utility_items();
+    meza_remove_yoast_admin_menu_entries();
     meza_group_customer_sign_generator_under_dashboard();
     meza_ensure_site_manager_woocommerce_analytics_submenu();
     meza_remove_payments_admin_menu();
