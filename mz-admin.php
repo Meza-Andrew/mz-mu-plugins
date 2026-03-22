@@ -5861,6 +5861,10 @@ add_action('admin_head-nav-menus.php', function (): void {
     echo '<style id="meza-nav-menus-hide-live-preview">.nav-menus-php .page-title-action.hide-if-no-customize{display:none!important;}</style>';
 }, 1000);
 
+add_action('admin_head-users.php', function (): void {
+    echo '<style id="meza-users-hide-top-tablenav">.users-php .tablenav.top{display:none!important;}</style>';
+}, 1000);
+
 // Menus screen: show all remaining Add Menu Items panels by default for first-load users.
 add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
     if (!($screen instanceof WP_Screen) || $screen->id !== 'nav-menus') return $hidden;
