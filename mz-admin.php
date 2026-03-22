@@ -382,31 +382,36 @@ add_action('admin_menu', function (): void {
         return;
     }
 
-    global $menu, $submenu;
+    global $menu;
 
+    $icon = 'dashicons-chart-area';
     if (is_array($menu)) {
-        foreach ($menu as &$item) {
+        foreach ($menu as $item) {
             if (!is_array($item) || (($item[2] ?? '') !== 'googlesitekit-dashboard')) {
                 continue;
             }
 
-            $item[1] = 'googlesitekit_view_splash';
-            $item[2] = 'googlesitekit-splash';
-            if (isset($item[4]) && is_string($item[4])) {
-                $item[4] = str_replace('toplevel_page_googlesitekit-dashboard', 'toplevel_page_googlesitekit-splash', $item[4]);
-            }
-            if (isset($item[5]) && is_string($item[5])) {
-                $item[5] = 'toplevel_page_googlesitekit-splash';
+            $candidate_icon = (string) ($item[6] ?? '');
+            if ($candidate_icon !== '') {
+                $icon = $candidate_icon;
             }
             break;
         }
-        unset($item);
     }
 
-    if (is_array($submenu) && isset($submenu['googlesitekit-dashboard']) && !isset($submenu['googlesitekit-splash'])) {
-        $submenu['googlesitekit-splash'] = $submenu['googlesitekit-dashboard'];
-        unset($submenu['googlesitekit-dashboard']);
-    }
+    remove_menu_page('googlesitekit-dashboard');
+
+    add_menu_page(
+        'Web Analytics',
+        'Web Analytics',
+        'googlesitekit_view_splash',
+        'meza-web-analytics',
+        static function (): void {
+            wp_safe_redirect(admin_url('admin.php?page=googlesitekit-splash'));
+            exit;
+        },
+        $icon
+    );
 }, PHP_INT_MAX - 3);
 
 add_filter('option_page_capability_updraft-options-group', function (): string {
@@ -1486,6 +1491,17 @@ function meza_remove_sorting_view_tab($views)
     return $views;
 }
 
+function meza_is_woocommerce_admin_list_screen($screen): bool
+{
+    if (!($screen instanceof WP_Screen)) return false;
+
+    if ($screen->base === 'edit' && in_array((string) ($screen->post_type ?? ''), ['product', 'shop_coupon', 'shop_order'], true)) {
+        return true;
+    }
+
+    return in_array($screen->id, ['edit-product', 'edit-shop_coupon', 'edit-shop_order', 'woocommerce_page_wc-orders'], true);
+}
+
 add_filter('option_wpseo', 'meza_disable_yoast_cornerstone_option', 1000);
 add_filter('wpseo_cornerstone_post_types', '__return_empty_array', 1000);
 
@@ -1500,7 +1516,7 @@ add_action('current_screen', function ($screen) {
         add_filter("views_edit-{$post_type}", 'meza_remove_sorting_view_tab', 100000);
     }
 
-    if ($screen->id !== 'edit-product') return;
+    if (!meza_is_woocommerce_admin_list_screen($screen)) return;
 
     if (class_exists(\Automattic\WooCommerce\Internal\Admin\Loader::class)) {
         remove_action('in_admin_header', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'embed_page_header']);
@@ -2299,20 +2315,19 @@ function meza_dashboard_allowed_widget_ids(array $widgets): array
 {
     $ids = [
         'column1' => [],
-        'column2' => ['dashboard_right_now'],
+        'column2' => [],
         'column3' => [],
     ];
 
     $site_kit_widget_id = meza_dashboard_find_site_kit_widget_id($widgets);
     if ($site_kit_widget_id !== '') $ids['column1'][] = $site_kit_widget_id;
 
+    if (isset($widgets['dashboard_right_now'])) $ids['column2'][] = 'dashboard_right_now';
+
     $woocommerce_widget_id = meza_dashboard_find_woocommerce_status_widget_id($widgets);
     if ($woocommerce_widget_id !== '') $ids['column2'][] = $woocommerce_widget_id;
 
     if (isset($widgets['dashboard_site_health'])) $ids['column2'][] = 'dashboard_site_health';
-
-    $wp_mail_smtp_widget_id = meza_dashboard_find_wp_mail_smtp_widget_id($widgets);
-    if ($wp_mail_smtp_widget_id !== '') $ids['column2'][] = $wp_mail_smtp_widget_id;
 
     $php_error_log_widget_id = meza_dashboard_find_php_error_log_widget_id($widgets);
     if ($php_error_log_widget_id !== '') $ids['column3'][] = $php_error_log_widget_id;
