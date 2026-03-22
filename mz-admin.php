@@ -4883,6 +4883,148 @@ add_action('admin_head', function () {
         '</style>';
 }, 99999);
 
+/** Resolve the site's Primary nav menu so Appearance > Menus opens on a predictable default. */
+function meza_get_primary_nav_menu_id(): int
+{
+    $menu_locations = get_nav_menu_locations();
+    $primary_menu_id = (int) ($menu_locations['primary'] ?? 0);
+
+    if ($primary_menu_id > 0) {
+        return $primary_menu_id;
+    }
+
+    $primary_menu = wp_get_nav_menu_object('Primary');
+    if ($primary_menu instanceof WP_Term) {
+        return (int) $primary_menu->term_id;
+    }
+
+    foreach (wp_get_nav_menus() as $menu) {
+        if (!($menu instanceof WP_Term)) continue;
+
+        $menu_name = strtolower(trim((string) $menu->name));
+        $menu_slug = strtolower(trim((string) $menu->slug));
+
+        if ($menu_name === 'primary' || $menu_slug === 'primary') {
+            return (int) $menu->term_id;
+        }
+    }
+
+    return 0;
+}
+
+// Default Appearance > Menus to the Primary menu unless a specific menu or tab was requested.
+add_action('load-nav-menus.php', function (): void {
+    if (!current_user_can('edit_theme_options')) return;
+
+    $action = isset($_REQUEST['action']) ? sanitize_key((string) wp_unslash($_REQUEST['action'])) : 'edit';
+    if ($action !== 'edit') return;
+
+    if (array_key_exists('menu', $_REQUEST)) return;
+
+    $primary_menu_id = meza_get_primary_nav_menu_id();
+    if ($primary_menu_id <= 0) return;
+
+    wp_safe_redirect(add_query_arg(['menu' => $primary_menu_id], admin_url('nav-menus.php')));
+    exit;
+}, 1);
+
+// Normalize the Menus screen so add-item panels open collapsed and default to alphabetized View All lists.
+add_action('admin_head-nav-menus.php', function (): void {
+    ?>
+    <script id="meza-nav-menus-defaults">
+        (() => {
+            const hideMostRecentTabs = (section) => {
+                if (!(section instanceof HTMLElement)) return;
+
+                Array.from(section.querySelectorAll('.add-menu-item-tabs li')).forEach((tab) => {
+                    const link = tab.querySelector('a.nav-tab-link');
+                    const text = ((link && link.textContent) || '').trim().toLowerCase();
+                    const type = ((link && link.dataset && link.dataset.type) || '').toLowerCase();
+
+                    if (text === 'most recent' || type.includes('most-recent')) {
+                        tab.style.display = 'none';
+                    }
+                });
+            };
+
+            const activateViewAllPanel = (section) => {
+                if (!(section instanceof HTMLElement)) return;
+
+                const panels = Array.from(section.querySelectorAll('.tabs-panel'));
+                const activePanel = panels.find((panel) => panel.classList.contains('tabs-panel-view-all')) || null;
+                if (!(activePanel instanceof HTMLElement)) return;
+
+                panels.forEach((panel) => {
+                    panel.classList.remove('tabs-panel-active');
+                    panel.classList.add('tabs-panel-inactive');
+                });
+
+                activePanel.classList.remove('tabs-panel-inactive');
+                activePanel.classList.add('tabs-panel-active');
+
+                Array.from(section.querySelectorAll('.add-menu-item-tabs li')).forEach((tab) => {
+                    tab.classList.remove('tabs');
+                });
+
+                const viewAllLink = Array.from(section.querySelectorAll('.add-menu-item-tabs a.nav-tab-link')).find((link) => {
+                    const text = (link.textContent || '').trim().toLowerCase();
+                    const type = (link.dataset.type || '').toLowerCase();
+                    const href = (link.getAttribute('href') || '').toLowerCase();
+
+                    return text === 'view all' || type.endsWith('-all') || href.includes('-all');
+                });
+
+                if (viewAllLink && viewAllLink.parentElement) {
+                    viewAllLink.parentElement.classList.add('tabs');
+                }
+
+                const wrapper = activePanel.closest('.accordion-section-content');
+                if (wrapper instanceof HTMLElement) {
+                    wrapper.classList.toggle('has-no-menu-item', !activePanel.querySelector('.menu-item-title'));
+                }
+            };
+
+            const closeSection = (section) => {
+                if (!(section instanceof HTMLElement)) return;
+
+                section.classList.remove('open');
+
+                const content = section.querySelector('.accordion-section-content');
+                if (content instanceof HTMLElement) {
+                    content.style.display = 'none';
+                }
+
+                const title = section.querySelector('.accordion-section-title');
+                if (title instanceof HTMLElement) {
+                    title.setAttribute('aria-expanded', 'false');
+                }
+            };
+
+            const applyDefaults = () => {
+                document.querySelectorAll('#nav-menu-meta .accordion-section').forEach((section) => {
+                    hideMostRecentTabs(section);
+                    activateViewAllPanel(section);
+                    closeSection(section);
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => {
+                    window.requestAnimationFrame(() => {
+                        window.requestAnimationFrame(applyDefaults);
+                    });
+                }, { once: true });
+                return;
+            }
+
+            window.requestAnimationFrame(() => {
+                window.requestAnimationFrame(applyDefaults);
+            });
+        })();
+    </script>
+    <?php
+}, 1000);
+
 /** ================================
  *  THEME-AGNOSTIC EDITORIAL BEHAVIOR
  *  ================================ */
