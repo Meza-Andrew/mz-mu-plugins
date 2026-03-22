@@ -3322,6 +3322,48 @@ function meza_ensure_site_manager_woocommerce_analytics_submenu(): void
 // WooCommerce Analytics is top-level by default; add a matching top-level entry for site managers.
 add_action('admin_menu', 'meza_ensure_site_manager_woocommerce_analytics_submenu', PHP_INT_MAX - 1);
 
+function meza_ensure_woocommerce_customers_submenu(): void
+{
+    if (!meza_has_woocommerce_plugin()) return;
+
+    $user = wp_get_current_user();
+    $roles = $user instanceof WP_User ? (array) $user->roles : [];
+    $is_target_user = in_array('shop_manager', $roles, true)
+        || in_array(meza_site_manager_role_key(), $roles, true);
+
+    if (!$is_target_user || !current_user_can('view_woocommerce_reports')) {
+        return;
+    }
+
+    global $submenu;
+    if (!is_array($submenu)) {
+        return;
+    }
+
+    $customers_slug = 'wc-admin&path=/customers';
+
+    foreach ((array) ($submenu['woocommerce'] ?? []) as $item) {
+        if (!is_array($item)) continue;
+
+        if (strtolower((string) ($item[2] ?? '')) === $customers_slug) {
+            return;
+        }
+    }
+
+    add_submenu_page(
+        'woocommerce',
+        'Customers',
+        'Customers',
+        'view_woocommerce_reports',
+        $customers_slug,
+        static function (): void {
+            wp_safe_redirect(admin_url('admin.php?page=wc-admin&path=/customers'));
+            exit;
+        }
+    );
+}
+add_action('admin_menu', 'meza_ensure_woocommerce_customers_submenu', PHP_INT_MAX - 1);
+
 function meza_remove_payments_admin_menu(): void
 {
     global $menu, $submenu;
