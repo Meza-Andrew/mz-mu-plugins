@@ -674,6 +674,21 @@ function meza_post_type_admin_item_count(string $post_type): int
     return $total;
 }
 
+/** Count admin-visible terms for a taxonomy so pagination UI only appears when needed. */
+function meza_taxonomy_admin_item_count(string $taxonomy): int
+{
+    $count = wp_count_terms([
+        'taxonomy'   => $taxonomy,
+        'hide_empty' => false,
+    ]);
+
+    if (is_wp_error($count)) {
+        return 0;
+    }
+
+    return (int) $count;
+}
+
 /** Force admin "items per page" to one value across post types/taxonomies/list tables. */
 add_action('admin_init', function () {
     foreach (meza_admin_per_page_option_keys() as $option_key) {
@@ -689,15 +704,24 @@ add_filter('set-screen-option', function ($status, $option, $value) {
     return MEZA_ADMIN_ITEMS_PER_PAGE;
 }, 9999, 3);
 
-/** Hide the Pagination screen option on post lists that do not exceed the forced page size. */
+/** Hide the Pagination screen option on post and taxonomy lists that do not exceed the forced page size. */
 add_action('admin_head', function () {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
+    if (!($screen instanceof WP_Screen)) return;
 
-    $post_type = (string) ($screen->post_type ?? '');
-    if ($post_type === '') return;
+    if ($screen->base === 'edit') {
+        $post_type = (string) ($screen->post_type ?? '');
+        if ($post_type === '') return;
 
-    if (meza_post_type_admin_item_count($post_type) > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+        if (meza_post_type_admin_item_count($post_type) > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+    } elseif ($screen->base === 'edit-tags') {
+        $taxonomy = (string) ($screen->taxonomy ?? '');
+        if ($taxonomy === '') return;
+
+        if (meza_taxonomy_admin_item_count($taxonomy) > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+    } else {
+        return;
+    }
 
     $screen->remove_option('per_page');
 }, 1);
@@ -715,23 +739,24 @@ add_action('current_screen', function ($screen) {
 add_filter('view_mode_post_types', '__return_empty_array', 9999);
 
 /**
- * Yoast SEO columns:
+ * Screen Options defaults:
  * - Keep "SEO Title" + "Meta Desc." checked by default on post list screens.
  * - Force-hide Yoast internal links columns.
  */
 add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     if (!is_array($hidden)) return $hidden;
     if (!($screen instanceof WP_Screen)) return $hidden;
-    if ($screen->base !== 'edit') return $hidden;
     // Respect user Screen Options changes after first save/load.
     if (!$use_defaults) return $hidden;
+
+    if ($screen->base !== 'edit') return $hidden;
 
     // Force-hide known Content Permissions column ids.
     foreach (['content_permissions', 'content-permissions'] as $column_id) {
         if (!in_array($column_id, $hidden, true)) $hidden[] = $column_id;
     }
 
-    // Force-hide Yoast link-related columns.
+    // Force-hide Yoast link-related and keyphrase columns.
     foreach (['wpseo-links', 'wpseo-linked', 'wpseo-focuskw'] as $column_id) {
         if (!in_array($column_id, $hidden, true)) $hidden[] = $column_id;
     }
