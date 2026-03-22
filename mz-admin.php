@@ -2343,6 +2343,9 @@ add_action('admin_head-index.php', function () {
     if (!($screen instanceof WP_Screen) || $screen->id !== 'dashboard') return;
 
     echo '<style id="meza-dashboard-responsive-columns">' .
+        '#screen-options-wrap .columns-prefs{' .
+        'display:none!important;' .
+        '}' .
         '#dashboard-widgets .postbox-container{' .
         'width:25%!important;' .
         'float:left!important;' .
