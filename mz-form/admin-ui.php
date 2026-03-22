@@ -62,7 +62,77 @@ if (!function_exists('mzf_render_submission_log_inline_styles')) {
             return;
         }
 
-        echo "<style id='mzf-admin-shared-inline'>\n" . $css . "\n</style>";
+        $sticky_css = <<<CSS
+.mzf-submissions-table-wrap{
+    border:1px solid #c3c4c7;
+    background:#fff;
+}
+.mzf-submissions-table-wrap table.wp-list-table{
+    min-width:max-content;
+    border-collapse:separate;
+    border-spacing:0;
+    border:none !important;
+    box-shadow:none !important;
+}
+.mzf-submissions-table-wrap table.wp-list-table thead,
+.mzf-submissions-table-wrap table.wp-list-table tfoot{
+    position:relative;
+    z-index:4;
+}
+.mzf-submissions-table-wrap table.wp-list-table thead th,
+.mzf-submissions-table-wrap table.wp-list-table thead td{
+    position:sticky;
+    top:0;
+    z-index:5;
+    background:#fff;
+    border-top:none !important;
+    border-bottom:none !important;
+    box-shadow:inset 0 -1px 0 #ccd0d4;
+    background-clip:padding-box;
+}
+.mzf-submissions-table-wrap table.wp-list-table tfoot th,
+.mzf-submissions-table-wrap table.wp-list-table tfoot td{
+    position:sticky;
+    bottom:0;
+    z-index:5;
+    background:#fff;
+    border-top:none !important;
+    border-bottom:none !important;
+    box-shadow:inset 0 1px 0 #ccd0d4;
+    background-clip:padding-box;
+}
+.mzf-submissions-table-wrap table.wp-list-table tbody td{
+    position:relative;
+    z-index:1;
+    background-clip:padding-box;
+}
+.mzf-submissions-table-wrap table.wp-list-table thead .column-cb{
+    position:sticky;
+    top:0;
+    left:0;
+    z-index:6;
+    background:#fff;
+    border-right:none !important;
+    border-top:none !important;
+    border-bottom:none !important;
+    box-shadow:inset 0 -1px 0 #ccd0d4;
+    background-clip:padding-box;
+}
+.mzf-submissions-table-wrap table.wp-list-table tfoot .column-cb{
+    position:sticky;
+    bottom:0;
+    left:0;
+    z-index:6;
+    background:#fff;
+    border-right:none !important;
+    border-top:none !important;
+    border-bottom:none !important;
+    box-shadow:inset 0 1px 0 #ccd0d4;
+    background-clip:padding-box;
+}
+CSS;
+
+        echo "<style id='mzf-admin-shared-inline'>\n" . $css . "\n" . $sticky_css . "\n</style>";
     }
 }
 
@@ -1060,7 +1130,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             $query = new WP_Query($query_args);
         }
 
-        $sortable_header = static function (string $label, string $column, string $current_sort, string $current_order, callable $url_builder): string {
+        $sortable_header = static function (string $label, string $column, string $current_sort, string $current_order, callable $url_builder): array {
             $next_order = 'asc';
             if ($current_sort === $column && $current_order === 'asc') {
                 $next_order = 'desc';
@@ -1069,18 +1139,24 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 $next_order = 'asc';
             }
 
-            $indicator = '';
-            if ($current_sort === $column) {
-                $indicator = ($current_order === 'asc') ? ' &#8593;' : ' &#8595;';
-            }
-
             $url = $url_builder([
                 'sort' => $column,
                 'order' => $next_order,
             ], ['paged']);
 
-            return '<a href="' . esc_url($url) . '">' . esc_html($label) . $indicator . '</a>';
+            $is_current = ($current_sort === $column);
+            $direction = ($current_order === 'asc') ? 'asc' : 'desc';
+            $sort_class = $is_current ? 'sorted ' . $direction : 'sortable ' . $direction;
+            $markup = '<a href="' . esc_url($url) . '"><span>' . esc_html($label) . '</span><span class="sorting-indicator" aria-hidden="true"></span></a>';
+
+            return [
+                'class' => $sort_class,
+                'markup' => $markup,
+            ];
         };
+
+        $date_header = $sortable_header('Date/Time', 'date', $sort, $order, $build_admin_url);
+        $name_header = $sortable_header('Name', 'name', $sort, $order, $build_admin_url);
 
         $delete_bulk_confirmation = ($view === 'deleted')
             ? 'Are you sure you want to permanently delete these submissions?'
@@ -1130,21 +1206,34 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         }
         echo '<a class="button button-primary" href="' . esc_url($export_url) . '">Export All to CSV</a>';
         echo '</div></div>';
-        echo '<div class="mzf-submissions-table-wrap">';
+        $table_header_cells = ''
+            . '<th scope="col" class="manage-column column-cb check-column" style="width:32px;min-width:32px;max-width:32px;"><label class="screen-reader-text" for="mzf-select-all-1">Select all submissions</label><input type="checkbox" id="mzf-select-all-1" class="mzf-select-all" aria-label="Select all submissions"></th>'
+            . '<th scope="col" class="manage-column column-mzf_lock" style="width:32px;min-width:32px;max-width:32px;" aria-label="Saved status"></th>'
+            . '<th scope="col" class="manage-column column-mzf_date ' . esc_attr($date_header['class']) . '" style="width:150px;min-width:150px;max-width:150px;">' . $date_header['markup'] . '</th>'
+            . '<th scope="col" class="manage-column column-mzf_name ' . esc_attr($name_header['class']) . '" style="width:175px;min-width:175px;max-width:175px;">' . $name_header['markup'] . '</th>'
+            . '<th scope="col" class="manage-column column-mzf_email" style="width:225px;min-width:225px;max-width:225px;">Email</th>'
+            . '<th scope="col" class="manage-column column-mzf_phone" style="width:125px;min-width:125px;max-width:125px;">Phone</th>'
+            . '<th scope="col" class="manage-column column-mzf_zip" style="width:125px;min-width:125px;max-width:125px;">Zip Code</th>'
+            . '<th scope="col" class="manage-column column-mzf_page" style="width:125px;min-width:125px;max-width:125px;">Page</th>'
+            . '<th scope="col" class="manage-column column-mzf_form" style="width:125px;min-width:125px;max-width:125px;">Form</th>'
+            . '<th scope="col" class="manage-column column-mzf_crm" style="width:125px;min-width:125px;max-width:125px;">CRM Entry</th>'
+            . '<th scope="col" class="manage-column column-mzf_status" style="width:130px;min-width:130px;max-width:130px;">Status</th>';
+        $table_footer_cells = ''
+            . '<th scope="col" class="manage-column column-cb check-column" style="width:32px;min-width:32px;max-width:32px;"><label class="screen-reader-text" for="mzf-select-all-2">Select all submissions</label><input type="checkbox" id="mzf-select-all-2" class="mzf-select-all" aria-label="Select all submissions"></th>'
+            . '<th scope="col" class="manage-column column-mzf_lock" style="width:32px;min-width:32px;max-width:32px;" aria-label="Saved status"></th>'
+            . '<th scope="col" class="manage-column column-mzf_date ' . esc_attr($date_header['class']) . '" style="width:150px;min-width:150px;max-width:150px;">' . $date_header['markup'] . '</th>'
+            . '<th scope="col" class="manage-column column-mzf_name ' . esc_attr($name_header['class']) . '" style="width:175px;min-width:175px;max-width:175px;">' . $name_header['markup'] . '</th>'
+            . '<th scope="col" class="manage-column column-mzf_email" style="width:225px;min-width:225px;max-width:225px;">Email</th>'
+            . '<th scope="col" class="manage-column column-mzf_phone" style="width:125px;min-width:125px;max-width:125px;">Phone</th>'
+            . '<th scope="col" class="manage-column column-mzf_zip" style="width:125px;min-width:125px;max-width:125px;">Zip Code</th>'
+            . '<th scope="col" class="manage-column column-mzf_page" style="width:125px;min-width:125px;max-width:125px;">Page</th>'
+            . '<th scope="col" class="manage-column column-mzf_form" style="width:125px;min-width:125px;max-width:125px;">Form</th>'
+            . '<th scope="col" class="manage-column column-mzf_crm" style="width:125px;min-width:125px;max-width:125px;">CRM Entry</th>'
+            . '<th scope="col" class="manage-column column-mzf_status" style="width:130px;min-width:130px;max-width:130px;">Status</th>';
+
+        echo '<div class="mzf-submissions-table-wrap meza-admin-table-scroll">';
         echo '<table class="widefat striped mzf-submissions-table wp-list-table">';
-        echo '<thead><tr>';
-        echo '<th class="column-cb" style="width:32px;min-width:32px;max-width:32px;"><input type="checkbox" id="mzf-select-all" aria-label="Select all submissions"></th>';
-        echo '<th class="column-mzf_lock" style="width:32px;min-width:32px;max-width:32px;" aria-label="Saved status"></th>';
-        echo '<th class="column-mzf_date" style="width:150px;min-width:150px;max-width:150px;">' . $sortable_header('Date/Time', 'date', $sort, $order, $build_admin_url) . '</th>';
-        echo '<th class="column-mzf_name" style="width:175px;min-width:175px;max-width:175px;">' . $sortable_header('Name', 'name', $sort, $order, $build_admin_url) . '</th>';
-        echo '<th class="column-mzf_email" style="width:225px;min-width:225px;max-width:225px;">Email</th>';
-        echo '<th class="column-mzf_phone" style="width:125px;min-width:125px;max-width:125px;">Phone</th>';
-        echo '<th class="column-mzf_zip" style="width:125px;min-width:125px;max-width:125px;">Zip Code</th>';
-        echo '<th class="column-mzf_page" style="width:125px;min-width:125px;max-width:125px;">Page</th>';
-        echo '<th class="column-mzf_form" style="width:125px;min-width:125px;max-width:125px;">Form</th>';
-        echo '<th class="column-mzf_crm" style="width:125px;min-width:125px;max-width:125px;">CRM Entry</th>';
-        echo '<th class="column-mzf_status" style="width:130px;min-width:130px;max-width:130px;">Status</th>';
-        echo '</tr></thead><tbody>';
+        echo '<thead><tr>' . $table_header_cells . '</tr></thead><tbody>';
 
         if (!$query->have_posts()) {
             $empty_message = 'No submissions logged yet.';
@@ -1327,10 +1416,10 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             }
             wp_reset_postdata();
         }
-        echo '</tbody></table>';
+        echo '</tbody><tfoot><tr>' . $table_footer_cells . '</tr></tfoot></table>';
         echo '</div>';
         echo '</form>';
-        echo '<script>(function(){var all=document.getElementById("mzf-select-all");if(!all)return;all.addEventListener("change",function(){var rows=document.querySelectorAll(".mzf-select-row");for(var i=0;i<rows.length;i++){rows[i].checked=all.checked;}});})();</script>';
+        echo '<script>(function(){var toggles=document.querySelectorAll(".mzf-select-all");if(!toggles.length)return;var rows=document.querySelectorAll(".mzf-select-row");var sync=function(checked){for(var i=0;i<toggles.length;i++){toggles[i].checked=checked;}};for(var i=0;i<toggles.length;i++){toggles[i].addEventListener("change",function(){for(var j=0;j<rows.length;j++){rows[j].checked=this.checked;}sync(this.checked);});}for(var k=0;k<rows.length;k++){rows[k].addEventListener("change",function(){var checked=rows.length>0;for(var m=0;m<rows.length;m++){if(!rows[m].checked){checked=false;break;}}sync(checked);});}})();</script>';
 
         if ((int) $query->max_num_pages > 1) {
             $pagination_args = $state_args;
