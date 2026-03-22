@@ -2261,7 +2261,9 @@ function meza_dashboard_widget_with_custom_title(string $widget_id, array $widge
     } elseif (str_contains($normalized_id, 'wp_mail_smtp') || str_contains($normalized_title, 'wp mail smtp')) {
         $custom_title = 'Mail';
     } elseif (str_contains($normalized_id, 'woocommerce') || str_contains($normalized_title, 'woocommerce')) {
-        $custom_title = 'WooCommerce';
+        $custom_title = 'Sales Overview';
+    } elseif (str_contains($normalized_id, 'php_error_log') || str_contains($normalized_title, 'php error log')) {
+        $custom_title = 'Error Log';
     }
 
     if ($custom_title !== '') {
