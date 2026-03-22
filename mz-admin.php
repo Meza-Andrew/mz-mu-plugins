@@ -7116,6 +7116,52 @@ function meza_customize_taxonomy_nav_menu_markup(string $html, string $title): s
     return meza_customize_nav_menu_tab_list_markup($html);
 }
 
+function meza_get_default_taxonomy_term_id(string $taxonomy): int
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if ($taxonomy === '') {
+        return 0;
+    }
+
+    $default_term = get_option('default_term_' . $taxonomy);
+    if (is_array($default_term)) {
+        $default_term = $default_term['term_id'] ?? 0;
+    }
+
+    $default_term_id = (int) $default_term;
+    if ($default_term_id > 0) {
+        return $default_term_id;
+    }
+
+    return (int) get_option('default_' . $taxonomy, 0);
+}
+
+function meza_should_hide_single_default_term_nav_menu_taxonomy(string $taxonomy): bool
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if ($taxonomy === '') {
+        return false;
+    }
+
+    $terms = get_terms([
+        'taxonomy' => $taxonomy,
+        'hide_empty' => false,
+        'fields' => 'ids',
+        'number' => 2,
+    ]);
+
+    if (is_wp_error($terms) || count((array) $terms) !== 1) {
+        return false;
+    }
+
+    $default_term_id = meza_get_default_taxonomy_term_id($taxonomy);
+    if ($default_term_id <= 0) {
+        return false;
+    }
+
+    return (int) $terms[0] === $default_term_id;
+}
+
 function meza_nav_menu_item_post_type_meta_box($data_object, $box): void
 {
     $post_type_name = (string) ($box['args']->name ?? '');
@@ -7159,6 +7205,12 @@ function meza_get_sorted_nav_menu_meta_boxes(): array
         foreach ((array) $boxes as $id => $box) {
             if (!is_array($box)) continue;
             if ($id === 'woocommerce_endpoints_nav_link') continue;
+
+            $is_taxonomy_box = (($box['callback'] ?? null) === 'wp_nav_menu_item_taxonomy_meta_box');
+            $taxonomy_name = sanitize_key((string) ($box['args']->name ?? ''));
+            if ($is_taxonomy_box && $taxonomy_name !== '' && meza_should_hide_single_default_term_nav_menu_taxonomy($taxonomy_name)) {
+                continue;
+            }
 
             $title = trim(wp_strip_all_tags((string) ($box['title'] ?? '')));
             $sort_title = strtolower($title);
