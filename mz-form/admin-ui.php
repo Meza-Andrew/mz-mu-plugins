@@ -62,25 +62,31 @@ if (!function_exists('mzf_render_submission_log_inline_styles')) {
             return;
         }
 
-        $sticky_css = <<<CSS
-.mzf-submissions-table-wrap{
+$sticky_css = <<<CSS
+.mzf-submissions-table-wrap.meza-admin-table-scroll{
+    width:100%;
+    max-width:100%;
+    max-height:calc(100vh - 260px);
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
     border:1px solid #c3c4c7;
+    box-sizing:border-box;
     background:#fff;
 }
-.mzf-submissions-table-wrap table.wp-list-table{
+.mzf-submissions-table-wrap.meza-admin-table-scroll table.wp-list-table{
     min-width:max-content;
     border-collapse:separate;
     border-spacing:0;
     border:none !important;
     box-shadow:none !important;
 }
-.mzf-submissions-table-wrap table.wp-list-table thead,
-.mzf-submissions-table-wrap table.wp-list-table tfoot{
+.mzf-submissions-table-wrap.meza-admin-table-scroll table.wp-list-table thead,
+.mzf-submissions-table-wrap.meza-admin-table-scroll table.wp-list-table tfoot{
     position:relative;
     z-index:4;
 }
-.mzf-submissions-table-wrap table.wp-list-table thead th,
-.mzf-submissions-table-wrap table.wp-list-table thead td{
+.mzf-submissions-table-wrap.meza-admin-table-scroll table.wp-list-table thead th,
+.mzf-submissions-table-wrap.meza-admin-table-scroll table.wp-list-table thead td{
     position:sticky;
     top:0;
     z-index:5;
@@ -90,8 +96,8 @@ if (!function_exists('mzf_render_submission_log_inline_styles')) {
     box-shadow:inset 0 -1px 0 #ccd0d4;
     background-clip:padding-box;
 }
-.mzf-submissions-table-wrap table.wp-list-table tfoot th,
-.mzf-submissions-table-wrap table.wp-list-table tfoot td{
+.mzf-submissions-table-wrap.meza-admin-table-scroll table.wp-list-table tfoot th,
+.mzf-submissions-table-wrap.meza-admin-table-scroll table.wp-list-table tfoot td{
     position:sticky;
     bottom:0;
     z-index:5;
@@ -101,12 +107,12 @@ if (!function_exists('mzf_render_submission_log_inline_styles')) {
     box-shadow:inset 0 1px 0 #ccd0d4;
     background-clip:padding-box;
 }
-.mzf-submissions-table-wrap table.wp-list-table tbody td{
+.mzf-submissions-table-wrap.meza-admin-table-scroll table.wp-list-table tbody td{
     position:relative;
     z-index:1;
     background-clip:padding-box;
 }
-.mzf-submissions-table-wrap table.wp-list-table thead .column-cb{
+.mzf-submissions-table-wrap.meza-admin-table-scroll table.wp-list-table thead .check-column{
     position:sticky;
     top:0;
     left:0;
@@ -118,7 +124,7 @@ if (!function_exists('mzf_render_submission_log_inline_styles')) {
     box-shadow:inset 0 -1px 0 #ccd0d4;
     background-clip:padding-box;
 }
-.mzf-submissions-table-wrap table.wp-list-table tfoot .column-cb{
+.mzf-submissions-table-wrap.meza-admin-table-scroll table.wp-list-table tfoot .check-column{
     position:sticky;
     bottom:0;
     left:0;
@@ -129,6 +135,9 @@ if (!function_exists('mzf_render_submission_log_inline_styles')) {
     border-bottom:none !important;
     box-shadow:inset 0 1px 0 #ccd0d4;
     background-clip:padding-box;
+}
+.mzf-submissions-table-wrap.meza-admin-table-scroll .widefat .check-column{
+    padding:0;
 }
 CSS;
 
@@ -1147,7 +1156,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             $is_current = ($current_sort === $column);
             $direction = ($current_order === 'asc') ? 'asc' : 'desc';
             $sort_class = $is_current ? 'sorted ' . $direction : 'sortable ' . $direction;
-            $markup = '<a href="' . esc_url($url) . '"><span>' . esc_html($label) . '</span><span class="sorting-indicator" aria-hidden="true"></span></a>';
+            $markup = '<a href="' . esc_url($url) . '"><span>' . esc_html($label) . '</span><span class="sorting-indicators" aria-hidden="true"><span class="sorting-indicator asc"></span><span class="sorting-indicator desc"></span></span></a>';
 
             return [
                 'class' => $sort_class,
@@ -1232,7 +1241,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             . '<th scope="col" class="manage-column column-mzf_status" style="width:130px;min-width:130px;max-width:130px;">Status</th>';
 
         echo '<div class="mzf-submissions-table-wrap meza-admin-table-scroll">';
-        echo '<table class="widefat striped mzf-submissions-table wp-list-table">';
+        echo '<table class="widefat fixed striped table-view-list posts mzf-submissions-table wp-list-table">';
         echo '<thead><tr>' . $table_header_cells . '</tr></thead><tbody>';
 
         if (!$query->have_posts()) {
