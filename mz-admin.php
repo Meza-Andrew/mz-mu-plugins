@@ -988,6 +988,14 @@ function meza_post_type_menu_order_admin_column_is_default_visible(string $post_
     return in_array(trim($post_type), meza_get_menu_order_admin_column_default_visible_post_types(), true);
 }
 
+function meza_post_type_uses_native_admin_columns(string $post_type): bool
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') return false;
+
+    return meza_post_type_supports_menu_order_admin_column($post_type);
+}
+
 function meza_post_has_permalink(int $post_id): bool
 {
     if ($post_id <= 0) return false;
@@ -1360,6 +1368,24 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
     return array_values(array_diff($hidden, ['mz_menu_order']));
 }, 1100, 3);
+
+// Admin Columns saved layouts can hide our native list-table columns. For the post
+// types we manage ourselves, let WordPress render the screen directly instead.
+add_filter('ac/list_screen/is_active', function ($active, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $active;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if (!meza_post_type_uses_native_admin_columns($post_type)) return $active;
+
+    return false;
+}, 1000, 2);
+
+add_filter('ac/list_screen/key/is_active', function ($active, $key) {
+    $post_type = trim((string) $key);
+    if (!meza_post_type_uses_native_admin_columns($post_type)) return $active;
+
+    return false;
+}, 1000, 2);
 
 function meza_register_datetime_sortable_columns(array $cols): array
 {
