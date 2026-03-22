@@ -303,12 +303,12 @@ add_action('admin_menu', function (): void {
 }, PHP_INT_MAX);
 
 add_action('admin_head-themes.php', function (): void {
-    $user = wp_get_current_user();
-    if (!($user instanceof WP_User) || !in_array(meza_site_manager_role_key(), (array) $user->roles, true)) {
+    if (current_user_can('switch_themes')) {
         return;
     }
     ?>
     <style>
+        .wrap .wp-heading-inline .title-count.theme-count,
         .theme-browser .theme.active .theme-actions .customize,
         .theme-overlay .theme-actions .customize {
             display: none !important;
@@ -316,6 +316,27 @@ add_action('admin_head-themes.php', function (): void {
     </style>
     <?php
 });
+
+add_action('admin_menu', function (): void {
+    if (current_user_can('switch_themes')) {
+        return;
+    }
+
+    global $submenu;
+    if (!isset($submenu['themes.php']) || !is_array($submenu['themes.php'])) {
+        return;
+    }
+
+    foreach ($submenu['themes.php'] as &$item) {
+        if (!is_array($item) || ((string) ($item[2] ?? '')) !== 'themes.php') {
+            continue;
+        }
+
+        $item[0] = trim((string) preg_replace('/<span class="[^"]*update-plugins[^"]*">.*?<\/span>/i', '', (string) ($item[0] ?? '')));
+        break;
+    }
+    unset($item);
+}, PHP_INT_MAX);
 
 /** ================================
  *  EVENT ADMIN SORTING
