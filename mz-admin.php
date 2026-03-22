@@ -5695,7 +5695,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         ]);
     };
 
-    $add_flush = static function () use ($wp_admin_bar, $flush_node_id, $quick_links_hidden_successfully): void {
+    $add_flush = static function () use ($wp_admin_bar, $flush_node_id, $quick_links_hidden_successfully, $toolbar_parent): void {
         if (!$quick_links_hidden_successfully) {
             $wp_admin_bar->remove_node($flush_node_id);
             return;
