@@ -252,6 +252,38 @@ add_filter('gettext_with_context', function ($translation, $text, $context, $dom
     return $translation;
 }, 20, 4);
 
+add_filter('gettext', function ($translation, $text, $domain) {
+    if (!is_admin() || $domain !== 'woocommerce' || $text !== 'Add New Product') {
+        return $translation;
+    }
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen)) {
+        return $translation;
+    }
+
+    $is_product_editor = $screen->base === 'post'
+        && (string) ($screen->post_type ?? '') === 'product';
+
+    if (!$is_product_editor) {
+        return $translation;
+    }
+
+    return 'Add Product';
+}, 20, 3);
+
+add_filter('register_post_type_args', function (array $args, string $post_type): array {
+    if ($post_type !== 'product') {
+        return $args;
+    }
+
+    $labels = isset($args['labels']) && is_array($args['labels']) ? $args['labels'] : [];
+    $labels['add_new_item'] = 'Add Product';
+    $args['labels'] = $labels;
+
+    return $args;
+}, 20, 2);
+
 add_filter('editable_roles', function (array $roles): array {
     if (!is_admin()) {
         return $roles;
