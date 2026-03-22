@@ -3372,6 +3372,8 @@ function meza_remove_woocommerce_marketing_overview_submenu(): void
     remove_submenu_page('admin.php?page=wc-admin&path=/marketing', 'wc-admin&path=/marketing/overview');
     remove_submenu_page('woocommerce', 'wc-addons');
     remove_submenu_page('woocommerce', 'admin.php?page=wc-addons');
+    remove_submenu_page('woocommerce', 'wc-admin&path=/extensions');
+    remove_submenu_page('woocommerce', 'admin.php?page=wc-admin&path=/extensions');
     remove_submenu_page('woocommerce', 'wc-reports');
     remove_submenu_page('woocommerce', 'admin.php?page=wc-reports');
     remove_submenu_page('woocommerce', 'wc-admin');
@@ -3405,7 +3407,10 @@ function meza_remove_woocommerce_marketing_overview_submenu(): void
                 || str_contains($slug, '/marketing/overview');
             $is_extensions_slug = $slug === 'wc-addons'
                 || $slug === 'admin.php?page=wc-addons'
-                || str_contains($slug, 'wc-addons');
+                || $slug === 'wc-admin&path=/extensions'
+                || $slug === 'admin.php?page=wc-admin&path=/extensions'
+                || str_contains($slug, 'wc-addons')
+                || str_contains($slug, 'wc-admin&path=/extensions');
             $is_reports_slug = $slug === 'wc-reports'
                 || $slug === 'admin.php?page=wc-reports'
                 || str_contains($slug, 'wc-reports');
