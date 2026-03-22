@@ -3024,9 +3024,9 @@ function meza_normalize_admin_plugin_menus(): void
 
         if ($parent_slug === 'options-general.php') {
             $ordered_labels = [
-                'Redirects',
+                'Contact Information',
+                'CRM Integration',
                 'Page Cache',
-                'Object Cache',
                 'Image Performance',
                 'Post Ordering',
                 'Post Duplication',
