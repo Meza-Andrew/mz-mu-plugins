@@ -3334,40 +3334,10 @@ function meza_reorder_dashboard_utility_items(): void
 // Keep utility plugins grouped with Dashboard in a fixed order before the content separator.
 add_action('admin_menu', 'meza_reorder_dashboard_utility_items', PHP_INT_MAX);
 
-function meza_group_customer_sign_generator_under_dashboard(): void
+function meza_get_dashboard_group_end_index(array $menu): ?int
 {
-    global $menu;
-
-    if (!is_array($menu) || empty($menu)) return;
-
-    $customer_sign_item = null;
-    $matched_indexes = [];
-
-    foreach ($menu as $index => $item) {
-        if (!is_array($item)) continue;
-
-        $slug = strtolower((string) ($item[2] ?? ''));
-        $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
-        $is_customer_sign_generator = str_contains($slug, 'client-sign-generator')
-            || $title === 'customer sign generator';
-
-        if (!$is_customer_sign_generator) continue;
-
-        if ($customer_sign_item === null) {
-            $customer_sign_item = $item;
-        }
-
-        $matched_indexes[] = (int) $index;
-    }
-
-    if (!is_array($customer_sign_item) || empty($matched_indexes)) return;
-
-    rsort($matched_indexes, SORT_NUMERIC);
-    foreach ($matched_indexes as $matched_index) {
-        array_splice($menu, $matched_index, 1);
-    }
-
     $dashboard_index = null;
+
     foreach ($menu as $index => $item) {
         if (is_array($item) && ((string) ($item[2] ?? '')) === 'index.php') {
             $dashboard_index = (int) $index;
@@ -3376,15 +3346,16 @@ function meza_group_customer_sign_generator_under_dashboard(): void
     }
 
     if ($dashboard_index === null) {
-        $menu[] = $customer_sign_item;
-        return;
+        return null;
     }
 
     $dashboard_group_end = $dashboard_index + 1;
 
     for ($i = $dashboard_index + 1, $count = count($menu); $i < $count; $i++) {
         $item = $menu[$i] ?? null;
-        if (!is_array($item)) break;
+        if (!is_array($item)) {
+            break;
+        }
 
         $slug = strtolower((string) ($item[2] ?? ''));
         $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
@@ -3398,26 +3369,15 @@ function meza_group_customer_sign_generator_under_dashboard(): void
             || str_contains($slug, 'updraft')
             || in_array($title, ['web analytics', 'site kit', 'site kit by google', 'seo', 'backups', 'updraft', 'updraftplus'], true);
 
-        if ($is_separator || !$is_dashboard_utility) break;
+        if ($is_separator || !$is_dashboard_utility) {
+            break;
+        }
 
         $dashboard_group_end = $i + 1;
     }
 
-    $items_to_insert = [[
-        '',
-        'read',
-        'separator-meza-dashboard-customer-sign-generator',
-        '',
-        'wp-menu-separator',
-    ]];
-
-    $items_to_insert[] = $customer_sign_item;
-
-    array_splice($menu, $dashboard_group_end, 0, $items_to_insert);
+    return $dashboard_group_end;
 }
-
-// Keep Customer Sign Generator in its own block directly below the Dashboard utility group.
-add_action('admin_menu', 'meza_group_customer_sign_generator_under_dashboard', PHP_INT_MAX);
 
 function meza_get_wc_admin_path(): string
 {
@@ -3430,6 +3390,35 @@ function meza_get_wc_admin_path(): string
     $path = '/' . ltrim(trim($path), '/');
 
     return $path === '/' ? '' : $path;
+}
+
+function meza_is_woocommerce_analytics_embed(): bool
+{
+    return isset($_GET['meza_embed']) && wp_unslash((string) $_GET['meza_embed']) === '1';
+}
+
+function meza_is_store_analytics_wrapper_screen($screen = null): bool
+{
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash((string) $_GET['page'])) : '';
+    if ($page === 'meza-woocommerce-analytics') {
+        return true;
+    }
+
+    if ($screen === null && function_exists('get_current_screen')) {
+        $screen = get_current_screen();
+    }
+
+    if (!($screen instanceof WP_Screen)) {
+        return false;
+    }
+
+    $screen_id = (string) ($screen->id ?? '');
+    $screen_base = (string) ($screen->base ?? '');
+
+    return str_starts_with($screen_id, 'woocommerce_page_meza-woocommerce-analytics')
+        || str_starts_with($screen_base, 'woocommerce_page_meza-woocommerce-analytics')
+        || str_starts_with($screen_id, 'admin_page_meza-woocommerce-analytics')
+        || str_starts_with($screen_base, 'admin_page_meza-woocommerce-analytics');
 }
 
 function meza_get_woocommerce_analytics_nav_items(): array
@@ -3488,6 +3477,31 @@ function meza_get_woocommerce_analytics_nav_items(): array
     return $items;
 }
 
+function meza_normalize_woocommerce_analytics_path(string $path = ''): string
+{
+    $normalized_path = '/' . ltrim(trim($path), '/');
+    if ($normalized_path === '/') {
+        $normalized_path = '/analytics/overview';
+    }
+
+    $allowed_paths = array_map(
+        static fn(array $item): string => (string) ($item['path'] ?? ''),
+        meza_get_woocommerce_analytics_nav_items()
+    );
+
+    return in_array($normalized_path, $allowed_paths, true) ? $normalized_path : '/analytics/overview';
+}
+
+function meza_get_store_analytics_current_path(): string
+{
+    if (meza_is_store_analytics_wrapper_screen()) {
+        $path = isset($_GET['analytics_path']) ? (string) wp_unslash((string) $_GET['analytics_path']) : '';
+        return meza_normalize_woocommerce_analytics_path($path);
+    }
+
+    return meza_normalize_woocommerce_analytics_path(meza_get_wc_admin_path());
+}
+
 function meza_is_woocommerce_analytics_screen($screen = null): bool
 {
     if ($screen === null && function_exists('get_current_screen')) {
@@ -3519,23 +3533,225 @@ function meza_is_woocommerce_headerless_wc_admin_screen(): bool
         || $wc_admin_path === '/customers';
 }
 
-function meza_ensure_woocommerce_analytics_submenu(): void
+function meza_get_wc_admin_menu_slug(string $path = ''): string
 {
-    if (!meza_has_woocommerce_plugin() || !current_user_can('view_woocommerce_reports')) return;
+    $normalized_path = '/' . ltrim(trim($path), '/');
 
+    if ($normalized_path === '/') {
+        return 'wc-admin';
+    }
+
+    return 'wc-admin&path=' . $normalized_path;
+}
+
+function meza_get_wc_admin_url(string $path = ''): string
+{
+    return admin_url('admin.php?page=' . meza_get_wc_admin_menu_slug($path));
+}
+
+function meza_get_store_analytics_forwarded_query_args(): array
+{
+    $args = [];
+
+    foreach ($_GET as $key => $value) {
+        if (!is_scalar($value)) {
+            continue;
+        }
+
+        $raw_key = trim((string) $key);
+        if (
+            $raw_key === ''
+            || !preg_match('/^[A-Za-z0-9_-]+$/', $raw_key)
+            || in_array(strtolower($raw_key), ['page', 'path', 'analytics_path', 'meza_embed'], true)
+        ) {
+            continue;
+        }
+
+        $args[$raw_key] = wp_unslash((string) $value);
+    }
+
+    return $args;
+}
+
+function meza_get_store_analytics_url(string $path = '/analytics/overview', array $args = []): string
+{
+    $query_args = array_merge(
+        [
+            'page' => 'meza-woocommerce-analytics',
+            'analytics_path' => meza_normalize_woocommerce_analytics_path($path),
+        ],
+        $args
+    );
+
+    return add_query_arg($query_args, admin_url('admin.php'));
+}
+
+function meza_get_wc_admin_embed_url(string $path = '/analytics/overview', array $args = []): string
+{
+    $query_args = array_merge(
+        [
+            'page' => 'wc-admin',
+            'path' => meza_normalize_woocommerce_analytics_path($path),
+            'meza_embed' => '1',
+        ],
+        $args
+    );
+
+    return add_query_arg($query_args, admin_url('admin.php'));
+}
+
+function meza_is_woocommerce_menu_item(array $item, array $submenu_items = []): bool
+{
+    $slug = strtolower((string) ($item[2] ?? ''));
+    $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+    if (
+        $slug === 'woocommerce'
+        || $slug === 'wc-orders'
+        || str_contains($slug, 'page=wc-orders')
+        || in_array($title, ['woocommerce', 'store'], true)
+    ) {
+        return true;
+    }
+
+    foreach ($submenu_items as $submenu_item) {
+        if (!is_array($submenu_item)) {
+            continue;
+        }
+
+        $submenu_slug = strtolower((string) ($submenu_item[2] ?? ''));
+        if (
+            $submenu_slug === 'wc-orders'
+            || str_contains($submenu_slug, 'post_type=shop_order')
+            || str_contains($submenu_slug, '/customers')
+            || str_contains($submenu_slug, '/analytics/overview')
+            || str_contains($submenu_slug, 'page=wc-settings')
+            || str_contains($submenu_slug, 'page=wc-status')
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function meza_get_woocommerce_admin_parent_slug(): string
+{
+    global $menu, $submenu, $_wp_real_parent_file;
+
+    if (isset($_wp_real_parent_file['woocommerce']) && is_string($_wp_real_parent_file['woocommerce']) && $_wp_real_parent_file['woocommerce'] !== '') {
+        return $_wp_real_parent_file['woocommerce'];
+    }
+
+    if (is_array($menu)) {
+        foreach ($menu as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            $submenu_items = isset($submenu[$slug]) && is_array($submenu[$slug]) ? $submenu[$slug] : [];
+
+            if (meza_is_woocommerce_menu_item($item, $submenu_items)) {
+                return $slug;
+            }
+        }
+    }
+
+    return 'woocommerce';
+}
+
+function meza_get_woocommerce_submenu_parent_slug(): string
+{
     global $submenu;
-    if (!is_array($submenu)) {
+
+    if (is_array($submenu) && isset($submenu['woocommerce']) && is_array($submenu['woocommerce'])) {
+        return 'woocommerce';
+    }
+
+    if (is_array($submenu)) {
+        foreach ($submenu as $parent_slug => $items) {
+            if (!is_array($items)) {
+                continue;
+            }
+
+            foreach ($items as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $slug = strtolower((string) ($item[2] ?? ''));
+                if (
+                    $slug === 'wc-orders'
+                    || str_contains($slug, 'post_type=shop_order')
+                    || str_contains($slug, '/customers')
+                    || str_contains($slug, 'page=wc-settings')
+                    || str_contains($slug, 'page=wc-status')
+                ) {
+                    return (string) $parent_slug;
+                }
+            }
+        }
+    }
+
+    return meza_get_woocommerce_admin_parent_slug();
+}
+
+function meza_render_store_analytics_page(): void
+{
+    $current_path = meza_get_store_analytics_current_path();
+    $forwarded_args = meza_get_store_analytics_forwarded_query_args();
+    $iframe_url = meza_get_wc_admin_embed_url($current_path, $forwarded_args);
+
+    echo '<div class="wrap meza-woocommerce-analytics-nav-wrap"><nav class="nav-tab-wrapper" aria-label="Analytics">';
+
+    foreach (meza_get_woocommerce_analytics_nav_items() as $item) {
+        $path = (string) ($item['path'] ?? '');
+        $label = (string) ($item['label'] ?? '');
+        if ($path === '' || $label === '') {
+            continue;
+        }
+
+        $classes = ['nav-tab'];
+        if ($current_path === $path) {
+            $classes[] = 'nav-tab-active';
+        }
+
+        printf(
+            '<a class="%1$s" href="%2$s" data-meza-store-analytics-tab="%3$s">%4$s</a>',
+            esc_attr(implode(' ', $classes)),
+            esc_url(meza_get_store_analytics_url($path, $forwarded_args)),
+            esc_attr($path),
+            esc_html($label)
+        );
+    }
+
+    echo '</nav></div>';
+
+    printf(
+        '<div class="meza-woocommerce-analytics-embed-shell"><iframe id="meza-woocommerce-analytics-iframe" class="meza-woocommerce-analytics-iframe" src="%1$s" title="%2$s" loading="eager"></iframe></div>',
+        esc_url($iframe_url),
+        esc_attr__('Store Analytics', 'mz-mu-plugins')
+    );
+}
+
+add_action('admin_init', function (): void {
+    if (!is_admin() || meza_is_woocommerce_analytics_embed()) {
         return;
     }
 
-    $analytics_slug = 'wc-admin&path=/analytics/overview';
+    $wc_admin_path = meza_get_wc_admin_path();
+    if ($wc_admin_path === '' || !str_starts_with($wc_admin_path, '/analytics/')) {
+        return;
+    }
 
-    foreach ((array) ($submenu['woocommerce'] ?? []) as $item) {
-        if (!is_array($item)) continue;
+    wp_safe_redirect(meza_get_store_analytics_url($wc_admin_path, meza_get_store_analytics_forwarded_query_args()));
+    exit;
+}, 1);
 
-        if (strtolower((string) ($item[2] ?? '')) === $analytics_slug) {
-            return;
-        }
+add_action('admin_menu', function (): void {
+    if (!meza_has_woocommerce_plugin()) {
+        return;
     }
 
     add_submenu_page(
@@ -3543,20 +3759,211 @@ function meza_ensure_woocommerce_analytics_submenu(): void
         'Analytics',
         'Analytics',
         'view_woocommerce_reports',
-        $analytics_slug,
-        [\Automattic\WooCommerce\Admin\PageController::class, 'page_wrapper']
+        'meza-woocommerce-analytics',
+        'meza_render_store_analytics_page'
     );
-}
-add_action('admin_menu', 'meza_ensure_woocommerce_analytics_submenu', PHP_INT_MAX - 1);
+}, 1000);
 
-add_action('admin_head', function (): void {
-    if (!meza_is_woocommerce_analytics_screen()) {
+add_action('admin_menu', function (): void {
+    if (!meza_has_woocommerce_plugin()) {
         return;
     }
 
-    global $parent_file, $submenu_file;
-    $parent_file = 'woocommerce';
-    $submenu_file = 'wc-admin&path=/analytics/overview';
+    remove_submenu_page('woocommerce', meza_get_wc_admin_menu_slug('/analytics/overview'));
+    remove_submenu_page('woocommerce', 'admin.php?page=' . meza_get_wc_admin_menu_slug('/analytics/overview'));
+}, 1001);
+
+add_filter('woocommerce_analytics_report_menu_items', function ($report_pages) {
+    if (!is_array($report_pages)) {
+        return $report_pages;
+    }
+
+    foreach ($report_pages as &$report_page) {
+        if (!is_array($report_page)) {
+            continue;
+        }
+
+        $report_page_id = (string) ($report_page['id'] ?? '');
+
+        if ($report_page_id === 'woocommerce-analytics') {
+            $report_page['parent'] = 'woocommerce';
+            unset($report_page['icon'], $report_page['position']);
+        }
+    }
+    unset($report_page);
+
+    return $report_pages;
+}, 1000);
+
+add_action('admin_head', function (): void {
+    if (!(meza_is_store_analytics_wrapper_screen() || (meza_is_woocommerce_analytics_screen() && !meza_is_woocommerce_analytics_embed()))) {
+        return;
+    }
+
+    echo '<style id="meza-woocommerce-analytics-nav-css">' .
+        '.woocommerce_page_wc-admin #wpbody-content > .wrap.meza-woocommerce-analytics-nav-wrap:first-child,.woocommerce_page_meza-woocommerce-analytics #wpbody-content > .wrap.meza-woocommerce-analytics-nav-wrap:first-child{margin-top:0;}' .
+        '.woocommerce_page_meza-woocommerce-analytics #wpbody,.woocommerce_page_meza-woocommerce-analytics #wpbody-content{background:#f0f0f1!important;}' .
+        '.woocommerce_page_meza-woocommerce-analytics .wrap.meza-woocommerce-analytics-nav-wrap{margin:20px 20px 0 0;}' .
+        '.meza-woocommerce-analytics-nav-wrap{margin:0;}' .
+        '.meza-woocommerce-analytics-nav-wrap .nav-tab-wrapper,.woocommerce_page_wc-admin .wrap h2.nav-tab-wrapper,.woocommerce_page_wc-admin h1.nav-tab-wrapper,.woocommerce_page_meza-woocommerce-analytics .wrap h2.nav-tab-wrapper,.woocommerce_page_meza-woocommerce-analytics h1.nav-tab-wrapper{padding-top:0;}' .
+        '.meza-woocommerce-analytics-nav-wrap .nav-tab-wrapper{display:flex;align-items:flex-end;gap:0;margin:0;border-bottom:1px solid #c3c4c7;padding-left:8px;}' .
+        '.meza-woocommerce-analytics-nav-wrap .nav-tab{margin:0 6px -1px 0;border:1px solid #c3c4c7;border-bottom-color:#c3c4c7;background:#dcdcde;color:#50575e;font-weight:600;font-size:14px;line-height:1.71428571;padding:5px 10px;text-transform:capitalize;}' .
+        '.meza-woocommerce-analytics-nav-wrap .nav-tab:hover{background:#fff;color:#1d2327;}' .
+        '.meza-woocommerce-analytics-nav-wrap .nav-tab-active{background:#f0f0f1;border-bottom-color:#f0f0f1;color:#1d2327;}' .
+        '.meza-woocommerce-analytics-nav-wrap .nav-tab:focus{box-shadow:none;outline:2px solid #2271b1;outline-offset:-2px;}' .
+        '.woocommerce_page_meza-woocommerce-analytics #wpbody-content{padding-bottom:0;}' .
+        '.woocommerce_page_meza-woocommerce-analytics .meza-woocommerce-analytics-embed-shell{margin:-8px 0 0;background:transparent;border:0;box-shadow:none;}' .
+        '.woocommerce_page_meza-woocommerce-analytics .meza-woocommerce-analytics-iframe{display:block;width:100%;min-height:900px;border:0;background:transparent;}' .
+        '@media screen and (max-width:782px){' .
+        '.meza-woocommerce-analytics-nav-wrap{margin:0;overflow-x:auto;}' .
+        '.meza-woocommerce-analytics-nav-wrap .nav-tab-wrapper{flex-wrap:nowrap;width:max-content;min-width:100%;padding:0 0 0 8px;}' .
+        '.meza-woocommerce-analytics-nav-wrap .nav-tab{white-space:nowrap;padding:5px 10px;}' .
+        '}' .
+        '</style>';
+    ?>
+    <script id="meza-force-analytics-tab-navigation">
+        (() => {
+            const navigateToTab = (event) => {
+                const link = event.target instanceof Element ? event.target.closest('a[data-meza-analytics-tab]') : null;
+                if (!(link instanceof HTMLAnchorElement)) return;
+
+                event.preventDefault();
+                event.stopPropagation();
+                window.location.assign(link.href);
+            };
+
+            document.addEventListener('click', navigateToTab, true);
+        })();
+    </script>
+    <?php
+}, 1001);
+
+add_action('admin_head', function (): void {
+    if (!meza_is_woocommerce_analytics_embed()) {
+        return;
+    }
+
+    echo '<style id="meza-woocommerce-analytics-embed-css">' .
+        'html.wp-toolbar{padding-top:0!important;}' .
+        '#wpadminbar,#adminmenumain,#wpfooter,#screen-meta-links,#screen-meta,.notice,.update-nag,.wrap.meza-woocommerce-analytics-nav-wrap{display:none!important;}' .
+        '#wpcontent,#wpfooter{margin-left:0!important;padding-left:0!important;padding-right:0!important;}' .
+        '#wpbody-content{padding:0!important;}' .
+        'html,body.woocommerce_page_wc-admin,body.woocommerce_page_wc-admin #wpwrap,body.woocommerce_page_wc-admin #wpcontent,body.woocommerce_page_wc-admin #wpbody,body.woocommerce_page_wc-admin #wpbody-content{background:transparent!important;}' .
+        'body.woocommerce_page_wc-admin .wrap{margin-top:20px!important;}' .
+        'body.woocommerce_page_wc-admin.meza-wc-admin-analytics-embed .wrap{margin-top:30px!important;}' .
+        '.woocommerce-layout,.woocommerce-layout__main,.woocommerce-layout__primary,.woocommerce-layout__content,.woocommerce-layout__activity-panel-content,.woocommerce-layout__header-wrapper{margin-left:0!important;padding-left:0!important;padding-right:0!important;}' .
+        '.woocommerce-layout__main{padding-top:0!important;}' .
+        '.woocommerce-layout__content{padding-top:0!important;margin-top:0!important;}' .
+        '.woocommerce-layout__primary{margin-top:10px!important;}' .
+        '</style>';
+    ?>
+    <script id="meza-woocommerce-analytics-embed-state">
+        (() => {
+            const sendState = () => {
+                const url = new URL(window.location.href);
+                window.parent.postMessage({
+                    type: 'meza-wc-analytics-embed-state',
+                    href: url.toString(),
+                    path: url.searchParams.get('path') || '',
+                    height: Math.max(
+                        document.documentElement ? document.documentElement.scrollHeight : 0,
+                        document.body ? document.body.scrollHeight : 0
+                    ),
+                }, window.location.origin);
+            };
+
+            const wrapHistoryMethod = (method) => {
+                const original = history[method];
+                if (typeof original !== 'function') return;
+
+                history[method] = function (...args) {
+                    const result = original.apply(this, args);
+                    window.requestAnimationFrame(sendState);
+                    return result;
+                };
+            };
+
+            wrapHistoryMethod('pushState');
+            wrapHistoryMethod('replaceState');
+            window.addEventListener('popstate', sendState);
+            window.addEventListener('load', sendState);
+            window.addEventListener('resize', sendState);
+
+            const observer = new MutationObserver(() => {
+                window.requestAnimationFrame(sendState);
+            });
+
+            observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', sendState, { once: true });
+            } else {
+                sendState();
+            }
+        })();
+    </script>
+    <?php
+}, 1000);
+
+add_filter('admin_body_class', function (string $classes): string {
+    if (meza_is_woocommerce_analytics_embed()) {
+        $classes .= ' meza-wc-admin-analytics-embed';
+    }
+
+    if (meza_get_wc_admin_path() === '/customers') {
+        $classes .= ' meza-wc-admin-customers';
+    }
+
+    return trim($classes);
+}, 1000);
+
+add_filter('submenu_file', function ($submenu_file) {
+    if (!meza_is_woocommerce_analytics_screen()) {
+        return $submenu_file;
+    }
+
+    return meza_get_wc_admin_menu_slug('/analytics/overview');
+}, PHP_INT_MAX);
+
+add_action('admin_head', function (): void {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'woocommerce_page_wc-settings') {
+        return;
+    }
+
+    echo '<style id="meza-woocommerce-settings-tab-css">' .
+        'body.woocommerce_page_wc-settings #wpbody,body.woocommerce_page_wc-settings #wpbody-content{background:#f0f0f1!important;}' .
+        '.woocommerce_page_wc-settings .wrap.woocommerce{margin-top:0!important;}' .
+        'body.woocommerce_page_wc-settings #mainform{padding-left:0!important;padding-right:0!important;}' .
+        'body.woocommerce_page_wc-settings .nav-tab-wrapper{background:transparent!important;}' .
+        '.woocommerce_page_wc-settings form#mainform > .nav-tab-wrapper.woo-nav-tab-wrapper{display:flex!important;align-items:flex-end!important;gap:0!important;margin:20px 0 22px!important;border-bottom:1px solid #c3c4c7!important;padding:0 0 0 8px!important;}' .
+        '.woocommerce_page_wc-settings form#mainform > .nav-tab-wrapper.woo-nav-tab-wrapper .nav-tab{margin:0 6px -1px 0!important;border:1px solid #c3c4c7!important;border-bottom-color:#c3c4c7!important;background:#dcdcde!important;color:#50575e!important;font-weight:600!important;font-size:14px!important;line-height:1.71428571!important;padding:5px 10px!important;box-shadow:none!important;text-transform:capitalize!important;}' .
+        '.woocommerce_page_wc-settings form#mainform > .nav-tab-wrapper.woo-nav-tab-wrapper .nav-tab:hover{background:#fff!important;color:#1d2327!important;}' .
+        '.woocommerce_page_wc-settings form#mainform > .nav-tab-wrapper.woo-nav-tab-wrapper .nav-tab-active{background:#f0f0f1!important;border-bottom-color:#f0f0f1!important;color:#1d2327!important;}' .
+        '.woocommerce_page_wc-settings form#mainform > .nav-tab-wrapper.woo-nav-tab-wrapper .nav-tab:focus{box-shadow:none!important;outline:2px solid #2271b1!important;outline-offset:-2px!important;}' .
+        '@media screen and (max-width:782px){' .
+        '.woocommerce_page_wc-settings .wrap.woocommerce{margin-top:0!important;}' .
+        '.woocommerce_page_wc-settings form#mainform > .nav-tab-wrapper.woo-nav-tab-wrapper{margin:20px 0 18px!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding:0 0 0 8px!important;}' .
+        '.woocommerce_page_wc-settings form#mainform > .nav-tab-wrapper.woo-nav-tab-wrapper .nav-tab{white-space:nowrap!important;padding:5px 10px!important;}' .
+        '}' .
+        '</style>';
+}, 1001);
+
+add_action('admin_head', function (): void {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'woocommerce_page_wc-status') {
+        return;
+    }
+
+    echo '<style id="meza-woocommerce-status-tab-spacing">' .
+        '.woocommerce_page_wc-status .wrap.woocommerce{margin-top:0!important;}' .
+        '.woocommerce_page_wc-status .wrap.woocommerce > .nav-tab-wrapper.woo-nav-tab-wrapper{margin:20px 0 22px!important;padding:0!important;}' .
+        '.woocommerce_page_wc-status .wrap.woocommerce > .nav-tab-wrapper.woo-nav-tab-wrapper .nav-tab{padding:5px 10px!important;font-size:14px!important;line-height:1.71428571!important;text-transform:capitalize!important;}' .
+        '@media screen and (max-width:782px){' .
+        '.woocommerce_page_wc-status .wrap.woocommerce > .nav-tab-wrapper.woo-nav-tab-wrapper{margin:20px 0 18px!important;overflow-x:auto!important;flex-wrap:nowrap!important;}' .
+        '.woocommerce_page_wc-status .wrap.woocommerce > .nav-tab-wrapper.woo-nav-tab-wrapper .nav-tab{white-space:nowrap!important;padding:5px 10px!important;font-size:14px!important;line-height:1.71428571!important;text-transform:capitalize!important;}' .
+        '}' .
+        '</style>';
 }, 1001);
 
 add_action('admin_head', function (): void {
@@ -3566,6 +3973,12 @@ add_action('admin_head', function (): void {
 
     echo '<style id="meza-hide-woocommerce-embedded-header">' .
         '#woocommerce-embedded-root,.woocommerce-layout__header,.woocommerce-layout__header-wrapper,.woocommerce-layout-header{display:none!important;}' .
+        '.woocommerce_page_wc-admin .wrap.meza-woocommerce-customers-title-wrap h1{margin:0;font-size:23px;line-height:1.3;font-weight:400;}' .
+        '.woocommerce_page_wc-admin .woocommerce-layout__main{padding-right:0!important;}' .
+        '.woocommerce_page_wc-admin .woocommerce-layout__primary{margin-left:0!important;margin-top:20px!important;}' .
+        '.woocommerce_page_wc-admin.meza-wc-admin-customers .woocommerce-layout__primary{margin-top:12px!important;}' .
+        '.woocommerce_page_wc-admin .woocommerce-filters-label{margin-top:0!important;}' .
+        '.woocommerce_page_wc-admin .woocommerce-filters-filter{min-height:0!important;}' .
         '</style>';
     ?>
     <script id="meza-remove-woocommerce-embedded-header">
@@ -3603,6 +4016,14 @@ add_action('admin_head', function (): void {
     if (!is_admin()) {
         return;
     }
+
+    echo '<style id="meza-adminmenu-top-reset">#adminmenu{margin-top:0!important;}</style>';
+}, 999);
+
+add_action('admin_head', function (): void {
+    if (!is_admin()) {
+        return;
+    }
     ?>
     <script id="meza-hide-top-level-analytics-menu">
         (() => {
@@ -3633,50 +4054,155 @@ add_action('admin_head', function (): void {
     <?php
 }, 1002);
 
-function meza_ensure_woocommerce_customers_submenu(): void
-{
-    if (!meza_has_woocommerce_plugin() || !current_user_can('view_woocommerce_reports')) {
+add_action('admin_head', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+    ?>
+    <script id="meza-force-adminmenu-wc-admin-navigation">
+        (() => {
+            const navigateToAdminMenuLink = (event) => {
+                const link = event.target instanceof Element ? event.target.closest('#adminmenu a[href*="page=wc-admin"]') : null;
+                if (!(link instanceof HTMLAnchorElement)) return;
+
+                event.preventDefault();
+                event.stopPropagation();
+                window.location.assign(link.href);
+            };
+
+            document.addEventListener('click', navigateToAdminMenuLink, true);
+        })();
+    </script>
+    <?php
+}, 1003);
+
+add_action('in_admin_header', function (): void {
+    if (!meza_is_woocommerce_analytics_screen() || meza_is_woocommerce_analytics_embed()) {
         return;
     }
 
-    global $submenu;
-    if (!is_array($submenu)) {
+    $current_path = meza_get_store_analytics_current_path();
+
+    echo '<div class="wrap meza-woocommerce-analytics-nav-wrap"><nav class="nav-tab-wrapper" aria-label="Analytics">';
+
+    foreach (meza_get_woocommerce_analytics_nav_items() as $item) {
+        $path = (string) ($item['path'] ?? '');
+        $label = (string) ($item['label'] ?? '');
+        if ($path === '' || $label === '') continue;
+
+        $classes = ['nav-tab'];
+        if ($current_path === $path) {
+            $classes[] = 'nav-tab-active';
+        }
+
+        printf(
+            '<a class="%1$s" href="%2$s" data-meza-analytics-tab="1">%3$s</a>',
+            esc_attr(implode(' ', $classes)),
+            esc_url(meza_get_wc_admin_url($path)),
+            esc_html($label)
+        );
+    }
+
+    echo '</nav></div>';
+}, 20);
+
+add_action('in_admin_header', function (): void {
+    if (meza_get_wc_admin_path() !== '/customers') {
         return;
     }
 
-    $customers_slug = 'wc-admin&path=/customers';
+    echo '<div class="wrap meza-woocommerce-customers-title-wrap"><h1>Customers</h1></div>';
+}, 21);
 
-    foreach ((array) ($submenu['woocommerce'] ?? []) as $item) {
-        if (!is_array($item)) continue;
-
-        if (strtolower((string) ($item[2] ?? '')) === $customers_slug) {
-            return;
-        }
+add_action('admin_head', function (): void {
+    if (meza_is_woocommerce_analytics_screen() || !meza_is_woocommerce_headerless_wc_admin_screen()) {
+        return;
     }
 
-    add_submenu_page(
-        'woocommerce',
-        'Customers',
-        'Customers',
-        'view_woocommerce_reports',
-        $customers_slug,
-        static function (): void {
-            wp_safe_redirect(admin_url('admin.php?page=wc-admin&path=/customers'));
-            exit;
-        }
-    );
-}
-add_action('admin_menu', 'meza_ensure_woocommerce_customers_submenu', PHP_INT_MAX - 1);
+    echo '<style id="meza-hide-stale-woocommerce-analytics-nav">.meza-woocommerce-analytics-nav-wrap{display:none!important;}</style>';
+    ?>
+    <script id="meza-remove-stale-woocommerce-analytics-nav">
+        (() => {
+            const removeAnalyticsNav = () => {
+                document.querySelectorAll('.meza-woocommerce-analytics-nav-wrap').forEach((node) => {
+                    if (node instanceof HTMLElement) {
+                        node.remove();
+                    }
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', removeAnalyticsNav, { once: true });
+            } else {
+                removeAnalyticsNav();
+            }
+
+            const observer = new MutationObserver(() => removeAnalyticsNav());
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+        })();
+    </script>
+    <?php
+}, 1004);
+
+add_action('admin_footer', function (): void {
+    if (!meza_is_store_analytics_wrapper_screen()) {
+        return;
+    }
+    ?>
+    <script id="meza-store-analytics-wrapper-sync">
+        (() => {
+            const iframe = document.getElementById('meza-woocommerce-analytics-iframe');
+            if (!(iframe instanceof HTMLIFrameElement)) return;
+
+            const setActiveTab = (path) => {
+                document.querySelectorAll('[data-meza-store-analytics-tab]').forEach((link) => {
+                    if (!(link instanceof HTMLElement)) return;
+                    link.classList.toggle('nav-tab-active', link.dataset.mezaStoreAnalyticsTab === path);
+                });
+            };
+
+            window.addEventListener('message', (event) => {
+                if (event.origin !== window.location.origin || !event.data || event.data.type !== 'meza-wc-analytics-embed-state') {
+                    return;
+                }
+
+                const path = typeof event.data.path === 'string' ? event.data.path : '';
+                const href = typeof event.data.href === 'string' ? event.data.href : '';
+                const height = Number(event.data.height || 0);
+
+                if (height > 0) {
+                    iframe.style.height = `${Math.ceil(height)}px`;
+                }
+
+                if (!path.startsWith('/analytics/')) {
+                    if (href !== '') {
+                        window.location.assign(href);
+                    }
+                    return;
+                }
+
+                setActiveTab(path);
+
+                const nextUrl = new URL(window.location.href);
+                nextUrl.searchParams.set('analytics_path', path);
+                window.history.replaceState({}, '', nextUrl.toString());
+            });
+        })();
+    </script>
+    <?php
+}, 1001);
 
 function meza_reorder_woocommerce_submenu_items(): void
 {
     global $submenu;
 
-    if (!is_array($submenu) || !isset($submenu['woocommerce']) || !is_array($submenu['woocommerce'])) {
+    $parent_slug = meza_get_woocommerce_submenu_parent_slug();
+
+    if (!is_array($submenu) || !isset($submenu[$parent_slug]) || !is_array($submenu[$parent_slug])) {
         return;
     }
 
-    $items = array_values($submenu['woocommerce']);
+    $items = array_values($submenu[$parent_slug]);
     $ordered_buckets = [
         'orders' => null,
         'customers' => null,
@@ -3706,6 +4232,8 @@ function meza_reorder_woocommerce_submenu_items(): void
             || $slug === 'coupons-moved';
         $is_analytics = $slug === 'wc-admin&path=/analytics/overview'
             || $slug === 'admin.php?page=wc-admin&path=/analytics/overview'
+            || $slug === 'meza-woocommerce-analytics'
+            || $slug === 'admin.php?page=meza-woocommerce-analytics'
             || str_contains($slug, '/analytics/overview');
         $is_status = $slug === 'wc-status'
             || $slug === 'admin.php?page=wc-status'
@@ -3785,7 +4313,7 @@ function meza_reorder_woocommerce_submenu_items(): void
         $reordered_items[] = $home_item;
     }
 
-    $submenu['woocommerce'] = array_values($reordered_items);
+    $submenu[$parent_slug] = array_values($reordered_items);
 }
 add_action('admin_menu', 'meza_reorder_woocommerce_submenu_items', PHP_INT_MAX);
 
@@ -3936,22 +4464,13 @@ add_action('admin_head', function (): void {
 
 function meza_group_woocommerce_top_level_items(): void
 {
-    global $menu;
+    global $menu, $submenu;
 
     if (!is_array($menu) || empty($menu)) return;
 
-    $appearance_index = null;
-    foreach ($menu as $index => $item) {
-        if (is_array($item) && ((string) ($item[2] ?? '')) === 'themes.php') {
-            $appearance_index = (int) $index;
-            break;
-        }
-    }
-
-    if ($appearance_index === null) return;
-
     $ordered_items = [
         'woocommerce' => null,
+        'customer_sign_generator' => null,
     ];
     $matched_indexes = [];
 
@@ -3960,10 +4479,19 @@ function meza_group_woocommerce_top_level_items(): void
 
         $slug = strtolower((string) ($item[2] ?? ''));
         $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+        $submenu_items = isset($submenu[(string) ($item[2] ?? '')]) && is_array($submenu[(string) ($item[2] ?? '')]) ? $submenu[(string) ($item[2] ?? '')] : [];
 
-        if ($slug === 'woocommerce' || $title === 'woocommerce') {
+        if (meza_is_woocommerce_menu_item($item, $submenu_items)) {
             if ($ordered_items['woocommerce'] === null) {
                 $ordered_items['woocommerce'] = $item;
+            }
+            $matched_indexes[] = (int) $index;
+            continue;
+        }
+
+        if (str_contains($slug, 'client-sign-generator') || $title === 'customer sign generator') {
+            if ($ordered_items['customer_sign_generator'] === null) {
+                $ordered_items['customer_sign_generator'] = $item;
             }
             $matched_indexes[] = (int) $index;
             continue;
@@ -3991,11 +4519,9 @@ function meza_group_woocommerce_top_level_items(): void
         array_splice($menu, $matched_index, 1);
     }
 
-    foreach ($menu as $index => $item) {
-        if (is_array($item) && ((string) ($item[2] ?? '')) === 'themes.php') {
-            $appearance_index = (int) $index;
-            break;
-        }
+    $insert_index = meza_get_dashboard_group_end_index($menu);
+    if ($insert_index === null) {
+        $insert_index = 1;
     }
 
     $block = [
@@ -4020,10 +4546,10 @@ function meza_group_woocommerce_top_level_items(): void
         'wp-menu-separator',
     ];
 
-    array_splice($menu, $appearance_index, 0, $block);
+    array_splice($menu, $insert_index, 0, $block);
 }
 
-// Keep WooCommerce as a single top-level block directly above Appearance.
+// Keep Store and Customer Sign Generator together directly below the Dashboard group.
 add_action('admin_menu', 'meza_group_woocommerce_top_level_items', PHP_INT_MAX);
 
 function meza_group_post_settings_utilities(): void
@@ -4221,8 +4747,6 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_rebuild_content_menu_group();
     meza_reorder_dashboard_utility_items();
     meza_remove_yoast_admin_menu_entries();
-    meza_group_customer_sign_generator_under_dashboard();
-    meza_ensure_woocommerce_analytics_submenu();
     meza_remove_payments_admin_menu();
     meza_reorder_woocommerce_submenu_items();
     meza_remove_woocommerce_marketing_overview_submenu();
