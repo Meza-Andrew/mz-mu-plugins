@@ -3347,6 +3347,48 @@ function meza_remove_payments_admin_menu(): void
 // Remove Payments admin menu items globally, even after other plugins finish rebuilding menus.
 add_action('admin_menu', 'meza_remove_payments_admin_menu', PHP_INT_MAX - 1);
 
+function meza_remove_woocommerce_marketing_overview_submenu(): void
+{
+    global $submenu;
+
+    remove_submenu_page('woocommerce-marketing', 'admin.php?page=wc-admin&path=/marketing/overview');
+    remove_submenu_page('woocommerce-marketing', 'wc-admin&path=/marketing/overview');
+    remove_submenu_page('admin.php?page=wc-admin&path=/marketing', 'admin.php?page=wc-admin&path=/marketing/overview');
+    remove_submenu_page('admin.php?page=wc-admin&path=/marketing', 'wc-admin&path=/marketing/overview');
+
+    if (!is_array($submenu)) {
+        return;
+    }
+
+    foreach ($submenu as $parent_slug => &$items) {
+        if (!is_array($items)) continue;
+
+        $normalized_parent_slug = strtolower((string) $parent_slug);
+        $is_marketing_parent = $normalized_parent_slug === 'woocommerce-marketing'
+            || str_contains($normalized_parent_slug, 'wc-admin&path=/marketing');
+
+        if (!$is_marketing_parent) {
+            continue;
+        }
+
+        $items = array_values(array_filter($items, static function ($item): bool {
+            if (!is_array($item)) return true;
+
+            $slug = strtolower((string) ($item[2] ?? ''));
+            $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+            $is_overview_slug = $slug === 'admin.php?page=wc-admin&path=/marketing/overview'
+                || $slug === 'wc-admin&path=/marketing/overview'
+                || str_contains($slug, '/marketing/overview');
+
+            return !$is_overview_slug && $title !== 'overview';
+        }));
+    }
+    unset($items);
+}
+
+add_action('admin_menu', 'meza_remove_woocommerce_marketing_overview_submenu', PHP_INT_MAX - 1);
+
 function meza_group_woocommerce_top_level_items(): void
 {
     global $menu;
@@ -3634,6 +3676,7 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_group_customer_sign_generator_under_dashboard();
     meza_ensure_site_manager_woocommerce_analytics_submenu();
     meza_remove_payments_admin_menu();
+    meza_remove_woocommerce_marketing_overview_submenu();
     meza_group_woocommerce_top_level_items();
     meza_group_post_settings_utilities();
     meza_cleanup_menu_separators();
