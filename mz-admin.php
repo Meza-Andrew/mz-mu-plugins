@@ -1347,6 +1347,23 @@ add_action('current_screen', function ($screen) {
     }, 9999);
 });
 
+add_action('current_screen', function ($screen) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit-tags') return;
+
+    $taxonomy = (string) ($screen->taxonomy ?? '');
+    if ($taxonomy === '') return;
+
+    add_filter("manage_edit-{$taxonomy}_columns", function ($cols) {
+        if (!is_array($cols)) return $cols;
+
+        foreach (['wpseo-score', 'wpseo-score-readability'] as $column_id) {
+            if (array_key_exists($column_id, $cols)) unset($cols[$column_id]);
+        }
+
+        return $cols;
+    }, 9999);
+});
+
 // Keep Yoast metadata columns readable with fixed max widths.
 add_action('admin_head', function () {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
