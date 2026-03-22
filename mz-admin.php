@@ -744,7 +744,8 @@ function meza_register_datetime_sortable_columns(array $cols): array
     }
     $cols['mz_id'] = ['ID', true];
     $cols['mz_published'] = ['date', true];
-    $cols['mz_modified'] = ['modified', true];
+    // Match the global default admin post-list sort so the active header state is visible on first load.
+    $cols['mz_modified'] = ['modified', true, '', '', 'desc'];
     return $cols;
 }
 
@@ -3800,6 +3801,10 @@ add_action('admin_head-edit.php', function () {
         '.meza-admin-table-scroll table.wp-list-table tfoot th,.meza-admin-table-scroll table.wp-list-table tfoot td{position:sticky;bottom:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 1px 0 #ccd0d4;background-clip:padding-box;}' .
         '.meza-admin-table-scroll table.wp-list-table tbody td{position:relative;z-index:1;background-clip:padding-box;}' .
         '.meza-admin-table-scroll table.wp-list-table thead .check-column{position:sticky;top:0;left:0;z-index:6;background:#fff;border-right:none!important;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 -1px 0 #ccd0d4;background-clip:padding-box;}' .
+        '.wp-list-table thead th.sorted,.wp-list-table tfoot th.sorted{background:#eef4ff;color:#0a4b78;box-shadow:inset 0 -1px 0 #b8d3ea;}' .
+        '.wp-list-table th.sorted a,.wp-list-table th.sorted a:focus,.wp-list-table th.sorted a:visited{color:#0a4b78;}' .
+        '.wp-list-table th.sorted .sorting-indicators{opacity:1;}' .
+        '.wp-list-table th.sorted.asc .sorting-indicator.asc,.wp-list-table th.sorted.desc .sorting-indicator.desc{color:#0a4b78;opacity:1;}' .
         '.wp-list-table .column-mz_id{width:75px;}' .
         '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_organization_url{width:125px;max-width:125px;}' .
