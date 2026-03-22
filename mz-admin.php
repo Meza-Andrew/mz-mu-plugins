@@ -484,7 +484,7 @@ function meza_normalize_datetime_columns(array $columns): array
         if ($key === 'title') {
             $updated['mz_id'] = __('ID');
             if ($supports_thumbnail) $updated['mz_thumbnail'] = __('Image');
-            $updated[$key] = ($post_type === 'cta') ? __('Headline (H2)') : $label;
+            $updated[$key] = in_array($post_type, ['cta', 'form'], true) ? __('Headline (H2)') : $label;
             if ($show_organization_url_column) $updated['mz_organization_url'] = __('URL');
             if ($show_summary_column) $updated['mz_summary'] = ($post_type === 'cta') ? __('Subhead') : __('Summary');
             if ($show_form_slug_column) $updated['mz_slug'] = __('Slug');
