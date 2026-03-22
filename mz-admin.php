@@ -978,7 +978,7 @@ function meza_post_type_supports_menu_order_admin_column(string $post_type): boo
 
     $post_type_object = get_post_type_object($post_type);
     if (!($post_type_object instanceof WP_Post_Type)) return false;
-    if (empty($post_type_object->show_ui) || empty($post_type_object->show_in_menu)) return false;
+    if (empty($post_type_object->show_ui)) return false;
 
     return true;
 }
@@ -1597,15 +1597,14 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         }
 
         $thumb_id = (int) get_post_thumbnail_id((int) $post_id);
-        $thumb_html = get_the_post_thumbnail(
-            (int) $post_id,
-            'thumbnail',
-            [
-                'style' => 'width:100px;height:100px;max-width:100px;max-height:100px;object-fit:contain;object-position:center center;display:block;margin:0 auto;',
-                'loading' => 'lazy',
-                'decoding' => 'async',
-            ]
-        );
+        $thumb_attrs = [
+            'style' => 'width:100px;height:100px;max-width:100px;max-height:100px;object-fit:contain;object-position:center center;display:block;margin:0 auto;',
+            'loading' => 'lazy',
+            'decoding' => 'async',
+        ];
+        $thumb_html = ($thumb_id > 0)
+            ? wp_get_attachment_image($thumb_id, 'medium', false, $thumb_attrs)
+            : get_the_post_thumbnail((int) $post_id, 'medium', $thumb_attrs);
         if ($thumb_html === '') {
             echo '&mdash;';
             return;
@@ -5639,6 +5638,7 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_thumbnail{width:125px;}' .
         '.wp-list-table td.column-mz_thumbnail{vertical-align:top!important;}' .
+        '.wp-list-table td.column-mz_thumbnail img{width:100px!important;height:100px!important;max-width:100px!important;max-height:100px!important;object-fit:contain!important;object-position:center center!important;display:block!important;margin:0 auto!important;}' .
         '.wp-list-table .column-mz_thumbnail .row-actions{font-size:11px;line-height:1.1;}' .
         '.wp-list-table .column-title{width:225px;}' .
         '.wp-list-table .column-mz_modified,.wp-list-table .column-mz_published{width:225px;}' .
