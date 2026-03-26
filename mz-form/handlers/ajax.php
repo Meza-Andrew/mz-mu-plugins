@@ -1029,8 +1029,6 @@ if (!function_exists('send_form_data')) :
             // For messages:
             $max_hr = function_exists('size_format') ? size_format($max_bytes) : sprintf('%.2f MB', $max_bytes / 1048576);
 
-            error_log('Mailer max_bytes=' . $max_bytes . ' (' . $max_hr . ')');
-
             require_once ABSPATH . 'wp-admin/includes/file.php';
 
             foreach ($_FILES as $field_name => $file) {
