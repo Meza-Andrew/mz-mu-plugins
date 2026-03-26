@@ -34,7 +34,7 @@
 .mzf-submissions-table-wrap {
     display: block;
     width: 100%;
-    max-width: calc(100vw - 180px);
+    max-width: 100%;
     max-height: calc(100vh - 200px);
     min-width: 0;
     overflow: auto;
@@ -45,12 +45,52 @@
 .mzf-submissions-table {
     width: 100%;
     max-width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
 }
 
 .mzf-submissions-table th,
 .mzf-submissions-table td {
     vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* Keep submission table content readable even if another admin stylesheet
+   overrides generic wp-list-table colors for a specific user color scheme. */
+.mzf-submissions-table-wrap .mzf-submissions-table,
+.mzf-submissions-table-wrap .mzf-submissions-table th,
+.mzf-submissions-table-wrap .mzf-submissions-table td,
+.mzf-submissions-table-wrap .mzf-submissions-table td *,
+.mzf-submissions-table-wrap .mzf-submissions-table th * {
+    color: #1d2327 !important;
+    text-shadow: none;
+}
+
+.mzf-submissions-table-wrap .mzf-submissions-table th,
+.mzf-submissions-table-wrap .mzf-submissions-table td {
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.mzf-submissions-table-wrap .mzf-submissions-table a {
+    color: #2271b1 !important;
+}
+
+.mzf-submissions-table-wrap .mzf-submissions-table a:hover,
+.mzf-submissions-table-wrap .mzf-submissions-table a:focus {
+    color: #135e96 !important;
+}
+
+.mzf-submissions-table-wrap .mzf-submissions-table .dashicons {
+    color: inherit;
+}
+
+.mzf-submissions-table-wrap .mzf-submissions-table input[type="checkbox"] {
+    appearance: auto;
+    -webkit-appearance: checkbox;
+    opacity: 1 !important;
+    visibility: visible !important;
 }
 
 .mzf-submissions-table th.column-cb {
@@ -74,51 +114,64 @@
 }
 
 .mzf-submissions-table th.column-mzf_lock {
-    width: 75px;
-    min-width: 75px;
-    max-width: 75px;
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    text-align: center;
+}
+
+.mzf-submissions-table td.column-mzf_lock {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
     text-align: center;
 }
 
 .mzf-submissions-table th.column-mzf_date {
-    width: 225px;
-    min-width: 225px;
-    max-width: 225px;
+    width: 130px;
+    min-width: 130px;
+    max-width: 130px;
 }
 
-.mzf-submissions-table th.column-mzf_first_name {
-    width: 225px;
-    min-width: 225px;
-    max-width: 225px;
+.mzf-submissions-table th.column-mzf_name,
+.mzf-submissions-table td.column-mzf_name {
+    width: 160px;
+    min-width: 160px;
+    max-width: 160px;
 }
 
-.mzf-submissions-table th.column-mzf_last_name {
-    width: 150px;
-    min-width: 150px;
-    max-width: 150px;
-}
-
-.mzf-submissions-table th.column-mzf_email {
-    width: 225px;
-    min-width: 225px;
-    max-width: 225px;
+.mzf-submissions-table th.column-mzf_email,
+.mzf-submissions-table td.column-mzf_email {
+    width: 190px;
+    min-width: 190px;
+    max-width: 190px;
 }
 
 .mzf-submissions-table th.column-mzf_phone,
+.mzf-submissions-table td.column-mzf_phone,
 .mzf-submissions-table th.column-mzf_zip,
+.mzf-submissions-table td.column-mzf_zip,
 .mzf-submissions-table th.column-mzf_page,
+.mzf-submissions-table td.column-mzf_page,
 .mzf-submissions-table th.column-mzf_form,
+.mzf-submissions-table td.column-mzf_form,
 .mzf-submissions-table th.column-mzf_crm {
-    width: 175px;
-    min-width: 175px;
-    max-width: 175px;
+    width: 115px;
+    min-width: 115px;
+    max-width: 115px;
+}
+
+.mzf-submissions-table td.column-mzf_crm {
+    width: 115px;
+    min-width: 115px;
+    max-width: 115px;
 }
 
 .mzf-submissions-table th.column-mzf_status,
 .mzf-submissions-table td.column-mzf_status {
-    width: 150px;
-    min-width: 150px;
-    max-width: 150px;
+    width: 110px;
+    min-width: 110px;
+    max-width: 110px;
 }
 
 .mzf-status-link {
