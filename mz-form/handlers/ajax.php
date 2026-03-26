@@ -1068,6 +1068,15 @@ if (!function_exists('send_form_data')) :
                     $size = (int)($single['size'] ?? 0);
 
                     if ((int)$single['size'] > $max_bytes) {
+                        $size_hr = function_exists('size_format') ? size_format($size) : sprintf('%.2f MB', $size / 1048576);
+                        error_log(sprintf(
+                            'Upload rejected: %s exceeded max file size. attempted=%s (%d bytes) max=%s (%d bytes)',
+                            $name,
+                            $size_hr,
+                            $size,
+                            $max_hr,
+                            $max_bytes
+                        ));
                         $file_errors[] = sprintf(
                             '%s exceeds the maximum allowed size of %s.',
                             esc_html($single['name'] ?? 'file'),
