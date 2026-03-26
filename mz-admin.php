@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DS Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.32
+ * Version: 1.1.35
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1399,7 +1399,6 @@ function meza_get_menu_order_admin_column_excluded_post_types(): array
         'event',
         'events',
         'mzf_submission',
-        'post',
         'review',
         'reviews',
         'shop_coupon',
@@ -1791,6 +1790,39 @@ function meza_product_admin_column_is_visible(WP_Screen $screen, array $aliases)
     return false;
 }
 
+function meza_get_edit_screen_for_post_type(string $post_type): ?WP_Screen
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') return null;
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (
+        $screen instanceof WP_Screen
+        && $screen->base === 'edit'
+        && (string) ($screen->post_type ?? '') === $post_type
+    ) {
+        return $screen;
+    }
+
+    if (!function_exists('convert_to_screen')) return null;
+
+    $screen = convert_to_screen("edit-{$post_type}");
+    return ($screen instanceof WP_Screen) ? $screen : null;
+}
+
+function meza_post_type_menu_order_admin_column_is_visible(string $post_type): bool
+{
+    if (!meza_post_type_supports_menu_order_admin_column($post_type)) return false;
+
+    $screen = meza_get_edit_screen_for_post_type($post_type);
+    if (!($screen instanceof WP_Screen)) {
+        return meza_post_type_menu_order_admin_column_is_default_visible($post_type);
+    }
+
+    $hidden = array_map('strval', get_hidden_columns($screen));
+    return !in_array('mz_menu_order', $hidden, true);
+}
+
 function meza_get_forced_hidden_product_admin_columns(): array
 {
     return [
@@ -1914,7 +1946,9 @@ function meza_register_datetime_sortable_columns(array $cols): array
         $cols['mz_slug'] = ['name', true];
     }
     if (meza_post_type_supports_menu_order_admin_column($post_type)) {
-        $cols['mz_menu_order'] = ['menu_order', false];
+        $cols['mz_menu_order'] = meza_post_type_menu_order_admin_column_is_visible($post_type)
+            ? ['menu_order', false, '', '', 'asc']
+            : ['menu_order', false];
     }
     $cols['mz_id'] = ['ID', true];
     $cols['mz_published'] = ['date', true];
@@ -2666,6 +2700,21 @@ add_action('pre_get_posts', function (WP_Query $q) {
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
     if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php') return;
+
+    $post_type = (string) $q->get('post_type');
+    if (
+        meza_post_type_menu_order_admin_column_is_visible($post_type)
+    ) {
+        if (isset($_GET['orderby']) && $_GET['orderby'] !== '') return;
+
+        $q->set('orderby', 'menu_order');
+        $q->set('order', 'ASC');
+        $_GET['orderby'] = 'menu_order';
+        $_REQUEST['orderby'] = 'menu_order';
+        $_GET['order'] = 'asc';
+        $_REQUEST['order'] = 'asc';
+        return;
+    }
 
     // Respect explicit user sorting from list-table header clicks.
     if (isset($_GET['orderby']) && $_GET['orderby'] !== '') return;
