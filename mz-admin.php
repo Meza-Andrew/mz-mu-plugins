@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DS Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.35
+ * Version: 1.1.47
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1399,8 +1399,6 @@ function meza_get_menu_order_admin_column_excluded_post_types(): array
         'event',
         'events',
         'mzf_submission',
-        'review',
-        'reviews',
         'shop_coupon',
         'shop_order',
         'shop_order_refund',
@@ -1476,6 +1474,67 @@ function meza_should_show_posts_categories_column(): bool
     return ((int) $category_ids[0] !== $default_category_id);
 }
 
+function meza_post_type_shows_summary_admin_column(string $post_type): bool
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') return false;
+    if (in_array($post_type, ['page', 'attachment'], true)) return false;
+    if (meza_is_acf_admin_post_type($post_type)) return false;
+
+    return (
+        $post_type === 'profile'
+        || $post_type === 'organization'
+        || $post_type === 'cta'
+        || meza_post_type_has_permalink($post_type)
+    );
+}
+
+function meza_get_post_type_thumbnail_admin_column_label(string $post_type): string
+{
+    $post_type = trim($post_type);
+
+    if ($post_type === 'profile') {
+        return __('Photo');
+    }
+
+    if ($post_type === 'organization') {
+        return __('Logo');
+    }
+
+    if ($post_type !== '' && ($post_type === 'post' || $post_type === 'page' || meza_post_type_has_permalink($post_type))) {
+        return __('Share Image');
+    }
+
+    return __('Image');
+}
+
+function meza_get_post_type_summary_admin_column_label(string $post_type): string
+{
+    return (trim($post_type) === 'cta') ? __('Subhead') : __('Summary');
+}
+
+function meza_get_post_edit_panel_admin_label_map(string $post_type): array
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') return [];
+
+    $labels = [];
+
+    if (post_type_supports($post_type, 'thumbnail')) {
+        $labels['postimagediv'] = meza_get_post_type_thumbnail_admin_column_label($post_type);
+    }
+
+    if (post_type_supports($post_type, 'excerpt')) {
+        $labels['postexcerpt'] = meza_get_post_type_summary_admin_column_label($post_type);
+    }
+
+    if ($post_type === 'form') {
+        $labels['slugdiv'] = __('Slug');
+    }
+
+    return $labels;
+}
+
 function meza_normalize_datetime_columns(array $columns): array
 {
     if (!is_array($columns)) return $columns;
@@ -1491,22 +1550,8 @@ function meza_normalize_datetime_columns(array $columns): array
     $show_organization_url_column = ($post_type === 'organization');
     $show_form_slug_column = ($post_type === 'form');
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
-    $show_summary_column = (
-        $post_type !== ''
-        && !in_array($post_type, ['page', 'attachment'], true)
-        && !meza_is_acf_admin_post_type($post_type)
-        && (
-            $post_type === 'profile'
-            || $post_type === 'organization'
-            || $post_type === 'cta'
-            || meza_post_type_has_permalink($post_type)
-        )
-    );
-    $thumbnail_column_label = match ($post_type) {
-        'profile' => __('Photo'),
-        'organization' => __('Logo'),
-        default => __('Image'),
-    };
+    $show_summary_column = meza_post_type_shows_summary_admin_column($post_type);
+    $thumbnail_column_label = meza_get_post_type_thumbnail_admin_column_label($post_type);
     $title_column_label = (
         in_array($post_type, ['profile', 'organization'], true)
             ? __('Name')
@@ -1545,7 +1590,7 @@ function meza_normalize_datetime_columns(array $columns): array
             if ($supports_thumbnail) $updated['mz_thumbnail'] = $thumbnail_column_label;
             $updated[$key] = $title_column_label ?? $label;
             if ($show_organization_url_column) $updated['mz_organization_url'] = __('URL');
-            if ($show_summary_column) $updated['mz_summary'] = ($post_type === 'cta') ? __('Subhead') : __('Summary');
+            if ($show_summary_column) $updated['mz_summary'] = meza_get_post_type_summary_admin_column_label($post_type);
             if ($show_cta_link_column) $updated['mz_cta_link'] = __('Link');
             if ($show_form_slug_column) $updated['mz_slug'] = __('Slug');
             if ($show_form_recipients_column) $updated['mz_form_recipients'] = __('Recipients');
@@ -1691,7 +1736,7 @@ function meza_customize_product_admin_columns(array $columns): array
     unset($columns['thumb']);
 
     $columns['mz_menu_order'] = __('#');
-    $columns['mz_thumbnail'] = __('Image');
+    $columns['mz_thumbnail'] = meza_get_post_type_thumbnail_admin_column_label('product');
     $columns['mz_product_type'] = __('Product Type');
     $columns['mz_page_link'] = __('Link');
     $columns['mz_page_headline'] = __('Page Headline (H1)');
@@ -1728,7 +1773,7 @@ function meza_customize_product_admin_columns(array $columns): array
     $append(['cb']);
     $append(['mz_menu_order'], 'mz_menu_order', __('#'));
     $append(['featured'], 'featured', __('Featured'));
-    $append(['mz_thumbnail'], 'mz_thumbnail', __('Image'));
+    $append(['mz_thumbnail'], 'mz_thumbnail', meza_get_post_type_thumbnail_admin_column_label('product'));
     $append(['name', 'title'], 'name', __('Name'));
     $append(['price'], 'price', __('Price'));
     $append(['is_in_stock'], 'is_in_stock', __('Stock'));
@@ -1753,7 +1798,7 @@ function meza_get_product_admin_columns_for_visibility(): array
     $columns = [
         'cb' => '<input type="checkbox" />',
         'mz_menu_order' => __('#'),
-        'mz_thumbnail' => __('Image'),
+        'mz_thumbnail' => meza_get_post_type_thumbnail_admin_column_label('product'),
         'name' => __('Name'),
         'sku' => __('SKU'),
         'is_in_stock' => __('Stock'),
@@ -3759,10 +3804,12 @@ add_filter('hidden_meta_boxes', function ($hidden, $screen) {
 
 // Form edit screen: render core Slug in ACF's sortable "After Title" area.
 add_action('add_meta_boxes_form', function ($post) {
+    $panel_labels = meza_get_post_edit_panel_admin_label_map('form');
+
     remove_meta_box('slugdiv', 'form', 'normal');
     add_meta_box(
         'slugdiv',
-        __('Slug'),
+        $panel_labels['slugdiv'] ?? __('Slug'),
         'post_slug_meta_box',
         'form',
         'acf_after_title',
@@ -3776,6 +3823,8 @@ add_action('add_meta_boxes', function (string $post_type, $post): void {
     if (!($post instanceof WP_Post)) return;
     if (!post_type_supports($post_type, 'excerpt')) return;
 
+    $panel_labels = meza_get_post_edit_panel_admin_label_map($post_type);
+
     remove_meta_box('postexcerpt', $post_type, 'side');
     remove_meta_box('postexcerpt', $post_type, 'normal');
     remove_meta_box('postexcerpt', $post_type, 'acf_after_title');
@@ -3784,7 +3833,7 @@ add_action('add_meta_boxes', function (string $post_type, $post): void {
 
     add_meta_box(
         'postexcerpt',
-        __('Summary'),
+        $panel_labels['postexcerpt'] ?? __('Excerpt'),
         'meza_post_summary_meta_box',
         $post_type,
         $preferred_context,
@@ -3794,8 +3843,29 @@ add_action('add_meta_boxes', function (string $post_type, $post): void {
 }, 1000, 2);
 
 // Classic editor side column: for non-pages keep Featured Image ahead of Attributes.
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'post') return;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if ($post_type === '') return;
+
+    $panel_labels = meza_get_post_edit_panel_admin_label_map($post_type);
+    $post_type_object = get_post_type_object($post_type);
+    if (!($post_type_object instanceof WP_Post_Type)) return;
+
+    if (isset($panel_labels['postimagediv'])) {
+        $post_type_object->labels->featured_image = $panel_labels['postimagediv'];
+    }
+    if (!isset($post_type_object->labels->attributes)) return;
+
+    $post_type_object->labels->attributes = __('Attributes');
+}, 1000);
+
 add_action('add_meta_boxes', function (string $post_type, $post): void {
     if (!($post instanceof WP_Post)) return;
+
+    $panel_labels = meza_get_post_edit_panel_admin_label_map($post_type);
+
     if ($post_type === 'page') return;
 
     $post_type_object = get_post_type_object($post_type);
@@ -3807,11 +3877,11 @@ add_action('add_meta_boxes', function (string $post_type, $post): void {
         remove_meta_box('pageparentdiv', $post_type, 'side');
         add_meta_box(
             'pageparentdiv',
-            $post_type_object->labels->attributes,
+            __('Attributes'),
             'page_attributes_meta_box',
             null,
             'side',
-            'low',
+            'core',
             ['__back_compat_meta_box' => true]
         );
     }
@@ -3820,8 +3890,10 @@ add_action('add_meta_boxes', function (string $post_type, $post): void {
 function meza_post_summary_meta_box($post): void
 {
     if (!($post instanceof WP_Post)) return;
+    $panel_labels = meza_get_post_edit_panel_admin_label_map((string) $post->post_type);
+    $label = $panel_labels['postexcerpt'] ?? __('Excerpt');
     ?>
-    <label class="screen-reader-text" for="excerpt"><?php _e('Summary'); ?></label>
+    <label class="screen-reader-text" for="excerpt"><?php echo esc_html($label); ?></label>
     <textarea rows="1" cols="40" name="excerpt" id="excerpt"><?php echo $post->post_excerpt; // textarea_escaped ?></textarea>
     <?php
 }
@@ -3838,21 +3910,7 @@ function meza_sort_metabox_ids_with_priority(array $box_ids, array $priority_ids
         return $id !== '';
     }));
 
-    $ordered = [];
-
-    foreach ($priority_ids as $priority_id) {
-        if (in_array($priority_id, $normalized_ids, true)) {
-            $ordered[] = $priority_id;
-        }
-    }
-
-    foreach ($normalized_ids as $box_id) {
-        if (!in_array($box_id, $ordered, true)) {
-            $ordered[] = $box_id;
-        }
-    }
-
-    return array_values(array_unique($ordered));
+    return array_values(array_unique(array_merge($priority_ids, $normalized_ids)));
 }
 
 function meza_get_side_metabox_priority_ids(string $post_type): array
@@ -3952,7 +4010,7 @@ add_action('current_screen', function ($screen): void {
     $preferred_context = $has_excerpt_support
         ? (post_type_supports($post_type, 'editor') ? 'meza_after_editor' : 'acf_after_title')
         : '';
-    $migration_key = 'meza_excerpt_box_initialized_v7_' . $screen_id;
+    $migration_key = 'meza_excerpt_box_initialized_v11_' . $screen_id;
     $should_bootstrap = !get_user_meta($user_id, $migration_key, true);
 
     add_filter('default_user_option_meta-box-order_' . $screen_id, function ($default_order) use ($should_bootstrap, $preferred_context, $post_type) {
@@ -4685,8 +4743,7 @@ function meza_get_dashboard_group_end_index(array $menu): ?int
             || str_contains($slug, 'site-kit')
             || str_contains($slug, 'wpseo')
             || str_contains($slug, 'wordpress-seo')
-            || str_contains($slug, 'updraft')
-            || in_array($title, ['web analytics', 'site kit', 'site kit by google', 'seo', 'backups', 'updraft', 'updraftplus'], true);
+            || in_array($title, ['web analytics', 'site kit', 'site kit by google', 'seo'], true);
 
         if ($is_separator || !$is_dashboard_utility) {
             break;
@@ -5906,8 +5963,6 @@ function meza_group_post_settings_utilities(): void
         $is_make = str_contains($slug, 'ds-make')
             || $label === 'make';
 
-        if ((int) $index <= $settings_index && !$is_make && !$is_hosting) continue;
-
         $is_acf = $slug === 'edit.php?post_type=acf-field-group'
             || $label === 'acf';
         $is_mail = str_contains($slug, 'wp-mail-smtp')
@@ -5933,12 +5988,12 @@ function meza_group_post_settings_utilities(): void
 
     usort($utility_items, static function (array $a, array $b): int {
         $priority = [
-            'backups' => 5,
-            'updraft' => 5,
-            'updraftplus' => 5,
             'acf' => 10,
-            'mail' => 20,
-            'security' => 30,
+            'backups' => 10,
+            'updraft' => 10,
+            'updraftplus' => 10,
+            'mail' => 10,
+            'security' => 10,
             'hosting' => 40,
             'godaddy' => 40,
             'make' => 50,
@@ -7961,6 +8016,8 @@ add_filter('the_content', 'meza_acf_clean_wysiwyg_output');
  */
 add_action('admin_footer-post.php', 'meza_render_yoast_panel_state_script');
 add_action('admin_footer-post-new.php', 'meza_render_yoast_panel_state_script');
+add_action('admin_footer-post.php', 'meza_render_post_panel_label_sync_script', 1001);
+add_action('admin_footer-post-new.php', 'meza_render_post_panel_label_sync_script', 1001);
 
 function meza_render_yoast_panel_state_script(): void
 {
@@ -7968,12 +8025,32 @@ function meza_render_yoast_panel_state_script(): void
     if (!($screen instanceof WP_Screen) || (string) ($screen->base ?? '') !== 'post') {
         return;
     }
+
+    $post_type = (string) ($screen->post_type ?? '');
+    $taxonomy_labels = [];
+
+    if ($post_type !== '') {
+        $taxonomies = get_object_taxonomies($post_type, 'objects');
+        if (is_array($taxonomies)) {
+            foreach ($taxonomies as $taxonomy) {
+                if (!($taxonomy instanceof WP_Taxonomy) || empty($taxonomy->show_ui)) continue;
+
+                $taxonomy_labels[] = strtolower(trim(wp_strip_all_tags((string) ($taxonomy->labels->name ?? ''))));
+                $taxonomy_labels[] = strtolower(trim(wp_strip_all_tags((string) ($taxonomy->labels->singular_name ?? ''))));
+            }
+        }
+    }
+
+    $taxonomy_labels = array_values(array_unique(array_filter($taxonomy_labels, static function ($label): bool {
+        return $label !== '';
+    })));
     ?>
     <script id="meza-yoast-panel-state">
         (() => {
             const storageKey = 'mezaYoastPanelOpen';
             const defaultOpen = false;
             const boundTargets = new WeakSet();
+            const taxonomyLabels = <?php echo wp_json_encode($taxonomy_labels); ?> || [];
 
             const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
             const isElement = (value) => value instanceof HTMLElement;
@@ -8008,6 +8085,11 @@ function meza_render_yoast_panel_state_script(): void
                 return button ? getBlockEditorPanel(button) : null;
             };
             const getBlockEditorPanelSiblings = (container) => Array.from(container?.children || []).filter(isElement);
+            const isTaxonomyPanelButton = ({ label, controls, labelledBy }) => {
+                if (controls.includes('taxonomy') || labelledBy.includes('taxonomy')) return true;
+
+                return taxonomyLabels.some((taxonomyLabel) => taxonomyLabel !== '' && label === taxonomyLabel);
+            };
 
             const readPreference = () => {
                 try {
@@ -8083,12 +8165,40 @@ function meza_render_yoast_panel_state_script(): void
                 const container = featuredImagePanel.parentElement;
                 const anchor = findBlockEditorPanelByButton(({ label, controls, labelledBy }) => (
                     label === 'summary'
+                    || label === 'excerpt'
+                    || label === 'subhead'
                     || label.includes('publish')
                     || label.includes('status')
                     || controls.includes('post-status')
                     || labelledBy.includes('post-status')
                 ));
+                const taxonomyAnchor = findBlockEditorPanelByButton(isTaxonomyPanelButton);
                 const siblings = getBlockEditorPanelSiblings(container);
+                const anchorIndex = (isElement(anchor) && anchor.parentElement === container)
+                    ? siblings.indexOf(anchor)
+                    : -1;
+                const taxonomyIndex = (
+                    isElement(taxonomyAnchor)
+                    && taxonomyAnchor.parentElement === container
+                    && taxonomyAnchor !== featuredImagePanel
+                )
+                    ? siblings.indexOf(taxonomyAnchor)
+                    : -1;
+
+                if (anchorIndex >= 0) {
+                    if (anchor.nextElementSibling !== featuredImagePanel) {
+                        anchor.after(featuredImagePanel);
+                    }
+                    return;
+                }
+
+                if (taxonomyIndex >= 0) {
+                    if (taxonomyAnchor.previousElementSibling !== featuredImagePanel) {
+                        container.insertBefore(featuredImagePanel, taxonomyAnchor);
+                    }
+                    return;
+                }
+
                 const fallbackAnchor = siblings.find((panel) => panel !== featuredImagePanel) || null;
                 const targetAnchor = (isElement(anchor) && anchor.parentElement === container && anchor !== featuredImagePanel)
                     ? anchor
@@ -8100,8 +8210,68 @@ function meza_render_yoast_panel_state_script(): void
                 targetAnchor.after(featuredImagePanel);
             };
 
+            const moveBlockEditorAttributesAheadOfTaxonomies = () => {
+                const attributesPanel = findBlockEditorPanelByButton(({ label, controls, labelledBy }) => (
+                    label === 'attributes'
+                    || controls.includes('page-attributes')
+                    || labelledBy.includes('page-attributes')
+                ));
+
+                if (!isElement(attributesPanel) || !isElement(attributesPanel.parentElement)) return;
+
+                const container = attributesPanel.parentElement;
+                const taxonomyAnchor = findBlockEditorPanelByButton(isTaxonomyPanelButton);
+                if (
+                    !isElement(taxonomyAnchor)
+                    || taxonomyAnchor.parentElement !== container
+                    || taxonomyAnchor === attributesPanel
+                ) {
+                    return;
+                }
+
+                const featuredImagePanel = findBlockEditorPanelByButton(({ label, controls, labelledBy }) => (
+                    label.includes('featured image')
+                    || controls.includes('featured-image')
+                    || labelledBy.includes('featured-image')
+                ));
+                const publishAnchor = findBlockEditorPanelByButton(({ label, controls, labelledBy }) => (
+                    label === 'summary'
+                    || label === 'excerpt'
+                    || label === 'subhead'
+                    || label.includes('publish')
+                    || label.includes('status')
+                    || controls.includes('post-status')
+                    || labelledBy.includes('post-status')
+                ));
+                const anchor = (
+                    isElement(featuredImagePanel)
+                    && featuredImagePanel.parentElement === container
+                    && featuredImagePanel !== attributesPanel
+                )
+                    ? featuredImagePanel
+                    : (
+                        isElement(publishAnchor)
+                        && publishAnchor.parentElement === container
+                        && publishAnchor !== attributesPanel
+                            ? publishAnchor
+                            : null
+                    );
+
+                if (isElement(anchor)) {
+                    if (anchor.nextElementSibling !== attributesPanel) {
+                        anchor.after(attributesPanel);
+                    }
+                    return;
+                }
+
+                if (taxonomyAnchor.previousElementSibling !== attributesPanel) {
+                    container.insertBefore(attributesPanel, taxonomyAnchor);
+                }
+            };
+
             const moveYoastToBottom = () => {
                 moveBlockEditorFeaturedImageUnderPublish();
+                moveBlockEditorAttributesAheadOfTaxonomies();
                 moveClassicYoastToBottom();
                 moveBlockEditorYoastToBottom();
             };
@@ -8209,6 +8379,116 @@ function meza_render_yoast_panel_state_script(): void
                 window.setTimeout(syncTarget, 300);
                 window.setTimeout(syncTarget, 1000);
                 window.setTimeout(syncTarget, 2000);
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', start, { once: true });
+            } else {
+                start();
+            }
+        })();
+    </script>
+    <?php
+}
+
+function meza_render_post_panel_label_sync_script(): void
+{
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || (string) ($screen->base ?? '') !== 'post') {
+        return;
+    }
+
+    $post_type = (string) ($screen->post_type ?? '');
+    $panel_labels = meza_get_post_edit_panel_admin_label_map($post_type);
+    if (empty($panel_labels)) {
+        return;
+    }
+
+    $replacements = [];
+
+    if (isset($panel_labels['postimagediv'])) {
+        $replacements[] = [
+            'from' => ['featured image'],
+            'to' => (string) $panel_labels['postimagediv'],
+        ];
+    }
+
+    if (isset($panel_labels['postexcerpt'])) {
+        $replacements[] = [
+            'from' => ['excerpt', 'summary', 'subhead'],
+            'to' => (string) $panel_labels['postexcerpt'],
+        ];
+    }
+
+    if (isset($panel_labels['slugdiv'])) {
+        $replacements[] = [
+            'from' => ['slug'],
+            'to' => (string) $panel_labels['slugdiv'],
+        ];
+    }
+
+    if (empty($replacements)) {
+        return;
+    }
+
+    ?>
+    <script id="meza-post-panel-label-sync">
+        (() => {
+            const replacements = <?php echo wp_json_encode($replacements); ?>;
+            const scopeSelectors = [
+                '.edit-post-sidebar',
+                '.editor-sidebar',
+                '.interface-complementary-area',
+                '.preferences-modal',
+                '.edit-post-preferences-modal',
+                '.components-modal__frame',
+            ];
+            const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            const isElement = (value) => value instanceof HTMLElement;
+            const shouldReplaceText = (nodeValue, replacement) => replacement.from.includes(normalize(nodeValue));
+
+            const syncScope = (scope) => {
+                if (!isElement(scope)) return;
+
+                const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+                let node = walker.nextNode();
+
+                while (node) {
+                    const parent = node.parentElement;
+                    if (parent && !parent.closest('[contenteditable="true"], .block-editor-block-list__layout, .editor-styles-wrapper')) {
+                        const text = normalize(node.nodeValue);
+
+                        for (const replacement of replacements) {
+                            if (!shouldReplaceText(text, replacement)) continue;
+                            node.nodeValue = replacement.to;
+                            break;
+                        }
+                    }
+
+                    node = walker.nextNode();
+                }
+            };
+
+            const syncLabels = () => {
+                scopeSelectors.forEach((selector) => {
+                    document.querySelectorAll(selector).forEach(syncScope);
+                });
+            };
+
+            const start = () => {
+                syncLabels();
+
+                const observer = new MutationObserver(() => {
+                    window.requestAnimationFrame(syncLabels);
+                });
+
+                observer.observe(document.body, {
+                    childList: true,
+                    subtree: true,
+                });
+
+                window.setTimeout(syncLabels, 300);
+                window.setTimeout(syncLabels, 1000);
             };
 
             if (document.readyState === 'loading') {
