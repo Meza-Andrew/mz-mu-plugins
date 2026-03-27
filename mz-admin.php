@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DS Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.47
+ * Version: 1.1.140
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -56,6 +56,19 @@ if (!function_exists('meza_events_editor_role_key')) {
     function meza_events_editor_role_key(): string
     {
         return 'events_editor';
+    }
+}
+
+if (!function_exists('meza_site_has_subscribers')) {
+    function meza_site_has_subscribers(): bool
+    {
+        if (!function_exists('count_users')) {
+            return false;
+        }
+
+        $counts = count_users();
+
+        return !empty($counts['avail_roles']['subscriber']);
     }
 }
 
@@ -1267,18 +1280,30 @@ add_action('admin_menu', function (): void {
 }, PHP_INT_MAX);
 
 add_action('admin_head-themes.php', function (): void {
-    if (current_user_can('switch_themes')) {
-        return;
-    }
-    ?>
+?>
     <style>
-        .wrap .wp-heading-inline .title-count.theme-count,
-        .theme-browser .theme.active .theme-actions .customize,
-        .theme-overlay .theme-actions .customize {
+        .themes-php .wrap .wp-heading-inline {
+            margin-bottom: 8px !important;
+        }
+        .themes-php .wrap .wp-heading-inline .title-count.theme-count {
+            display: none !important;
+        }
+        .themes-php .theme-browser {
+            margin-top: 12px !important;
+            padding-top: 0 !important;
+        }
+        .themes-php .page-title-action,
+        .themes-php .search-form.search-themes,
+        .themes-php .theme.add-new-theme,
+        .themes-php .theme-browser .theme.active .theme-actions,
+        .themes-php .theme-browser .theme.active .theme-actions .customize,
+        .themes-php .theme-browser .theme .theme-actions .load-customize,
+        .themes-php .theme-overlay .theme-actions .customize,
+        .themes-php .theme-overlay .theme-actions .load-customize {
             display: none !important;
         }
     </style>
-    <?php
+<?php
 });
 
 add_action('admin_menu', function (): void {
@@ -1342,6 +1367,76 @@ function meza_get_user_first_name_by_id(int $user_id): string
 
     return trim((string) $user->display_name);
 }
+
+function meza_get_first_name_from_user_data(array $userdata): string
+{
+    return trim((string) ($userdata['first_name'] ?? ''));
+}
+
+function meza_user_display_name_should_default_to_first_name(?WP_User $user, string $first_name): bool
+{
+    $first_name = trim($first_name);
+    if ($first_name === '') {
+        return false;
+    }
+
+    if (!($user instanceof WP_User)) {
+        return true;
+    }
+
+    $display_name = trim((string) $user->display_name);
+    if ($display_name === '' || $display_name === $first_name) {
+        return true;
+    }
+
+    $nickname = trim((string) get_user_meta($user->ID, 'nickname', true));
+    $fallbacks = array_filter(array_unique([
+        trim((string) $user->user_login),
+        trim((string) $user->user_nicename),
+        trim((string) $user->user_email),
+        $nickname,
+    ]));
+
+    return in_array($display_name, $fallbacks, true);
+}
+
+add_filter('wp_pre_insert_user_data', function (array $data, bool $update, ?int $user_id, array $userdata): array {
+    $first_name = meza_get_first_name_from_user_data($userdata);
+    if ($first_name === '') {
+        return $data;
+    }
+
+    if (!$update) {
+        $data['display_name'] = $first_name;
+        return $data;
+    }
+
+    $user = ($user_id && $user_id > 0) ? get_userdata($user_id) : null;
+    if (meza_user_display_name_should_default_to_first_name($user instanceof WP_User ? $user : null, $first_name)) {
+        $data['display_name'] = $first_name;
+    }
+
+    return $data;
+}, 1000, 4);
+
+add_filter('insert_user_meta', function (array $meta, WP_User $user, bool $update, array $userdata): array {
+    $first_name = meza_get_first_name_from_user_data($userdata);
+    if ($first_name === '') {
+        return $meta;
+    }
+
+    $nickname = trim((string) ($meta['nickname'] ?? ''));
+    if (
+        !$update
+        || $nickname === ''
+        || $nickname === (string) $user->user_login
+        || $nickname === (string) $user->user_nicename
+    ) {
+        $meta['nickname'] = $first_name;
+    }
+
+    return $meta;
+}, 1000, 4);
 
 function meza_get_user_email_by_id(int $user_id): string
 {
@@ -1410,6 +1505,7 @@ function meza_get_menu_order_admin_column_default_visible_post_types(): array
     // Project-level defaults. Update this list for future client projects.
     return [
         'customer',
+        'faq',
         'location',
         'office',
         'organization',
@@ -1451,6 +1547,12 @@ function meza_post_type_uses_native_admin_columns(string $post_type): bool
 function meza_post_has_permalink(int $post_id): bool
 {
     if ($post_id <= 0) return false;
+
+    $post_type = (string) get_post_type($post_id);
+    if ($post_type === '' || !meza_post_type_has_permalink($post_type)) {
+        return false;
+    }
+
     $url = get_permalink($post_id);
     return is_string($url) && $url !== '' && !is_wp_error($url);
 }
@@ -1474,19 +1576,36 @@ function meza_should_show_posts_categories_column(): bool
     return ((int) $category_ids[0] !== $default_category_id);
 }
 
+add_filter('disable_categories_dropdown', function ($disable, $post_type) {
+    if ((string) $post_type !== 'post') {
+        return $disable;
+    }
+
+    return meza_should_show_posts_categories_column() ? $disable : true;
+}, 200, 2);
+
+add_filter('wp_mail_smtp_tasks_tasks_action_scheduler_tools_plugin_exceptions', function ($plugins) {
+    $plugins = is_array($plugins) ? $plugins : [];
+    $plugins[] = 'wp-mail-smtp/wp_mail_smtp.php';
+    return array_values(array_unique(array_map('strval', $plugins)));
+}, 200);
+
+add_filter('wp_mail_smtp_tasks_admin_hide_as_menu', function ($hide_as_menu) {
+    if (current_user_can('manage_options')) {
+        return false;
+    }
+
+    return $hide_as_menu;
+}, 200);
+
 function meza_post_type_shows_summary_admin_column(string $post_type): bool
 {
     $post_type = trim($post_type);
     if ($post_type === '') return false;
-    if (in_array($post_type, ['page', 'attachment'], true)) return false;
+    if ($post_type === 'attachment') return false;
     if (meza_is_acf_admin_post_type($post_type)) return false;
 
-    return (
-        $post_type === 'profile'
-        || $post_type === 'organization'
-        || $post_type === 'cta'
-        || meza_post_type_has_permalink($post_type)
-    );
+    return post_type_supports($post_type, 'excerpt');
 }
 
 function meza_get_post_type_thumbnail_admin_column_label(string $post_type): string
@@ -1508,9 +1627,18 @@ function meza_get_post_type_thumbnail_admin_column_label(string $post_type): str
     return __('Image');
 }
 
+function meza_post_type_uses_share_image_admin_column(string $post_type): bool
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') return false;
+    if (in_array($post_type, ['profile', 'organization'], true)) return false;
+
+    return ($post_type === 'post' || $post_type === 'page' || meza_post_type_has_permalink($post_type));
+}
+
 function meza_get_post_type_summary_admin_column_label(string $post_type): string
 {
-    return (trim($post_type) === 'cta') ? __('Subhead') : __('Summary');
+    return in_array(trim($post_type), ['cta', 'form'], true) ? __('Subhead') : __('Summary');
 }
 
 function meza_get_post_edit_panel_admin_label_map(string $post_type): array
@@ -1535,6 +1663,740 @@ function meza_get_post_edit_panel_admin_label_map(string $post_type): array
     return $labels;
 }
 
+function meza_get_profile_title_column_value(int $post_id): string
+{
+    if ($post_id <= 0) return '';
+
+    $field_keys = [
+        'title',
+        'job_title',
+        'position',
+        'role',
+        'profile_title',
+    ];
+
+    if (function_exists('get_field')) {
+        foreach ($field_keys as $field_key) {
+            $value = get_field($field_key, $post_id);
+            if (is_string($value) && trim($value) !== '') {
+                return trim(wp_strip_all_tags($value));
+            }
+        }
+    }
+
+    foreach ($field_keys as $field_key) {
+        $value = get_post_meta($post_id, $field_key, true);
+        if (is_string($value) && trim($value) !== '') {
+            return trim(wp_strip_all_tags($value));
+        }
+    }
+
+    return '';
+}
+
+function meza_get_profile_primary_link_url(int $post_id): string
+{
+    if ($post_id <= 0) return '';
+
+    if (function_exists('get_field')) {
+        $links = get_field('links', $post_id);
+        if (is_array($links)) {
+            foreach ($links as $link_row) {
+                if (!is_array($link_row)) continue;
+
+                $url = trim((string) ($link_row['url'] ?? ''));
+                if ($url !== '') {
+                    return $url;
+                }
+            }
+        }
+    }
+
+    $url = trim((string) get_post_meta($post_id, 'links_0_url', true));
+    if ($url !== '') {
+        return $url;
+    }
+
+    return '';
+}
+
+function meza_get_post_link_field_url(int $post_id, array $field_keys): string
+{
+    if ($post_id <= 0) return '';
+
+    if (function_exists('get_field')) {
+        foreach ($field_keys as $field_key) {
+            $value = get_field((string) $field_key, $post_id);
+            if (is_array($value) && is_string($value['url'] ?? null) && trim((string) $value['url']) !== '') {
+                return trim((string) $value['url']);
+            }
+            if (is_string($value) && trim($value) !== '') {
+                return trim($value);
+            }
+        }
+    }
+
+    foreach ($field_keys as $field_key) {
+        $value = get_post_meta($post_id, (string) $field_key, true);
+        if (is_array($value) && is_string($value['url'] ?? null) && trim((string) $value['url']) !== '') {
+            return trim((string) $value['url']);
+        }
+        if (is_string($value) && trim($value) !== '') {
+            return trim($value);
+        }
+    }
+
+    return '';
+}
+
+function meza_get_post_yoast_meta_value(int $post_id, array $meta_keys): string
+{
+    if ($post_id <= 0) return '';
+
+    foreach ($meta_keys as $meta_key) {
+        $value = get_post_meta($post_id, (string) $meta_key, true);
+        if (!is_string($value)) continue;
+
+        $value = trim(wp_strip_all_tags($value));
+        if ($value !== '') {
+            return $value;
+        }
+    }
+
+    return '';
+}
+
+function meza_get_post_yoast_share_title_value(int $post_id): string
+{
+    return meza_get_post_yoast_meta_value($post_id, [
+        '_yoast_wpseo_opengraph-title',
+        '_yoast_wpseo_twitter-title',
+        '_yoast_wpseo_title',
+    ]);
+}
+
+function meza_get_post_yoast_share_description_value(int $post_id): string
+{
+    return meza_get_post_yoast_meta_value($post_id, [
+        '_yoast_wpseo_opengraph-description',
+        '_yoast_wpseo_twitter-description',
+        '_yoast_wpseo_metadesc',
+    ]);
+}
+
+function meza_get_admin_link_column_display_text(string $url): string
+{
+    $url = trim($url);
+    if ($url === '') return '';
+
+    if (str_starts_with($url, '/') || str_starts_with($url, '?') || str_starts_with($url, '#')) {
+        return $url;
+    }
+
+    $parsed_url = wp_parse_url($url);
+    if (!is_array($parsed_url) || empty($parsed_url['host'])) {
+        return $url;
+    }
+
+    $home_url = home_url('/');
+    $parsed_home_url = wp_parse_url($home_url);
+    if (!is_array($parsed_home_url) || empty($parsed_home_url['host'])) {
+        return $url;
+    }
+
+    $normalize_host = static function (string $host): string {
+        $host = strtolower(trim($host));
+        return str_starts_with($host, 'www.') ? substr($host, 4) : $host;
+    };
+
+    if ($normalize_host((string) $parsed_url['host']) !== $normalize_host((string) $parsed_home_url['host'])) {
+        return $url;
+    }
+
+    $display = (string) ($parsed_url['path'] ?? '/');
+    if ($display === '') {
+        $display = '/';
+    }
+    if ($display !== '/' && str_ends_with($display, '/')) {
+        $display = rtrim($display, '/');
+        if ($display === '') {
+            $display = '/';
+        }
+    }
+
+    if (isset($parsed_url['query']) && $parsed_url['query'] !== '') {
+        $display .= '?' . $parsed_url['query'];
+    }
+
+    if (isset($parsed_url['fragment']) && $parsed_url['fragment'] !== '') {
+        $display .= '#' . $parsed_url['fragment'];
+    }
+
+    return $display;
+}
+
+function meza_customize_users_admin_columns(array $columns): array
+{
+    if (!is_array($columns)) return $columns;
+
+    unset($columns['posts']);
+    $columns['website'] = __('Website');
+    if (current_user_can('edit_users')) {
+        $columns['last_login'] = __('Last Login');
+    }
+
+    $ordered = [];
+
+    if (array_key_exists('cb', $columns)) {
+        $ordered['cb'] = $columns['cb'];
+        unset($columns['cb']);
+    }
+
+    foreach (['username', 'name', 'email', 'role', 'website', 'last_login'] as $key) {
+        if (array_key_exists($key, $columns)) {
+            $ordered[$key] = $columns[$key];
+            unset($columns[$key]);
+        }
+    }
+
+    foreach ($columns as $key => $label) {
+        $ordered[$key] = $label;
+    }
+
+    return $ordered;
+}
+
+function meza_users_last_login_admin_column_is_visible(): bool
+{
+    if (!current_user_can('edit_users')) {
+        return false;
+    }
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'users') {
+        return true;
+    }
+
+    $hidden = array_map('strval', get_hidden_columns($screen));
+    return !in_array('last_login', $hidden, true);
+}
+
+function meza_render_users_website_admin_column(string $output, string $column_name, int $user_id): string
+{
+    if ($column_name === 'last_login') {
+        if (!current_user_can('edit_users')) {
+            return $output;
+        }
+
+        $timestamp = (int) get_user_meta($user_id, 'meza_last_login', true);
+        if ($timestamp <= 0) {
+            return '&mdash;';
+        }
+
+        $format = trim(get_option('date_format') . ' ' . get_option('time_format'));
+        return esc_html(wp_date($format !== '' ? $format : 'F j, Y g:i a', $timestamp));
+    }
+
+    if ($column_name !== 'website') {
+        return $output;
+    }
+
+    $url = trim((string) get_the_author_meta('user_url', $user_id));
+    if ($url === '') {
+        return '&mdash;';
+    }
+
+    return '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html(meza_get_admin_link_column_display_text($url)) . '</a>';
+}
+
+add_filter('manage_users_columns', 'meza_customize_users_admin_columns', 1000);
+add_filter('manage_users_custom_column', 'meza_render_users_website_admin_column', 100, 3);
+add_filter('manage_users_sortable_columns', function (array $columns): array {
+    if (!current_user_can('edit_users')) {
+        return $columns;
+    }
+
+    $columns['last_login'] = [
+        'last_login',
+        true,
+        __('Last Login'),
+        __('Table ordered by Last Login.'),
+        meza_users_last_login_admin_column_is_visible() ? 'desc' : false,
+    ];
+
+    return $columns;
+}, 1000);
+
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'users') {
+        return;
+    }
+
+    if (!current_user_can('edit_users')) {
+        return;
+    }
+
+    $orderby = isset($_REQUEST['orderby']) ? trim((string) wp_unslash($_REQUEST['orderby'])) : '';
+    if ($orderby !== '') {
+        return;
+    }
+
+    if (!meza_users_last_login_admin_column_is_visible()) {
+        return;
+    }
+
+    $_GET['orderby'] = 'last_login';
+    $_GET['order'] = 'desc';
+    $_REQUEST['orderby'] = 'last_login';
+    $_REQUEST['order'] = 'desc';
+}, 5);
+
+add_action('pre_get_users', function (WP_User_Query $query): void {
+    if (!is_admin() || !current_user_can('edit_users')) {
+        return;
+    }
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'users') {
+        return;
+    }
+
+    $orderby = trim((string) $query->get('orderby'));
+    $order = strtoupper((string) $query->get('order'));
+    $order = ($order === 'ASC') ? 'ASC' : 'DESC';
+
+    if ($orderby === 'last_login') {
+        $query->set('meza_last_login_sort_order', $order);
+        return;
+    }
+
+    if ($orderby !== '' || !meza_users_last_login_admin_column_is_visible()) {
+        return;
+    }
+
+    $query->set('meza_last_login_sort_order', 'DESC');
+}, 1000);
+
+add_action('pre_user_query', function (WP_User_Query $query): void {
+    $sort_order = strtoupper((string) $query->get('meza_last_login_sort_order'));
+    if (!in_array($sort_order, ['ASC', 'DESC'], true)) {
+        return;
+    }
+
+    global $wpdb;
+
+    $alias = 'meza_last_login_meta';
+    if (!str_contains((string) $query->query_from, $alias)) {
+        $query->query_from .= $wpdb->prepare(
+            " LEFT JOIN {$wpdb->usermeta} AS {$alias} ON ({$wpdb->users}.ID = {$alias}.user_id AND {$alias}.meta_key = %s)",
+            'meza_last_login'
+        );
+    }
+
+    $query->query_orderby = "ORDER BY CASE WHEN {$alias}.meta_value IS NULL OR {$alias}.meta_value = '' THEN 1 ELSE 0 END ASC, {$alias}.meta_value+0 {$sort_order}, {$wpdb->users}.user_login ASC";
+}, 1000);
+
+add_action('wp_login', function (string $user_login, WP_User $user): void {
+    update_user_meta($user->ID, 'meza_last_login', time());
+}, 10, 2);
+
+function meza_get_faq_repeater_item_count(int $post_id): int
+{
+    if ($post_id <= 0) return 0;
+
+    $field_keys = ['faqs', 'faq'];
+
+    if (function_exists('get_field')) {
+        foreach ($field_keys as $field_key) {
+            $faq_items = get_field($field_key, $post_id);
+            if (is_array($faq_items)) {
+                return count($faq_items);
+            }
+        }
+    }
+
+    foreach ($field_keys as $field_key) {
+        $stored_count = get_post_meta($post_id, $field_key, true);
+        if (is_numeric($stored_count)) {
+            return max(0, (int) $stored_count);
+        }
+    }
+
+    return 0;
+}
+
+function meza_get_page_form_ids(int $post_id): array
+{
+    if ($post_id <= 0) return [];
+
+    $form_ids = [];
+    $append_form_ids = static function ($value) use (&$form_ids): void {
+        if (is_array($value) && isset($value['form'])) {
+            $value = $value['form'];
+        }
+
+        if (is_array($value)) {
+            foreach ($value as $entry) {
+                if (is_numeric($entry)) {
+                    $form_ids[] = (int) $entry;
+                    continue;
+                }
+                if ($entry instanceof WP_Post) {
+                    $form_ids[] = (int) $entry->ID;
+                    continue;
+                }
+                if (is_array($entry)) {
+                    $entry_id = (int) ($entry['ID'] ?? $entry['id'] ?? 0);
+                    if ($entry_id > 0) {
+                        $form_ids[] = $entry_id;
+                    }
+                }
+            }
+            return;
+        }
+
+        if (is_numeric($value)) {
+            $form_ids[] = (int) $value;
+            return;
+        }
+
+        if ($value instanceof WP_Post) {
+            $form_ids[] = (int) $value->ID;
+        }
+    };
+
+    if (function_exists('get_field')) {
+        $acf_form_candidates = [
+            get_field('section_form_form', $post_id),
+            get_field('form', $post_id),
+            get_field('section_form', $post_id),
+        ];
+
+        foreach ($acf_form_candidates as $acf_form) {
+            $append_form_ids($acf_form);
+        }
+    }
+
+    if (empty($form_ids)) {
+        $raw_form_candidates = [
+            get_post_meta($post_id, 'section_form_form', true),
+            get_post_meta($post_id, 'form', true),
+            get_post_meta($post_id, 'section_form', true),
+        ];
+
+        foreach ($raw_form_candidates as $raw_form) {
+            $append_form_ids($raw_form);
+        }
+    }
+
+    $form_ids = array_values(array_unique(array_filter(array_map('intval', $form_ids), function ($id) {
+        return $id > 0 && get_post_type($id) === 'form';
+    })));
+
+    return $form_ids;
+}
+
+function meza_insert_admin_column_after(array $columns, string $after_key, string $new_key, string $label): array
+{
+    if (array_key_exists($new_key, $columns)) {
+        $columns[$new_key] = $label;
+        return $columns;
+    }
+
+    $updated = [];
+    $inserted = false;
+
+    foreach ($columns as $key => $value) {
+        $updated[$key] = $value;
+        if ((string) $key === $after_key) {
+            $updated[$new_key] = $label;
+            $inserted = true;
+        }
+    }
+
+    if (!$inserted) {
+        $updated[$new_key] = $label;
+    }
+
+    return $updated;
+}
+
+function meza_ensure_summary_admin_column(array $columns, string $post_type): array
+{
+    if (!is_array($columns)) {
+        $columns = [];
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type === '' || !meza_post_type_shows_summary_admin_column($post_type)) {
+        unset($columns['mz_summary']);
+        return $columns;
+    }
+
+    $label = meza_get_post_type_summary_admin_column_label($post_type);
+
+    if (array_key_exists('mz_summary', $columns)) {
+        $columns['mz_summary'] = $label;
+        return $columns;
+    }
+
+    return meza_insert_admin_column_after($columns, 'title', 'mz_summary', $label);
+}
+
+function meza_ensure_menu_order_admin_column(array $columns, string $post_type): array
+{
+    if (!is_array($columns)) {
+        $columns = [];
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type === '' || !meza_post_type_supports_menu_order_admin_column($post_type)) {
+        unset($columns['mz_menu_order']);
+        return $columns;
+    }
+
+    if (array_key_exists('mz_menu_order', $columns)) {
+        $columns['mz_menu_order'] = __('#');
+        return $columns;
+    }
+
+    if (array_key_exists('mz_id', $columns)) {
+        return meza_insert_admin_column_after($columns, 'mz_id', 'mz_menu_order', __('#'));
+    }
+
+    if (array_key_exists('cb', $columns)) {
+        return meza_insert_admin_column_after($columns, 'cb', 'mz_menu_order', __('#'));
+    }
+
+    return meza_insert_admin_column_after($columns, 'title', 'mz_menu_order', __('#'));
+}
+
+function meza_place_summary_before_taxonomy_columns(array $columns, string $post_type): array
+{
+    if (!is_array($columns)) {
+        return [];
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type === '' || !array_key_exists('mz_summary', $columns)) {
+        return $columns;
+    }
+
+    $taxonomy_keys = [];
+    $taxonomies = get_object_taxonomies($post_type, 'names');
+    if (is_array($taxonomies)) {
+        foreach ($taxonomies as $taxonomy) {
+            $taxonomy = trim((string) $taxonomy);
+            if ($taxonomy === '') continue;
+            $taxonomy_keys[$taxonomy] = true;
+            $taxonomy_keys["taxonomy-{$taxonomy}"] = true;
+        }
+    }
+    $taxonomy_keys['categories'] = true;
+
+    $summary_label = $columns['mz_summary'];
+    unset($columns['mz_summary']);
+
+    $updated = [];
+    $inserted = false;
+
+    foreach ($columns as $key => $label) {
+        if (!$inserted && isset($taxonomy_keys[(string) $key])) {
+            $updated['mz_summary'] = $summary_label;
+            $inserted = true;
+        }
+
+        $updated[$key] = $label;
+    }
+
+    if (!$inserted) {
+        $updated['mz_summary'] = $summary_label;
+    }
+
+    return $updated;
+}
+
+add_filter('ac/headings', function ($headings, $list_screen) {
+    if (!is_array($headings)) {
+        $headings = [];
+    }
+
+    if (!is_object($list_screen) || !method_exists($list_screen, 'get_post_type')) {
+        return $headings;
+    }
+
+    $post_type = trim((string) $list_screen->get_post_type());
+    if ($post_type === '') {
+        return $headings;
+    }
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (
+        $screen instanceof WP_Screen
+        && $screen->base === 'edit'
+        && (string) ($screen->post_type ?? '') === $post_type
+    ) {
+        $headings = meza_normalize_admin_columns_managed_headings($headings, $post_type);
+    }
+
+    $headings = meza_ensure_menu_order_admin_column($headings, $post_type);
+    $headings = meza_ensure_summary_admin_column($headings, $post_type);
+    return meza_place_summary_before_taxonomy_columns($headings, $post_type);
+}, 1000, 2);
+
+function meza_page_form_admin_column_is_default_visible(string $post_type): bool
+{
+    return (trim($post_type) === 'page');
+}
+
+function meza_summary_admin_column_is_default_visible(string $post_type): bool
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') return false;
+    if (!meza_post_type_shows_summary_admin_column($post_type)) return false;
+
+    return ($post_type !== 'page');
+}
+
+function meza_normalize_admin_columns_managed_headings(array $columns, string $post_type): array
+{
+    if (!is_array($columns)) return $columns;
+
+    $post_type = trim($post_type);
+    if ($post_type === '') return $columns;
+
+    $supports_thumbnail = post_type_supports($post_type, 'thumbnail');
+    $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
+    $show_cta_link_column = ($post_type === 'cta');
+    $show_cta_secondary_link_column = ($post_type === 'cta');
+    $show_form_recipients_column = ($post_type === 'form');
+    $show_organization_url_column = ($post_type === 'organization');
+    $show_profile_title_column = ($post_type === 'profile');
+    $show_profile_link_column = ($post_type === 'profile');
+    $show_faq_count_column = ($post_type === 'faq');
+    $show_form_slug_column = ($post_type === 'form');
+    $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
+    $show_summary_column = meza_post_type_shows_summary_admin_column($post_type);
+    $show_yoast_share_columns = defined('WPSEO_VERSION') && (
+        array_key_exists('wpseo-title', $columns)
+        || array_key_exists('wpseo-metadesc', $columns)
+        || array_key_exists('mz_share_title', $columns)
+        || array_key_exists('mz_share_description', $columns)
+    );
+    $thumbnail_column_label = meza_get_post_type_thumbnail_admin_column_label($post_type);
+    $title_column_label = (
+        in_array($post_type, ['profile', 'organization'], true)
+        ? __('Name')
+        : (in_array($post_type, ['cta', 'form'], true) ? __('Headline (H2)') : null)
+    );
+
+    foreach ($columns as $key => $label) {
+        switch ((string) $key) {
+            case 'title':
+                $columns[$key] = $title_column_label ?? $label;
+                break;
+            case 'slug':
+                unset($columns[$key]);
+                break;
+            case 'mz_menu_order':
+                $columns[$key] = __('#');
+                break;
+            case 'mz_thumbnail':
+                if (!$supports_thumbnail) {
+                    unset($columns[$key]);
+                } else {
+                    $columns[$key] = $thumbnail_column_label;
+                }
+                break;
+            case 'mz_profile_title':
+                if (!$show_profile_title_column) unset($columns[$key]);
+                else $columns[$key] = __('Title');
+                break;
+            case 'mz_profile_link':
+                if (!$show_profile_link_column) unset($columns[$key]);
+                else $columns[$key] = __('Link');
+                break;
+            case 'mz_organization_url':
+                if (!$show_organization_url_column) unset($columns[$key]);
+                else $columns[$key] = __('Link');
+                break;
+            case 'mz_summary':
+                if (!$show_summary_column) unset($columns[$key]);
+                else $columns[$key] = meza_get_post_type_summary_admin_column_label($post_type);
+                break;
+            case 'mz_faq_count':
+                if (!$show_faq_count_column) unset($columns[$key]);
+                else $columns[$key] = __('Count');
+                break;
+            case 'mz_cta_link':
+                if (!$show_cta_link_column) unset($columns[$key]);
+                else $columns[$key] = __('Link (Primary)');
+                break;
+            case 'mz_cta_secondary_link':
+                if (!$show_cta_secondary_link_column) unset($columns[$key]);
+                else $columns[$key] = __('Link (Secondary)');
+                break;
+            case 'mz_slug':
+                if (!$show_form_slug_column) unset($columns[$key]);
+                else $columns[$key] = __('Slug');
+                break;
+            case 'mz_form_recipients':
+                if (!$show_form_recipients_column) unset($columns[$key]);
+                else $columns[$key] = __('Recipients');
+                break;
+            case 'mz_review_quote':
+                if (!$show_review_columns) unset($columns[$key]);
+                else $columns[$key] = __('Quote');
+                break;
+            case 'mz_review_citer':
+                if (!$show_review_columns) unset($columns[$key]);
+                else $columns[$key] = __('Citer');
+                break;
+            case 'template':
+            case 'mz_page_template':
+            case 'column-page_template':
+                if ($post_type === 'page') unset($columns[$key]);
+                break;
+            case 'mz_page_headline':
+                if (!$show_page_columns) unset($columns[$key]);
+                else $columns[$key] = __('Page Headline (H1)');
+                break;
+            case 'mz_page_cta':
+                if (!$show_page_columns) unset($columns[$key]);
+                else $columns[$key] = __('Page CTA');
+                break;
+            case 'mz_page_form':
+                if (!$show_page_columns) unset($columns[$key]);
+                else $columns[$key] = __('Page Form');
+                break;
+            case 'wpseo-title':
+                $columns[$key] = __('Meta Title');
+                break;
+            case 'wpseo-metadesc':
+                $columns[$key] = __('Meta Description');
+                break;
+            case 'mz_share_title':
+                if (!$show_yoast_share_columns) unset($columns[$key]);
+                else $columns[$key] = __('Share Title');
+                break;
+            case 'mz_share_description':
+                if (!$show_yoast_share_columns) unset($columns[$key]);
+                else $columns[$key] = __('Share Description');
+                break;
+            case 'mz_modified':
+            case 'modified':
+                $columns[$key] = __('Modified');
+                break;
+            case 'mz_published':
+            case 'date':
+                $columns[$key] = __('Published');
+                break;
+        }
+    }
+
+    return $columns;
+}
+
 function meza_normalize_datetime_columns(array $columns): array
 {
     if (!is_array($columns)) return $columns;
@@ -1546,16 +2408,27 @@ function meza_normalize_datetime_columns(array $columns): array
     $show_menu_order_column = meza_post_type_supports_menu_order_admin_column($post_type);
     $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
     $show_cta_link_column = ($post_type === 'cta');
+    $show_cta_secondary_link_column = ($post_type === 'cta');
     $show_form_recipients_column = ($post_type === 'form');
     $show_organization_url_column = ($post_type === 'organization');
+    $show_profile_title_column = ($post_type === 'profile');
+    $show_profile_link_column = ($post_type === 'profile');
+    $show_faq_count_column = ($post_type === 'faq');
     $show_form_slug_column = ($post_type === 'form');
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
     $show_summary_column = meza_post_type_shows_summary_admin_column($post_type);
+    $show_share_image_with_seo_columns = ($supports_thumbnail && meza_post_type_uses_share_image_admin_column($post_type));
+    $show_yoast_share_columns = !meza_is_acf_admin_post_type($post_type)
+        && defined('WPSEO_VERSION')
+        && (
+            array_key_exists('wpseo-title', $columns)
+            || array_key_exists('wpseo-metadesc', $columns)
+        );
     $thumbnail_column_label = meza_get_post_type_thumbnail_admin_column_label($post_type);
     $title_column_label = (
         in_array($post_type, ['profile', 'organization'], true)
-            ? __('Name')
-            : (in_array($post_type, ['cta', 'form'], true) ? __('Headline (H2)') : null)
+        ? __('Name')
+        : (in_array($post_type, ['cta', 'form'], true) ? __('Headline (H2)') : null)
     );
 
     $has_modified = false;
@@ -1572,8 +2445,10 @@ function meza_normalize_datetime_columns(array $columns): array
         $normalized_key = strtolower(trim((string) $key));
 
         // Normalize custom identity columns so we can insert them in a stable place.
-        if ($key === 'mz_id' || $key === 'mz_menu_order' || $key === 'mz_thumbnail') continue;
-        if (!$show_page_columns && in_array((string) $key, ['mz_page_link', 'mz_page_headline', 'mz_page_cta'], true)) continue;
+        if ($key === 'slug') continue;
+        if ($key === 'mz_id' || $key === 'mz_menu_order' || $key === 'mz_thumbnail' || $key === 'mz_page_link' || $key === 'mz_summary') continue;
+        if ($post_type === 'page' && in_array((string) $key, ['template', 'mz_page_template', 'column-page_template'], true)) continue;
+        if (!$show_page_columns && in_array((string) $key, ['mz_page_link', 'mz_page_headline', 'mz_page_cta', 'mz_page_form'], true)) continue;
 
         // Posts list: remove non-editorial columns.
         if ($post_type === 'post') {
@@ -1589,9 +2464,13 @@ function meza_normalize_datetime_columns(array $columns): array
             if ($show_menu_order_column) $updated['mz_menu_order'] = __('#');
             if ($supports_thumbnail) $updated['mz_thumbnail'] = $thumbnail_column_label;
             $updated[$key] = $title_column_label ?? $label;
-            if ($show_organization_url_column) $updated['mz_organization_url'] = __('URL');
+            if ($show_profile_title_column) $updated['mz_profile_title'] = __('Title');
+            if ($show_profile_link_column) $updated['mz_profile_link'] = __('Link');
+            if ($show_organization_url_column) $updated['mz_organization_url'] = __('Link');
             if ($show_summary_column) $updated['mz_summary'] = meza_get_post_type_summary_admin_column_label($post_type);
-            if ($show_cta_link_column) $updated['mz_cta_link'] = __('Link');
+            if ($show_faq_count_column) $updated['mz_faq_count'] = __('Count');
+            if ($show_cta_link_column) $updated['mz_cta_link'] = __('Link (Primary)');
+            if ($show_cta_secondary_link_column) $updated['mz_cta_secondary_link'] = __('Link (Secondary)');
             if ($show_form_slug_column) $updated['mz_slug'] = __('Slug');
             if ($show_form_recipients_column) $updated['mz_form_recipients'] = __('Recipients');
             if ($show_review_columns) {
@@ -1599,9 +2478,9 @@ function meza_normalize_datetime_columns(array $columns): array
                 $updated['mz_review_citer'] = __('Citer');
             }
             if ($show_page_columns) {
-                $updated['mz_page_link'] = __('Link');
                 $updated['mz_page_headline'] = __('Page Headline (H1)');
                 $updated['mz_page_cta'] = __('Page CTA');
+                $updated['mz_page_form'] = __('Page Form');
             }
             continue;
         }
@@ -1616,13 +2495,23 @@ function meza_normalize_datetime_columns(array $columns): array
 
     if (!isset($updated['mz_published'])) $updated['mz_published'] = __('Published');
     if (!$has_modified && !isset($updated['mz_modified'])) $updated['mz_modified'] = __('Modified');
+    if ($show_profile_link_column && !isset($updated['mz_profile_link'])) {
+        $updated['mz_profile_link'] = __('Link');
+    }
     if ($show_organization_url_column && !isset($updated['mz_organization_url'])) {
-        $updated['mz_organization_url'] = __('URL');
+        $updated['mz_organization_url'] = __('Link');
+    }
+    if ($show_summary_column && !isset($updated['mz_summary'])) {
+        $updated['mz_summary'] = meza_get_post_type_summary_admin_column_label($post_type);
     }
     if ($show_page_columns) {
-        if (!isset($updated['mz_page_link'])) $updated['mz_page_link'] = __('Link');
         if (!isset($updated['mz_page_headline'])) $updated['mz_page_headline'] = __('Page Headline (H1)');
         if (!isset($updated['mz_page_cta'])) $updated['mz_page_cta'] = __('Page CTA');
+        if (!isset($updated['mz_page_form'])) $updated['mz_page_form'] = __('Page Form');
+    }
+    if ($show_yoast_share_columns) {
+        if (!isset($updated['mz_share_title'])) $updated['mz_share_title'] = __('Share Title');
+        if (!isset($updated['mz_share_description'])) $updated['mz_share_description'] = __('Share Description');
     }
 
     // Enforce editorial column order.
@@ -1647,57 +2536,61 @@ function meza_normalize_datetime_columns(array $columns): array
     $append('cb');
 
     if ($post_type === 'page') {
-        // Pages: id, image, title, link, headline, cta, meta title, meta description, template, modified, published.
+        // Pages: id, order, title, summary, page fields, SEO/share, then remaining editorial fields.
         $append('mz_id');
         if ($show_menu_order_column) $append('mz_menu_order');
-        $append('mz_thumbnail');
+        if (!$show_share_image_with_seo_columns) $append('mz_thumbnail');
         $append('title');
+        if ($show_summary_column) $append('mz_summary');
+        if ($show_page_columns) {
+            $append('mz_page_headline');
+            $append('mz_page_cta');
+            $append('mz_page_form');
+        }
+        $append('wpseo-title');
+        $append('wpseo-metadesc');
+        if ($show_share_image_with_seo_columns) $append('mz_thumbnail');
+        if ($show_yoast_share_columns) $append('mz_share_title');
+        if ($show_yoast_share_columns) $append('mz_share_description');
         if ($show_organization_url_column) $append('mz_organization_url');
         $append_taxonomy_columns();
-        if ($show_summary_column) $append('mz_summary');
         if ($show_cta_link_column) $append('mz_cta_link');
+        if ($show_cta_secondary_link_column) $append('mz_cta_secondary_link');
         if ($show_form_slug_column) $append('mz_slug');
         if ($show_form_recipients_column) $append('mz_form_recipients');
         if ($show_review_columns) {
             $append('mz_review_quote');
             $append('mz_review_citer');
         }
-        if ($show_page_columns) {
-            $append('mz_page_link');
-            $append('mz_page_headline');
-            $append('mz_page_cta');
-        }
-        $append('wpseo-title');
-        $append('wpseo-metadesc');
-        $append('mz_page_template');
-        $append('template');
     } else {
         $append('mz_id');
         if ($show_menu_order_column) $append('mz_menu_order');
-        $append('mz_thumbnail');
+        if (!$show_share_image_with_seo_columns) $append('mz_thumbnail');
         $append('title');
-        if (in_array($post_type, ['profile', 'organization'], true) && $show_summary_column) {
-            $append('mz_summary');
+        if ($show_summary_column) $append('mz_summary');
+        if ($show_page_columns) {
+            $append('mz_page_headline');
+            $append('mz_page_cta');
+            $append('mz_page_form');
         }
+        $append('wpseo-title');
+        $append('wpseo-metadesc');
+        if ($show_share_image_with_seo_columns) $append('mz_thumbnail');
+        if ($show_yoast_share_columns) $append('mz_share_title');
+        if ($show_yoast_share_columns) $append('mz_share_description');
+        if ($show_profile_title_column) $append('mz_profile_title');
+        if ($show_profile_link_column) $append('mz_profile_link');
         if ($show_organization_url_column) $append('mz_organization_url');
         $append_taxonomy_columns();
-        if (!in_array($post_type, ['profile', 'organization'], true) && $show_summary_column) {
-            $append('mz_summary');
-        }
+        if ($show_faq_count_column) $append('mz_faq_count');
         if ($show_cta_link_column) $append('mz_cta_link');
+        if ($show_cta_secondary_link_column) $append('mz_cta_secondary_link');
         if ($show_form_slug_column) $append('mz_slug');
         if ($show_form_recipients_column) $append('mz_form_recipients');
         if ($show_review_columns) {
             $append('mz_review_quote');
             $append('mz_review_citer');
         }
-        if ($show_page_columns) {
-            $append('mz_page_link');
-            $append('mz_page_headline');
-            $append('mz_page_cta');
-        }
-        $append('wpseo-title');
-        $append('wpseo-metadesc');
     }
 
     foreach (array_keys($updated) as $key) {
@@ -1738,15 +2631,17 @@ function meza_customize_product_admin_columns(array $columns): array
     $columns['mz_menu_order'] = __('#');
     $columns['mz_thumbnail'] = meza_get_post_type_thumbnail_admin_column_label('product');
     $columns['mz_product_type'] = __('Product Type');
-    $columns['mz_page_link'] = __('Link');
     $columns['mz_page_headline'] = __('Page Headline (H1)');
     $columns['mz_page_cta'] = __('Page CTA');
+    $columns['mz_page_form'] = __('Page Form');
     $columns['mz_modified'] = __('Modified');
     $columns['mz_published'] = __('Published');
 
     if (defined('WPSEO_VERSION')) {
         if (!isset($columns['wpseo-title'])) $columns['wpseo-title'] = __('Meta Title');
         if (!isset($columns['wpseo-metadesc'])) $columns['wpseo-metadesc'] = __('Meta Description');
+        if (!isset($columns['mz_share_title'])) $columns['mz_share_title'] = __('Share Title');
+        if (!isset($columns['mz_share_description'])) $columns['mz_share_description'] = __('Share Description');
     }
 
     if (taxonomy_exists('product_brand')) {
@@ -1773,7 +2668,6 @@ function meza_customize_product_admin_columns(array $columns): array
     $append(['cb']);
     $append(['mz_menu_order'], 'mz_menu_order', __('#'));
     $append(['featured'], 'featured', __('Featured'));
-    $append(['mz_thumbnail'], 'mz_thumbnail', meza_get_post_type_thumbnail_admin_column_label('product'));
     $append(['name', 'title'], 'name', __('Name'));
     $append(['price'], 'price', __('Price'));
     $append(['is_in_stock'], 'is_in_stock', __('Stock'));
@@ -1782,11 +2676,14 @@ function meza_customize_product_admin_columns(array $columns): array
     $append(['sku'], 'sku', __('SKU'));
     $append(['product_cat', 'taxonomy-product_cat'], 'product_cat', __('Categories'));
     $append(['product_tag', 'taxonomy-product_tag'], 'product_tag', __('Tags'));
-    $append(['mz_page_link'], 'mz_page_link', __('Link'));
     $append(['wpseo-title']);
     $append(['wpseo-metadesc']);
+    $append(['mz_thumbnail'], 'mz_thumbnail', meza_get_post_type_thumbnail_admin_column_label('product'));
+    $append(['mz_share_title']);
+    $append(['mz_share_description']);
     $append(['mz_page_headline'], 'mz_page_headline', __('Page Headline (H1)'));
     $append(['mz_page_cta'], 'mz_page_cta', __('Page CTA'));
+    $append(['mz_page_form'], 'mz_page_form', __('Page Form'));
     $append(['mz_modified'], 'mz_modified', __('Modified'));
     $append(['mz_published'], 'mz_published', __('Published'));
 
@@ -1876,6 +2773,8 @@ function meza_get_forced_hidden_product_admin_columns(): array
         'mz_page_link',
         'wpseo-title',
         'wpseo-metadesc',
+        'mz_share_title',
+        'mz_share_description',
     ];
 }
 
@@ -1908,6 +2807,186 @@ add_filter('default_hidden_columns', function ($hidden, $screen) {
     return array_values(array_unique($hidden));
 }, 300, 2);
 
+add_filter('default_hidden_columns', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if ($post_type === '' || !meza_post_type_has_permalink($post_type)) return $hidden;
+    if (meza_is_acf_admin_post_type($post_type)) return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+
+    if (meza_page_form_admin_column_is_default_visible($post_type)) {
+        return array_values(array_diff($hidden, ['mz_page_form']));
+    }
+
+    $hidden[] = 'mz_page_form';
+    return array_values(array_unique($hidden));
+}, 320, 2);
+
+add_filter('default_hidden_columns', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if (!meza_post_type_shows_summary_admin_column($post_type)) return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+
+    if (meza_summary_admin_column_is_default_visible($post_type)) {
+        return array_values(array_diff($hidden, ['mz_summary']));
+    }
+
+    $hidden[] = 'mz_summary';
+    return array_values(array_unique($hidden));
+}, 340, 2);
+
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if ($post_type === '' || !meza_post_type_has_permalink($post_type)) return;
+    if (meza_is_acf_admin_post_type($post_type)) return;
+
+    add_filter("manage_edit-{$post_type}_columns", function ($columns) use ($post_type) {
+        if (!is_array($columns)) $columns = [];
+        if ($post_type === '' || !meza_post_type_has_permalink($post_type)) return $columns;
+        if (meza_is_acf_admin_post_type($post_type)) return $columns;
+
+        return meza_insert_admin_column_after($columns, 'mz_page_cta', 'mz_page_form', __('Page Form'));
+    }, 1000);
+
+    if (meza_page_form_admin_column_is_default_visible($post_type)) return;
+
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) return;
+
+    $meta_key = 'meza_page_form_hidden_migrated_post_types_v2';
+    $migrated_post_types = get_user_meta($user_id, $meta_key, true);
+    $migrated_post_types = is_array($migrated_post_types)
+        ? array_values(array_unique(array_map('strval', $migrated_post_types)))
+        : [];
+
+    if (in_array($post_type, $migrated_post_types, true)) return;
+
+    $hidden_key = 'manage' . $screen->id . 'columnshidden';
+    $hidden = get_user_option($hidden_key, $user_id);
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+
+    if (!in_array('mz_page_form', $hidden, true)) {
+        $hidden[] = 'mz_page_form';
+        update_user_option($user_id, $hidden_key, array_values(array_unique($hidden)), true);
+    }
+
+    $migrated_post_types[] = $post_type;
+    update_user_meta($user_id, $meta_key, array_values(array_unique($migrated_post_types)));
+}, 50);
+
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if (!meza_post_type_shows_summary_admin_column($post_type)) return;
+
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) return;
+
+    $meta_key = 'meza_summary_visibility_initialized_post_types_v1';
+    $initialized_post_types = get_user_meta($user_id, $meta_key, true);
+    $initialized_post_types = is_array($initialized_post_types)
+        ? array_values(array_unique(array_map('strval', $initialized_post_types)))
+        : [];
+
+    if (in_array($post_type, $initialized_post_types, true)) return;
+
+    $hidden_key = 'manage' . $screen->id . 'columnshidden';
+    $hidden = get_user_option($hidden_key, $user_id);
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+
+    if (meza_summary_admin_column_is_default_visible($post_type)) {
+        $hidden = array_values(array_diff($hidden, ['mz_summary']));
+    } elseif (!in_array('mz_summary', $hidden, true)) {
+        $hidden[] = 'mz_summary';
+    }
+
+    update_user_option($user_id, $hidden_key, array_values(array_unique($hidden)), true);
+
+    $initialized_post_types[] = $post_type;
+    update_user_meta($user_id, $meta_key, array_values(array_unique($initialized_post_types)));
+}, 55);
+
+add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
+    unset($use_defaults);
+
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if ($post_type === '' || meza_page_form_admin_column_is_default_visible($post_type)) return $hidden;
+    if (!meza_post_type_has_permalink($post_type)) return $hidden;
+    if (meza_is_acf_admin_post_type($post_type)) return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+    if (in_array('mz_page_form', $hidden, true)) return $hidden;
+
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) {
+        $hidden[] = 'mz_page_form';
+        return array_values(array_unique($hidden));
+    }
+
+    $meta_key = 'meza_page_form_hidden_migrated_post_types_v2';
+    $migrated_post_types = get_user_meta($user_id, $meta_key, true);
+    $migrated_post_types = is_array($migrated_post_types)
+        ? array_values(array_unique(array_map('strval', $migrated_post_types)))
+        : [];
+
+    if (in_array($post_type, $migrated_post_types, true)) {
+        return $hidden;
+    }
+
+    $hidden[] = 'mz_page_form';
+    $migrated_post_types[] = $post_type;
+    update_user_option($user_id, 'manage' . $screen->id . 'columnshidden', array_values(array_unique($hidden)), true);
+    update_user_meta($user_id, $meta_key, array_values(array_unique($migrated_post_types)));
+
+    return array_values(array_unique($hidden));
+}, 330, 3);
+
+add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
+    unset($use_defaults);
+
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if (!meza_post_type_shows_summary_admin_column($post_type)) return $hidden;
+    if (meza_summary_admin_column_is_default_visible($post_type)) return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+    if (in_array('mz_summary', $hidden, true)) return $hidden;
+
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) {
+        $hidden[] = 'mz_summary';
+        return array_values(array_unique($hidden));
+    }
+
+    $meta_key = 'meza_summary_visibility_initialized_post_types_v1';
+    $initialized_post_types = get_user_meta($user_id, $meta_key, true);
+    $initialized_post_types = is_array($initialized_post_types)
+        ? array_values(array_unique(array_map('strval', $initialized_post_types)))
+        : [];
+
+    if (in_array($post_type, $initialized_post_types, true)) {
+        return $hidden;
+    }
+
+    $hidden[] = 'mz_summary';
+    $initialized_post_types[] = $post_type;
+    update_user_option($user_id, 'manage' . $screen->id . 'columnshidden', array_values(array_unique($hidden)), true);
+    update_user_meta($user_id, $meta_key, array_values(array_unique($initialized_post_types)));
+
+    return array_values(array_unique($hidden));
+}, 350, 3);
+
 add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     unset($use_defaults);
 
@@ -1920,68 +2999,6 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
     return array_values(array_diff($hidden, ['mz_menu_order']));
 }, 1100, 3);
-
-// Admin Columns saved layouts can hide our native list-table columns. For the post
-// types we manage ourselves, let WordPress render the screen directly instead.
-add_filter('ac/list_screen/is_active', function ($active, $screen) {
-    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $active;
-
-    $post_type = (string) ($screen->post_type ?? '');
-    if (!meza_post_type_uses_native_admin_columns($post_type)) return $active;
-
-    return false;
-}, 1000, 2);
-
-add_filter('ac/list_screen/key/is_active', function ($active, $key) {
-    $post_type = trim((string) $key);
-    if (!meza_post_type_uses_native_admin_columns($post_type)) return $active;
-
-    return false;
-}, 1000, 2);
-
-function meza_get_admin_columns_editor_url(string $post_type): string
-{
-    $post_type = trim($post_type);
-    if ($post_type === '') return '';
-    if (!class_exists('AC\\Admin\\Admin')) return '';
-
-    return (string) add_query_arg([
-        'page' => 'codepress-admin-columns',
-        'tab' => 'columns',
-        'list_screen' => $post_type,
-    ], admin_url('options-general.php'));
-}
-
-// Keep a direct Admin Columns shortcut visible when we intentionally fall back to
-// the native WordPress list table, which removes the plugin's built-in cog button.
-add_action('restrict_manage_posts', function ($post_type, $which) {
-    if ($which !== 'top') return;
-    if (!current_user_can('manage_admin_columns')) return;
-
-    $post_type = trim((string) $post_type);
-    if (!meza_post_type_uses_native_admin_columns($post_type)) return;
-
-    $url = meza_get_admin_columns_editor_url($post_type);
-    if ($url === '') return;
-
-    echo '<a class="button meza-admin-columns-button" href="' . esc_url($url) . '" title="' . esc_attr__('Edit columns', 'codepress-admin-columns') . '" aria-label="' . esc_attr__('Edit columns', 'codepress-admin-columns') . '">';
-    echo '<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>';
-    echo '<span class="screen-reader-text">' . esc_html__('Edit columns', 'codepress-admin-columns') . '</span>';
-    echo '</a>';
-}, 5, 2);
-
-add_action('admin_head', function () {
-    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
-
-    $post_type = trim((string) ($screen->post_type ?? ''));
-    if (!meza_post_type_uses_native_admin_columns($post_type)) return;
-
-    echo '<style id="meza-admin-columns-button">'
-        . '.tablenav .actions .meza-admin-columns-button{display:inline-flex;align-items:center;justify-content:center;min-width:32px;padding:0 6px;margin-right:4px;}'
-        . '.tablenav .actions .meza-admin-columns-button .dashicons{width:16px;height:16px;font-size:16px;line-height:16px;}'
-        . '</style>';
-}, 20);
 
 function meza_register_datetime_sortable_columns(array $cols): array
 {
@@ -2035,15 +3052,22 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             $column === 'mz_menu_order' ||
             $column === 'mz_form_recipients' ||
             $column === 'mz_cta_link' ||
+            $column === 'mz_cta_secondary_link' ||
+            $column === 'mz_faq_count' ||
             $column === 'mz_slug' ||
             $column === 'mz_summary' ||
+            $column === 'mz_share_title' ||
+            $column === 'mz_share_description' ||
+            $column === 'mz_profile_title' ||
+            $column === 'mz_profile_link' ||
             $column === 'mz_organization_url' ||
             $column === 'mz_review_quote' ||
             $column === 'mz_review_citer' ||
             $column === 'mz_thumbnail' ||
             $column === 'mz_page_link' ||
             $column === 'mz_page_headline' ||
-            $column === 'mz_page_cta'
+            $column === 'mz_page_cta' ||
+            $column === 'mz_page_form'
         ) {
             echo '&mdash;';
         }
@@ -2061,6 +3085,10 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     if ($column === 'mz_slug') {
         $slug = (string) ($post->post_name ?? '');
         echo ($slug !== '') ? esc_html($slug) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_faq_count') {
+        echo (int) meza_get_faq_repeater_item_count((int) $post_id);
         return;
     }
     if ($column === 'mz_form_recipients') {
@@ -2127,49 +3155,68 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         echo ($summary !== '') ? esc_html($summary) : '&mdash;';
         return;
     }
-    if ($column === 'mz_cta_link') {
-        $url = '';
-
-        if (function_exists('get_field')) {
-            $acf_link = get_field('link', (int) $post_id);
-            if (is_array($acf_link) && is_string($acf_link['url'] ?? null)) {
-                $url = trim((string) $acf_link['url']);
-            } elseif (is_string($acf_link)) {
-                $url = trim($acf_link);
-            }
-        }
-
-        if ($url === '') {
-            $raw_link = get_post_meta((int) $post_id, 'link', true);
-            if (is_array($raw_link) && is_string($raw_link['url'] ?? null)) {
-                $url = trim((string) $raw_link['url']);
-            } elseif (is_string($raw_link)) {
-                $url = trim($raw_link);
-            }
-        }
+    if ($column === 'mz_share_title') {
+        $share_title = meza_get_post_yoast_share_title_value((int) $post_id);
+        echo ($share_title !== '') ? esc_html($share_title) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_share_description') {
+        $share_description = meza_get_post_yoast_share_description_value((int) $post_id);
+        echo ($share_description !== '') ? esc_html($share_description) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_profile_title') {
+        $profile_title = meza_get_profile_title_column_value((int) $post_id);
+        echo ($profile_title !== '') ? esc_html($profile_title) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_profile_link') {
+        $url = meza_get_profile_primary_link_url((int) $post_id);
 
         if ($url === '') {
             echo '&mdash;';
             return;
         }
 
-        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($url) . '</a>';
+        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html(meza_get_admin_link_column_display_text($url)) . '</a>';
+        return;
+    }
+    if ($column === 'mz_cta_link') {
+        $url = meza_get_post_link_field_url((int) $post_id, ['link']);
+
+        if ($url === '') {
+            echo '&mdash;';
+            return;
+        }
+
+        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html(meza_get_admin_link_column_display_text($url)) . '</a>';
+        return;
+    }
+    if ($column === 'mz_cta_secondary_link') {
+        $url = meza_get_post_link_field_url((int) $post_id, [
+            'link_secondary',
+            'secondary_link',
+            'link_2',
+            'secondary_cta_link',
+        ]);
+
+        if ($url === '') {
+            echo '&mdash;';
+            return;
+        }
+
+        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html(meza_get_admin_link_column_display_text($url)) . '</a>';
         return;
     }
     if ($column === 'mz_organization_url') {
-        $url = '';
-        if (function_exists('get_field')) {
-            $acf_url = get_field('url', (int) $post_id);
-            if (is_string($acf_url)) $url = trim($acf_url);
-        }
-        if ($url === '') $url = trim((string) get_post_meta((int) $post_id, 'url', true));
+        $url = meza_get_post_link_field_url((int) $post_id, ['url']);
 
         if ($url === '') {
             echo '&mdash;';
             return;
         }
 
-        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Website') . '</a>';
+        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html(meza_get_admin_link_column_display_text($url)) . '</a>';
         return;
     }
     if ($column === 'mz_review_quote') {
@@ -2277,7 +3324,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         }
         $url = (string) get_permalink((int) $post_id);
 
-        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($url) . '</a>';
+        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html(meza_get_admin_link_column_display_text($url)) . '</a>';
         $actions = [];
 
         $edit_link = get_edit_post_link((int) $post_id);
@@ -2398,6 +3445,35 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         return;
     }
 
+    if ($column === 'mz_page_form') {
+        if (!meza_post_type_has_pages($post) || !meza_post_has_permalink((int) $post_id)) {
+            echo '&mdash;';
+            return;
+        }
+
+        $form_ids = meza_get_page_form_ids((int) $post_id);
+        if (empty($form_ids)) {
+            echo '&mdash;';
+            return;
+        }
+
+        $links = [];
+        foreach ($form_ids as $form_id) {
+            $title = get_the_title($form_id);
+            $edit_link = get_edit_post_link($form_id);
+            if (!is_string($title) || trim($title) === '') $title = sprintf(__('Form #%d'), $form_id);
+
+            if (is_string($edit_link) && $edit_link !== '') {
+                $links[] = '<a href="' . esc_url($edit_link) . '" target="_blank" rel="noopener noreferrer">' . esc_html($title) . '</a>';
+            } else {
+                $links[] = esc_html($title);
+            }
+        }
+
+        echo !empty($links) ? implode('<br>', $links) : '&mdash;';
+        return;
+    }
+
     if ($column === 'mz_modified') {
         $modified_timestamp = get_post_modified_time('U', false, $post, true);
         if (!$modified_timestamp) {
@@ -2463,6 +3539,9 @@ add_action('current_screen', function ($screen) {
     $registered[$post_type] = true;
 
     add_filter("manage_{$post_type}_posts_columns", 'meza_normalize_datetime_columns', 1000);
+    add_filter("manage_{$post_type}_posts_columns", function ($columns) use ($post_type) {
+        return meza_ensure_summary_admin_column(is_array($columns) ? $columns : [], $post_type);
+    }, 100000);
     add_action("manage_{$post_type}_posts_custom_column", 'meza_render_posts_list_column', 100, 2);
     add_filter("manage_edit-{$post_type}_sortable_columns", 'meza_register_datetime_sortable_columns', 1000);
     add_filter("manage_edit-{$post_type}_sortable_columns", 'meza_register_taxonomy_sortable_columns', 1001);
@@ -2605,7 +3684,7 @@ add_action('admin_head', function () {
 add_action('admin_head', function () {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
     if (!meza_is_woocommerce_admin_screen($screen)) return;
-    ?>
+?>
     <script id="meza-woocommerce-admin-title-case">
         (() => {
             const smallWords = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'en', 'for', 'if', 'in', 'of', 'on', 'or', 'the', 'to', 'v', 'via', 'vs']);
@@ -2655,16 +3734,21 @@ add_action('admin_head', function () {
             };
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', applyTitleCase, { once: true });
+                document.addEventListener('DOMContentLoaded', applyTitleCase, {
+                    once: true
+                });
             } else {
                 applyTitleCase();
             }
 
             const observer = new MutationObserver(() => applyTitleCase());
-            observer.observe(document.documentElement, { childList: true, subtree: true });
+            observer.observe(document.documentElement, {
+                childList: true,
+                subtree: true
+            });
         })();
     </script>
-    <?php
+<?php
 }, 1001);
 
 add_filter('woocommerce_products_admin_list_table_filters', function ($filters) {
@@ -2868,7 +3952,9 @@ add_action('admin_head', function () {
 
     echo '<style id="meza-yoast-column-widths">'
         . '.wp-list-table th.column-wpseo-title,.wp-list-table td.column-wpseo-title{width:225px;max-width:225px;}'
+        . '.wp-list-table th.column-mz_share_title,.wp-list-table td.column-mz_share_title{width:225px;max-width:225px;}'
         . '.wp-list-table th.column-wpseo-metadesc,.wp-list-table td.column-wpseo-metadesc{width:275px;max-width:275px;}'
+        . '.wp-list-table th.column-mz_share_description,.wp-list-table td.column-mz_share_description{width:275px;max-width:275px;}'
         . '.wp-list-table th.column-mz_page_link,.wp-list-table td.column-mz_page_link{width:225px;max-width:225px;}'
         . '</style>';
 });
@@ -3035,25 +4121,119 @@ function meza_get_page_type_sort_map(): array
     return $map;
 }
 
-function meza_get_page_template_label(int $post_id): string
+function meza_get_special_page_definitions(): array
 {
-    if ((int) get_option('page_on_front') === $post_id) return esc_html__('Front Page');
-    if ((int) get_option('page_for_posts') === $post_id) return esc_html__('Posts Page');
-    if ((int) get_option('wp_page_for_privacy_policy') === $post_id) return esc_html__('Privacy Policy Page');
+    return [
+        [
+            'option_key' => 'page_on_front',
+            'label' => __('Front Page'),
+            'settings_url' => admin_url('options-reading.php'),
+            'capability' => 'manage_options',
+        ],
+        [
+            'option_key' => 'page_for_posts',
+            'label' => __('Posts Page'),
+            'settings_url' => admin_url('options-reading.php'),
+            'capability' => 'manage_options',
+        ],
+        [
+            'option_key' => 'wp_page_for_privacy_policy',
+            'label' => __('Privacy Policy Page'),
+            'settings_url' => admin_url('options-privacy.php'),
+            'capability' => 'manage_privacy_options',
+        ],
+        [
+            'option_key' => 'meza_page_for_cookie_policy',
+            'label' => __('Cookie Policy Page'),
+            'settings_url' => admin_url('options-privacy.php'),
+            'capability' => 'manage_privacy_options',
+        ],
+    ];
+}
+
+function meza_get_page_type_dashicon_class(string $label): string
+{
+    $normalized = strtolower(trim(wp_strip_all_tags($label)));
+    $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+
+    if ($normalized === '') return 'dashicons-media-document';
+    if (str_contains($normalized, 'front page') || str_contains($normalized, 'home')) return 'dashicons-admin-home';
+    if (str_contains($normalized, 'posts page') || str_contains($normalized, 'blog')) return 'dashicons-admin-post';
+    if (str_contains($normalized, 'privacy')) return 'dashicons-privacy';
+    if (str_contains($normalized, 'cookie')) return 'dashicons-hidden';
+    if (str_contains($normalized, 'about')) return 'dashicons-id';
+    if (str_contains($normalized, 'basic page')) return 'dashicons-welcome-write-blog';
+    if (str_contains($normalized, 'form')) return 'dashicons-feedback';
+    if (str_contains($normalized, 'style')) return 'dashicons-art';
+    if (str_contains($normalized, 'template') || str_contains($normalized, 'page')) return 'dashicons-welcome-add-page';
+
+    return 'dashicons-media-document';
+}
+
+function meza_get_page_type_label_with_dashicon(string $label): string
+{
+    $label = trim(wp_strip_all_tags($label));
+    if ($label === '') return '&mdash;';
+
+    $icon_class = meza_get_page_type_dashicon_class($label);
+
+    return sprintf(
+        '<span class="meza-page-type-label" style="display:inline-flex;align-items:center;gap:4px;vertical-align:middle;"><span class="dashicons %1$s" aria-hidden="true" style="font-size:16px;width:16px;height:16px;line-height:16px;display:inline-flex;align-items:center;justify-content:center;"></span><span class="meza-page-type-label-text">%2$s</span></span>',
+        esc_attr($icon_class),
+        esc_html($label)
+    );
+}
+
+function meza_get_post_type_dashicon_class(string $post_type): string
+{
+    $post_type = trim($post_type);
+    if ($post_type === 'post') return 'dashicons-admin-post';
+    if ($post_type === 'page') return 'dashicons-admin-page';
+
+    $post_type_object = get_post_type_object($post_type);
+    if ($post_type_object instanceof WP_Post_Type) {
+        $menu_icon = trim((string) ($post_type_object->menu_icon ?? ''));
+        if ($menu_icon !== '' && str_contains($menu_icon, 'dashicons-')) {
+            return $menu_icon;
+        }
+    }
+
+    return 'dashicons-welcome-add-page';
+}
+
+function meza_get_post_type_template_label_with_dashicon(string $post_type, string $label): string
+{
+    $post_type = trim($post_type);
+    $label = trim(wp_strip_all_tags($label));
+    if ($post_type === '' || $label === '') return '&mdash;';
+
+    $icon_class = meza_get_post_type_dashicon_class($post_type);
+
+    return sprintf(
+        '<span class="meza-page-type-label" style="display:inline-flex;align-items:center;gap:4px;vertical-align:middle;"><span class="dashicons %1$s" aria-hidden="true" style="font-size:16px;width:16px;height:16px;line-height:16px;display:inline-flex;align-items:center;justify-content:center;"></span><span class="meza-page-type-label-text">%2$s</span></span>',
+        esc_attr($icon_class),
+        esc_html($label)
+    );
+}
+
+function meza_get_page_template_plain_label(int $post_id): string
+{
+    $special_page_label = meza_get_special_page_label($post_id);
+    if ($special_page_label !== '') return $special_page_label;
 
     $page_type = trim(meza_get_page_type_label($post_id));
-    if ($page_type !== '') return esc_html($page_type);
+    if ($page_type !== '') return $page_type;
 
     $template = (string) get_post_meta($post_id, '_wp_page_template', true);
     if ($template === '' || $template === 'default') {
-        return esc_html__('Basic Page');
+        return __('Basic Page');
     }
 
     $template_path = locate_template($template, false, false);
     if (is_string($template_path) && $template_path !== '' && is_readable($template_path)) {
         $header = get_file_data($template_path, ['template_name' => 'Template Name']);
         $template_name = trim((string) ($header['template_name'] ?? ''));
-        if ($template_name !== '') return esc_html($template_name);
+        if ($template_name !== '') return $template_name;
     }
 
     $post = get_post($post_id);
@@ -3061,16 +4241,181 @@ function meza_get_page_template_label(int $post_id): string
     foreach ($templates as $label => $file) {
         if ((string) $file !== $template) continue;
         $clean_label = trim((string) $label);
-        if ($clean_label !== '') return esc_html($clean_label);
+        if ($clean_label !== '') return $clean_label;
     }
 
-    return '&mdash;';
+    return '';
 }
+
+function meza_get_page_template_label(int $post_id): string
+{
+    $label = meza_get_page_template_plain_label($post_id);
+    if ($label === '') return '&mdash;';
+
+    return meza_get_page_type_label_with_dashicon($label);
+}
+
+function meza_get_special_page_label(int $post_id): string
+{
+    foreach (meza_get_special_page_definitions() as $definition) {
+        $option_key = (string) ($definition['option_key'] ?? '');
+        $label = (string) ($definition['label'] ?? '');
+        if ($option_key === '' || $label === '') continue;
+        if ((int) get_option($option_key) === $post_id) return $label;
+    }
+
+    return '';
+}
+
+function meza_get_special_page_update_link(int $post_id): string
+{
+    foreach (meza_get_special_page_definitions() as $definition) {
+        $option_key = (string) ($definition['option_key'] ?? '');
+        $settings_url = (string) ($definition['settings_url'] ?? '');
+        $capability = (string) ($definition['capability'] ?? '');
+        if ($option_key === '' || $settings_url === '' || $capability === '') continue;
+        if ((int) get_option($option_key) !== $post_id) continue;
+        if (!current_user_can($capability)) return '';
+        return $settings_url;
+    }
+
+    return '';
+}
+
+function meza_get_cookie_policy_page_id(): int
+{
+    return (int) get_option('meza_page_for_cookie_policy');
+}
+
+function meza_get_cookie_policy_settings_row_html(): string
+{
+    if (!current_user_can('manage_privacy_options')) return '';
+
+    $has_pages = (bool) get_posts([
+        'post_type' => 'page',
+        'posts_per_page' => 1,
+        'post_status' => ['publish', 'draft'],
+    ]);
+    if (!$has_pages) return '';
+
+    $cookie_policy_page_id = meza_get_cookie_policy_page_id();
+    $cookie_policy_page = $cookie_policy_page_id > 0 ? get_post($cookie_policy_page_id) : null;
+    $cookie_policy_page_exists = ($cookie_policy_page instanceof WP_Post) && $cookie_policy_page->post_type === 'page' && $cookie_policy_page->post_status !== 'trash';
+
+    ob_start();
+?>
+    <tr class="meza-cookie-policy-page-setting">
+        <th scope="row">
+            <label for="meza_page_for_cookie_policy">
+                <?php echo $cookie_policy_page_exists ? esc_html__('Change your Cookie Policy page') : esc_html__('Select a Cookie Policy page'); ?>
+            </label>
+        </th>
+        <td>
+            <form method="post">
+                <input type="hidden" name="action" value="set-cookie-policy-page" />
+                <?php
+                wp_dropdown_pages([
+                    'name' => 'meza_page_for_cookie_policy',
+                    'show_option_none' => __('&mdash; Select &mdash;'),
+                    'option_none_value' => '0',
+                    'selected' => $cookie_policy_page_id,
+                    'post_status' => ['draft', 'publish'],
+                ]);
+
+                wp_nonce_field('set-cookie-policy-page');
+
+                submit_button(__('Use This Page'), 'primary', 'submit', false, ['id' => 'set-cookie-policy-page']);
+                ?>
+            </form>
+        </td>
+    </tr>
+<?php
+
+    return trim((string) ob_get_clean());
+}
+
+add_action('load-options-privacy.php', function (): void {
+    if (!current_user_can('manage_privacy_options')) return;
+
+    $action = isset($_POST['action']) ? sanitize_key(wp_unslash((string) $_POST['action'])) : '';
+    if ($action !== 'set-cookie-policy-page') return;
+
+    check_admin_referer('set-cookie-policy-page');
+
+    $cookie_policy_page_id = isset($_POST['meza_page_for_cookie_policy']) ? (int) $_POST['meza_page_for_cookie_policy'] : 0;
+    update_option('meza_page_for_cookie_policy', $cookie_policy_page_id);
+
+    add_settings_error(
+        'meza_page_for_cookie_policy',
+        'meza_page_for_cookie_policy',
+        __('Cookie Policy page updated successfully.'),
+        'success'
+    );
+});
+
+add_action('admin_footer-options-privacy.php', function (): void {
+    $row_html = meza_get_cookie_policy_settings_row_html();
+    if ($row_html === '') return;
+?>
+    <style id="meza-privacy-policy-settings-spacing">
+        .privacy-settings-body hr,
+        .tools-privacy-policy-page {
+            margin-top: 30px !important;
+        }
+
+        .privacy-settings-body hr {
+            margin-bottom: 30px !important;
+        }
+
+        .tools-privacy-policy-page th,
+        .tools-privacy-policy-page td {
+            padding-top: 0;
+            padding-bottom: 10px;
+        }
+
+        .tools-privacy-policy-page form {
+            margin-bottom: 0;
+        }
+
+        @media screen and (max-width: 782px) {
+            .tools-privacy-policy-page input#set-page,
+            .tools-privacy-policy-page input#set-cookie-policy-page,
+            .tools-privacy-policy-page select {
+                margin: 10px 0 0;
+            }
+
+            .tools-privacy-policy-page tr.meza-cookie-policy-page-setting th {
+                padding-top: 20px !important;
+            }
+        }
+    </style>
+    <script id="meza-cookie-policy-page-setting">
+        document.addEventListener('DOMContentLoaded', function() {
+            var table = document.querySelector('.tools-privacy-policy-page');
+            if (!table) {
+                return;
+            }
+
+            var createForm = table.querySelector('form.wp-create-privacy-page');
+            if (createForm) {
+                var createRow = createForm.closest('tr');
+                if (createRow) {
+                    createRow.remove();
+                }
+            }
+
+            if (!table.querySelector('.meza-cookie-policy-page-setting')) {
+                var tbody = table.tBodies && table.tBodies.length ? table.tBodies[0] : table.appendChild(document.createElement('tbody'));
+                tbody.insertAdjacentHTML('beforeend', <?php echo wp_json_encode($row_html); ?>);
+            }
+        });
+    </script>
+<?php
+});
 
 function meza_get_page_template_filter_label(int $post_id): string
 {
-    $label = html_entity_decode(wp_strip_all_tags(meza_get_page_template_label($post_id)), ENT_QUOTES, 'UTF-8');
-    return trim($label);
+    return trim(meza_get_page_template_plain_label($post_id));
 }
 
 function meza_get_page_template_filter_link(int $post_id): string
@@ -3087,6 +4432,48 @@ function meza_get_page_template_filter_link(int $post_id): string
     );
 
     return '<a href="' . esc_url($url) . '">' . esc_html($label) . '</a>';
+}
+
+function meza_get_page_template_title_link(int $post_id): string
+{
+    $post = get_post($post_id);
+    if (!($post instanceof WP_Post)) return '';
+
+    $post_type = trim((string) $post->post_type);
+    if ($post_type === '' || !meza_post_type_has_permalink($post_type)) return '';
+
+    if ($post_type !== 'page') {
+        $post_type_object = get_post_type_object($post_type);
+        $singular_label = '';
+        if ($post_type_object instanceof WP_Post_Type) {
+            $singular_label = trim((string) ($post_type_object->labels->singular_name ?? ''));
+        }
+        if ($singular_label === '') {
+            $singular_label = ucwords(str_replace(['-', '_'], ' ', $post_type));
+        }
+
+        $display = meza_get_post_type_template_label_with_dashicon(
+            $post_type,
+            sprintf(__('%s Page Template'), $singular_label)
+        );
+
+        if ($display === '' || meza_is_empty_template_display($display)) return '';
+
+        return '<span class="meza-title-template-text">' . $display . '</span>';
+    }
+
+    $label = meza_get_page_template_filter_label($post_id);
+    if ($label === '' || meza_is_empty_template_display($label)) return '';
+
+    $display_label = $label;
+    if (!preg_match('/\btemplate$/i', $display_label)) {
+        $display_label .= ' ' . __('Template');
+    }
+
+    $display = meza_get_page_type_label_with_dashicon($display_label);
+    if ($display === '' || meza_is_empty_template_display($display)) return '';
+
+    return '<span class="meza-title-template-text">' . $display . '</span>';
 }
 
 function meza_is_empty_template_display(string $value): bool
@@ -3124,9 +4511,12 @@ function meza_get_page_state_labels(int $post_id): array
     if (!empty($labels)) return $labels;
 
     // Fallback for cases where title states were not rendered yet.
-    if ((int) get_option('page_on_front') === $post_id) $labels[] = __('Front Page');
-    if ((int) get_option('page_for_posts') === $post_id) $labels[] = __('Posts Page');
-    if ((int) get_option('wp_page_for_privacy_policy') === $post_id) $labels[] = __('Privacy Policy Page');
+    foreach (meza_get_special_page_definitions() as $definition) {
+        $option_key = (string) ($definition['option_key'] ?? '');
+        $label = (string) ($definition['label'] ?? '');
+        if ($option_key === '' || $label === '') continue;
+        if ((int) get_option($option_key) === $post_id) $labels[] = $label;
+    }
 
     return array_values(array_unique(array_filter($labels, function ($v) {
         return is_string($v) && trim($v) !== '';
@@ -3151,33 +4541,6 @@ add_filter('display_post_states', function ($states, $post) {
 
     return [];
 }, 9999, 2);
-
-// Replace the Page Template column with an MZ-rendered one so we can include moved title states.
-add_filter('manage_pages_columns', function ($columns) {
-    $updated = [];
-    $has_template_column = false;
-    foreach ($columns as $key => $label) {
-        $is_template_column = ($key === 'template') || (strtolower(trim((string) $label)) === 'page template');
-        if ($is_template_column) {
-            $updated['mz_page_template'] = 'Page Template';
-            $has_template_column = true;
-            continue;
-        }
-        $updated[$key] = $label;
-    }
-    if (!$has_template_column) {
-        $updated['mz_page_template'] = 'Page Template';
-    }
-    return $updated;
-}, 1000);
-
-// Render only the selected page template label from the editor dropdown in the Page Template cell.
-$meza_render_page_template_column = function ($column, $post_id) {
-    if ($column !== 'mz_page_template') return;
-
-    echo meza_get_page_template_filter_link((int) $post_id);
-};
-add_action('manage_page_posts_custom_column', $meza_render_page_template_column, 100, 2);
 
 // Core list table renderer: show an em dash for front page slug.
 add_action('manage_page_posts_custom_column', function ($column, $post_id) {
@@ -3209,14 +4572,6 @@ add_filter('ac/column/value', function ($value, $id, $column) {
 
     return '&mdash;';
 }, 100, 3);
-
-add_filter('manage_edit-page_sortable_columns', function ($cols) {
-    if (!is_array($cols)) return $cols;
-
-    $cols['mz_modified'] = ['modified', true, '', '', 'desc'];
-    $cols['mz_page_template'] = ['mz_page_template', false];
-    return $cols;
-}, 1000);
 
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
@@ -3275,6 +4630,7 @@ add_filter('posts_clauses', function (array $clauses, WP_Query $q): array {
     $front_page_id = (int) get_option('page_on_front');
     $posts_page_id = (int) get_option('page_for_posts');
     $privacy_page_id = (int) get_option('wp_page_for_privacy_policy');
+    $cookie_page_id = meza_get_cookie_policy_page_id();
 
     $page_type_meta_expr = "NULL";
     $page_type_choices = meza_get_page_type_sort_map();
@@ -3307,6 +4663,7 @@ add_filter('posts_clauses', function (array $clauses, WP_Query $q): array {
         "WHEN {$wpdb->posts}.ID = {$front_page_id} THEN 'Front Page' " .
         "WHEN {$wpdb->posts}.ID = {$posts_page_id} THEN 'Posts Page' " .
         "WHEN {$wpdb->posts}.ID = {$privacy_page_id} THEN 'Privacy Policy Page' " .
+        "WHEN {$wpdb->posts}.ID = {$cookie_page_id} THEN 'Cookie Policy Page' " .
         "WHEN {$page_type_meta_expr} IS NOT NULL THEN {$page_type_meta_expr} " .
         "WHEN {$page_type_terms_expr} IS NOT NULL THEN {$page_type_terms_expr} " .
         "ELSE {$template_label_expr} END)";
@@ -3316,6 +4673,7 @@ add_filter('posts_clauses', function (array $clauses, WP_Query $q): array {
         "WHEN {$wpdb->posts}.ID = {$front_page_id} THEN 'Front Page' " .
         "WHEN {$wpdb->posts}.ID = {$posts_page_id} THEN 'Posts Page' " .
         "WHEN {$wpdb->posts}.ID = {$privacy_page_id} THEN 'Privacy Policy Page' " .
+        "WHEN {$wpdb->posts}.ID = {$cookie_page_id} THEN 'Cookie Policy Page' " .
         "WHEN {$page_type_meta_expr} IS NOT NULL THEN {$page_type_meta_expr} " .
         "WHEN {$page_type_terms_filter_expr} IS NOT NULL THEN {$page_type_terms_filter_expr} " .
         "ELSE {$template_label_expr} END)";
@@ -3666,6 +5024,75 @@ add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
     return array_values(array_diff((array) $hidden, ['postexcerpt']));
 }, 200, 2);
 
+// Page edit screen defaults: keep Attributes visible in Screen Options for first-load users.
+add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen)) return $hidden;
+    if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) return $hidden;
+    if ((string) ($screen->post_type ?? '') !== 'page') return $hidden;
+
+    return array_values(array_diff((array) $hidden, ['pageparentdiv']));
+}, 200, 2);
+
+// Page edit screen: keep Attributes visible for all users, including saved Screen Options.
+add_filter('hidden_meta_boxes', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen)) return $hidden;
+    if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) return $hidden;
+    if ((string) ($screen->post_type ?? '') !== 'page') return $hidden;
+
+    return array_values(array_diff((array) $hidden, ['pageparentdiv']));
+}, 200, 2);
+
+// Page edit screen: apply the visible Attributes preference once for existing users.
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen)) return;
+    if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) return;
+    if ((string) ($screen->post_type ?? '') !== 'page') return;
+
+    $screen_id = (string) ($screen->id ?? '');
+    $user_id = get_current_user_id();
+    if ($screen_id === '' || $user_id <= 0) return;
+
+    $flag_key = 'meza_page_attributes_visible_applied_' . sanitize_key($screen_id);
+    if (get_user_meta($user_id, $flag_key, true)) return;
+
+    $hidden = get_user_option("metaboxhidden_{$screen_id}", $user_id);
+    if (is_array($hidden) && in_array('pageparentdiv', $hidden, true)) {
+        $hidden = array_values(array_diff($hidden, ['pageparentdiv']));
+        update_user_option($user_id, "metaboxhidden_{$screen_id}", $hidden, true);
+    }
+
+    update_user_meta($user_id, $flag_key, 1);
+}, 210);
+
+// Page edit screens: make sure Attributes stays visible and ordered in the side column for existing users.
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen)) return;
+    if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) return;
+    if ((string) ($screen->post_type ?? '') !== 'page') return;
+
+    $screen_id = sanitize_key((string) ($screen->id ?? ''));
+    $user_id = get_current_user_id();
+    if ($screen_id === '' || $user_id <= 0) return;
+
+    $migration_key = 'meza_page_attributes_box_initialized_v2_' . $screen_id;
+    if (get_user_meta($user_id, $migration_key, true)) return;
+
+    $hidden_key = 'metaboxhidden_' . $screen_id;
+    $hidden_boxes = get_user_option($hidden_key, $user_id);
+    if (!is_array($hidden_boxes)) {
+        $hidden_boxes = [];
+    }
+    $hidden_boxes = array_values(array_diff(array_map('strval', $hidden_boxes), ['pageparentdiv']));
+    update_user_option($user_id, $hidden_key, $hidden_boxes, false);
+
+    $order_key = 'meta-box-order_' . $screen_id;
+    $saved_order = get_user_option($order_key, $user_id);
+    $updated_order = meza_post_metabox_order_with_side_priorities($saved_order, 'page');
+    update_user_option($user_id, $order_key, $updated_order, false);
+
+    update_user_meta($user_id, $migration_key, 1);
+}, 220);
+
 // Post edit screen defaults: keep Admin Menu Editor's Content Permissions box unchecked in Screen Options.
 add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
     if (!($screen instanceof WP_Screen)) return $hidden;
@@ -3696,17 +5123,29 @@ add_action('current_screen', function ($screen): void {
     $user_id = get_current_user_id();
     if ($screen_id === '' || $user_id <= 0) return;
 
-    $flag_key = 'meza_ame_cpe_default_applied_' . sanitize_key($screen_id);
+    $flag_key = 'meza_ame_cpe_default_applied_v2_' . sanitize_key($screen_id);
     if (get_user_meta($user_id, $flag_key, true)) return;
 
     $hidden = get_user_option("metaboxhidden_{$screen_id}", $user_id);
-    if (is_array($hidden) && !in_array('ame-cpe-content-permissions', $hidden, true)) {
+    if (!is_array($hidden)) {
+        $hidden = [];
+    }
+    if (!in_array('ame-cpe-content-permissions', $hidden, true)) {
         $hidden[] = 'ame-cpe-content-permissions';
-        update_user_option($user_id, "metaboxhidden_{$screen_id}", array_values(array_unique($hidden)), true);
+        update_user_option($user_id, "metaboxhidden_{$screen_id}", array_values(array_unique($hidden)), false);
     }
 
     update_user_meta($user_id, $flag_key, 1);
 }, 200);
+
+// Post edit screens: remove Content Permissions entirely for users who are not administrators or site managers.
+add_action('add_meta_boxes', function (string $post_type): void {
+    if (meza_can_access_content_permissions_panel()) return;
+
+    foreach (['normal', 'side', 'advanced'] as $context) {
+        remove_meta_box('ame-cpe-content-permissions', $post_type, $context);
+    }
+}, 1000, 1);
 
 // Post edit screen: remove the Layout section from Screen Options.
 add_filter('screen_layout_columns', function ($columns, $screen_id, $screen = null) {
@@ -3729,12 +5168,21 @@ add_filter('screen_settings', function ($screen_settings, $screen) {
     ) ?? $screen_settings;
 }, 200, 2);
 
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen)) return;
+
+    $screen->remove_help_tabs();
+    $screen->set_help_sidebar('');
+}, 250);
+
 // Post edit screen: hide extra Screen Options sections, remove helper copy, and alphabetize Screen Elements.
 add_action('admin_head', function (): void {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
     if (!($screen instanceof WP_Screen)) return;
     $screen_base = (string) ($screen->base ?? '');
     $post_type = (string) ($screen->post_type ?? '');
+
+    echo '<style id="meza-admin-help-tab-hide">#contextual-help-link-wrap,#contextual-help-wrap{display:none!important;}</style>';
 
     if (in_array($screen_base, ['post', 'post-new'], true)) {
         echo '<style id="meza-post-screen-options-cleanup">#screen-options-wrap .columns-prefs,#screen-options-wrap .metabox-prefs>p{display:none!important;}</style>';
@@ -3854,48 +5302,152 @@ add_action('current_screen', function ($screen): void {
     if (!($post_type_object instanceof WP_Post_Type)) return;
 
     if (isset($panel_labels['postimagediv'])) {
-        $post_type_object->labels->featured_image = $panel_labels['postimagediv'];
+        $image_panel_label = (string) $panel_labels['postimagediv'];
+        $image_panel_label_lower = strtolower($image_panel_label);
+        $post_type_object->labels->featured_image = $image_panel_label;
+        $post_type_object->labels->set_featured_image = sprintf(
+            __('Set %s'),
+            $image_panel_label_lower
+        );
+        $post_type_object->labels->remove_featured_image = sprintf(
+            __('Remove %s'),
+            $image_panel_label_lower
+        );
+        $post_type_object->labels->use_featured_image = sprintf(
+            __('Use as %s'),
+            $image_panel_label_lower
+        );
     }
     if (!isset($post_type_object->labels->attributes)) return;
 
     $post_type_object->labels->attributes = __('Attributes');
 }, 1000);
 
-add_action('add_meta_boxes', function (string $post_type, $post): void {
+add_filter('admin_post_thumbnail_html', function ($content, $post_id): string {
+    $post = get_post((int) $post_id);
+    if (!($post instanceof WP_Post)) return (string) $content;
+
+    $panel_labels = meza_get_post_edit_panel_admin_label_map((string) $post->post_type);
+    $image_panel_label = trim((string) ($panel_labels['postimagediv'] ?? ''));
+    if ($image_panel_label === '') return (string) $content;
+
+    $panel_label_lower = strtolower($image_panel_label);
+    $replacements = [
+        __('Click the image to edit or update') => sprintf(__('Click the %s to edit or update'), $panel_label_lower),
+        __('Set featured image') => sprintf(__('Set %s'), $panel_label_lower),
+        __('Remove featured image') => sprintf(__('Remove %s'), $panel_label_lower),
+    ];
+
+    return str_replace(
+        array_keys($replacements),
+        array_values($replacements),
+        (string) $content
+    );
+}, 1000, 2);
+
+add_action('add_meta_boxes_page', function ($post): void {
     if (!($post instanceof WP_Post)) return;
 
-    $panel_labels = meza_get_post_edit_panel_admin_label_map($post_type);
+    global $wp_meta_boxes;
 
-    if ($post_type === 'page') return;
+    foreach (['high', 'core', 'default', 'low'] as $priority) {
+        if (!isset($wp_meta_boxes['page']['side'][$priority]['pageparentdiv']) || !is_array($wp_meta_boxes['page']['side'][$priority]['pageparentdiv'])) {
+            continue;
+        }
 
-    $post_type_object = get_post_type_object($post_type);
-    if (!($post_type_object instanceof WP_Post_Type)) return;
+        $wp_meta_boxes['page']['side'][$priority]['pageparentdiv']['title'] = __('Attributes');
+        $wp_meta_boxes['page']['side'][$priority]['pageparentdiv']['callback'] = 'meza_page_attributes_meta_box';
 
-    $has_page_attributes = post_type_supports($post_type, 'page-attributes') || count(get_page_templates($post)) > 0;
-
-    if ($has_page_attributes) {
-        remove_meta_box('pageparentdiv', $post_type, 'side');
-        add_meta_box(
-            'pageparentdiv',
-            __('Attributes'),
-            'page_attributes_meta_box',
-            null,
-            'side',
-            'core',
-            ['__back_compat_meta_box' => true]
-        );
+        $existing_args = $wp_meta_boxes['page']['side'][$priority]['pageparentdiv']['args'] ?? [];
+        if (!is_array($existing_args)) {
+            $existing_args = [];
+        }
+        $existing_args['__back_compat_meta_box'] = true;
+        $wp_meta_boxes['page']['side'][$priority]['pageparentdiv']['args'] = $existing_args;
+        return;
     }
-}, 1001, 2);
+
+    add_meta_box(
+        'pageparentdiv',
+        __('Attributes'),
+        'meza_page_attributes_meta_box',
+        'page',
+        'side',
+        'default',
+        ['__back_compat_meta_box' => true]
+    );
+}, 1001, 1);
 
 function meza_post_summary_meta_box($post): void
 {
     if (!($post instanceof WP_Post)) return;
     $panel_labels = meza_get_post_edit_panel_admin_label_map((string) $post->post_type);
     $label = $panel_labels['postexcerpt'] ?? __('Excerpt');
-    ?>
+?>
     <label class="screen-reader-text" for="excerpt"><?php echo esc_html($label); ?></label>
-    <textarea rows="1" cols="40" name="excerpt" id="excerpt"><?php echo $post->post_excerpt; // textarea_escaped ?></textarea>
+    <textarea rows="1" cols="40" name="excerpt" id="excerpt"><?php echo $post->post_excerpt; // textarea_escaped 
+                                                                ?></textarea>
     <?php
+}
+
+function meza_page_attributes_meta_box($post): void
+{
+    if (!($post instanceof WP_Post)) return;
+
+    if (post_type_supports($post->post_type, 'page-attributes') && is_post_type_hierarchical($post->post_type)) {
+        $dropdown_args = [
+            'post_type'        => $post->post_type,
+            'exclude_tree'     => $post->ID,
+            'selected'         => $post->post_parent,
+            'name'             => 'parent_id',
+            'show_option_none' => __('(no parent)'),
+            'sort_column'      => 'menu_order, post_title',
+            'echo'             => 0,
+        ];
+
+        $dropdown_args = apply_filters('page_attributes_dropdown_pages_args', $dropdown_args, $post);
+        $pages = wp_dropdown_pages($dropdown_args);
+        if (!empty($pages)) :
+    ?>
+            <p class="post-attributes-label-wrapper parent-id-label-wrapper"><label class="post-attributes-label" for="parent_id"><?php _e('Parent'); ?></label></p>
+            <?php echo $pages; ?>
+        <?php
+        endif;
+    }
+
+    $special_page_label = ($post->post_type === 'page') ? meza_get_special_page_label((int) $post->ID) : '';
+    $has_templates = count(get_page_templates($post)) > 0;
+
+    if ($special_page_label !== '' || ($has_templates && (int) get_option('page_for_posts') !== $post->ID)) :
+        $template = !empty($post->page_template) ? $post->page_template : 'default';
+        $special_page_update_link = ($special_page_label !== '') ? meza_get_special_page_update_link((int) $post->ID) : '';
+        ?>
+        <p class="post-attributes-label-wrapper page-template-label-wrapper"><label class="post-attributes-label" for="page_template"><?php _e('Template'); ?></label>
+            <?php do_action('page_attributes_meta_box_template', $template, $post); ?>
+        </p>
+        <?php if ($special_page_label !== '') : ?>
+            <div class="post-attributes-template-static" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <?php echo meza_get_page_type_label_with_dashicon($special_page_label); ?>
+                <?php if ($special_page_update_link !== '') : ?>
+                    <span class="post-attributes-template-static-action" style="display:inline-flex;align-items:center;"><a href="<?php echo esc_url($special_page_update_link); ?>"><?php _e('Update'); ?></a></span>
+                <?php endif; ?>
+            </div>
+            <input type="hidden" name="page_template" id="page_template" value="<?php echo esc_attr($template); ?>" />
+        <?php else : ?>
+            <select name="page_template" id="page_template">
+                <?php
+                $default_title = apply_filters('default_page_template_title', __('Default template'), 'meta-box');
+                ?>
+                <option value="default"><?php echo esc_html($default_title); ?></option>
+                <?php page_template_dropdown($template, $post->post_type); ?>
+            </select>
+        <?php endif; ?>
+    <?php endif; ?>
+    <?php if (post_type_supports($post->post_type, 'page-attributes')) : ?>
+        <p class="post-attributes-label-wrapper menu-order-label-wrapper"><label class="post-attributes-label" for="menu_order"><?php _e('Order'); ?></label></p>
+        <input name="menu_order" type="text" size="4" id="menu_order" value="<?php echo esc_attr($post->menu_order); ?>" />
+        <?php do_action('page_attributes_misc_attributes', $post); ?>
+    <?php endif;
 }
 
 function meza_sort_metabox_ids_with_priority(array $box_ids, array $priority_ids): array
@@ -3936,6 +5488,38 @@ function meza_normalize_metabox_order_contexts($order_value): array
     }
 
     return is_array($contexts) ? $contexts : [];
+}
+
+function meza_post_metabox_order_with_side_priorities($order_value, string $post_type): array
+{
+    $contexts = meza_normalize_metabox_order_contexts($order_value);
+
+    $side_items = [];
+    if (isset($contexts['side']) && $contexts['side'] !== '') {
+        $side_items = array_map('sanitize_key', explode(',', (string) $contexts['side']));
+        $side_items = array_values(array_filter($side_items, static function ($id) {
+            return $id !== '';
+        }));
+    }
+
+    $side_items = meza_sort_metabox_ids_with_priority($side_items, meza_get_side_metabox_priority_ids($post_type));
+
+    if (!empty($side_items)) {
+        $contexts['side'] = implode(',', $side_items);
+    }
+
+    $pairs = [];
+    foreach ($contexts as $context_key => $boxes) {
+        $box_ids = array_map('sanitize_key', explode(',', (string) $boxes));
+        $box_ids = array_values(array_unique(array_filter($box_ids, static function ($id) {
+            return $id !== '';
+        })));
+        if (empty($box_ids)) continue;
+
+        $pairs[sanitize_key((string) $context_key)] = implode(',', $box_ids);
+    }
+
+    return $pairs;
 }
 
 function meza_post_metabox_order_with_excerpt_in_context($order_value, string $preferred_context, string $post_type): array
@@ -4128,6 +5712,7 @@ add_action('admin_menu', function () {
     remove_menu_page('admin.php?page=godaddy-get-help');
 
     remove_submenu_page('edit.php', 'edit-tags.php?taxonomy=post_tag');
+    remove_submenu_page('options-general.php', 'options-discussion.php');
 
     remove_submenu_page('themes.php', 'customize.php');
     remove_submenu_page('themes.php', 'theme-editor.php');
@@ -4135,7 +5720,25 @@ add_action('admin_menu', function () {
     remove_submenu_page('themes.php', 'edit.php?post_type=wp_block');
 
     remove_submenu_page('plugins.php', 'plugin-editor.php');
+
+    if (!meza_site_has_subscribers()) {
+        remove_submenu_page('tools.php', 'export-personal-data.php');
+        remove_submenu_page('tools.php', 'erase-personal-data.php');
+    }
 }, 999);
+
+add_action('admin_init', function (): void {
+    if (meza_site_has_subscribers()) return;
+    if (!is_admin()) return;
+
+    global $pagenow;
+
+    if (!in_array($pagenow, ['export-personal-data.php', 'erase-personal-data.php'], true)) {
+        return;
+    }
+
+    wp_die(__('Sorry, you are not allowed to access this page.'));
+});
 
 // Remove "Get Help" top-level menu item when present.
 add_action('admin_menu', function () {
@@ -4682,7 +6285,6 @@ function meza_reorder_dashboard_utility_items(): void
             $matched_indexes[] = (int) $index;
             continue;
         }
-
     }
 
     if ($dashboard_index === null || empty($matched_indexes)) return;
@@ -5211,7 +6813,7 @@ add_action('admin_head', function (): void {
             document.addEventListener('click', navigateToTab, true);
         })();
     </script>
-    <?php
+<?php
 }, 1001);
 
 add_action('admin_head', function (): void {
@@ -5232,7 +6834,7 @@ add_action('admin_head', function (): void {
         '.woocommerce-layout__content{padding-top:0!important;margin-top:0!important;}' .
         '.woocommerce-layout__primary{margin-top:10px!important;}' .
         '</style>';
-    ?>
+?>
     <script id="meza-woocommerce-analytics-embed-state">
         (() => {
             const sendState = () => {
@@ -5252,7 +6854,7 @@ add_action('admin_head', function (): void {
                 const original = history[method];
                 if (typeof original !== 'function') return;
 
-                history[method] = function (...args) {
+                history[method] = function(...args) {
                     const result = original.apply(this, args);
                     window.requestAnimationFrame(sendState);
                     return result;
@@ -5269,16 +6871,22 @@ add_action('admin_head', function (): void {
                 window.requestAnimationFrame(sendState);
             });
 
-            observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+            observer.observe(document.documentElement, {
+                childList: true,
+                subtree: true,
+                attributes: true
+            });
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', sendState, { once: true });
+                document.addEventListener('DOMContentLoaded', sendState, {
+                    once: true
+                });
             } else {
                 sendState();
             }
         })();
     </script>
-    <?php
+<?php
 }, 1000);
 
 add_filter('admin_body_class', function (string $classes): string {
@@ -5364,7 +6972,7 @@ add_action('admin_head', function (): void {
         '.woocommerce_page_wc-admin .woocommerce-filters-label{margin-top:0!important;}' .
         '.woocommerce_page_wc-admin .woocommerce-filters-filter{min-height:0!important;}' .
         '</style>';
-    ?>
+?>
     <script id="meza-remove-woocommerce-embedded-header">
         (() => {
             const selectors = [
@@ -5383,23 +6991,28 @@ add_action('admin_head', function (): void {
             };
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', removeEmbeddedHeader, { once: true });
+                document.addEventListener('DOMContentLoaded', removeEmbeddedHeader, {
+                    once: true
+                });
             } else {
                 removeEmbeddedHeader();
             }
 
             const observer = new MutationObserver(() => removeEmbeddedHeader());
-            observer.observe(document.documentElement, { childList: true, subtree: true });
+            observer.observe(document.documentElement, {
+                childList: true,
+                subtree: true
+            });
         })();
     </script>
-    <?php
+<?php
 }, 1002);
 
 add_action('admin_head', function (): void {
     if (!is_admin()) {
         return;
     }
-    ?>
+?>
     <script id="meza-hide-top-level-analytics-menu">
         (() => {
             const hideTopLevelAnalyticsMenu = () => {
@@ -5407,8 +7020,8 @@ add_action('admin_head', function (): void {
                     if (!(link instanceof HTMLAnchorElement)) return;
 
                     const href = String(link.getAttribute('href') || '');
-                    const isAnalyticsLink = href.includes('page=wc-admin')
-                        && (href.includes('/analytics/overview') || href.includes('%2Fanalytics%2Foverview'));
+                    const isAnalyticsLink = href.includes('page=wc-admin') &&
+                        (href.includes('/analytics/overview') || href.includes('%2Fanalytics%2Foverview'));
 
                     if (!isAnalyticsLink) return;
 
@@ -5420,20 +7033,22 @@ add_action('admin_head', function (): void {
             };
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', hideTopLevelAnalyticsMenu, { once: true });
+                document.addEventListener('DOMContentLoaded', hideTopLevelAnalyticsMenu, {
+                    once: true
+                });
             } else {
                 hideTopLevelAnalyticsMenu();
             }
         })();
     </script>
-    <?php
+<?php
 }, 1002);
 
 add_action('admin_head', function (): void {
     if (!is_admin()) {
         return;
     }
-    ?>
+?>
     <script id="meza-force-adminmenu-wc-admin-navigation">
         (() => {
             const navigateToAdminMenuLink = (event) => {
@@ -5448,7 +7063,7 @@ add_action('admin_head', function (): void {
             document.addEventListener('click', navigateToAdminMenuLink, true);
         })();
     </script>
-    <?php
+<?php
 }, 1003);
 
 add_action('in_admin_header', function (): void {
@@ -5495,7 +7110,7 @@ add_action('admin_head', function (): void {
     }
 
     echo '<style id="meza-hide-stale-woocommerce-analytics-nav">.meza-woocommerce-analytics-nav-wrap{display:none!important;}</style>';
-    ?>
+?>
     <script id="meza-remove-stale-woocommerce-analytics-nav">
         (() => {
             const removeAnalyticsNav = () => {
@@ -5507,23 +7122,28 @@ add_action('admin_head', function (): void {
             };
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', removeAnalyticsNav, { once: true });
+                document.addEventListener('DOMContentLoaded', removeAnalyticsNav, {
+                    once: true
+                });
             } else {
                 removeAnalyticsNav();
             }
 
             const observer = new MutationObserver(() => removeAnalyticsNav());
-            observer.observe(document.documentElement, { childList: true, subtree: true });
+            observer.observe(document.documentElement, {
+                childList: true,
+                subtree: true
+            });
         })();
     </script>
-    <?php
+<?php
 }, 1004);
 
 add_action('admin_footer', function (): void {
     if (!meza_is_store_analytics_wrapper_screen()) {
         return;
     }
-    ?>
+?>
     <script id="meza-store-analytics-wrapper-sync">
         (() => {
             const iframe = document.getElementById('meza-woocommerce-analytics-iframe');
@@ -5564,7 +7184,7 @@ add_action('admin_footer', function (): void {
             });
         })();
     </script>
-    <?php
+<?php
 }, 1001);
 
 function meza_reorder_woocommerce_submenu_items(): void
@@ -5807,7 +7427,7 @@ add_action('admin_head', function (): void {
     if (!is_admin()) {
         return;
     }
-    ?>
+?>
     <script id="meza-hide-woocommerce-home-submenu">
         (() => {
             const hideWooHomeSubmenu = () => {
@@ -5815,8 +7435,8 @@ add_action('admin_head', function (): void {
                     if (!(link instanceof HTMLAnchorElement)) return;
 
                     const href = String(link.getAttribute('href') || '');
-                    const isWooHomeLink = href.includes('page=wc-admin')
-                        && !href.includes('path=');
+                    const isWooHomeLink = href.includes('page=wc-admin') &&
+                        !href.includes('path=');
 
                     if (!isWooHomeLink) return;
 
@@ -5828,13 +7448,15 @@ add_action('admin_head', function (): void {
             };
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', hideWooHomeSubmenu, { once: true });
+                document.addEventListener('DOMContentLoaded', hideWooHomeSubmenu, {
+                    once: true
+                });
             } else {
                 hideWooHomeSubmenu();
             }
         })();
     </script>
-    <?php
+<?php
 }, 1003);
 
 function meza_group_woocommerce_top_level_items(): void
@@ -5880,7 +7502,6 @@ function meza_group_woocommerce_top_level_items(): void
             $matched_indexes[] = (int) $index;
             continue;
         }
-
     }
 
     $items_to_insert = array_values(array_filter($ordered_items, static function ($item): bool {
@@ -6297,7 +7918,7 @@ add_filter('wp_is_application_passwords_available_for_user', function (bool $ava
 add_action('admin_head-profile.php', function (): void {
     $can_see_two_factor = meza_can_access_profile_two_factor() ? 'true' : 'false';
     $can_see_application_passwords = meza_user_has_any_role(wp_get_current_user(), ['administrator']) ? 'true' : 'false';
-    ?>
+?>
     <script id="meza-profile-access-cleanup">
         (() => {
             const canSeeTwoFactor = <?php echo $can_see_two_factor; ?>;
@@ -6345,13 +7966,15 @@ add_action('admin_head-profile.php', function (): void {
             };
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', apply, { once: true });
+                document.addEventListener('DOMContentLoaded', apply, {
+                    once: true
+                });
             } else {
                 apply();
             }
         })();
     </script>
-    <?php
+<?php
 }, 1000);
 
 // Admin Menu Editor swaps in its custom menu after admin_menu, so reapply these mutations then as well.
@@ -6696,6 +8319,43 @@ function meza_update_admin_action_link(string $html, $post = null, string $label
     }, $html, 1) ?? $html;
 }
 
+function meza_get_title_permalink_display_text(WP_Post $post): string
+{
+    if (!meza_post_has_permalink((int) $post->ID)) return '';
+
+    $url = (string) get_permalink((int) $post->ID);
+    if ($url === '') return '';
+
+    return meza_get_admin_link_column_display_text($url);
+}
+
+function meza_get_copy_url_action_link(WP_Post $post): string
+{
+    if (!meza_post_has_permalink((int) $post->ID)) return '';
+
+    $url = (string) get_permalink((int) $post->ID);
+    if ($url === '') return '';
+
+    $display = meza_get_title_permalink_display_text($post);
+    if ($display === '') return '';
+
+    $page_template_html = meza_post_type_has_permalink((string) $post->post_type)
+        ? meza_get_page_template_title_link((int) $post->ID)
+        : '';
+
+    return '<a href="#" class="mz-copy-link" data-copy-text="' . esc_attr($url) . '" data-permalink-url="' . esc_attr($url) . '" data-permalink-display="' . esc_attr($display) . '" data-page-template-html="' . esc_attr($page_template_html) . '">' . esc_html__('Copy URL') . '</a>';
+}
+
+function meza_is_duplicate_row_action($key, $action): bool
+{
+    $key = strtolower(trim((string) $key));
+    if (in_array($key, ['duplicate', 'duplicate_post'], true)) return true;
+    if (!is_string($action)) return false;
+
+    $normalized_action = strtolower($action);
+    return str_contains($normalized_action, 'duplicate');
+}
+
 function meza_remove_quick_edit_action(array $actions, $post = null): array
 {
     if (isset($actions['inline hide-if-no-js'])) unset($actions['inline hide-if-no-js']);
@@ -6714,14 +8374,124 @@ function meza_remove_quick_edit_action(array $actions, $post = null): array
 
     foreach ($actions as $key => $action) {
         if (!is_string($action)) continue;
-        $actions[$key] = meza_update_admin_action_link($action, $post);
+        $label = '';
+        if (in_array((string) $key, ['trash', 'delete'], true)) {
+            $label = __('Delete');
+        } elseif ((string) $key === 'edit') {
+            $label = __('Edit');
+        } elseif ((string) $key === 'view') {
+            $label = __('View');
+        }
+
+        $actions[$key] = meza_update_admin_action_link($action, $post, $label);
     }
 
-    return $actions;
+    if (!($post instanceof WP_Post)) {
+        return $actions;
+    }
+
+    $copy_url_action = meza_get_copy_url_action_link($post);
+    if ($copy_url_action !== '') {
+        $actions['meza_copy_url'] = $copy_url_action;
+    }
+
+    $ordered = [];
+    foreach (['edit', 'trash', 'delete'] as $key) {
+        if (isset($actions[$key])) {
+            $ordered[$key] = $actions[$key];
+            unset($actions[$key]);
+        }
+    }
+
+    foreach ($actions as $key => $action) {
+        if (!meza_is_duplicate_row_action($key, $action)) continue;
+        $ordered[$key] = meza_update_admin_action_link((string) $action, $post, __('Duplicate'));
+        unset($actions[$key]);
+    }
+
+    foreach (['view', 'preview'] as $key) {
+        if (isset($actions[$key])) {
+            $ordered[$key] = $actions[$key];
+            unset($actions[$key]);
+        }
+    }
+
+    if (isset($actions['meza_copy_url'])) {
+        $ordered['meza_copy_url'] = $actions['meza_copy_url'];
+        unset($actions['meza_copy_url']);
+    }
+
+    foreach ($actions as $key => $action) {
+        $ordered[$key] = $action;
+    }
+
+    return $ordered;
 }
 
 add_filter('post_row_actions', 'meza_remove_quick_edit_action', 1000, 2);
 add_filter('page_row_actions', 'meza_remove_quick_edit_action', 1000, 2);
+
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') {
+        return;
+    }
+
+    $screen_id = (string) ($screen->id ?? '');
+    $post_type = (string) ($screen->post_type ?? '');
+    if ($screen_id === '' || $post_type === '') {
+        return;
+    }
+
+    add_filter("bulk_actions-{$screen_id}", function ($actions) use ($post_type) {
+        if (!is_array($actions)) {
+            return $actions;
+        }
+
+        $post_type_object = get_post_type_object($post_type);
+        $singular = '';
+        $plural = '';
+
+        if ($post_type_object instanceof WP_Post_Type) {
+            $singular = trim((string) ($post_type_object->labels->singular_name ?? ''));
+            $plural = trim((string) ($post_type_object->labels->name ?? ''));
+        }
+
+        foreach ($actions as $key => $label) {
+            if (!is_string($label)) {
+                continue;
+            }
+
+            $normalized_key = strtolower(trim((string) $key));
+            $normalized_label = strtolower(trim(wp_strip_all_tags($label)));
+            if (
+                !str_contains($normalized_key, 'duplicate')
+                && !str_contains($normalized_label, 'duplicate')
+            ) {
+                continue;
+            }
+
+            $updated = meza_strip_post_type_from_action_label($label, get_post_type_object($post_type) instanceof WP_Post_Type ? (object) ['post_type' => $post_type] : null);
+
+            if ($updated === $label || $updated === '') {
+                $updated = $label;
+                foreach (array_filter([$singular, $plural]) as $candidate) {
+                    $candidate = trim((string) $candidate);
+                    if ($candidate === '') continue;
+                    $pattern = '/\s+' . preg_quote($candidate, '/') . 's?$/i';
+                    $next = preg_replace($pattern, '', $updated);
+                    if ($next !== null && trim($next) !== '' && trim($next) !== trim($updated)) {
+                        $updated = trim(preg_replace('/\s+/', ' ', $next) ?? $next);
+                        break;
+                    }
+                }
+            }
+
+            $actions[$key] = ($updated !== '') ? $updated : __('Duplicate');
+        }
+
+        return $actions;
+    }, 1000);
+}, 1000);
 
 add_filter('post_updated_messages', function (array $messages): array {
     global $post;
@@ -6729,6 +8499,7 @@ add_filter('post_updated_messages', function (array $messages): array {
 
     $post_type = (string) $post->post_type;
     if ($post_type === '' || !isset($messages[$post_type]) || !is_array($messages[$post_type])) return $messages;
+    if (meza_is_acf_admin_post_type($post_type)) return $messages;
 
     $view_label = meza_get_view_post_label($post);
     $preview_label = meza_get_preview_post_label($post);
@@ -6896,9 +8667,14 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table .column-mz_id{width:65px;max-width:65px;}' .
         '.wp-list-table .column-mz_menu_order{width:65px;max-width:65px;}' .
         '.wp-list-table .column-mz_cta_link{width:200px;max-width:200px;}' .
+        '.wp-list-table .column-mz_cta_secondary_link{width:200px;max-width:200px;}' .
+        '.wp-list-table .column-website{width:200px;max-width:200px;}' .
+        '.wp-list-table .column-mz_faq_count{width:80px;max-width:80px;}' .
         '.wp-list-table .column-mz_form_recipients{width:150px;max-width:150px;}' .
         '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
-        '.wp-list-table .column-mz_organization_url{width:125px;max-width:125px;}' .
+        '.wp-list-table .column-mz_organization_url{width:200px;max-width:200px;}' .
+        '.wp-list-table .column-mz_profile_link{width:200px;max-width:200px;}' .
+        '.wp-list-table .column-mz_profile_title{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
@@ -6909,12 +8685,21 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table td.column-mz_thumbnail img{width:100px!important;height:auto!important;max-width:100px!important;display:block!important;margin:0!important;}' .
         '.wp-list-table .column-mz_thumbnail .row-actions{font-size:11px;line-height:1.1;}' .
         '.wp-list-table .column-title{width:225px;}' .
+        '.wp-list-table .column-title .meza-title-template,.wp-list-table .column-title .meza-title-permalink{font-size:12px;line-height:1.4;}' .
+        '.wp-list-table .column-title .meza-title-template{margin:3px 0 2px;}' .
+        '.wp-list-table .column-title .meza-title-permalink{margin:0 0 4px;}' .
+        '.wp-list-table .column-title .meza-title-template .meza-title-template-text{display:inline-flex;align-items:center;gap:4px;color:#646970;font-weight:500;overflow-wrap:anywhere;word-break:break-word;}' .
+        '.wp-list-table .column-title .meza-title-template .meza-page-type-label{display:inline-flex;align-items:flex-start;gap:4px;vertical-align:top;}' .
+        '.wp-list-table .column-title .meza-title-template .meza-page-type-label-text{line-height:1.3;}' .
+        '.wp-list-table .column-title .meza-title-template .dashicons{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:14px;width:14px;height:14px;line-height:14px;position:relative;}' .
+        '.wp-list-table .column-title .meza-title-permalink a{color:#646970;text-decoration:none;overflow-wrap:anywhere;word-break:break-word;}' .
+        '.wp-list-table .column-title .meza-title-permalink a:hover{color:#2271b1;text-decoration:underline;}' .
         '.wp-list-table .column-mz_modified,.wp-list-table .column-mz_published{width:225px;}' .
         '.wp-list-table th.column-categories,.wp-list-table td.column-categories{width:225px;max-width:225px;}' .
         '.wp-list-table th[class*="column-taxonomy-"],.wp-list-table td[class*="column-taxonomy-"]{width:225px;}' .
-        '.wp-list-table th.column-mz_page_template,.wp-list-table td.column-mz_page_template{width:150px;max-width:150px;}' .
         '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:225px;max-width:225px;}' .
         '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:175px;max-width:175px;}' .
+        '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:175px;max-width:175px;}' .
         '</style>';
 
     if ($post_type === 'product') {
@@ -6935,11 +8720,14 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table th.column-product_tag,.wp-list-table td.column-product_tag,.wp-list-table th.column-taxonomy-product_tag,.wp-list-table td.column-taxonomy-product_tag{width:180px!important;min-width:180px!important;max-width:180px!important;}' .
             '.wp-list-table th.column-mz_page_link,.wp-list-table td.column-mz_page_link{width:320px!important;min-width:320px!important;max-width:320px!important;}' .
             '.wp-list-table th.column-wpseo-title,.wp-list-table td.column-wpseo-title{width:260px!important;min-width:260px!important;max-width:260px!important;}' .
+            '.wp-list-table th.column-mz_share_title,.wp-list-table td.column-mz_share_title{width:260px!important;min-width:260px!important;max-width:260px!important;}' .
             '.wp-list-table th.column-wpseo-metadesc,.wp-list-table td.column-wpseo-metadesc{width:320px!important;min-width:320px!important;max-width:320px!important;}' .
+            '.wp-list-table th.column-mz_share_description,.wp-list-table td.column-mz_share_description{width:320px!important;min-width:320px!important;max-width:320px!important;}' .
             '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:260px!important;min-width:260px!important;max-width:260px!important;}' .
             '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:220px!important;min-width:220px!important;max-width:220px!important;}' .
+            '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:220px!important;min-width:220px!important;max-width:220px!important;}' .
             '.wp-list-table th.column-mz_modified,.wp-list-table td.column-mz_modified,.wp-list-table th.column-mz_published,.wp-list-table td.column-mz_published{width:220px!important;min-width:220px!important;max-width:220px!important;vertical-align:top!important;}' .
-            '.wp-list-table td.column-sku,.wp-list-table td.column-product_cat,.wp-list-table td.column-taxonomy-product_cat,.wp-list-table td.column-product_tag,.wp-list-table td.column-taxonomy-product_tag,.wp-list-table td.column-mz_page_link,.wp-list-table td.column-wpseo-title,.wp-list-table td.column-wpseo-metadesc,.wp-list-table td.column-mz_page_headline,.wp-list-table td.column-mz_page_cta{white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;vertical-align:top!important;}' .
+            '.wp-list-table td.column-sku,.wp-list-table td.column-product_cat,.wp-list-table td.column-taxonomy-product_cat,.wp-list-table td.column-product_tag,.wp-list-table td.column-taxonomy-product_tag,.wp-list-table td.column-mz_page_link,.wp-list-table td.column-wpseo-title,.wp-list-table td.column-mz_share_title,.wp-list-table td.column-wpseo-metadesc,.wp-list-table td.column-mz_share_description,.wp-list-table td.column-mz_page_headline,.wp-list-table td.column-mz_page_cta,.wp-list-table td.column-mz_page_form{white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;vertical-align:top!important;}' .
             '.wp-list-table td.column-mz_page_link a:first-child{display:block;white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;}' .
             '.wp-list-table td.column-mz_page_link .row-actions{display:flex;flex-wrap:wrap;align-items:center;gap:0;line-height:1.3;}' .
             '.wp-list-table td.column-mz_page_link .row-actions>span{display:inline-flex;align-items:center;}' .
@@ -6967,6 +8755,31 @@ add_action('admin_print_footer_scripts-edit.php', function () {
         'document.querySelectorAll(".wp-list-table .row-title").forEach(function(link){' .
         'link.setAttribute("target","_blank");' .
         'link.setAttribute("rel","noopener noreferrer");' .
+        '});' .
+        'document.querySelectorAll(".wp-list-table .mz-copy-link[data-permalink-url]").forEach(function(link){' .
+        'var actions=link.closest(".row-actions");' .
+        'if(!actions) return;' .
+        'var cell=actions.closest("td,th");' .
+        'if(!cell || cell.querySelector(".meza-title-permalink")) return;' .
+        'var templateHtml=link.getAttribute("data-page-template-html")||"";' .
+        'var url=link.getAttribute("data-permalink-url")||"";' .
+        'var display=link.getAttribute("data-permalink-display")||url;' .
+        'if(!url || !display) return;' .
+        'if(templateHtml && !cell.querySelector(".meza-title-template")){' .
+        'var templateWrap=document.createElement("div");' .
+        'templateWrap.className="meza-title-template";' .
+        'templateWrap.innerHTML=templateHtml;' .
+        'actions.parentNode.insertBefore(templateWrap,actions);' .
+        '}' .
+        'var wrap=document.createElement("div");' .
+        'wrap.className="meza-title-permalink";' .
+        'var anchor=document.createElement("a");' .
+        'anchor.href=url;' .
+        'anchor.target="_blank";' .
+        'anchor.rel="noopener noreferrer";' .
+        'anchor.textContent=display;' .
+        'wrap.appendChild(anchor);' .
+        'actions.parentNode.insertBefore(wrap,actions);' .
         '});' .
         'document.querySelectorAll(".wp-list-table .mz-copy-link").forEach(function(link){' .
         'link.addEventListener("click", function(e){' .
@@ -7539,7 +9352,17 @@ add_action('admin_head-nav-menus.php', function (): void {
 }, 1000);
 
 add_action('admin_head-users.php', function (): void {
-    echo '<style id="meza-users-hide-top-tablenav">.users-php .tablenav.top{display:none!important;}</style>';
+    echo '<style id="meza-users-list-layout">'
+        . '.users-php .wp-list-table .check-column{width:32px;min-width:32px;max-width:32px;}'
+        . '.users-php .wp-list-table .column-username{width:220px;min-width:220px;max-width:220px;}'
+        . '.users-php .wp-list-table .column-name{width:220px;min-width:220px;max-width:220px;}'
+        . '.users-php .wp-list-table .column-email{width:260px;min-width:260px;max-width:260px;}'
+        . '.users-php .wp-list-table .column-role{width:180px;min-width:180px;max-width:180px;}'
+        . '.users-php .wp-list-table .column-website{width:200px;min-width:200px;max-width:200px;}'
+        . '.users-php .wp-list-table .column-last_login{width:230px;min-width:230px;max-width:230px;}'
+        . '.users-php .wp-list-table td.column-email,.users-php .wp-list-table td.column-website{white-space:normal;overflow-wrap:anywhere;word-break:break-word;}'
+        . '.users-php .tablenav.top{display:none!important;}'
+        . '</style>';
 }, 1000);
 
 // Menus screen: show all remaining Add Menu Items panels by default for first-load users.
@@ -8044,7 +9867,7 @@ function meza_render_yoast_panel_state_script(): void
     $taxonomy_labels = array_values(array_unique(array_filter($taxonomy_labels, static function ($label): bool {
         return $label !== '';
     })));
-    ?>
+?>
     <script id="meza-yoast-panel-state">
         (() => {
             const storageKey = 'mezaYoastPanelOpen';
@@ -8054,9 +9877,9 @@ function meza_render_yoast_panel_state_script(): void
 
             const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
             const isElement = (value) => value instanceof HTMLElement;
-            const getBlockEditorPanel = (element) => element?.closest?.('.components-panel__body, .editor-post-panel, .plugin-document-setting-panel')
-                || element?.parentElement
-                || null;
+            const getBlockEditorPanel = (element) => element?.closest?.('.components-panel__body, .editor-post-panel, .plugin-document-setting-panel') ||
+                element?.parentElement ||
+                null;
             const getSidebarButtons = () => {
                 const selectors = [
                     '.edit-post-sidebar button[aria-expanded]',
@@ -8085,7 +9908,11 @@ function meza_render_yoast_panel_state_script(): void
                 return button ? getBlockEditorPanel(button) : null;
             };
             const getBlockEditorPanelSiblings = (container) => Array.from(container?.children || []).filter(isElement);
-            const isTaxonomyPanelButton = ({ label, controls, labelledBy }) => {
+            const isTaxonomyPanelButton = ({
+                label,
+                controls,
+                labelledBy
+            }) => {
                 if (controls.includes('taxonomy') || labelledBy.includes('taxonomy')) return true;
 
                 return taxonomyLabels.some((taxonomyLabel) => taxonomyLabel !== '' && label === taxonomyLabel);
@@ -8111,9 +9938,9 @@ function meza_render_yoast_panel_state_script(): void
                 if (!isElement(element) || element.id === 'wpseo_meta') return false;
 
                 const id = normalize(element.id);
-                return id.startsWith('acf-')
-                    || element.classList.contains('acf-postbox')
-                    || element.querySelector('.acf-fields, .acf-postbox, [data-acf]');
+                return id.startsWith('acf-') ||
+                    element.classList.contains('acf-postbox') ||
+                    element.querySelector('.acf-fields, .acf-postbox, [data-acf]');
             };
 
             const moveClassicYoastToBottom = () => {
@@ -8123,9 +9950,9 @@ function meza_render_yoast_panel_state_script(): void
                 const container = metabox.parentElement;
                 const siblings = Array.from(container.children).filter(isElement);
                 const acfBoxes = siblings.filter(isAcfMetabox);
-                const anchor = acfBoxes.length > 0
-                    ? acfBoxes[acfBoxes.length - 1]
-                    : siblings.filter((element) => element !== metabox && element.classList.contains('postbox')).at(-1) || null;
+                const anchor = acfBoxes.length > 0 ?
+                    acfBoxes[acfBoxes.length - 1] :
+                    siblings.filter((element) => element !== metabox && element.classList.contains('postbox')).at(-1) || null;
 
                 if (anchor) {
                     if (anchor.nextElementSibling !== metabox) {
@@ -8154,36 +9981,44 @@ function meza_render_yoast_panel_state_script(): void
             };
 
             const moveBlockEditorFeaturedImageUnderPublish = () => {
-                const featuredImagePanel = findBlockEditorPanelByButton(({ label, controls, labelledBy }) => (
-                    label.includes('featured image')
-                    || controls.includes('featured-image')
-                    || labelledBy.includes('featured-image')
+                const featuredImagePanel = findBlockEditorPanelByButton(({
+                    label,
+                    controls,
+                    labelledBy
+                }) => (
+                    label.includes('featured image') ||
+                    controls.includes('featured-image') ||
+                    labelledBy.includes('featured-image')
                 ));
 
                 if (!isElement(featuredImagePanel) || !isElement(featuredImagePanel.parentElement)) return;
 
                 const container = featuredImagePanel.parentElement;
-                const anchor = findBlockEditorPanelByButton(({ label, controls, labelledBy }) => (
-                    label === 'summary'
-                    || label === 'excerpt'
-                    || label === 'subhead'
-                    || label.includes('publish')
-                    || label.includes('status')
-                    || controls.includes('post-status')
-                    || labelledBy.includes('post-status')
+                const anchor = findBlockEditorPanelByButton(({
+                    label,
+                    controls,
+                    labelledBy
+                }) => (
+                    label === 'summary' ||
+                    label === 'excerpt' ||
+                    label === 'subhead' ||
+                    label.includes('publish') ||
+                    label.includes('status') ||
+                    controls.includes('post-status') ||
+                    labelledBy.includes('post-status')
                 ));
                 const taxonomyAnchor = findBlockEditorPanelByButton(isTaxonomyPanelButton);
                 const siblings = getBlockEditorPanelSiblings(container);
-                const anchorIndex = (isElement(anchor) && anchor.parentElement === container)
-                    ? siblings.indexOf(anchor)
-                    : -1;
+                const anchorIndex = (isElement(anchor) && anchor.parentElement === container) ?
+                    siblings.indexOf(anchor) :
+                    -1;
                 const taxonomyIndex = (
-                    isElement(taxonomyAnchor)
-                    && taxonomyAnchor.parentElement === container
-                    && taxonomyAnchor !== featuredImagePanel
-                )
-                    ? siblings.indexOf(taxonomyAnchor)
-                    : -1;
+                        isElement(taxonomyAnchor) &&
+                        taxonomyAnchor.parentElement === container &&
+                        taxonomyAnchor !== featuredImagePanel
+                    ) ?
+                    siblings.indexOf(taxonomyAnchor) :
+                    -1;
 
                 if (anchorIndex >= 0) {
                     if (anchor.nextElementSibling !== featuredImagePanel) {
@@ -8200,9 +10035,9 @@ function meza_render_yoast_panel_state_script(): void
                 }
 
                 const fallbackAnchor = siblings.find((panel) => panel !== featuredImagePanel) || null;
-                const targetAnchor = (isElement(anchor) && anchor.parentElement === container && anchor !== featuredImagePanel)
-                    ? anchor
-                    : fallbackAnchor;
+                const targetAnchor = (isElement(anchor) && anchor.parentElement === container && anchor !== featuredImagePanel) ?
+                    anchor :
+                    fallbackAnchor;
 
                 if (!isElement(targetAnchor)) return;
                 if (targetAnchor.nextElementSibling === featuredImagePanel) return;
@@ -8211,10 +10046,14 @@ function meza_render_yoast_panel_state_script(): void
             };
 
             const moveBlockEditorAttributesAheadOfTaxonomies = () => {
-                const attributesPanel = findBlockEditorPanelByButton(({ label, controls, labelledBy }) => (
-                    label === 'attributes'
-                    || controls.includes('page-attributes')
-                    || labelledBy.includes('page-attributes')
+                const attributesPanel = findBlockEditorPanelByButton(({
+                    label,
+                    controls,
+                    labelledBy
+                }) => (
+                    label === 'attributes' ||
+                    controls.includes('page-attributes') ||
+                    labelledBy.includes('page-attributes')
                 ));
 
                 if (!isElement(attributesPanel) || !isElement(attributesPanel.parentElement)) return;
@@ -8222,39 +10061,47 @@ function meza_render_yoast_panel_state_script(): void
                 const container = attributesPanel.parentElement;
                 const taxonomyAnchor = findBlockEditorPanelByButton(isTaxonomyPanelButton);
                 if (
-                    !isElement(taxonomyAnchor)
-                    || taxonomyAnchor.parentElement !== container
-                    || taxonomyAnchor === attributesPanel
+                    !isElement(taxonomyAnchor) ||
+                    taxonomyAnchor.parentElement !== container ||
+                    taxonomyAnchor === attributesPanel
                 ) {
                     return;
                 }
 
-                const featuredImagePanel = findBlockEditorPanelByButton(({ label, controls, labelledBy }) => (
-                    label.includes('featured image')
-                    || controls.includes('featured-image')
-                    || labelledBy.includes('featured-image')
+                const featuredImagePanel = findBlockEditorPanelByButton(({
+                    label,
+                    controls,
+                    labelledBy
+                }) => (
+                    label.includes('featured image') ||
+                    controls.includes('featured-image') ||
+                    labelledBy.includes('featured-image')
                 ));
-                const publishAnchor = findBlockEditorPanelByButton(({ label, controls, labelledBy }) => (
-                    label === 'summary'
-                    || label === 'excerpt'
-                    || label === 'subhead'
-                    || label.includes('publish')
-                    || label.includes('status')
-                    || controls.includes('post-status')
-                    || labelledBy.includes('post-status')
+                const publishAnchor = findBlockEditorPanelByButton(({
+                    label,
+                    controls,
+                    labelledBy
+                }) => (
+                    label === 'summary' ||
+                    label === 'excerpt' ||
+                    label === 'subhead' ||
+                    label.includes('publish') ||
+                    label.includes('status') ||
+                    controls.includes('post-status') ||
+                    labelledBy.includes('post-status')
                 ));
                 const anchor = (
-                    isElement(featuredImagePanel)
-                    && featuredImagePanel.parentElement === container
-                    && featuredImagePanel !== attributesPanel
-                )
-                    ? featuredImagePanel
-                    : (
-                        isElement(publishAnchor)
-                        && publishAnchor.parentElement === container
-                        && publishAnchor !== attributesPanel
-                            ? publishAnchor
-                            : null
+                        isElement(featuredImagePanel) &&
+                        featuredImagePanel.parentElement === container &&
+                        featuredImagePanel !== attributesPanel
+                    ) ?
+                    featuredImagePanel :
+                    (
+                        isElement(publishAnchor) &&
+                        publishAnchor.parentElement === container &&
+                        publishAnchor !== attributesPanel ?
+                        publishAnchor :
+                        null
                     );
 
                 if (isElement(anchor)) {
@@ -8307,9 +10154,9 @@ function meza_render_yoast_panel_state_script(): void
                     const label = getButtonText(button);
                     const controls = getButtonControls(button);
                     const labelledBy = getButtonLabelledBy(button);
-                    const isYoastButton = label.includes('yoast seo')
-                        || controls.includes('yoast')
-                        || labelledBy.includes('yoast');
+                    const isYoastButton = label.includes('yoast seo') ||
+                        controls.includes('yoast') ||
+                        labelledBy.includes('yoast');
 
                     if (!isYoastButton) continue;
 
@@ -8382,13 +10229,15 @@ function meza_render_yoast_panel_state_script(): void
             };
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', start, { once: true });
+                document.addEventListener('DOMContentLoaded', start, {
+                    once: true
+                });
             } else {
                 start();
             }
         })();
     </script>
-    <?php
+<?php
 }
 
 function meza_render_post_panel_label_sync_script(): void
@@ -8431,7 +10280,7 @@ function meza_render_post_panel_label_sync_script(): void
         return;
     }
 
-    ?>
+?>
     <script id="meza-post-panel-label-sync">
         (() => {
             const replacements = <?php echo wp_json_encode($replacements); ?>;
@@ -8492,13 +10341,15 @@ function meza_render_post_panel_label_sync_script(): void
             };
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', start, { once: true });
+                document.addEventListener('DOMContentLoaded', start, {
+                    once: true
+                });
             } else {
                 start();
             }
         })();
     </script>
-    <?php
+<?php
 }
 
 /**
