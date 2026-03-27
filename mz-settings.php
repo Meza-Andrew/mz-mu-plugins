@@ -5,7 +5,7 @@
  * Description: Core site settings, defaults, and bootstrap configuration.
  * Author: Meza LLC
  * Author URI: https://meza.design
- * Version: 1.8.0
+ * Version: 1.8.5
  */
 
 /** ================================
@@ -336,8 +336,6 @@ add_action('muplugins_loaded', function () {
     meza_force_option_read('large_size_h',     MEZA_LG_H);
     meza_force_option_read('uploads_use_yearmonth_folders', MEZA_UPLOADS_YM_FOLDERS);
 
-    meza_force_option_read('permalink_structure', MEZA_PERMALINK_STRUCTURE);
-
     meza_force_option_read('mailserver_url',         MEZA_MAILSERVER_URL);
     meza_force_option_read('mailserver_port',        MEZA_MAILSERVER_PORT);
     meza_force_option_read('mailserver_login',       MEZA_MAILSERVER_LOGIN);
@@ -369,7 +367,6 @@ add_action('muplugins_loaded', function () {
             'large_size_w'       => MEZA_LG_W,
             'large_size_h'       => MEZA_LG_H,
             'uploads_use_yearmonth_folders' => MEZA_UPLOADS_YM_FOLDERS,
-            'permalink_structure' => MEZA_PERMALINK_STRUCTURE,
             'mailserver_url'     => MEZA_MAILSERVER_URL,
             'mailserver_port'    => MEZA_MAILSERVER_PORT,
             'mailserver_login'   => MEZA_MAILSERVER_LOGIN,
@@ -502,8 +499,8 @@ add_action('admin_init', function () {
     update_option('large_size_h',     MEZA_LG_H);
     update_option('uploads_use_yearmonth_folders', MEZA_UPLOADS_YM_FOLDERS);
 
-    $current_structure = get_option('permalink_structure');
-    if ($current_structure !== MEZA_PERMALINK_STRUCTURE) {
+    $current_structure = (string) get_option('permalink_structure');
+    if ($current_structure === '' && MEZA_PERMALINK_STRUCTURE !== '') {
         update_option('permalink_structure', MEZA_PERMALINK_STRUCTURE);
         set_transient('meza_flush_rewrite_needed', 1, 5 * MINUTE_IN_SECONDS);
     }
@@ -633,8 +630,10 @@ add_action('muplugins_loaded', function () {
 function meza_admin_per_page_option_keys(): array
 {
     $options = [
+        'plugins_per_page',
         'upload_per_page',
         'users_per_page',
+        'tools_page_action_scheduler_per_page',
         'edit_comments_per_page',
         'sites_network_per_page',
         'users_network_per_page',
@@ -689,6 +688,62 @@ function meza_taxonomy_admin_item_count(string $taxonomy): int
     return (int) $count;
 }
 
+/** Count installed plugins so plugin-list pagination UI only appears when needed. */
+function meza_plugins_admin_item_count(): int
+{
+    if (!function_exists('get_plugins')) {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    }
+
+    $plugins = get_plugins();
+    return is_array($plugins) ? count($plugins) : 0;
+}
+
+/** Count admin-visible users so user-list pagination UI only appears when needed. */
+function meza_users_admin_item_count(): int
+{
+    $counts = count_users();
+    if (!is_array($counts)) {
+        return 0;
+    }
+
+    return (int) ($counts['total_users'] ?? 0);
+}
+
+/** Count admin-visible media items so media-list pagination UI only appears when needed. */
+function meza_media_admin_item_count(): int
+{
+    $counts = wp_count_posts('attachment', 'readable');
+    if (!is_object($counts)) {
+        return 0;
+    }
+
+    $total = 0;
+    foreach (get_object_vars($counts) as $status => $count) {
+        if ($status === 'trash') {
+            continue;
+        }
+
+        $total += (int) $count;
+    }
+
+    return $total;
+}
+
+/** Count scheduled actions so the Action Scheduler pagination UI only appears when needed. */
+function meza_action_scheduler_admin_item_count(): int
+{
+    if (!class_exists('ActionScheduler_Store')) {
+        return 0;
+    }
+
+    try {
+        return (int) ActionScheduler_Store::instance()->query_actions([], 'count');
+    } catch (Throwable $e) {
+        return 0;
+    }
+}
+
 /** Force admin "items per page" to one value across post types/taxonomies/list tables. */
 add_action('admin_init', function () {
     foreach (meza_admin_per_page_option_keys() as $option_key) {
@@ -719,6 +774,14 @@ add_action('admin_head', function () {
         if ($taxonomy === '') return;
 
         if (meza_taxonomy_admin_item_count($taxonomy) > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+    } elseif ($screen->base === 'plugins') {
+        if (meza_plugins_admin_item_count() > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+    } elseif ($screen->base === 'upload') {
+        if (meza_media_admin_item_count() > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+    } elseif ($screen->base === 'users') {
+        if (meza_users_admin_item_count() > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+    } elseif ($screen->id === 'tools_page_action-scheduler') {
+        if (meza_action_scheduler_admin_item_count() > MEZA_ADMIN_ITEMS_PER_PAGE) return;
     } else {
         return;
     }
