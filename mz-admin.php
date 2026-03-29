@@ -9331,14 +9331,14 @@ function meza_render_logo_settings_field(string $field_name, int $logo_id, strin
 {
     $logo_url = ($logo_id > 0) ? wp_get_attachment_image_url($logo_id, 'medium') : '';
     $button_label = ($logo_id > 0)
-        ? __('Replace logo', 'mz-mu-plugins')
+        ? __('Change logo', 'mz-mu-plugins')
         : __('Select logo', 'mz-mu-plugins');
     ?>
     <div
         class="meza-custom-logo-setting"
         data-meza-logo-field
         data-meza-logo-empty-label="<?php echo esc_attr__('Select logo', 'mz-mu-plugins'); ?>"
-        data-meza-logo-filled-label="<?php echo esc_attr__('Replace logo', 'mz-mu-plugins'); ?>"
+        data-meza-logo-filled-label="<?php echo esc_attr__('Change logo', 'mz-mu-plugins'); ?>"
         data-meza-logo-frame-title="<?php echo esc_attr($frame_title); ?>"
         data-meza-logo-button-text="<?php echo esc_attr__('Use this logo', 'mz-mu-plugins'); ?>"
     >
@@ -9387,7 +9387,7 @@ function meza_render_custom_logo_settings_field(): void
         'meza_custom_logo_id',
         meza_get_custom_logo_id(),
         __('Select site logo', 'mz-mu-plugins'),
-        __('The Site Logo appears in the header, login screen, and email templates. Use a transparent version when possible.', 'mz-mu-plugins')
+        __('The Site Logo appears in the header, login screen, and email templates. Upload a transparent version when possible. For best results, upload an image at least <code>512</code> pixels wide.', 'mz-mu-plugins')
     );
 }
 
@@ -9397,7 +9397,7 @@ function meza_render_alternative_logo_settings_field(): void
         'meza_alternative_logo_id',
         meza_get_alternative_logo_id(),
         __('Select alternative site logo', 'mz-mu-plugins'),
-        __('The Site Logo (Alternative) appears in the footer and other dark sections. Use a white or light version when possible.', 'mz-mu-plugins'),
+        __('The Site Logo (Alternative) appears in the footer and other dark sections. Upload a transparent version when possible. For best results, upload an image at least <code>512</code> pixels wide.', 'mz-mu-plugins'),
         'dark'
     );
 }
@@ -9463,12 +9463,16 @@ jQuery(function ($) {
                 .removeClass('button-hero button-secondary')
                 .addClass('button');
             siteIconChooseButton.attr('data-alt-classes', 'button');
+            siteIconChooseButton.attr('data-update-text', 'Change icon');
+            siteIconChooseButton.attr('data-choose-text', 'Choose a Site Icon');
+            siteIconChooseButton.text(siteIconChooseButton.attr('data-state') === '1' ? 'Change icon' : 'Choose a Site Icon');
         }
 
         if (siteIconRemoveButton.length) {
             siteIconRemoveButton
-                .removeClass('button-secondary')
+                .removeClass('button-secondary reset')
                 .addClass('button-link-delete');
+            siteIconRemoveButton.text('Remove icon');
         }
     };
     normalizeSiteIconButtons();
@@ -9573,7 +9577,6 @@ JS, 'after');
 }
 .meza-custom-logo-setting__description{
     margin:8px 0 0;
-    max-width:640px;
 }
 .meza-custom-logo-setting__actions .button-link-delete,
 .site-icon-action-buttons .button-link-delete{
