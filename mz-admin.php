@@ -9181,14 +9181,261 @@ add_action('wp_before_admin_bar_render', function () {
     meza_filter_admin_bar_new_content_menu($wp_admin_bar);
 }, PHP_INT_MAX);
 
+function meza_get_custom_logo_id(): int
+{
+    $theme_mod_logo_id = (int) get_theme_mod('custom_logo');
+    if ($theme_mod_logo_id > 0) {
+        return $theme_mod_logo_id;
+    }
+
+    $settings_logo_id = (int) get_option('meza_custom_logo_id', 0);
+    return ($settings_logo_id > 0) ? $settings_logo_id : 0;
+}
+
 function meza_get_custom_logo_url(): string
 {
-    $custom_logo_id = (int) get_theme_mod('custom_logo');
+    $custom_logo_id = meza_get_custom_logo_id();
     if ($custom_logo_id <= 0) return '';
 
     $custom_logo_url = wp_get_attachment_image_url($custom_logo_id, 'full');
     return is_string($custom_logo_url) ? $custom_logo_url : '';
 }
+
+function meza_sanitize_custom_logo_id($value): int
+{
+    $attachment_id = absint($value);
+    if ($attachment_id <= 0) {
+        set_theme_mod('custom_logo', 0);
+        return 0;
+    }
+
+    $attachment = get_post($attachment_id);
+    if (!($attachment instanceof WP_Post) || $attachment->post_type !== 'attachment') {
+        add_settings_error(
+            'meza_custom_logo_id',
+            'meza_custom_logo_invalid',
+            __('Select a valid media library image for the custom logo.', 'mz-mu-plugins')
+        );
+
+        return meza_get_custom_logo_id();
+    }
+
+    set_theme_mod('custom_logo', $attachment_id);
+    return $attachment_id;
+}
+
+function meza_sync_custom_logo_setting(): void
+{
+    $option_logo_id = (int) get_option('meza_custom_logo_id', 0);
+    $theme_mod_logo_id = (int) get_theme_mod('custom_logo');
+
+    if ($option_logo_id <= 0 && $theme_mod_logo_id > 0) {
+        update_option('meza_custom_logo_id', $theme_mod_logo_id);
+        return;
+    }
+
+    if ($option_logo_id > 0 && $option_logo_id !== $theme_mod_logo_id) {
+        set_theme_mod('custom_logo', $option_logo_id);
+    }
+}
+add_action('after_setup_theme', 'meza_sync_custom_logo_setting', 20);
+
+function meza_render_custom_logo_settings_field(): void
+{
+    $logo_id = meza_get_custom_logo_id();
+    $logo_url = ($logo_id > 0) ? wp_get_attachment_image_url($logo_id, 'medium') : '';
+    $button_label = ($logo_id > 0)
+        ? __('Replace logo', 'mz-mu-plugins')
+        : __('Select logo', 'mz-mu-plugins');
+    ?>
+    <div class="meza-custom-logo-setting" data-meza-custom-logo-field>
+        <input
+            type="hidden"
+            id="meza_custom_logo_id"
+            name="meza_custom_logo_id"
+            value="<?php echo esc_attr($logo_id); ?>"
+            data-meza-custom-logo-input
+        >
+        <div
+            class="meza-custom-logo-setting__preview <?php echo ($logo_url !== '') ? 'is-visible' : ''; ?>"
+            data-meza-custom-logo-preview-wrap
+        >
+            <img
+                src="<?php echo esc_url($logo_url ?: ''); ?>"
+                alt="<?php esc_attr_e('Selected custom logo preview', 'mz-mu-plugins'); ?>"
+                data-meza-custom-logo-preview
+            >
+        </div>
+        <p class="meza-custom-logo-setting__actions">
+            <button type="button" class="button" data-meza-custom-logo-select>
+                <?php echo esc_html($button_label); ?>
+            </button>
+            <button
+                type="button"
+                class="button-link-delete"
+                data-meza-custom-logo-remove
+                <?php disabled($logo_id <= 0); ?>
+            >
+                <?php esc_html_e('Remove logo', 'mz-mu-plugins'); ?>
+            </button>
+        </p>
+    </div>
+    <?php
+}
+
+add_action('admin_init', function (): void {
+    register_setting('general', 'meza_custom_logo_id', [
+        'type' => 'integer',
+        'sanitize_callback' => 'meza_sanitize_custom_logo_id',
+        'default' => 0,
+    ]);
+
+    add_settings_field(
+        'meza_custom_logo_id',
+        __('Site Logo', 'mz-mu-plugins'),
+        'meza_render_custom_logo_settings_field',
+        'general'
+    );
+});
+
+add_action('admin_enqueue_scripts', function (string $hook_suffix): void {
+    if ($hook_suffix !== 'options-general.php') {
+        return;
+    }
+
+    wp_enqueue_media();
+    wp_add_inline_script('jquery', <<<JS
+jQuery(function ($) {
+    const field = $('[data-meza-custom-logo-field]');
+    if (!field.length) return;
+
+    const row = field.closest('tr');
+    const taglineRow = $('#blogdescription').closest('tr');
+    const siteIconRow = $('#site_icon').closest('tr');
+    if (row.length && taglineRow.length) {
+        if (siteIconRow.length) {
+            row.insertBefore(siteIconRow);
+        } else {
+            row.insertAfter(taglineRow);
+        }
+    }
+
+    const input = field.find('[data-meza-custom-logo-input]');
+    const previewWrap = field.find('[data-meza-custom-logo-preview-wrap]');
+    const preview = field.find('[data-meza-custom-logo-preview]');
+    const selectButton = field.find('[data-meza-custom-logo-select]');
+    const removeButton = field.find('[data-meza-custom-logo-remove]');
+
+    const setLogo = function (attachment) {
+        const attachmentId = parseInt(attachment.id, 10) || 0;
+        const previewUrl =
+            (attachment.sizes && attachment.sizes.medium && attachment.sizes.medium.url) ||
+            attachment.url ||
+            '';
+
+        input.val(attachmentId);
+        preview.attr('src', previewUrl);
+        previewWrap.addClass('is-visible');
+        selectButton.text('Replace logo');
+        removeButton.prop('disabled', false);
+    };
+
+    const clearLogo = function () {
+        input.val('0');
+        preview.attr('src', '');
+        previewWrap.removeClass('is-visible');
+        selectButton.text('Select logo');
+        removeButton.prop('disabled', true);
+    };
+
+    let frame;
+
+    selectButton.on('click', function (event) {
+        event.preventDefault();
+
+        if (frame) {
+            frame.open();
+            return;
+        }
+
+        frame = wp.media({
+            title: 'Select site logo',
+            library: { type: 'image' },
+            button: { text: 'Use this logo' },
+            multiple: false
+        });
+
+        frame.on('select', function () {
+            const attachment = frame.state().get('selection').first().toJSON();
+            setLogo(attachment);
+        });
+
+        frame.open();
+    });
+
+    removeButton.on('click', function (event) {
+        event.preventDefault();
+        clearLogo();
+    });
+});
+JS, 'after');
+    wp_add_inline_style('common', <<<CSS
+.meza-custom-logo-setting__preview{
+    display:none;
+    width:100%;
+    max-width:320px;
+    padding:16px;
+    margin:0 0 12px;
+    border:1px solid #dcdcde;
+    border-radius:8px;
+    background:#fff;
+    box-sizing:border-box;
+}
+.meza-custom-logo-setting__preview.is-visible{
+    display:block;
+}
+.meza-custom-logo-setting__preview img{
+    display:block;
+    width:auto;
+    max-width:100%;
+    max-height:120px;
+    height:auto;
+}
+.meza-custom-logo-setting__actions{
+    display:flex;
+    gap:12px;
+    align-items:center;
+    margin:0;
+}
+.meza-custom-logo-setting__actions .button-link-delete{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:30px;
+    margin:0;
+    padding:0 12px;
+    border:1px solid #d63638;
+    border-radius:3px;
+    background:#fff;
+    color:#d63638;
+    line-height:2.15384615;
+    text-decoration:none;
+    cursor:pointer;
+}
+.meza-custom-logo-setting__actions .button-link-delete:hover,
+.meza-custom-logo-setting__actions .button-link-delete:focus{
+    border-color:#d63638;
+    background:#fcf0f1;
+    color:#d63638;
+}
+.meza-custom-logo-setting__actions .button-link-delete[disabled]{
+    border-color:#dcdcde;
+    background:#f6f7f7;
+    color:#a7aaad;
+    cursor:default;
+}
+CSS);
+});
 
 // Use theme custom logo on wp-login.php.
 add_action('login_enqueue_scripts', function () {
