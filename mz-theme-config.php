@@ -37,6 +37,7 @@ add_filter('production_url', fn($default) => defined('MZ_PROD_URL') ? MZ_PROD_UR
 add_filter('theme_env', fn($default) => defined('WP_ENV') ? WP_ENV : $default);
 add_filter('theme_version', fn($default) => defined('MZ_THEME_VERSION') ? MZ_THEME_VERSION : $default);
 add_filter('theme_abbr', fn($default) => defined('MZ_THEME_ABBR') ? MZ_THEME_ABBR : mz_theme_config_value($mz_theme_config, 'abbr', $default));
+add_filter('theme_use_placeholder_images', fn($default) => defined('MZ_USE_PLACEHOLDER_IMAGES') ? MZ_USE_PLACEHOLDER_IMAGES : mz_theme_config_value($mz_theme_config, 'use_placeholder_images', $default));
 add_filter('theme_ga_id', fn() => defined('MZ_GA_ID') ? MZ_GA_ID : mz_theme_config_value($mz_theme_config, 'ga_id', ''));
 add_filter('theme_gfonts_url', fn() => defined('MZ_GFONTS_URL') ? MZ_GFONTS_URL : mz_theme_config_value($mz_theme_config, 'gfonts_url', ''));
 add_filter('theme_fontawesome_icons', fn($default) => defined('MZ_FONTAWESOME_ICONS') ? MZ_FONTAWESOME_ICONS : mz_theme_config_value($mz_theme_config, 'fontawesome_icons', $default));
