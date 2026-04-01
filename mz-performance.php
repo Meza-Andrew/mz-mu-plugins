@@ -10,6 +10,43 @@
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) return;
 
+/** Normalize loose config values into a boolean. */
+function meza_performance_truthy($value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    if (is_numeric($value)) {
+        return ((int) $value) !== 0;
+    }
+
+    $normalized = strtolower(trim((string) $value));
+    return in_array($normalized, ['1', 'true', 'yes', 'on'], true);
+}
+
+/** Return the current environment in a normalized form. */
+function meza_current_environment(): string
+{
+    return strtolower(trim((string) (defined('WP_ENV') ? WP_ENV : 'production')));
+}
+
+/** Only allow the navigation lock in staging-style review environments. */
+function meza_can_lock_frontend_navigation(): bool
+{
+    return in_array(meza_current_environment(), ['staging', 'qa'], true);
+}
+
+/** Decide whether front-end navigation should be disabled for the current site. */
+function meza_should_lock_frontend_navigation(): bool
+{
+    if (!meza_can_lock_frontend_navigation()) {
+        return false;
+    }
+
+    return meza_performance_truthy(apply_filters('theme_lock_frontend_navigation', false));
+}
+
 /** ================================
  *  THIRD-PARTY OUTPUT CONTROL
  *  ================================ */
@@ -115,3 +152,131 @@ function meza_remove_query_strings($src)
 {
     return strpos($src, '?') ? substr($src, 0, strpos($src, '?')) : $src;
 }
+
+/** Replace front-end page links with "#" during staging/QA reviews to prevent unfinished page navigation. */
+add_action('wp_enqueue_scripts', function (): void {
+    if (is_admin() || is_customize_preview() || !meza_should_lock_frontend_navigation()) {
+        return;
+    }
+
+    wp_register_script('meza-lock-frontend-navigation', false, [], null, true);
+    wp_enqueue_script('meza-lock-frontend-navigation');
+    wp_add_inline_script('meza-lock-frontend-navigation', <<<'JS'
+(() => {
+    const isSkippableHref = (href) => {
+        if (!href) {
+            return true;
+        }
+
+        const normalized = href.trim().toLowerCase();
+        return normalized === ''
+            || normalized === '#'
+            || normalized.startsWith('#')
+            || normalized.startsWith('mailto:')
+            || normalized.startsWith('tel:')
+            || normalized.startsWith('sms:')
+            || normalized.startsWith('javascript:');
+    };
+
+    const isAllowedLink = (link) => {
+        if (!(link instanceof HTMLAnchorElement)) {
+            return true;
+        }
+
+        if (link.dataset.mezaAllowNavigation === '1') {
+            return true;
+        }
+
+        if (link.closest('#wpadminbar')) {
+            return true;
+        }
+
+        if (link.hasAttribute('download')) {
+            return true;
+        }
+
+        const target = (link.getAttribute('target') || '').trim().toLowerCase();
+        if (target !== '' && target !== '_self') {
+            return true;
+        }
+
+        const rawHref = link.getAttribute('href') || '';
+        if (isSkippableHref(rawHref)) {
+            return true;
+        }
+
+        try {
+            const url = new URL(rawHref, window.location.href);
+            if (!/^https?:$/.test(url.protocol)) {
+                return true;
+            }
+
+            return url.origin !== window.location.origin;
+        } catch (error) {
+            return true;
+        }
+    };
+
+    const lockLink = (link) => {
+        if (isAllowedLink(link) || link.dataset.mezaNavigationLocked === '1') {
+            return;
+        }
+
+        const href = link.getAttribute('href');
+        if (!href) {
+            return;
+        }
+
+        link.dataset.mezaOriginalHref = href;
+        link.dataset.mezaNavigationLocked = '1';
+        link.setAttribute('href', '#');
+        link.setAttribute('aria-disabled', 'true');
+    };
+
+    const lockLinks = (root = document) => {
+        root.querySelectorAll('a[href]').forEach(lockLink);
+    };
+
+    document.addEventListener('click', (event) => {
+        const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+        if (!(link instanceof HTMLAnchorElement)) {
+            return;
+        }
+
+        lockLink(link);
+        if (link.dataset.mezaNavigationLocked === '1') {
+            event.preventDefault();
+        }
+    }, true);
+
+    if ('MutationObserver' in window) {
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (!(node instanceof Element)) {
+                        return;
+                    }
+
+                    if (node.matches('a[href]')) {
+                        lockLink(node);
+                    }
+
+                    lockLinks(node);
+                });
+            });
+        });
+
+        observer.observe(document.documentElement, {
+            childList: true,
+            subtree: true,
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => lockLinks(), { once: true });
+    } else {
+        lockLinks();
+    }
+})();
+JS);
+}, 100);
