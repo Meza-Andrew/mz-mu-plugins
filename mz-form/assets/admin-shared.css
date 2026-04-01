@@ -147,6 +147,13 @@
     max-width: 190px;
 }
 
+.mzf-submissions-table th.column-mzf_admin,
+.mzf-submissions-table td.column-mzf_admin {
+    width: 190px;
+    min-width: 190px;
+    max-width: 190px;
+}
+
 .mzf-submissions-table th.column-mzf_phone,
 .mzf-submissions-table td.column-mzf_phone,
 .mzf-submissions-table th.column-mzf_zip,
@@ -156,9 +163,7 @@
 .mzf-submissions-table th.column-mzf_form,
 .mzf-submissions-table td.column-mzf_form,
 .mzf-submissions-table th.column-mzf_crm,
-.mzf-submissions-table td.column-mzf_crm,
-.mzf-submissions-table th.column-mzf_admin,
-.mzf-submissions-table td.column-mzf_admin {
+.mzf-submissions-table td.column-mzf_crm {
     width: 115px;
     min-width: 115px;
     max-width: 115px;
