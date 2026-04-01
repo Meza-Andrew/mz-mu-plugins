@@ -155,13 +155,10 @@
 .mzf-submissions-table td.column-mzf_page,
 .mzf-submissions-table th.column-mzf_form,
 .mzf-submissions-table td.column-mzf_form,
-.mzf-submissions-table th.column-mzf_crm {
-    width: 115px;
-    min-width: 115px;
-    max-width: 115px;
-}
-
-.mzf-submissions-table td.column-mzf_crm {
+.mzf-submissions-table th.column-mzf_crm,
+.mzf-submissions-table td.column-mzf_crm,
+.mzf-submissions-table th.column-mzf_admin,
+.mzf-submissions-table td.column-mzf_admin {
     width: 115px;
     min-width: 115px;
     max-width: 115px;

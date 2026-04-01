@@ -8829,6 +8829,7 @@ function meza_remove_admin_bar_nodes($wp_admin_bar): void
 
     // Known core/plugin IDs.
     $wp_admin_bar->remove_node('comments');
+    $wp_admin_bar->remove_node('customize');
     $wp_admin_bar->remove_node('wpseo-menu');
     $wp_admin_bar->remove_node('updraft_admin_node');
     $wp_admin_bar->remove_node('updraftplus_admin_node');
@@ -8853,13 +8854,16 @@ function meza_remove_admin_bar_nodes($wp_admin_bar): void
             || str_contains($title, 'updraft')
             || str_contains($href, 'updraft')
             || str_contains($meta_class, 'updraft');
+        $is_customize = $id === 'customize'
+            || $title === 'customize'
+            || str_contains($href, 'customize.php');
         $is_feedback = str_contains($title, 'leave feedback');
         $is_assistant = (
             $title === 'assistant'
             || str_contains($title, 'assistant')
         );
 
-        if ($is_yoast || $is_updraft || $is_feedback || $is_assistant) {
+        if ($is_yoast || $is_updraft || $is_customize || $is_feedback || $is_assistant) {
             $wp_admin_bar->remove_node((string) $node->id);
         }
     }

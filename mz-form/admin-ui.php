@@ -1263,6 +1263,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             . '<th scope="col" class="manage-column column-mzf_page">Page</th>'
             . '<th scope="col" class="manage-column column-mzf_form">Form</th>'
             . '<th scope="col" class="manage-column column-mzf_crm">CRM Entry</th>'
+            . '<th scope="col" class="manage-column column-mzf_admin">Admin</th>'
             . '<th scope="col" class="manage-column column-mzf_status">Status</th>';
         $table_footer_cells = ''
             . '<th scope="col" class="manage-column column-cb check-column"><label class="screen-reader-text" for="mzf-select-all-2">Select all submissions</label><input type="checkbox" id="mzf-select-all-2" class="mzf-select-all" aria-label="Select all submissions"></th>'
@@ -1275,6 +1276,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             . '<th scope="col" class="manage-column column-mzf_page">Page</th>'
             . '<th scope="col" class="manage-column column-mzf_form">Form</th>'
             . '<th scope="col" class="manage-column column-mzf_crm">CRM Entry</th>'
+            . '<th scope="col" class="manage-column column-mzf_admin">Admin</th>'
             . '<th scope="col" class="manage-column column-mzf_status">Status</th>';
 
         echo '<div class="mzf-submissions-table-wrap">';
@@ -1296,7 +1298,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             } elseif ($view === 'crm_entries') {
                 $empty_message = 'No CRM entries found.';
             }
-            echo '<tr><td colspan="11"><em>' . esc_html($empty_message) . '</em></td></tr>';
+            echo '<tr><td colspan="12"><em>' . esc_html($empty_message) . '</em></td></tr>';
         } else {
             while ($query->have_posts()) {
                 $query->the_post();
@@ -1438,6 +1440,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 }
                 echo '</td>';
                 $added_to_crm = mzf_submission_added_to_crm_data($id);
+                $admin_to = trim((string) get_post_meta($id, '_mzf_admin_to', true));
                 echo '<td class="column-mzf_crm">';
                 if ($added_to_crm['text'] !== '') {
                     if ($added_to_crm['url'] !== '') {
@@ -1445,6 +1448,14 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                     } else {
                         echo esc_html($added_to_crm['text']);
                     }
+                } else {
+                    echo '&mdash;';
+                }
+                echo '</td>';
+                echo '<td class="column-mzf_admin">';
+                if ($admin_to !== '') {
+                    $admin_filter_url = $build_admin_url(['filter_admin' => $admin_to], ['paged']);
+                    echo '<a href="' . esc_url($admin_filter_url) . '">' . esc_html($admin_to) . '</a>';
                 } else {
                     echo '&mdash;';
                 }
