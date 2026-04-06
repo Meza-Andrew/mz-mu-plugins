@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.4
+ * Version: 1.4.6
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -17,6 +17,10 @@
  */
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) return;
+
+if (file_exists(__DIR__ . '/mz-plugin-compat.php')) {
+    require_once __DIR__ . '/mz-plugin-compat.php';
+}
 
 $env          = defined('WP_ENV') ? strtolower(WP_ENV) : 'production';
 $network_wide = is_multisite();
