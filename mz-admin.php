@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DS Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.141
+ * Version: 1.1.142
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1305,27 +1305,6 @@ add_action('admin_head-themes.php', function (): void {
     </style>
 <?php
 });
-
-add_action('admin_menu', function (): void {
-    if (current_user_can('switch_themes')) {
-        return;
-    }
-
-    global $submenu;
-    if (!isset($submenu['themes.php']) || !is_array($submenu['themes.php'])) {
-        return;
-    }
-
-    foreach ($submenu['themes.php'] as &$item) {
-        if (!is_array($item) || ((string) ($item[2] ?? '')) !== 'themes.php') {
-            continue;
-        }
-
-        $item[0] = trim((string) preg_replace('/<span class="[^"]*update-plugins[^"]*">.*?<\/span>/i', '', (string) ($item[0] ?? '')));
-        break;
-    }
-    unset($item);
-}, PHP_INT_MAX);
 
 /** ================================
  *  EVENT ADMIN SORTING
@@ -7991,7 +7970,76 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_group_post_settings_utilities();
     meza_cleanup_menu_separators();
     meza_filter_events_role_admin_menu();
+    meza_remove_admin_menu_counters();
 }, PHP_INT_MAX);
+
+function meza_should_keep_admin_menu_counter(string $parent_slug, string $item_slug): bool
+{
+    $parent_slug = strtolower($parent_slug);
+    $item_slug = strtolower($item_slug);
+
+    if ($parent_slug !== 'index.php') {
+        return false;
+    }
+
+    return in_array($item_slug, ['update-core.php', 'site-health.php'], true);
+}
+
+function meza_strip_admin_menu_counter_markup(string $label): string
+{
+    $patterns = [
+        '/\s*<span class="[^"]*(?:update-plugins|awaiting-mod|plugin-count|theme-count|update-count|pending-count|menu-counter|count-\d+)[^"]*"[^>]*>.*?<\/span>/is',
+        '/\s*<span class="[^"]*(?:screen-reader-text|comments-in-moderation-text)[^"]*"[^>]*>.*?<\/span>/is',
+    ];
+
+    $previous = null;
+    while ($previous !== $label) {
+        $previous = $label;
+        $label = (string) preg_replace($patterns, '', $label);
+    }
+
+    return trim((string) preg_replace('/\s{2,}/', ' ', $label));
+}
+
+function meza_remove_admin_menu_counters(): void
+{
+    global $menu, $submenu;
+
+    if (is_array($menu)) {
+        foreach ($menu as &$item) {
+            if (!is_array($item)) continue;
+
+            $item_slug = strtolower((string) ($item[2] ?? ''));
+            if (meza_should_keep_admin_menu_counter('', $item_slug)) {
+                continue;
+            }
+
+            $item[0] = meza_strip_admin_menu_counter_markup((string) ($item[0] ?? ''));
+        }
+        unset($item);
+    }
+
+    if (!is_array($submenu)) {
+        return;
+    }
+
+    foreach ($submenu as $parent_slug => &$items) {
+        if (!is_array($items)) continue;
+
+        foreach ($items as &$item) {
+            if (!is_array($item)) continue;
+
+            $item_slug = strtolower((string) ($item[2] ?? ''));
+            if (meza_should_keep_admin_menu_counter((string) $parent_slug, $item_slug)) {
+                continue;
+            }
+
+            $item[0] = meza_strip_admin_menu_counter_markup((string) ($item[0] ?? ''));
+        }
+        unset($item);
+    }
+    unset($items);
+}
 
 // Move Site Health from Tools to Dashboard, directly under Updates.
 add_action('admin_menu', function () {
@@ -8038,6 +8086,9 @@ add_action('admin_menu', function () {
 
     array_splice($submenu['index.php'], $insert_at, 0, [$site_health_item]);
 }, 100000);
+
+// Remove admin-menu counters everywhere except Dashboard > Updates and Site Health.
+add_action('admin_menu', 'meza_remove_admin_menu_counters', 100002);
 
 // Streamline Tools submenu items.
 add_action('admin_menu', function () {
@@ -9761,16 +9812,6 @@ add_action('admin_head', function () {
         '#wpadminbar a[href*="updraft"],' .
         '#wpadminbar .updraft_admin_node,' .
         '#wpadminbar .updraftplus_admin_node{' .
-        'display:none!important;' .
-        '}' .
-        '</style>';
-}, 99999);
-
-// Hide plugin/theme update badges in the left admin menu, but keep Updates and Site Health notices.
-add_action('admin_head', function () {
-    echo '<style id="meza-admin-menu-hide-selected-counters">' .
-        '#adminmenu #menu-plugins .update-plugins,' .
-        '#adminmenu #menu-appearance .wp-submenu a[href="themes.php"] .update-plugins{' .
         'display:none!important;' .
         '}' .
         '</style>';
