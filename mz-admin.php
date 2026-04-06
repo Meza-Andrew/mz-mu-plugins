@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DS Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.145
+ * Version: 1.1.146
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -7683,6 +7683,73 @@ function meza_group_post_settings_utilities(): void
 // Keep Backups, ACF, Mail, Security, Hosting, and Make in their own utility group below Settings.
 add_action('admin_menu', 'meza_group_post_settings_utilities', PHP_INT_MAX);
 
+function meza_alphabetize_default_admin_menu_group(): void
+{
+    global $menu;
+
+    if (!is_array($menu) || empty($menu)) return;
+
+    $settings_index = null;
+    foreach ($menu as $index => $item) {
+        if (!is_array($item)) continue;
+
+        if (((string) ($item[2] ?? '')) === 'options-general.php') {
+            $settings_index = (int) $index;
+            break;
+        }
+    }
+
+    if ($settings_index === null || $settings_index <= 0) return;
+
+    $segment_start = 0;
+    for ($i = $settings_index - 1; $i >= 0; $i--) {
+        $item = $menu[$i] ?? null;
+        if (!is_array($item)) continue;
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $classes = strtolower((string) ($item[4] ?? ''));
+        $is_separator = str_starts_with($slug, 'separator')
+            || str_contains($classes, 'wp-menu-separator');
+
+        if ($is_separator) {
+            $segment_start = $i + 1;
+            break;
+        }
+    }
+
+    if ($segment_start >= $settings_index) return;
+
+    $segment_items = array_slice($menu, $segment_start, $settings_index - $segment_start);
+    $sortable_entries = [];
+
+    foreach ($segment_items as $offset => $item) {
+        if (!is_array($item)) continue;
+
+        $sortable_entries[] = [
+            'item' => $item,
+            'label' => strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? '')))),
+            'offset' => $offset,
+        ];
+    }
+
+    if (count($sortable_entries) < 2) return;
+
+    usort($sortable_entries, static function (array $a, array $b): int {
+        $compare = strnatcasecmp((string) ($a['label'] ?? ''), (string) ($b['label'] ?? ''));
+        if ($compare !== 0) return $compare;
+        return ((int) ($a['offset'] ?? 0)) <=> ((int) ($b['offset'] ?? 0));
+    });
+
+    $sorted_items = array_map(static function (array $entry): array {
+        return $entry['item'];
+    }, $sortable_entries);
+
+    array_splice($menu, $segment_start, $settings_index - $segment_start, $sorted_items);
+}
+
+// Alphabetize the remaining fallback top-level group immediately above Settings.
+add_action('admin_menu', 'meza_alphabetize_default_admin_menu_group', PHP_INT_MAX);
+
 function meza_cleanup_menu_separators(): void
 {
     global $menu;
@@ -8013,6 +8080,7 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_remove_woocommerce_marketing_overview_submenu();
     meza_group_woocommerce_top_level_items();
     meza_group_post_settings_utilities();
+    meza_alphabetize_default_admin_menu_group();
     meza_cleanup_menu_separators();
     meza_filter_events_role_admin_menu();
     meza_filter_dashboard_submenu_items();
