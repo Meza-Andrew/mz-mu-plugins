@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.156
+ * Version: 1.1.159
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -716,15 +716,15 @@ if (!function_exists('meza_normalize_add_post_type_label')) {
 if (!function_exists('meza_get_post_type_add_item_label')) {
     function meza_get_post_type_add_item_label($labels): string
     {
-        $singular_name = '';
+        $menu_name = '';
 
         if (is_array($labels)) {
-            $singular_name = (string) ($labels['singular_name'] ?? $labels['name'] ?? '');
+            $menu_name = (string) ($labels['name'] ?? $labels['singular_name'] ?? '');
         } elseif (is_object($labels)) {
-            $singular_name = (string) ($labels->singular_name ?? $labels->name ?? '');
+            $menu_name = (string) ($labels->name ?? $labels->singular_name ?? '');
         }
 
-        return meza_normalize_add_post_type_label($singular_name);
+        return meza_normalize_add_post_type_label($menu_name);
     }
 }
 
@@ -5798,7 +5798,7 @@ function meza_submenu_label_contains_banned_words(string $label): bool
     $label = strtolower(trim(wp_strip_all_tags($label)));
     if ($label === '') return false;
 
-    return preg_match('/\b(addons?|add-ons?|help|about|support|pro)\b/i', $label) === 1;
+    return preg_match('/\b(addons?|add-ons?|help|about|support|pro|guides?|widgets?|university|education|training|integrations?|troubleshoot(?:ing)?|shortcodes?)\b/i', $label) === 1;
 }
 
 function meza_submenu_label_uses_custom_markup(string $label): bool
@@ -5836,6 +5836,39 @@ function meza_is_promotional_submenu_item(string $parent_slug, array $item): boo
 
     if ($parent_slug === 'smush') {
         return in_array($title, ['get more free plugins', 'get smush pro'], true);
+    }
+
+    return false;
+}
+
+function meza_is_resource_submenu_item(string $parent_slug, array $item): bool
+{
+    $parent_slug = strtolower($parent_slug);
+    $slug = strtolower((string) ($item[2] ?? ''));
+    $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+    if ($slug === '' && $title === '') return false;
+
+    $resource_slug_patterns = [
+        'tribe-app-shop',
+        'tec-events-help-hub',
+        'tec-troubleshooting',
+        'first-time-setup',
+        'setup-guide',
+        'shortcode',
+    ];
+
+    foreach ($resource_slug_patterns as $pattern) {
+        if (str_contains($slug, $pattern)) {
+            return true;
+        }
+    }
+
+    if (
+        $parent_slug === 'edit.php?post_type=tribe_events'
+        && preg_match('/\b(setup|guide|widget|university|education|training|integration|troubleshoot|shortcode)\b/i', $title) === 1
+    ) {
+        return true;
     }
 
     return false;
@@ -5976,7 +6009,7 @@ function meza_normalize_admin_plugin_menus(): void
             $is_yoast_menu = str_contains(strtolower((string) $parent_slug), 'wpseo');
             $is_wp_mail_smtp_menu = str_contains(strtolower((string) $parent_slug), 'wp-mail-smtp');
             $is_redirection = str_contains($slug, 'redirection')
-                || $title === 'redirection';
+                || str_contains($title, 'redirection');
 
             if (meza_submenu_label_contains_banned_words($raw_title)) {
                 unset($items[$index]);
@@ -5984,6 +6017,11 @@ function meza_normalize_admin_plugin_menus(): void
             }
 
             if (meza_is_promotional_submenu_item((string) $parent_slug, $item)) {
+                unset($items[$index]);
+                continue;
+            }
+
+            if (meza_is_resource_submenu_item((string) $parent_slug, $item)) {
                 unset($items[$index]);
                 continue;
             }
@@ -6006,7 +6044,7 @@ function meza_normalize_admin_plugin_menus(): void
                 continue;
             }
 
-            if ($parent_slug === 'tools.php' && $is_redirection) {
+            if ($is_redirection) {
                 $item[0] = 'Redirects';
                 if (isset($item[3])) $item[3] = 'Redirects';
                 continue;
@@ -6077,10 +6115,6 @@ function meza_normalize_admin_plugin_menus(): void
                 continue;
             }
 
-            if ($parent_slug === 'options-general.php' && $is_redirection) {
-                $item[0] = 'Redirects';
-                if (isset($item[3])) $item[3] = 'Redirects';
-            }
         }
         unset($item);
         $items = array_values($items);
@@ -7586,7 +7620,9 @@ add_action('admin_head', function (): void {
 ?>
     <style id="meza-reset-smush-submenu-style">
         #adminmenu #toplevel_page_smush .wp-submenu li:last-child a,
-        #adminmenu #toplevel_page_smush .wp-submenu li:last-child a:visited {
+        #adminmenu #toplevel_page_smush .wp-submenu li:last-child a:visited,
+        #adminmenu #menu-posts-tribe_events .wp-submenu li:last-child a,
+        #adminmenu #menu-posts-tribe_events .wp-submenu li:last-child a:visited {
             background: transparent !important;
             color: #c3c4c7 !important;
             font-weight: 400 !important;
@@ -7594,25 +7630,34 @@ add_action('admin_head', function (): void {
         }
 
         #adminmenu #toplevel_page_smush .wp-submenu li:last-child a:hover,
-        #adminmenu #toplevel_page_smush .wp-submenu li:last-child a:focus {
+        #adminmenu #toplevel_page_smush .wp-submenu li:last-child a:focus,
+        #adminmenu #menu-posts-tribe_events .wp-submenu li:last-child a:hover,
+        #adminmenu #menu-posts-tribe_events .wp-submenu li:last-child a:focus {
             background: transparent !important;
             color: #72aee6 !important;
         }
     </style>
     <script id="meza-reset-smush-submenu-target">
         (() => {
-            const resetSmushSubmenuLink = () => {
-                const link = document.querySelector('#toplevel_page_smush .wp-submenu li:last-child a[href*="smush-settings"]');
-                if (!(link instanceof HTMLAnchorElement)) return;
+            const resetStyledLastSubmenuLinks = () => {
+                const selectors = [
+                    '#toplevel_page_smush .wp-submenu li:last-child a[href*="smush-settings"]',
+                    '#menu-posts-tribe_events .wp-submenu li:last-child a[href*="tec-events-settings"]',
+                ];
 
-                link.removeAttribute('target');
-                link.removeAttribute('rel');
+                selectors.forEach((selector) => {
+                    const link = document.querySelector(selector);
+                    if (!(link instanceof HTMLAnchorElement)) return;
+
+                    link.removeAttribute('target');
+                    link.removeAttribute('rel');
+                });
             };
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', resetSmushSubmenuLink, { once: true });
+                document.addEventListener('DOMContentLoaded', resetStyledLastSubmenuLinks, { once: true });
             } else {
-                resetSmushSubmenuLink();
+                resetStyledLastSubmenuLinks();
             }
         })();
     </script>
@@ -8500,12 +8545,12 @@ add_action('admin_menu', function () {
         }
 
         $post_type_object = get_post_type_object($post_type);
-        $singular_label = '';
+        $plural_label = '';
         if ($post_type_object instanceof WP_Post_Type) {
-            $singular_label = trim((string) ($post_type_object->labels->singular_name ?? ''));
+            $plural_label = trim((string) ($post_type_object->labels->name ?? $post_type_object->labels->singular_name ?? ''));
         }
-        if ($singular_label === '') {
-            $singular_label = ucwords(str_replace(['-', '_'], ' ', $post_type));
+        if ($plural_label === '') {
+            $plural_label = ucwords(str_replace(['-', '_'], ' ', $post_type));
         }
 
         foreach ($items as &$item) {
@@ -8513,14 +8558,32 @@ add_action('admin_menu', function () {
 
             $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
             $slug = strtolower((string) ($item[2] ?? ''));
+            $normalized_label = strtolower($label);
             $is_add_screen = ($slug === 'post-new.php')
                 || str_starts_with($slug, 'post-new.php?');
+            $is_list_screen = ($slug === 'edit.php')
+                || str_starts_with($slug, 'edit.php?post_type=');
 
-            if ($is_add_screen && preg_match('/^add\s+new\b/i', $label)) {
-                $new_label = 'Add';
-                if ($singular_label !== '') {
-                    $new_label .= ' ' . $singular_label;
-                }
+            if (
+                $is_add_screen
+                && preg_match('/^add\b/i', $label)
+                && $plural_label !== ''
+                && str_contains(strtolower($label), strtolower($plural_label)) === false
+            ) {
+                $new_label = meza_normalize_add_post_type_label($plural_label);
+
+                $item[0] = $new_label;
+                if (isset($item[3])) $item[3] = $new_label;
+                continue;
+            }
+
+            if (
+                $is_list_screen
+                && preg_match('/^all\b/i', $label)
+                && $plural_label !== ''
+                && str_contains($normalized_label, strtolower($plural_label)) === false
+            ) {
+                $new_label = 'All ' . $plural_label;
                 $new_label = trim(preg_replace('/\s+/', ' ', $new_label) ?? $new_label);
 
                 $item[0] = $new_label;
