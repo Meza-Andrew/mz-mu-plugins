@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.194
+ * Version: 1.1.199
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -6396,6 +6396,198 @@ function meza_get_top_level_menu_label_by_slug(string $menu_slug): string
     return '';
 }
 
+function meza_is_customize_submenu_slug(string $menu_slug): bool
+{
+    $menu_slug = strtolower(trim($menu_slug));
+    if ($menu_slug === '') {
+        return false;
+    }
+
+    return $menu_slug === 'customize.php'
+        || str_starts_with($menu_slug, 'customize.php?');
+}
+
+function meza_get_post_type_from_admin_menu_slug(string $menu_slug): string
+{
+    $menu_slug = trim($menu_slug);
+    if ($menu_slug === '') {
+        return '';
+    }
+
+    if ($menu_slug === 'edit.php' || $menu_slug === 'post-new.php') {
+        return 'post';
+    }
+
+    if (
+        !str_starts_with($menu_slug, 'edit.php?')
+        && !str_starts_with($menu_slug, 'post-new.php?')
+    ) {
+        return '';
+    }
+
+    parse_str((string) parse_url($menu_slug, PHP_URL_QUERY), $query_args);
+    return sanitize_key((string) ($query_args['post_type'] ?? ''));
+}
+
+function meza_get_top_level_menu_slug_for_post_type(string $post_type): string
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '') {
+        return '';
+    }
+
+    return ($post_type === 'post') ? 'edit.php' : 'edit.php?post_type=' . $post_type;
+}
+
+function meza_post_type_has_top_level_admin_menu(string $post_type): bool
+{
+    $menu_slug = meza_get_top_level_menu_slug_for_post_type($post_type);
+    return $menu_slug !== '' && meza_get_top_level_menu_label_by_slug($menu_slug) !== '';
+}
+
+function meza_dedupe_post_type_submenu_links(): void
+{
+    global $submenu;
+
+    if (!is_array($submenu)) {
+        return;
+    }
+
+    $occurrences = [];
+
+    foreach ($submenu as $parent_slug => $items) {
+        if (!is_array($items)) {
+            continue;
+        }
+
+        foreach ($items as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $item_slug = (string) ($item[2] ?? '');
+            $post_type = meza_get_post_type_from_admin_menu_slug($item_slug);
+            if ($post_type === '') {
+                continue;
+            }
+
+            $occurrences[$item_slug][] = [
+                'parent' => (string) $parent_slug,
+                'index' => (int) $index,
+                'preferred_parent' => meza_get_top_level_menu_slug_for_post_type($post_type),
+            ];
+        }
+    }
+
+    foreach ($occurrences as $records) {
+        if (count($records) < 2) {
+            continue;
+        }
+
+        $keep_record = null;
+        $keep_score = -1;
+
+        foreach ($records as $record) {
+            $parent_slug = (string) ($record['parent'] ?? '');
+            $parent_post_type = meza_get_post_type_from_admin_menu_slug($parent_slug);
+            $score = 0;
+
+            if ($parent_slug !== '' && $parent_slug === (string) ($record['preferred_parent'] ?? '')) {
+                $score = 3;
+            } elseif ($parent_post_type !== '' || $parent_slug === 'edit.php') {
+                $score = 2;
+            } else {
+                $score = 1;
+            }
+
+            if ($score > $keep_score) {
+                $keep_score = $score;
+                $keep_record = $record;
+            }
+        }
+
+        if (!is_array($keep_record)) {
+            continue;
+        }
+
+        $keep_parent = (string) ($keep_record['parent'] ?? '');
+
+        foreach ($records as $record) {
+            $parent_slug = (string) ($record['parent'] ?? '');
+            $index = (int) ($record['index'] ?? -1);
+
+            if ($parent_slug === $keep_parent || !isset($submenu[$parent_slug][$index])) {
+                continue;
+            }
+
+            unset($submenu[$parent_slug][$index]);
+        }
+    }
+
+    foreach ($submenu as &$items) {
+        $items = array_values($items);
+    }
+    unset($items);
+}
+
+function meza_dedupe_tools_submenu_links(): void
+{
+    global $submenu;
+
+    if (!is_array($submenu) || !isset($submenu['tools.php']) || !is_array($submenu['tools.php'])) {
+        return;
+    }
+
+    $protected_tools_slugs = [
+        'tools.php',
+        'import.php',
+        'export.php',
+        'site-health.php',
+        'export-personal-data.php',
+        'erase-personal-data.php',
+    ];
+
+    foreach ($submenu['tools.php'] as $index => $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $item_title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+        $item_slug = (string) ($item[2] ?? '');
+
+        if (
+            str_contains($item_title, 'redirect')
+            || str_contains(strtolower($item_slug), 'redirect')
+        ) {
+            unset($submenu['tools.php'][$index]);
+            continue;
+        }
+
+        if ($item_slug === '' || in_array($item_slug, $protected_tools_slugs, true)) {
+            continue;
+        }
+
+        foreach ($submenu as $parent_slug => $items) {
+            if ($parent_slug === 'tools.php' || !is_array($items)) {
+                continue;
+            }
+
+            foreach ($items as $other_item) {
+                if (!is_array($other_item)) {
+                    continue;
+                }
+
+                if (((string) ($other_item[2] ?? '')) === $item_slug) {
+                    unset($submenu['tools.php'][$index]);
+                    continue 3;
+                }
+            }
+        }
+    }
+
+    $submenu['tools.php'] = array_values($submenu['tools.php']);
+}
+
 function meza_normalize_plugin_submenu_pair_label(string $label, bool $is_add_item = false): string
 {
     $label = trim(wp_strip_all_tags($label));
@@ -6824,6 +7016,24 @@ function meza_normalize_admin_plugin_menus(): void
                 continue;
             }
 
+            if (str_contains($title, 'author seo')) {
+                unset($items[$index]);
+                continue;
+            }
+
+            if (
+                in_array((string) $parent_slug, ['users.php', 'profile.php'], true)
+                && str_contains($title, 'author')
+            ) {
+                unset($items[$index]);
+                continue;
+            }
+
+            if (meza_is_customize_submenu_slug($slug)) {
+                unset($items[$index]);
+                continue;
+            }
+
             if (meza_is_promotional_submenu_item((string) $parent_slug, $item)) {
                 unset($items[$index]);
                 continue;
@@ -6850,6 +7060,18 @@ function meza_normalize_admin_plugin_menus(): void
             if (str_contains($title, 'yoast')) {
                 unset($items[$index]);
                 continue;
+            }
+
+            $linked_post_type = meza_get_post_type_from_admin_menu_slug((string) ($item[2] ?? ''));
+            if ($linked_post_type !== '') {
+                $expected_parent_slug = meza_get_top_level_menu_slug_for_post_type($linked_post_type);
+                if (
+                    meza_post_type_has_top_level_admin_menu($linked_post_type)
+                    && (string) $parent_slug !== $expected_parent_slug
+                ) {
+                    unset($items[$index]);
+                    continue;
+                }
             }
 
             if ($is_redirection) {
@@ -6985,6 +7207,9 @@ function meza_normalize_admin_plugin_menus(): void
         }
     }
     unset($items);
+
+    meza_dedupe_post_type_submenu_links();
+    meza_dedupe_tools_submenu_links();
 }
 
 // Normalize selected plugin/admin menu labels.
@@ -9189,7 +9414,12 @@ function meza_filter_events_role_admin_menu(): void
                     return false;
                 }
 
+                $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
                 $slug = (string) ($item[2] ?? '');
+                if (str_contains($label, 'author')) {
+                    return false;
+                }
+
                 return in_array($slug, ['profile.php', 'users.php'], true);
             }));
             continue;
