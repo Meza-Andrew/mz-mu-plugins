@@ -327,9 +327,43 @@ if (!function_exists('mz_plugin_compat_matches_deprecated_notice')) {
     }
 }
 
+if (!function_exists('mz_plugin_compat_is_known_nullable_param_deprecation')) {
+    function mz_plugin_compat_is_known_nullable_param_deprecation(string $message, string $file): bool
+    {
+        $normalized_message = strtolower(trim($message));
+        if (
+            !str_contains($normalized_message, 'implicitly marking parameter')
+            || !str_contains($normalized_message, 'nullable is deprecated')
+        ) {
+            return false;
+        }
+
+        $normalized_file = mz_plugin_compat_normalize_path($file);
+        $known_prefixes = [
+            '/wp-content/plugins/cred-frontend-editor/',
+            '/wp-content/plugins/divi-booster/',
+            '/wp-content/plugins/the-events-calendar/',
+            '/wp-content/plugins/types.deactivated/',
+            '/wp-content/plugins/wp-views.deactivated/',
+        ];
+
+        foreach ($known_prefixes as $prefix) {
+            if (str_contains($normalized_file, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
 if (!function_exists('mz_plugin_compat_should_suppress_deprecated_notice')) {
     function mz_plugin_compat_should_suppress_deprecated_notice(string $message, string $file): bool
     {
+        if (mz_plugin_compat_is_known_nullable_param_deprecation($message, $file)) {
+            return true;
+        }
+
         foreach (mz_plugin_compat_get_deprecated_notice_rules() as $rule) {
             if (!is_array($rule)) continue;
             if (mz_plugin_compat_matches_deprecated_notice($message, $file, $rule)) {

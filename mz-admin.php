@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.191
+ * Version: 1.1.194
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -5719,10 +5719,55 @@ function meza_get_allowed_tag_post_types(): array
 
 function meza_get_exempt_tag_taxonomies(): array
 {
-    $taxonomies = apply_filters('meza_exempt_tag_taxonomies', ['nav_menu', 'link_category', 'post_format']);
+    $taxonomies = apply_filters('meza_exempt_tag_taxonomies', ['nav_menu', 'post_format']);
 
     return array_values(array_unique(array_filter(array_map('sanitize_key', (array) $taxonomies))));
 }
+
+function meza_divi_projects_enabled(): bool
+{
+    return (bool) apply_filters('meza_enable_divi_projects', false);
+}
+
+add_filter('et_project_posttype_args', function ($args) {
+    if (meza_divi_projects_enabled() || !is_array($args)) {
+        return $args;
+    }
+
+    $args['public'] = false;
+    $args['publicly_queryable'] = false;
+    $args['show_ui'] = false;
+    $args['show_in_menu'] = false;
+    $args['show_in_admin_bar'] = false;
+    $args['show_in_nav_menus'] = false;
+    $args['show_in_rest'] = false;
+    $args['has_archive'] = false;
+    $args['rewrite'] = false;
+    $args['query_var'] = false;
+    $args['exclude_from_search'] = true;
+
+    return $args;
+}, 999);
+
+add_filter('register_taxonomy_args', function ($args, $taxonomy) {
+    if (meza_divi_projects_enabled() || !is_array($args)) {
+        return $args;
+    }
+
+    if (!in_array((string) $taxonomy, ['project_category', 'project_tag'], true)) {
+        return $args;
+    }
+
+    $args['public'] = false;
+    $args['show_ui'] = false;
+    $args['show_admin_column'] = false;
+    $args['show_in_rest'] = false;
+    $args['show_in_nav_menus'] = false;
+    $args['query_var'] = false;
+    $args['rewrite'] = false;
+
+    return $args;
+}, 999, 2);
 
 function meza_should_disable_tag_taxonomy_registration(string $taxonomy, array $args, $object_type): bool
 {
@@ -5812,11 +5857,6 @@ add_filter('pings_open', '__return_false', 20, 2);
 add_filter('comments_array', function ($comments) {
     return [];
 }, 20, 2);
-
-// Keep the legacy Links Manager available so link category admin screens remain accessible.
-add_filter('pre_option_link_manager_enabled', function ($value) {
-    return '1';
-});
 
 // Hide selected admin menu items that we do not expose to editors/admins.
 add_action('admin_menu', function () {
@@ -11873,7 +11913,11 @@ function meza_replace_glance_items()
         ];
     }
 
-    if (current_user_can('gravityforms_edit_forms')) {
+    $can_view_gravity_forms = current_user_can('gravityforms_edit_forms')
+        || current_user_can('gform_full_access')
+        || (class_exists('GFCommon') && method_exists('GFCommon', 'current_user_can_any') && GFCommon::current_user_can_any('gravityforms_edit_forms'));
+
+    if ($can_view_gravity_forms) {
         $form_count = 0;
 
         if (class_exists('GFFormsModel') && method_exists('GFFormsModel', 'get_forms')) {
@@ -11882,6 +11926,16 @@ function meza_replace_glance_items()
         } elseif (class_exists('GFAPI') && method_exists('GFAPI', 'get_forms')) {
             $forms = GFAPI::get_forms(true, false, 'title', 'ASC');
             $form_count = is_array($forms) ? count($forms) : 0;
+        }
+
+        if ($form_count === 0) {
+            global $wpdb;
+
+            $table_name = $wpdb->prefix . 'gf_form';
+            $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name));
+            if ($table_exists === $table_name) {
+                $form_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table_name} WHERE is_trash = 0");
+            }
         }
 
         if ($form_count > 0) {
