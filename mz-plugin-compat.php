@@ -122,6 +122,19 @@ if (!function_exists('mz_plugin_compat_get_source_patch_rules')) {
                     ) ?: $contents;
                 },
             ],
+            'toolset_divi_view_render_signature' => [
+                'file' => '/wp-views.deactivated/vendor/toolset/divi/includes/modules/View/View.php',
+                'apply' => static function (string $contents): string {
+                    $updated = preg_replace(
+                        '/public function render\(\s*\$attrs,\s*\$content\s*=\s*null,\s*\$render_slug\s*\)/',
+                        'public function render( $attrs, $content = null, $render_slug = \'\' )',
+                        $contents,
+                        1
+                    );
+
+                    return is_string($updated) ? $updated : $contents;
+                },
+            ],
         ];
 
         return apply_filters('mz_plugin_compat_source_patch_rules', $rules);
