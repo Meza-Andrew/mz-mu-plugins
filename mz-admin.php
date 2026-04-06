@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.159
+ * Version: 1.1.161
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -5993,6 +5993,38 @@ function meza_normalize_admin_plugin_menus(): void
             $item[0] = 'Make';
             if (isset($item[3])) $item[3] = 'Make';
             $item[6] = 'dashicons-share-alt';
+            continue;
+        }
+
+        if (str_starts_with($slug, 'edit.php?post_type=')) {
+            parse_str((string) parse_url((string) $slug, PHP_URL_QUERY), $query_args);
+            $post_type = (string) ($query_args['post_type'] ?? '');
+
+            if ($post_type !== '') {
+                $post_type_object = get_post_type_object($post_type);
+                $plural_label = '';
+
+                if ($post_type_object instanceof WP_Post_Type) {
+                    $plural_label = trim((string) ($post_type_object->labels->name ?? $post_type_object->labels->singular_name ?? ''));
+                }
+
+                if ($plural_label !== '') {
+                    $item[0] = $plural_label;
+                    if (isset($item[3])) $item[3] = $plural_label;
+                }
+
+                $menu_icon_map = [
+                    'tribe_events' => 'dashicons-calendar-alt',
+                    'project' => 'dashicons-portfolio',
+                    'provider' => 'dashicons-admin-multisite',
+                    'sponsor' => 'dashicons-awards',
+                    'popup' => 'dashicons-admin-comments',
+                ];
+
+                if (isset($menu_icon_map[$post_type])) {
+                    $item[6] = $menu_icon_map[$post_type];
+                }
+            }
         }
     }
     unset($item);
