@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DS Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.142
+ * Version: 1.1.143
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -7970,8 +7970,88 @@ add_action('admin_menu_editor-menu_replaced', function () {
     meza_group_post_settings_utilities();
     meza_cleanup_menu_separators();
     meza_filter_events_role_admin_menu();
+    meza_filter_dashboard_submenu_items();
     meza_remove_admin_menu_counters();
 }, PHP_INT_MAX);
+
+function meza_get_dashboard_updates_submenu_item(): ?array
+{
+    global $submenu;
+
+    if (isset($submenu['index.php']) && is_array($submenu['index.php'])) {
+        foreach ($submenu['index.php'] as $item) {
+            if (!is_array($item)) continue;
+
+            $slug = strtolower((string) ($item[2] ?? ''));
+            if ($slug === 'update-core.php') {
+                return $item;
+            }
+        }
+    }
+
+    if (
+        !current_user_can('update_core')
+        && !current_user_can('update_plugins')
+        && !current_user_can('update_themes')
+        && !current_user_can('update_languages')
+    ) {
+        return null;
+    }
+
+    $capability = 'update_core';
+    if (!current_user_can($capability)) {
+        if (current_user_can('update_plugins')) {
+            $capability = 'update_plugins';
+        } elseif (current_user_can('update_themes')) {
+            $capability = 'update_themes';
+        } else {
+            $capability = 'update_languages';
+        }
+    }
+
+    return [__('Updates'), $capability, 'update-core.php'];
+}
+
+function meza_get_dashboard_site_health_submenu_item(): ?array
+{
+    global $submenu;
+
+    if (isset($submenu['index.php']) && is_array($submenu['index.php'])) {
+        foreach ($submenu['index.php'] as $item) {
+            if (!is_array($item)) continue;
+
+            $slug = strtolower((string) ($item[2] ?? ''));
+            if ($slug === 'site-health.php') {
+                return $item;
+            }
+        }
+    }
+
+    if (!current_user_can('view_site_health_checks')) {
+        return null;
+    }
+
+    return [__('Site Health'), 'view_site_health_checks', 'site-health.php'];
+}
+
+function meza_filter_dashboard_submenu_items(): void
+{
+    global $submenu;
+
+    $home_item = [__('Home'), 'read', 'index.php'];
+    $updates_item = meza_get_dashboard_updates_submenu_item();
+    $site_health_item = meza_get_dashboard_site_health_submenu_item();
+
+    $filtered_items = [$home_item];
+    if (is_array($updates_item)) {
+        $filtered_items[] = $updates_item;
+    }
+    if (is_array($site_health_item)) {
+        $filtered_items[] = $site_health_item;
+    }
+
+    $submenu['index.php'] = array_values($filtered_items);
+}
 
 function meza_should_keep_admin_menu_counter(string $parent_slug, string $item_slug): bool
 {
@@ -8086,6 +8166,9 @@ add_action('admin_menu', function () {
 
     array_splice($submenu['index.php'], $insert_at, 0, [$site_health_item]);
 }, 100000);
+
+// Keep Dashboard submenu limited to Home, Updates, and Site Health.
+add_action('admin_menu', 'meza_filter_dashboard_submenu_items', 100001);
 
 // Remove admin-menu counters everywhere except Dashboard > Updates and Site Health.
 add_action('admin_menu', 'meza_remove_admin_menu_counters', 100002);
