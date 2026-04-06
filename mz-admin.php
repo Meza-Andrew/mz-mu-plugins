@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DS Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.140
+ * Version: 1.1.141
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -8823,47 +8823,139 @@ add_action('admin_footer-edit.php', function () {
  *  ADMIN BAR CLEANUP
  *  ================================ */
 
+function meza_is_admin_bar_query_monitor_node($node): bool
+{
+    if (!is_object($node)) return false;
+
+    $node_id = strtolower((string) ($node->id ?? ''));
+    $parent_id = strtolower((string) ($node->parent ?? ''));
+    $title = strtolower(trim(wp_strip_all_tags((string) ($node->title ?? ''))));
+
+    if ($node_id === 'query-monitor' || str_starts_with($node_id, 'query-monitor-')) {
+        return true;
+    }
+
+    if ($parent_id === 'query-monitor' || str_starts_with($parent_id, 'query-monitor-')) {
+        return true;
+    }
+
+    return $title === 'query monitor' && ($parent_id === '' || $parent_id === 'top-secondary' || $parent_id === 'query-monitor');
+}
+
+function meza_is_admin_bar_clear_cache_node($node): bool
+{
+    if (!is_object($node)) return false;
+
+    $node_id = strtolower((string) ($node->id ?? ''));
+    $title = strtolower(trim(wp_strip_all_tags((string) ($node->title ?? ''))));
+    $href = strtolower((string) ($node->href ?? ''));
+
+    if ($node_id === 'meza-flush-server-cache') {
+        return true;
+    }
+
+    return str_contains($title, 'delete cache')
+        || str_contains($title, 'clear page cache')
+        || $title === 'clear cache'
+        || (str_contains($node_id, 'super') && str_contains($node_id, 'cache'))
+        || (str_contains($href, 'wp-super-cache') && str_contains($href, 'cache'))
+        || str_contains($href, 'wpsc_delete_cache')
+        || str_contains($href, 'wpaas_action=flush_cache');
+}
+
+function meza_is_default_admin_bar_node_id(string $node_id): bool
+{
+    static $default_ids = [
+        'menu-toggle',
+        'wp-logo',
+        'about',
+        'contribute',
+        'wp-logo-external',
+        'wporg',
+        'documentation',
+        'learn',
+        'support-forums',
+        'feedback',
+        'site-name',
+        'view-site',
+        'edit-site',
+        'dashboard',
+        'appearance',
+        'themes',
+        'widgets',
+        'menus',
+        'background',
+        'header',
+        'plugins',
+        'site-editor',
+        'customize',
+        'my-sites',
+        'my-sites-super-admin',
+        'network-admin',
+        'network-admin-d',
+        'network-admin-s',
+        'network-admin-u',
+        'network-admin-t',
+        'network-admin-p',
+        'network-admin-o',
+        'my-sites-list',
+        'get-shortlink',
+        'edit',
+        'view',
+        'preview',
+        'archive',
+        'new-content',
+        'new-post',
+        'new-media',
+        'new-link',
+        'new-page',
+        'new-user',
+        'add-new-site',
+        'comments',
+        'updates',
+        'top-secondary',
+        'my-account',
+        'user-actions',
+        'user-info',
+        'logout',
+        'search',
+        'recovery-mode',
+    ];
+
+    if (in_array($node_id, $default_ids, true)) {
+        return true;
+    }
+
+    return preg_match('/^blog-\d+(?:-(?:d|n|c|v))?$/', $node_id) === 1;
+}
+
+function meza_should_keep_admin_bar_node($node): bool
+{
+    if (!is_object($node)) return false;
+
+    $node_id = strtolower((string) ($node->id ?? ''));
+    if ($node_id === '') {
+        return false;
+    }
+
+    return meza_is_default_admin_bar_node_id($node_id)
+        || meza_is_admin_bar_query_monitor_node($node)
+        || meza_is_admin_bar_clear_cache_node($node);
+}
+
 function meza_remove_admin_bar_nodes($wp_admin_bar): void
 {
     if (!($wp_admin_bar instanceof WP_Admin_Bar)) return;
 
-    // Known core/plugin IDs.
-    $wp_admin_bar->remove_node('comments');
-    $wp_admin_bar->remove_node('customize');
-    $wp_admin_bar->remove_node('wpseo-menu');
-    $wp_admin_bar->remove_node('updraft_admin_node');
-    $wp_admin_bar->remove_node('updraftplus_admin_node');
-
-    // Fallback for plugin/version-specific IDs.
     $nodes = $wp_admin_bar->get_nodes();
     if (!is_array($nodes)) return;
 
     foreach ($nodes as $node) {
-        if (!is_object($node) || !isset($node->id)) continue;
+        if (!is_object($node) || !isset($node->id)) {
+            continue;
+        }
 
-        $id = strtolower((string) $node->id);
-        $title = strtolower(wp_strip_all_tags((string) ($node->title ?? '')));
-        $href = strtolower((string) ($node->href ?? ''));
-        $meta_class = strtolower((string) (($node->meta['class'] ?? '')));
-
-        $is_yoast = str_contains($id, 'wpseo')
-            || str_contains($title, 'yoast')
-            || str_contains($href, 'wpseo')
-            || str_contains($meta_class, 'wpseo');
-        $is_updraft = str_contains($id, 'updraft')
-            || str_contains($title, 'updraft')
-            || str_contains($href, 'updraft')
-            || str_contains($meta_class, 'updraft');
-        $is_customize = $id === 'customize'
-            || $title === 'customize'
-            || str_contains($href, 'customize.php');
-        $is_feedback = str_contains($title, 'leave feedback');
-        $is_assistant = (
-            $title === 'assistant'
-            || str_contains($title, 'assistant')
-        );
-
-        if ($is_yoast || $is_updraft || $is_customize || $is_feedback || $is_assistant) {
+        if (!meza_should_keep_admin_bar_node($node)) {
             $wp_admin_bar->remove_node((string) $node->id);
         }
     }
@@ -9183,6 +9275,17 @@ add_action('admin_bar_menu', function ($wp_admin_bar) {
 add_action('wp_before_admin_bar_render', function () {
     global $wp_admin_bar;
     meza_filter_admin_bar_new_content_menu($wp_admin_bar);
+}, PHP_INT_MAX);
+
+// Final admin-bar pass: keep only core WordPress items plus Query Monitor and
+// the single clear-cache action after all other toolbar customizations run.
+add_action('admin_bar_menu', function ($wp_admin_bar) {
+    meza_remove_admin_bar_nodes($wp_admin_bar);
+}, PHP_INT_MAX);
+
+add_action('wp_before_admin_bar_render', function () {
+    global $wp_admin_bar;
+    meza_remove_admin_bar_nodes($wp_admin_bar);
 }, PHP_INT_MAX);
 
 function meza_get_custom_logo_id(): int
