@@ -55,6 +55,47 @@ if (!function_exists('mz_plugin_compat_get_source_patch_rules')) {
                     ) ?: $contents;
                 },
             ],
+            'divi_booster_contact_form_email_blacklist_runtime_properties' => [
+                'file' => '/divi-booster/core/features/contactFormEmailBlacklist/dbdb-contactform-emailblacklist.php',
+                'apply' => static function (string $contents): string {
+                    if (
+                        str_contains($contents, 'protected $current_blacklist = array();')
+                        && str_contains($contents, 'protected $current_contact_form = 0;')
+                    ) {
+                        return $contents;
+                    }
+
+                    $eol = mz_plugin_compat_get_eol($contents);
+                    return preg_replace_callback(
+                        '/([ \t]*protected \$email_blacklist_key = \'dbdb_email_blacklist\';\R)/',
+                        static function (array $matches) use ($eol): string {
+                            return $matches[1]
+                                . "\tprotected \$current_blacklist = array();" . $eol
+                                . "\tprotected \$current_contact_form = 0;" . $eol;
+                        },
+                        $contents,
+                        1
+                    ) ?: $contents;
+                },
+            ],
+            'monsterinsights_site_health_tracking_property' => [
+                'file' => '/google-analytics-for-wordpress/lite/includes/admin/wp-site-health.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, 'private $is_tracking;')) {
+                        return $contents;
+                    }
+
+                    $eol = mz_plugin_compat_get_eol($contents);
+                    return preg_replace_callback(
+                        '/([ \t]*private \$ecommerce;\R)/',
+                        static function (array $matches) use ($eol): string {
+                            return $matches[1] . "\tprivate \$is_tracking;" . $eol;
+                        },
+                        $contents,
+                        1
+                    ) ?: $contents;
+                },
+            ],
             'divi_booster_early_textdomain_constants' => [
                 'file' => '/divi-booster/divi-booster.php',
                 'apply' => static function (string $contents): string {
@@ -81,6 +122,43 @@ if (!function_exists('mz_plugin_compat_get_source_patch_rules')) {
                     return is_string($updated) ? $updated : $contents;
                 },
             ],
+            'divi_theme_metabox_post_id_guard' => [
+                'file' => '/wp-content/themes/Divi/functions.php',
+                'apply' => static function (string $contents): string {
+                    $updated = preg_replace(
+                        '/\$enabled = \$post \? et_builder_enabled_for_post\( \$post->ID \) : et_builder_enabled_for_post_type\( \$post_type \ );/',
+                        '$enabled = ( is_object( $post ) && isset( $post->ID ) ) ? et_builder_enabled_for_post( $post->ID ) : et_builder_enabled_for_post_type( $post_type );',
+                        $contents,
+                        1
+                    );
+
+                    return is_string($updated) ? $updated : $contents;
+                },
+            ],
+            'divi_builder_metabox_post_id_guard' => [
+                'file' => '/wp-content/themes/Divi/includes/builder/functions.php',
+                'apply' => static function (string $contents): string {
+                    $updated = preg_replace(
+                        '/if \( et_builder_bfb_enabled\(\) && ! et_pb_is_pagebuilder_used\( \$post->ID \) \) \{/',
+                        'if ( et_builder_bfb_enabled() && ( ! is_object( $post ) || ! isset( $post->ID ) || ! et_pb_is_pagebuilder_used( $post->ID ) ) ) {',
+                        $contents,
+                        1
+                    );
+
+                    if (!is_string($updated)) {
+                        $updated = $contents;
+                    }
+
+                    $updated = preg_replace(
+                        '/if \( ! \$add && ! empty\( \$post \) && et_builder_enabled_for_post\( \$post->ID \) \ ) \{/',
+                        'if ( ! $add && is_object( $post ) && isset( $post->ID ) && et_builder_enabled_for_post( $post->ID ) ) {',
+                        $updated,
+                        1
+                    );
+
+                    return is_string($updated) ? $updated : $contents;
+                },
+            ],
             'gravity_wiz_submit_access_dynamic_args' => [
                 'file' => '/gw-submit-to-access/gw-submit-to-access.php',
                 'apply' => static function (string $contents): string {
@@ -95,6 +173,23 @@ if (!function_exists('mz_plugin_compat_get_source_patch_rules')) {
                         $contents,
                         1
                     ) ?: $contents;
+                },
+            ],
+            'gravity_wiz_submit_access_null_post_guard' => [
+                'file' => '/gw-submit-to-access/gw-submit-to-access.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, "if ( ! \$post || ! isset( \$post->ID ) ) {\n\t\t\treturn \$content;\n\t\t}")) {
+                        return $contents;
+                    }
+
+                    $updated = preg_replace(
+                        '/public function maybe_hide_the_content\( \$content \) \{\R\t\tglobal \$post;\R/',
+                        "public function maybe_hide_the_content( \$content ) {\n\t\tglobal \$post;\n\n\t\tif ( ! \$post || ! isset( \$post->ID ) ) {\n\t\t\treturn \$content;\n\t\t}\n",
+                        $contents,
+                        1
+                    );
+
+                    return is_string($updated) ? $updated : $contents;
                 },
             ],
             'custom_widget_area_declared_properties' => [
@@ -178,6 +273,18 @@ if (!function_exists('mz_plugin_compat_get_deprecated_notice_rules')) {
             'divi_booster_dynamic_package_slug' => [
                 'message' => 'Creation of dynamic property wtfplugin_1_0::$package_slug is deprecated',
                 'file' => '/wp-content/plugins/divi-booster/core/wtfplugin_1_0.class.php',
+            ],
+            'divi_booster_contact_form_email_blacklist_current_blacklist' => [
+                'message' => 'Creation of dynamic property DBDB_ContactForm_EmailBlacklist::$current_blacklist is deprecated',
+                'file' => '/wp-content/plugins/divi-booster/core/features/contactFormEmailBlacklist/dbdb-contactform-emailblacklist.php',
+            ],
+            'divi_booster_contact_form_email_blacklist_current_contact_form' => [
+                'message' => 'Creation of dynamic property DBDB_ContactForm_EmailBlacklist::$current_contact_form is deprecated',
+                'file' => '/wp-content/plugins/divi-booster/core/features/contactFormEmailBlacklist/dbdb-contactform-emailblacklist.php',
+            ],
+            'monsterinsights_site_health_tracking_property' => [
+                'message' => 'Creation of dynamic property MonsterInsights_WP_Site_Health_Lite::$is_tracking is deprecated',
+                'file' => '/wp-content/plugins/google-analytics-for-wordpress/lite/includes/admin/wp-site-health.php',
             ],
             'gravity_wiz_submit_access_dynamic_args' => [
                 'message' => 'Creation of dynamic property GW_Submit_Access::$_args is deprecated',
