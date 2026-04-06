@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.171
+ * Version: 1.1.172
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -5684,6 +5684,109 @@ add_action('admin_init', function () {
     remove_action('welcome_panel', 'wp_welcome_panel');
 });
 
+function meza_get_allowed_tag_post_types(): array
+{
+    $post_types = apply_filters('meza_allowed_tag_post_types', ['product']);
+
+    return array_values(array_unique(array_filter(array_map('sanitize_key', (array) $post_types))));
+}
+
+function meza_get_exempt_tag_taxonomies(): array
+{
+    $taxonomies = apply_filters('meza_exempt_tag_taxonomies', ['nav_menu', 'link_category', 'post_format']);
+
+    return array_values(array_unique(array_filter(array_map('sanitize_key', (array) $taxonomies))));
+}
+
+function meza_should_disable_tag_taxonomy_registration(string $taxonomy, array $args, $object_type): bool
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if ($taxonomy === '' || in_array($taxonomy, meza_get_exempt_tag_taxonomies(), true)) {
+        return false;
+    }
+
+    if (!empty($args['hierarchical'])) {
+        return false;
+    }
+
+    $object_types = array_values(array_unique(array_filter(array_map('sanitize_key', (array) $object_type))));
+    if (empty($object_types)) {
+        $object_types = array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($args['object_type'] ?? [])))));
+    }
+
+    if (empty($object_types)) {
+        return false;
+    }
+
+    return empty(array_intersect($object_types, meza_get_allowed_tag_post_types()));
+}
+
+function meza_is_disabled_tag_taxonomy(string $taxonomy): bool
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if ($taxonomy === '' || !taxonomy_exists($taxonomy) || in_array($taxonomy, meza_get_exempt_tag_taxonomies(), true)) {
+        return false;
+    }
+
+    $taxonomy_object = get_taxonomy($taxonomy);
+    if (!($taxonomy_object instanceof WP_Taxonomy) || !empty($taxonomy_object->hierarchical)) {
+        return false;
+    }
+
+    return empty(array_intersect((array) $taxonomy_object->object_type, meza_get_allowed_tag_post_types()));
+}
+
+function meza_disable_comments_for_post_type(string $post_type): void
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '' || !post_type_exists($post_type)) {
+        return;
+    }
+
+    remove_post_type_support($post_type, 'comments');
+    remove_post_type_support($post_type, 'trackbacks');
+}
+
+function meza_get_design_redirect_url(): string
+{
+    return current_user_can('edit_theme_options') ? admin_url('nav-menus.php') : admin_url();
+}
+
+add_filter('register_taxonomy_args', function ($args, $taxonomy, $object_type) {
+    if (!is_array($args)) {
+        return $args;
+    }
+
+    if (!meza_should_disable_tag_taxonomy_registration((string) $taxonomy, $args, $object_type)) {
+        return $args;
+    }
+
+    $args['show_ui'] = false;
+    $args['show_admin_column'] = false;
+    $args['show_in_nav_menus'] = false;
+    $args['show_tagcloud'] = false;
+    $args['show_in_quick_edit'] = false;
+    $args['meta_box_cb'] = false;
+
+    return $args;
+}, 1000, 3);
+
+add_action('registered_post_type', function ($post_type): void {
+    meza_disable_comments_for_post_type((string) $post_type);
+}, 1000, 1);
+
+add_action('init', function (): void {
+    foreach (get_post_types([], 'names') as $post_type) {
+        meza_disable_comments_for_post_type((string) $post_type);
+    }
+}, 1000);
+
+add_filter('comments_open', '__return_false', 20, 2);
+add_filter('pings_open', '__return_false', 20, 2);
+add_filter('comments_array', function ($comments) {
+    return [];
+}, 20, 2);
+
 // Keep the legacy Links Manager available so link category admin screens remain accessible.
 add_filter('pre_option_link_manager_enabled', function ($value) {
     return '1';
@@ -5698,8 +5801,11 @@ add_action('admin_menu', function () {
     remove_submenu_page('edit.php', 'edit-tags.php?taxonomy=post_tag');
     remove_submenu_page('options-general.php', 'options-discussion.php');
 
+    remove_submenu_page('themes.php', 'themes.php');
     remove_submenu_page('themes.php', 'customize.php');
+    remove_submenu_page('themes.php', 'widgets.php');
     remove_submenu_page('themes.php', 'theme-editor.php');
+    remove_submenu_page('themes.php', 'site-editor.php');
     remove_submenu_page('themes.php', 'site-editor.php?path=/patterns');
     remove_submenu_page('themes.php', 'edit.php?post_type=wp_block');
 
@@ -5710,6 +5816,35 @@ add_action('admin_menu', function () {
         remove_submenu_page('tools.php', 'erase-personal-data.php');
     }
 }, 999);
+
+add_action('admin_menu', function () {
+    global $submenu;
+
+    if (!is_array($submenu)) {
+        return;
+    }
+
+    foreach ($submenu as &$items) {
+        if (!is_array($items)) {
+            continue;
+        }
+
+        $items = array_values(array_filter($items, static function ($item): bool {
+            if (!is_array($item)) {
+                return false;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            if (!str_starts_with($slug, 'edit-tags.php?taxonomy=')) {
+                return true;
+            }
+
+            parse_str((string) parse_url($slug, PHP_URL_QUERY), $query_args);
+            return !meza_is_disabled_tag_taxonomy((string) ($query_args['taxonomy'] ?? ''));
+        }));
+    }
+    unset($items);
+}, PHP_INT_MAX - 5);
 
 add_action('admin_init', function (): void {
     if (meza_site_has_subscribers()) return;
@@ -5723,6 +5858,36 @@ add_action('admin_init', function (): void {
 
     wp_die(__('Sorry, you are not allowed to access this page.'));
 });
+
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    global $pagenow;
+
+    $pagenow = is_string($pagenow ?? null) ? $pagenow : '';
+    $taxonomy = isset($_GET['taxonomy']) ? sanitize_key(wp_unslash((string) $_GET['taxonomy'])) : '';
+    $post_type = isset($_GET['post_type']) ? sanitize_key(wp_unslash((string) $_GET['post_type'])) : '';
+
+    if (in_array($pagenow, ['edit-comments.php', 'comment.php', 'options-discussion.php'], true)) {
+        wp_safe_redirect(admin_url());
+        exit;
+    }
+
+    if (in_array($pagenow, ['edit-tags.php', 'term.php'], true) && meza_is_disabled_tag_taxonomy($taxonomy)) {
+        wp_safe_redirect(admin_url());
+        exit;
+    }
+
+    $is_design_page = in_array($pagenow, ['themes.php', 'customize.php', 'widgets.php', 'theme-editor.php', 'site-editor.php'], true)
+        || (($pagenow === 'edit.php' || $pagenow === 'post-new.php' || $pagenow === 'post.php') && $post_type === 'wp_block');
+
+    if ($is_design_page) {
+        wp_safe_redirect(meza_get_design_redirect_url());
+        exit;
+    }
+}, 2);
 
 // Remove "Get Help" top-level menu item when present.
 add_action('admin_menu', function () {
@@ -5758,14 +5923,18 @@ add_action('admin_menu', function () {
         $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
         $slug = strtolower((string) ($item[2] ?? ''));
 
+        $is_themes = $slug === 'themes.php' || $label === 'themes';
         $is_customize = ($slug === 'customize.php')
             || str_starts_with($slug, 'customize.php?')
             || $label === 'customize';
+        $is_widgets = $slug === 'widgets.php' || $label === 'widgets';
+        $is_site_editor = str_starts_with($slug, 'site-editor.php') || $label === 'editor';
+        $is_theme_editor = $slug === 'theme-editor.php' || $label === 'theme file editor';
         $is_patterns = ($slug === 'edit.php?post_type=wp_block')
             || (str_starts_with($slug, 'site-editor.php') && str_contains($slug, 'patterns'))
             || $label === 'patterns';
 
-        return !($is_customize || $is_patterns);
+        return !($is_themes || $is_customize || $is_widgets || $is_site_editor || $is_theme_editor || $is_patterns);
     }));
 }, 99999);
 
@@ -10086,15 +10255,8 @@ function meza_is_default_admin_bar_node_id(string $node_id): bool
         'view-site',
         'edit-site',
         'dashboard',
-        'appearance',
-        'themes',
-        'widgets',
         'menus',
-        'background',
-        'header',
         'plugins',
-        'site-editor',
-        'customize',
         'my-sites',
         'my-sites-super-admin',
         'network-admin',
@@ -10117,7 +10279,6 @@ function meza_is_default_admin_bar_node_id(string $node_id): bool
         'new-page',
         'new-user',
         'add-new-site',
-        'comments',
         'updates',
         'top-secondary',
         'my-account',
@@ -11474,21 +11635,6 @@ function meza_replace_glance_items()
             'url' => $url,
             'icon' => $icon_class,
         ];
-    }
-
-    if (current_user_can('edit_posts')) {
-        $num_comments = wp_count_comments();
-        $approved = (int) $num_comments->approved;
-
-        if ($approved > 0) {
-            $custom_items[] = [
-                'name' => 'meza-comments',
-                'count' => $approved,
-                'label' => _n('Comment', 'Comments', $approved),
-                'url' => admin_url('edit-comments.php'),
-                'icon' => 'dashicons-admin-comments',
-            ];
-        }
     }
 
     usort($custom_items, function ($a, $b) {
