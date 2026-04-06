@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DS Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.143
+ * Version: 1.1.144
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -6266,17 +6266,19 @@ function meza_reorder_dashboard_utility_items(): void
         }
     }
 
-    if ($dashboard_index === null || empty($matched_indexes)) return;
+    if ($dashboard_index === null) return;
 
-    rsort($matched_indexes, SORT_NUMERIC);
-    foreach ($matched_indexes as $matched_index) {
-        array_splice($menu, $matched_index, 1);
-    }
+    if (!empty($matched_indexes)) {
+        rsort($matched_indexes, SORT_NUMERIC);
+        foreach ($matched_indexes as $matched_index) {
+            array_splice($menu, $matched_index, 1);
+        }
 
-    foreach ($menu as $index => $item) {
-        if (is_array($item) && ((string) ($item[2] ?? '')) === 'index.php') {
-            $dashboard_index = (int) $index;
-            break;
+        foreach ($menu as $index => $item) {
+            if (is_array($item) && ((string) ($item[2] ?? '')) === 'index.php') {
+                $dashboard_index = (int) $index;
+                break;
+            }
         }
     }
 
@@ -6284,9 +6286,45 @@ function meza_reorder_dashboard_utility_items(): void
         return is_array($item);
     }));
 
-    if (empty($items_to_insert)) return;
+    if (!empty($items_to_insert)) {
+        array_splice($menu, $dashboard_index + 1, 0, $items_to_insert);
+    }
 
-    array_splice($menu, $dashboard_index + 1, 0, $items_to_insert);
+    $group_indexes_to_remove = [];
+    for ($i = $dashboard_index + 1, $count = count($menu); $i < $count; $i++) {
+        $item = $menu[$i] ?? null;
+        if (!is_array($item)) continue;
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $classes = strtolower((string) ($item[4] ?? ''));
+        $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+        $is_separator = str_starts_with($slug, 'separator')
+            || str_contains($classes, 'wp-menu-separator');
+
+        if ($is_separator) {
+            break;
+        }
+
+        $is_site_kit = str_contains($slug, 'googlesitekit')
+            || str_contains($slug, 'google-site-kit')
+            || str_contains($slug, 'site-kit')
+            || in_array($title, ['web analytics', 'site kit', 'site kit by google'], true);
+        $is_yoast = str_contains($slug, 'wpseo')
+            || str_contains($slug, 'wordpress-seo')
+            || str_contains($title, 'seo');
+        $is_allowed_dashboard_item = $is_site_kit || (!$hide_yoast_menu && $is_yoast);
+
+        if (!$is_allowed_dashboard_item) {
+            $group_indexes_to_remove[] = $i;
+        }
+    }
+
+    if (empty($group_indexes_to_remove)) return;
+
+    rsort($group_indexes_to_remove, SORT_NUMERIC);
+    foreach ($group_indexes_to_remove as $group_index) {
+        array_splice($menu, $group_index, 1);
+    }
 }
 
 // Keep utility plugins grouped with Dashboard in a fixed order before the content separator.
