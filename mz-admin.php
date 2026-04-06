@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DS Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.144
+ * Version: 1.1.145
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -6230,6 +6230,18 @@ function meza_reorder_dashboard_utility_items(): void
         'seo' => null,
     ];
     $matched_indexes = [];
+    $is_site_kit_item = static function (string $slug, string $title): bool {
+        return str_contains($slug, 'googlesitekit')
+            || str_contains($slug, 'google-site-kit')
+            || str_contains($slug, 'site-kit')
+            || in_array($title, ['web analytics', 'site kit', 'site kit by google'], true);
+    };
+    $is_yoast_item = static function (string $slug, string $title): bool {
+        return str_contains($slug, 'wpseo')
+            || str_contains($slug, 'wordpress-seo')
+            || str_contains($title, 'yoast seo')
+            || $title === 'yoast';
+    };
 
     foreach ($menu as $index => $item) {
         if (!is_array($item)) continue;
@@ -6242,13 +6254,8 @@ function meza_reorder_dashboard_utility_items(): void
             continue;
         }
 
-        $is_site_kit = str_contains($slug, 'googlesitekit')
-            || str_contains($slug, 'google-site-kit')
-            || str_contains($slug, 'site-kit')
-            || in_array($title, ['web analytics', 'site kit', 'site kit by google'], true);
-        $is_yoast = str_contains($slug, 'wpseo')
-            || str_contains($slug, 'wordpress-seo')
-            || str_contains($title, 'seo');
+        $is_site_kit = $is_site_kit_item($slug, $title);
+        $is_yoast = $is_yoast_item($slug, $title);
         if ($is_site_kit) {
             if ($ordered_items['web_analytics'] === null) {
                 $ordered_items['web_analytics'] = $item;
@@ -6287,6 +6294,11 @@ function meza_reorder_dashboard_utility_items(): void
     }));
 
     if (!empty($items_to_insert)) {
+        usort($items_to_insert, static function (array $a, array $b): int {
+            $label_a = strtolower(trim(wp_strip_all_tags((string) ($a[0] ?? ''))));
+            $label_b = strtolower(trim(wp_strip_all_tags((string) ($b[0] ?? ''))));
+            return strnatcasecmp($label_a, $label_b);
+        });
         array_splice($menu, $dashboard_index + 1, 0, $items_to_insert);
     }
 
@@ -6305,13 +6317,8 @@ function meza_reorder_dashboard_utility_items(): void
             break;
         }
 
-        $is_site_kit = str_contains($slug, 'googlesitekit')
-            || str_contains($slug, 'google-site-kit')
-            || str_contains($slug, 'site-kit')
-            || in_array($title, ['web analytics', 'site kit', 'site kit by google'], true);
-        $is_yoast = str_contains($slug, 'wpseo')
-            || str_contains($slug, 'wordpress-seo')
-            || str_contains($title, 'seo');
+        $is_site_kit = $is_site_kit_item($slug, $title);
+        $is_yoast = $is_yoast_item($slug, $title);
         $is_allowed_dashboard_item = $is_site_kit || (!$hide_yoast_menu && $is_yoast);
 
         if (!$is_allowed_dashboard_item) {
