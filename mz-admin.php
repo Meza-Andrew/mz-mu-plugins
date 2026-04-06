@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Plugin Name: DS Admin
+ * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.146
+ * Version: 1.1.156
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -5793,6 +5793,82 @@ function meza_admin_menu_content_group(string $menu_slug): string
     return meza_post_type_has_permalink($post_type) ? 'with' : 'without';
 }
 
+function meza_submenu_label_contains_banned_words(string $label): bool
+{
+    $label = strtolower(trim(wp_strip_all_tags($label)));
+    if ($label === '') return false;
+
+    return preg_match('/\b(addons?|add-ons?|help|about|support|pro)\b/i', $label) === 1;
+}
+
+function meza_submenu_label_uses_custom_markup(string $label): bool
+{
+    $raw_label = trim($label);
+    if ($raw_label === '') return false;
+
+    $raw_label_lower = strtolower($raw_label);
+
+    return preg_match('/<[^>]+>/', $raw_label) === 1
+        || str_contains($raw_label_lower, 'class=')
+        || str_contains($raw_label_lower, 'style=');
+}
+
+function meza_is_promotional_submenu_item(string $parent_slug, array $item): bool
+{
+    $parent_slug = strtolower($parent_slug);
+    $slug = strtolower((string) ($item[2] ?? ''));
+    $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+    if ($title === '') return false;
+
+    $has_promotional_slug = str_contains($slug, 'upsell')
+        || str_contains($slug, 'cross-sell')
+        || str_contains($slug, 'cross_sell');
+
+    $has_promotional_title = str_starts_with($title, 'get ')
+        || str_contains($title, ' free plugins')
+        || str_contains($title, ' more plugins')
+        || str_contains($title, 'upgrade');
+
+    if ($has_promotional_slug || $has_promotional_title) {
+        return true;
+    }
+
+    if ($parent_slug === 'smush') {
+        return in_array($title, ['get more free plugins', 'get smush pro'], true);
+    }
+
+    return false;
+}
+
+function meza_is_default_wordpress_submenu_item(string $parent_slug, array $item): bool
+{
+    $parent_slug = strtolower($parent_slug);
+    $slug = strtolower((string) ($item[2] ?? ''));
+
+    $core_submenus = [
+        'index.php' => ['index.php', 'update-core.php', 'site-health.php'],
+        'edit.php' => ['edit.php', 'post-new.php'],
+        'upload.php' => ['upload.php', 'media-new.php'],
+        'edit.php?post_type=page' => ['edit.php?post_type=page', 'post-new.php?post_type=page'],
+        'plugins.php' => ['plugins.php', 'plugin-install.php'],
+        'themes.php' => ['themes.php', 'widgets.php', 'nav-menus.php'],
+        'users.php' => ['users.php', 'user-new.php', 'profile.php'],
+        'tools.php' => ['tools.php', 'import.php', 'export.php', 'site-health.php'],
+        'options-general.php' => [
+            'options-general.php',
+            'options-writing.php',
+            'options-reading.php',
+            'options-discussion.php',
+            'options-media.php',
+            'options-permalink.php',
+            'privacy.php',
+        ],
+    ];
+
+    return isset($core_submenus[$parent_slug]) && in_array($slug, $core_submenus[$parent_slug], true);
+}
+
 function meza_normalize_admin_plugin_menus(): void
 {
     global $menu, $submenu;
@@ -5894,12 +5970,31 @@ function meza_normalize_admin_plugin_menus(): void
         foreach ($items as $index => &$item) {
             if (!is_array($item)) continue;
 
+            $raw_title = (string) ($item[0] ?? '');
             $slug = strtolower((string) ($item[2] ?? ''));
-            $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+            $title = strtolower(trim(wp_strip_all_tags($raw_title)));
             $is_yoast_menu = str_contains(strtolower((string) $parent_slug), 'wpseo');
             $is_wp_mail_smtp_menu = str_contains(strtolower((string) $parent_slug), 'wp-mail-smtp');
             $is_redirection = str_contains($slug, 'redirection')
                 || $title === 'redirection';
+
+            if (meza_submenu_label_contains_banned_words($raw_title)) {
+                unset($items[$index]);
+                continue;
+            }
+
+            if (meza_is_promotional_submenu_item((string) $parent_slug, $item)) {
+                unset($items[$index]);
+                continue;
+            }
+
+            if (
+                meza_submenu_label_uses_custom_markup($raw_title)
+                && !meza_is_default_wordpress_submenu_item((string) $parent_slug, $item)
+            ) {
+                unset($items[$index]);
+                continue;
+            }
 
             if (str_contains($title, 'upgrade')) {
                 unset($items[$index]);
@@ -7483,6 +7578,47 @@ add_action('admin_head', function (): void {
 <?php
 }, 1003);
 
+// Neutralize Smush's "last submenu item" upsell styling when promo items have been removed.
+add_action('admin_head', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+?>
+    <style id="meza-reset-smush-submenu-style">
+        #adminmenu #toplevel_page_smush .wp-submenu li:last-child a,
+        #adminmenu #toplevel_page_smush .wp-submenu li:last-child a:visited {
+            background: transparent !important;
+            color: #c3c4c7 !important;
+            font-weight: 400 !important;
+            white-space: normal !important;
+        }
+
+        #adminmenu #toplevel_page_smush .wp-submenu li:last-child a:hover,
+        #adminmenu #toplevel_page_smush .wp-submenu li:last-child a:focus {
+            background: transparent !important;
+            color: #72aee6 !important;
+        }
+    </style>
+    <script id="meza-reset-smush-submenu-target">
+        (() => {
+            const resetSmushSubmenuLink = () => {
+                const link = document.querySelector('#toplevel_page_smush .wp-submenu li:last-child a[href*="smush-settings"]');
+                if (!(link instanceof HTMLAnchorElement)) return;
+
+                link.removeAttribute('target');
+                link.removeAttribute('rel');
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', resetSmushSubmenuLink, { once: true });
+            } else {
+                resetSmushSubmenuLink();
+            }
+        })();
+    </script>
+<?php
+}, 1004);
+
 function meza_group_woocommerce_top_level_items(): void
 {
     global $menu, $submenu;
@@ -7572,6 +7708,28 @@ function meza_group_woocommerce_top_level_items(): void
 // Keep Store and Customer Sign Generator together directly below the Dashboard group.
 add_action('admin_menu', 'meza_group_woocommerce_top_level_items', PHP_INT_MAX);
 
+function meza_is_settings_utility_menu_item($item): bool
+{
+    if (!is_array($item)) return false;
+
+    $classes = strtolower((string) ($item[4] ?? ''));
+    if (str_contains($classes, 'wp-menu-separator')) return false;
+
+    $slug = strtolower((string) ($item[2] ?? ''));
+    $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+    $is_acf = $slug === 'edit.php?post_type=acf-field-group'
+        || $label === 'acf';
+    $is_mail = str_contains($slug, 'wp-mail-smtp')
+        || $label === 'mail';
+    $is_security = str_contains($slug, 'aiowpsec')
+        || str_contains($slug, 'wp-security')
+        || $label === 'security';
+    $is_backups = str_contains($slug, 'updraft')
+        || in_array($label, ['backups', 'updraft', 'updraftplus'], true);
+
+    return $is_acf || $is_mail || $is_security || $is_backups;
+}
+
 function meza_group_post_settings_utilities(): void
 {
     global $menu;
@@ -7596,36 +7754,12 @@ function meza_group_post_settings_utilities(): void
 
     foreach ($menu as $index => $item) {
         if (!is_array($item)) continue;
-
-        $classes = strtolower((string) ($item[4] ?? ''));
-        if (str_contains($classes, 'wp-menu-separator')) continue;
-
-        $slug = strtolower((string) ($item[2] ?? ''));
-        $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
-        $is_hosting = str_contains($slug, 'page=wp-dashboard')
-            || str_contains($slug, 'godaddy')
-            || in_array($label, ['hosting', 'godaddy'], true);
-        $is_make = str_contains($slug, 'ds-make')
-            || $label === 'make';
-
-        $is_acf = $slug === 'edit.php?post_type=acf-field-group'
-            || $label === 'acf';
-        $is_mail = str_contains($slug, 'wp-mail-smtp')
-            || $label === 'mail';
-        $is_security = str_contains($slug, 'aiowpsec')
-            || str_contains($slug, 'wp-security')
-            || $label === 'security';
-        $is_backups = str_contains($slug, 'updraft')
-            || in_array($label, ['backups', 'updraft', 'updraftplus'], true);
-        $is_make = $is_make || str_contains($slug, 'ds-make')
-            || $label === 'make';
-
-        if (!$is_acf && !$is_mail && !$is_security && !$is_backups && !$is_hosting && !$is_make) continue;
+        if (!meza_is_settings_utility_menu_item($item)) continue;
 
         $utility_indexes[] = (int) $index;
         $utility_items[] = [
             'item' => $item,
-            'label' => $label,
+            'label' => strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? '')))),
         ];
     }
 
@@ -7639,9 +7773,6 @@ function meza_group_post_settings_utilities(): void
             'updraftplus' => 10,
             'mail' => 10,
             'security' => 10,
-            'hosting' => 40,
-            'godaddy' => 40,
-            'make' => 50,
         ];
 
         $label_a = strtolower((string) ($a['label'] ?? ''));
@@ -7677,10 +7808,18 @@ function meza_group_post_settings_utilities(): void
         $items_to_insert[] = $entry['item'];
     }
 
+    $items_to_insert[] = [
+        '',
+        'read',
+        'separator-meza-default-fallback',
+        '',
+        'wp-menu-separator',
+    ];
+
     array_splice($menu, $settings_index + 1, 0, $items_to_insert);
 }
 
-// Keep Backups, ACF, Mail, Security, Hosting, and Make in their own utility group below Settings.
+// Keep ACF, Backups, Mail, and Security in their own utility group below Settings.
 add_action('admin_menu', 'meza_group_post_settings_utilities', PHP_INT_MAX);
 
 function meza_alphabetize_default_admin_menu_group(): void
@@ -7699,31 +7838,43 @@ function meza_alphabetize_default_admin_menu_group(): void
         }
     }
 
-    if ($settings_index === null || $settings_index <= 0) return;
+    if ($settings_index === null) return;
 
-    $segment_start = 0;
-    for ($i = $settings_index - 1; $i >= 0; $i--) {
-        $item = $menu[$i] ?? null;
+    $segment_start = $settings_index + 1;
+    $menu_count = count($menu);
+    if (
+        isset($menu[$segment_start])
+        && is_array($menu[$segment_start])
+        && ((string) ($menu[$segment_start][2] ?? '')) === 'separator-meza-settings-utilities'
+    ) {
+        $segment_start++;
+
+        while ($segment_start < $menu_count && meza_is_settings_utility_menu_item($menu[$segment_start] ?? null)) {
+            $segment_start++;
+        }
+
+        if (
+            isset($menu[$segment_start])
+            && is_array($menu[$segment_start])
+            && ((string) ($menu[$segment_start][2] ?? '')) === 'separator-meza-default-fallback'
+        ) {
+            $segment_start++;
+        }
+    }
+
+    if ($segment_start >= $menu_count) return;
+
+    $segment_items = array_slice($menu, $segment_start);
+    $sortable_entries = [];
+
+    foreach ($segment_items as $offset => $item) {
         if (!is_array($item)) continue;
 
         $slug = strtolower((string) ($item[2] ?? ''));
         $classes = strtolower((string) ($item[4] ?? ''));
         $is_separator = str_starts_with($slug, 'separator')
             || str_contains($classes, 'wp-menu-separator');
-
-        if ($is_separator) {
-            $segment_start = $i + 1;
-            break;
-        }
-    }
-
-    if ($segment_start >= $settings_index) return;
-
-    $segment_items = array_slice($menu, $segment_start, $settings_index - $segment_start);
-    $sortable_entries = [];
-
-    foreach ($segment_items as $offset => $item) {
-        if (!is_array($item)) continue;
+        if ($is_separator) continue;
 
         $sortable_entries[] = [
             'item' => $item,
@@ -7744,10 +7895,10 @@ function meza_alphabetize_default_admin_menu_group(): void
         return $entry['item'];
     }, $sortable_entries);
 
-    array_splice($menu, $segment_start, $settings_index - $segment_start, $sorted_items);
+    array_splice($menu, $segment_start, $menu_count - $segment_start, $sorted_items);
 }
 
-// Alphabetize the remaining fallback top-level group immediately above Settings.
+// Alphabetize the remaining fallback top-level group below the Settings utilities block.
 add_action('admin_menu', 'meza_alphabetize_default_admin_menu_group', PHP_INT_MAX);
 
 function meza_cleanup_menu_separators(): void

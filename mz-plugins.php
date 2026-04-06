@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Plugin Name: DS Plugins
+ * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.0
+ * Version: 1.4.4
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -252,6 +252,30 @@ if ($HIDE) {
     }, 50);
 }
 
+// Normalize plugin names in the Plugins list so the title cell stays plain text.
+add_filter('all_plugins', function ($plugins) {
+    foreach ($plugins as $plugin_file => &$plugin_data) {
+        if (!is_array($plugin_data)) continue;
+
+        $plain_name = trim(wp_strip_all_tags((string) ($plugin_data['Name'] ?? $plugin_data['Title'] ?? '')));
+        if ($plain_name === '') continue;
+
+        if ($plugin_file === 'all-in-one-seo-pack/all_in_one_seo_pack.php') {
+            $plain_name = 'All in One SEO';
+        } elseif ($plugin_file === 'popup-maker/popup-maker.php') {
+            $plain_name = 'Popup Maker';
+        } elseif (preg_match('/^DS\s+/i', $plain_name) === 1) {
+            $plain_name = preg_replace('/^DS\s+/i', 'MZ ', $plain_name) ?: $plain_name;
+        }
+
+        $plugin_data['Name'] = $plain_name;
+        $plugin_data['Title'] = $plain_name;
+    }
+    unset($plugin_data);
+
+    return $plugins;
+}, PHP_INT_MAX);
+
 /**
  * Limit Plugins screen row actions based on state:
  * - Active plugins: Settings, Deactivate
@@ -262,6 +286,25 @@ $mz_limit_plugin_actions = function ($actions) {
     $deactivate_link = null;
     $activate_link   = null;
     $delete_link     = null;
+    $normalize_action_label = static function ($html, string $label): string {
+        $html = (string) $html;
+        if ($html === '') {
+            return esc_html($label);
+        }
+
+        if (stripos($html, '<a') === false) {
+            return esc_html($label);
+        }
+
+        $updated = preg_replace(
+            '/(<a\b[^>]*>)(.*?)(<\/a>)/is',
+            '$1' . esc_html($label) . '$3',
+            $html,
+            1
+        );
+
+        return is_string($updated) && $updated !== '' ? $updated : $html;
+    };
 
     foreach ((array)$actions as $key => $html) {
         $key_lc  = strtolower((string)$key);
@@ -275,7 +318,7 @@ $mz_limit_plugin_actions = function ($actions) {
                 strpos($text_lc, 'settings') !== false
             )
         ) {
-            $settings_link = $html;
+            $settings_link = $normalize_action_label($html, 'Settings');
         }
 
         if (
@@ -416,3 +459,17 @@ add_filter('plugin_row_meta', function ($plugin_meta, $plugin_file, $plugin_data
 
     return $plugin_meta;
 }, PHP_INT_MAX, 4);
+
+// Disable Popup Maker's plugin-list branding script so the plain plugin name remains intact.
+add_action('admin_init', function () {
+    if (!function_exists('\PopupMaker\plugin')) return;
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    $screen_base = $screen instanceof WP_Screen ? (string) ($screen->base ?? '') : '';
+    if ($screen_base !== '' && !in_array($screen_base, ['plugins', 'plugins-network'], true)) return;
+
+    $plugins_page_controller = \PopupMaker\plugin('Admin\WP\PluginsPage');
+    if (!is_object($plugins_page_controller) || !method_exists($plugins_page_controller, 'footer_scripts')) return;
+
+    remove_action('admin_print_footer_scripts', [$plugins_page_controller, 'footer_scripts']);
+}, PHP_INT_MAX);
