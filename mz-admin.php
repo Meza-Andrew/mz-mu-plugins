@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.199
+ * Version: 1.1.200
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1839,6 +1839,16 @@ function meza_customize_users_admin_columns(array $columns): array
     }
 
     foreach ($columns as $key => $label) {
+        $normalized_key = strtolower(trim((string) $key));
+        $normalized_label = strtolower(trim(wp_strip_all_tags((string) $label)));
+
+        if (
+            preg_match('/\b(two[\s_-]*factor|2fa)\b/i', $normalized_key) === 1
+            || preg_match('/\b(two[\s-]*factor|2fa)\b/i', $normalized_label) === 1
+        ) {
+            continue;
+        }
+
         $ordered[$key] = $label;
     }
 
@@ -6170,6 +6180,8 @@ function meza_get_standardized_submenu_utility_label(array $item, string $parent
     $has_export = preg_match('/\bexport\b/i', $title) === 1 || str_contains($slug, 'export');
     $has_tools = preg_match('/\btools?\b/i', $title) === 1
         || preg_match('/(^|[_-])tools?([_-]|$)/i', $slug) === 1;
+    $has_two_factor = preg_match('/\b(two[\s-]*factor|2fa)\b/i', $title) === 1
+        || preg_match('/(^|[_-])(two[_-]*factor|2fa)([_-]|$)/i', $slug) === 1;
     $has_settings = preg_match('/\bsettings?\b/i', $title) === 1
         || preg_match('/(^|[_-])settings?([_-]|$)/i', $slug) === 1;
     $has_status = preg_match('/\bstatus\b/i', $title) === 1 || str_contains($slug, 'status');
@@ -6190,6 +6202,10 @@ function meza_get_standardized_submenu_utility_label(array $item, string $parent
         return 'Tools';
     }
 
+    if ($has_two_factor) {
+        return 'Two Factor Authentication';
+    }
+
     if ($has_settings) {
         return 'Settings';
     }
@@ -6208,8 +6224,9 @@ function meza_reorder_standardized_submenu_utility_items(array $items): array
         'Export' => 20,
         'Import/Export' => 30,
         'Tools' => 40,
-        'Settings' => 50,
-        'Status' => 60,
+        'Two Factor Authentication' => 50,
+        'Settings' => 60,
+        'Status' => 70,
     ];
 
     $tail_items = [];
@@ -11757,6 +11774,50 @@ add_action('admin_head-users.php', function (): void {
         . '.users-php .wp-list-table td.column-email,.users-php .wp-list-table td.column-website{white-space:normal;overflow-wrap:anywhere;word-break:break-word;}'
         . '.users-php .tablenav.top{display:none!important;}'
         . '</style>';
+    ?>
+    <script id="meza-users-hide-two-factor-ui">
+        (() => {
+            const normalize = (text) => String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            const matchesTwoFactor = (text) => /\b(two[\s-]*factor|2fa)\b/i.test(normalize(text));
+
+            const hideMatchingScreenOptions = () => {
+                document.querySelectorAll('#screen-options-wrap label').forEach((label) => {
+                    if (!matchesTwoFactor(label.textContent)) return;
+                    label.style.display = 'none';
+                });
+            };
+
+            const hideMatchingUserColumns = () => {
+                const columnIndexes = [];
+
+                document.querySelectorAll('.users-php .wp-list-table thead th').forEach((cell, index) => {
+                    if (!matchesTwoFactor(cell.textContent)) return;
+                    columnIndexes.push(index);
+                });
+
+                if (columnIndexes.length === 0) return;
+
+                document.querySelectorAll('.users-php .wp-list-table tr').forEach((row) => {
+                    row.querySelectorAll('th, td').forEach((cell, index) => {
+                        if (!columnIndexes.includes(index)) return;
+                        cell.style.display = 'none';
+                    });
+                });
+            };
+
+            const apply = () => {
+                hideMatchingScreenOptions();
+                hideMatchingUserColumns();
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', apply, { once: true });
+            } else {
+                apply();
+            }
+        })();
+    </script>
+    <?php
 }, 1000);
 
 // Menus screen: show all remaining Add Menu Items panels by default for first-load users.
