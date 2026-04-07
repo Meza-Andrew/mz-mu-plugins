@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.14
+ * Version: 1.4.20
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -18,11 +18,44 @@
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) return;
 
+$env = defined('WP_ENV') ? strtolower(WP_ENV) : 'production';
+
+if (!function_exists('mz_plugins_is_api_transport_request')) {
+    function mz_plugins_is_api_transport_request(): bool
+    {
+        if (defined('DOING_AJAX') && DOING_AJAX) {
+            return true;
+        }
+
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? strtolower((string) $_SERVER['REQUEST_URI']) : '';
+        if ($request_uri !== '') {
+            if (strpos($request_uri, '/wp-json/') !== false) return true;
+            if (strpos($request_uri, 'rest_route=') !== false) return true;
+            if (strpos($request_uri, '/wp-admin/admin-ajax.php') !== false) return true;
+            if (strpos($request_uri, '/wp-admin/admin-post.php') !== false) return true;
+        }
+
+        $accept = isset($_SERVER['HTTP_ACCEPT']) ? strtolower((string) $_SERVER['HTTP_ACCEPT']) : '';
+        if (strpos($accept, 'application/json') !== false) {
+            return true;
+        }
+
+        return false;
+    }
+}
+
+// Keep QA/staging API-style responses loggable but never allow PHP notices/warnings
+// to bleed into JSON payloads and break wp-admin screens.
+if ($env !== 'development' && mz_plugins_is_api_transport_request()) {
+    @ini_set('display_errors', '0');
+    @ini_set('display_startup_errors', '0');
+    @ini_set('html_errors', '0');
+}
+
 if (file_exists(__DIR__ . '/mz-plugin-compat.php')) {
     require_once __DIR__ . '/mz-plugin-compat.php';
 }
 
-$env          = defined('WP_ENV') ? strtolower(WP_ENV) : 'production';
 $network_wide = is_multisite();
 $PRUNE        = defined('MZ_PRUNE_PLUGINS') ? (bool) MZ_PRUNE_PLUGINS : false;
 $HIDE         = defined('MZ_HIDE_NON_ENV_PLUGINS') ? (bool) MZ_HIDE_NON_ENV_PLUGINS : false;
@@ -47,37 +80,83 @@ function mz_plugins_should_rerun(): bool
     return mz_plugins_truthy(get_option('mz_force_rerun', 0));
 }
 
+if (!function_exists('mz_plugins_get_catalog')) {
+    function mz_plugins_get_catalog(): array
+    {
+        return [
+            // All
+            ['name' => 'Advanced Custom Fields PRO', 'slug' => 'advanced-custom-fields-pro', 'file' => 'advanced-custom-fields-pro/acf.php', 'envs' => ['development', 'staging', 'qa', 'production'], 'zip_const' => 'MZ_ACF_PRO_ZIP'],
+            ['name' => 'Classic Editor', 'slug' => 'classic-editor', 'file' => 'classic-editor/classic-editor.php', 'envs' => ['development', 'staging', 'qa', 'production']],
+            ['name' => 'Intuitive Custom Post Order', 'slug' => 'intuitive-custom-post-order', 'file' => 'intuitive-custom-post-order/intuitive-custom-post-order.php', 'envs' => ['development', 'staging', 'qa', 'production']],
+            ['name' => 'Post Duplicator', 'slug' => 'post-duplicator', 'file' => 'post-duplicator/m4c-postduplicator.php', 'envs' => ['development', 'staging', 'qa', 'production']],
+            ['name' => 'UpdraftPlus', 'slug' => 'updraftplus', 'file' => 'updraftplus/updraftplus.php', 'envs' => ['development', 'staging', 'qa', 'production']],
+            ['name' => 'WordPress Importer', 'slug' => 'wordpress-importer', 'file' => 'wordpress-importer/wordpress-importer.php', 'envs' => ['development', 'staging', 'qa', 'production']],
+            ['name' => 'WP Mail SMTP', 'slug' => 'wp-mail-smtp', 'file' => 'wp-mail-smtp/wp_mail_smtp.php', 'envs' => ['development', 'staging', 'qa', 'production']],
+            ['name' => 'Error Log Monitor', 'slug' => 'error-log-monitor', 'file' => 'error-log-monitor/plugin.php', 'envs' => ['development', 'staging', 'qa', 'production']],
+
+            // All except development
+            ['name' => 'ACF Content Analysis for Yoast SEO', 'slug' => 'acf-content-analysis-for-yoast-seo', 'file' => 'acf-content-analysis-for-yoast-seo/acf-content-analysis-for-yoast-seo.php', 'envs' => ['staging', 'qa', 'production']],
+            ['name' => 'Admin Columns', 'slug' => 'codepress-admin-columns', 'file' => 'codepress-admin-columns/codepress-admin-columns.php', 'envs' => ['staging', 'qa', 'production']],
+            ['name' => 'Admin Menu Editor', 'slug' => 'admin-menu-editor', 'file' => 'admin-menu-editor/menu-editor.php', 'envs' => ['staging', 'qa', 'production']],
+            ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['development'], 'activate' => false],
+            ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['staging', 'qa', 'production']],
+
+            // All except production
+            ['name' => 'Query Monitor', 'slug' => 'query-monitor', 'file' => 'query-monitor/query-monitor.php', 'envs' => ['development', 'staging', 'qa']],
+
+            // QA + Production only
+            ['name' => 'All-In-One Security (AIOS)', 'slug' => 'all-in-one-wp-security-and-firewall', 'file' => 'all-in-one-wp-security-and-firewall/wp-security.php', 'envs' => ['qa', 'production']],
+            ['name' => 'Converter for Media', 'slug' => 'webp-converter-for-media', 'file' => 'webp-converter-for-media/webp-converter-for-media.php', 'envs' => ['qa', 'production']],
+            ['name' => 'Redirection', 'slug' => 'redirection', 'file' => 'redirection/redirection.php', 'envs' => ['qa', 'production']],
+            ['name' => 'WP Super Cache', 'slug' => 'wp-super-cache', 'file' => 'wp-super-cache/wp-cache.php', 'envs' => ['qa', 'production']],
+
+            // Production only
+            ['name' => 'Site Kit by Google', 'slug' => 'google-site-kit', 'file' => 'google-site-kit/google-site-kit.php', 'envs' => ['production']],
+        ];
+    }
+}
+
+if (!function_exists('mz_plugins_get_env_catalog')) {
+    function mz_plugins_get_env_catalog(?string $env = null): array
+    {
+        $env = strtolower((string) ($env ?: (defined('WP_ENV') ? WP_ENV : 'production')));
+
+        return array_values(array_filter(mz_plugins_get_catalog(), static function (array $plugin) use ($env): bool {
+            return in_array($env, (array) ($plugin['envs'] ?? []), true);
+        }));
+    }
+}
+
+if (!function_exists('mz_plugins_get_env_plugin_signatures')) {
+    function mz_plugins_get_env_plugin_signatures(?string $env = null): array
+    {
+        $signatures = [];
+
+        foreach (mz_plugins_get_env_catalog($env) as $plugin) {
+            $file = strtolower(trim((string) ($plugin['file'] ?? '')));
+            $slug = strtolower(trim((string) ($plugin['slug'] ?? '')));
+
+            $tokens = array_filter([
+                $slug,
+                str_replace('-', '_', $slug),
+                str_replace('-', '', $slug),
+                $file,
+                dirname($file) !== '.' ? dirname($file) : '',
+            ], static function (string $token): bool {
+                return $token !== '' && strlen($token) >= 4;
+            });
+
+            foreach ($tokens as $token) {
+                $signatures[$token] = true;
+            }
+        }
+
+        return array_keys($signatures);
+    }
+}
+
 // Catalog: 'envs' = envs where it should be ACTIVE; 'activate' false => keep installed but deactivated.
-$catalog = [
-    // All
-    ['name' => 'Advanced Custom Fields PRO', 'slug' => 'advanced-custom-fields-pro', 'file' => 'advanced-custom-fields-pro/acf.php', 'envs' => ['development', 'staging', 'qa', 'production'], 'zip_const' => 'MZ_ACF_PRO_ZIP'],
-    ['name' => 'Classic Editor', 'slug' => 'classic-editor', 'file' => 'classic-editor/classic-editor.php', 'envs' => ['development', 'staging', 'qa', 'production']],
-    ['name' => 'Intuitive Custom Post Order', 'slug' => 'intuitive-custom-post-order', 'file' => 'intuitive-custom-post-order/intuitive-custom-post-order.php', 'envs' => ['development', 'staging', 'qa', 'production']],
-    ['name' => 'Post Duplicator', 'slug' => 'post-duplicator', 'file' => 'post-duplicator/m4c-postduplicator.php', 'envs' => ['development', 'staging', 'qa', 'production']],
-    ['name' => 'UpdraftPlus', 'slug' => 'updraftplus', 'file' => 'updraftplus/updraftplus.php', 'envs' => ['development', 'staging', 'qa', 'production']],
-    ['name' => 'WordPress Importer', 'slug' => 'wordpress-importer', 'file' => 'wordpress-importer/wordpress-importer.php', 'envs' => ['development', 'staging', 'qa', 'production']],
-    ['name' => 'WP Mail SMTP', 'slug' => 'wp-mail-smtp', 'file' => 'wp-mail-smtp/wp_mail_smtp.php', 'envs' => ['development', 'staging', 'qa', 'production']],
-    ['name' => 'Error Log Monitor', 'slug' => 'error-log-monitor', 'file' => 'error-log-monitor/plugin.php', 'envs' => ['development', 'staging', 'qa', 'production']],
-
-    // All except development
-    ['name' => 'ACF Content Analysis for Yoast SEO', 'slug' => 'acf-content-analysis-for-yoast-seo', 'file' => 'acf-content-analysis-for-yoast-seo/acf-content-analysis-for-yoast-seo.php', 'envs' => ['staging', 'qa', 'production']],
-    ['name' => 'Admin Columns', 'slug' => 'codepress-admin-columns', 'file' => 'codepress-admin-columns/codepress-admin-columns.php', 'envs' => ['staging', 'qa', 'production']],
-    ['name' => 'Admin Menu Editor', 'slug' => 'admin-menu-editor', 'file' => 'admin-menu-editor/menu-editor.php', 'envs' => ['staging', 'qa', 'production']],
-    ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['development'], 'activate' => false],
-    ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['staging', 'qa', 'production']],
-
-    // All except production
-    ['name' => 'Query Monitor', 'slug' => 'query-monitor', 'file' => 'query-monitor/query-monitor.php', 'envs' => ['development', 'staging', 'qa']],
-
-    // QA + Production only
-    ['name' => 'All-In-One Security (AIOS)', 'slug' => 'all-in-one-wp-security-and-firewall', 'file' => 'all-in-one-wp-security-and-firewall/wp-security.php', 'envs' => ['qa', 'production']],
-    ['name' => 'Converter for Media', 'slug' => 'webp-converter-for-media', 'file' => 'webp-converter-for-media/webp-converter-for-media.php', 'envs' => ['qa', 'production']],
-    ['name' => 'Redirection', 'slug' => 'redirection', 'file' => 'redirection/redirection.php', 'envs' => ['qa', 'production']],
-    ['name' => 'WP Super Cache', 'slug' => 'wp-super-cache', 'file' => 'wp-super-cache/wp-cache.php', 'envs' => ['qa', 'production']],
-
-    // Production only
-    ['name' => 'Site Kit by Google', 'slug' => 'google-site-kit', 'file' => 'google-site-kit/google-site-kit.php', 'envs' => ['production']],
-];
+$catalog = mz_plugins_get_catalog();
 
 add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE, $HIDE) {
     if (defined('DISALLOW_FILE_MODS') && DISALLOW_FILE_MODS) return;

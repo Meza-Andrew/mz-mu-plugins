@@ -233,18 +233,20 @@ if (!function_exists('mz_plugin_compat_get_source_patch_rules')) {
             'aios_googlebot_prefixes_guard' => [
                 'file' => '/all-in-one-wp-security-and-firewall/classes/wp-security-utility.php',
                 'apply' => static function (string $contents): string {
-                    if (str_contains($contents, "foreach ((is_array(\$json_array['prefixes'] ?? null) ? \$json_array['prefixes'] : []) as \$prefix) {")) {
+                    $search = 'foreach ($json_array[\'prefixes\'] as $prefix) {';
+                    $replace = 'foreach ((is_array($json_array[\'prefixes\'] ?? null) ? $json_array[\'prefixes\'] : []) as $prefix) {';
+
+                    if (str_contains($contents, $replace)) {
                         return $contents;
                     }
 
-                    $updated = preg_replace(
-                        "/foreach \\(\\$json_array\\['prefixes'\\] as \\$prefix\\) \\{/",
-                        "foreach ((is_array(\$json_array['prefixes'] ?? null) ? \$json_array['prefixes'] : []) as \$prefix) {",
-                        $contents,
-                        1
-                    );
+                    $updated = str_replace($search, $replace, $contents, $count);
 
-                    return is_string($updated) ? $updated : $contents;
+                    if ($count < 1) {
+                        return $contents;
+                    }
+
+                    return $updated;
                 },
             ],
         ];
@@ -368,6 +370,7 @@ if (!function_exists('mz_plugin_compat_is_known_nullable_param_deprecation')) {
 
         $normalized_file = mz_plugin_compat_normalize_path($file);
         $known_prefixes = [
+            '/wp-content/plugins/all-in-one-seo-pack/',
             '/wp-content/plugins/cred-frontend-editor/',
             '/wp-content/plugins/divi-booster/',
             '/wp-content/plugins/the-events-calendar/',
@@ -469,3 +472,108 @@ add_filter('doing_it_wrong_trigger_error', function ($trigger, $function_name, $
 
     return false;
 }, 10, 4);
+
+if (!function_exists('mz_plugin_compat_override_single_event_template_include')) {
+    function mz_plugin_compat_override_single_event_template_include($template)
+    {
+        if (is_admin() || !is_singular('tribe_events')) {
+            return $template;
+        }
+
+        $override = __DIR__ . '/overrides/plugin-compat/the-events-calendar/single-tribe_events.php';
+
+        return is_file($override) ? $override : $template;
+    }
+}
+
+if (!function_exists('mz_plugin_compat_disable_divi_theme_builder_for_single_events')) {
+    function mz_plugin_compat_disable_divi_theme_builder_for_single_events($layouts)
+    {
+        if (is_admin() || !is_singular('tribe_events') || !is_array($layouts)) {
+            return $layouts;
+        }
+
+        $layout_types = [];
+
+        if (defined('ET_THEME_BUILDER_HEADER_LAYOUT_POST_TYPE')) {
+            $layout_types[] = ET_THEME_BUILDER_HEADER_LAYOUT_POST_TYPE;
+        }
+
+        if (defined('ET_THEME_BUILDER_BODY_LAYOUT_POST_TYPE')) {
+            $layout_types[] = ET_THEME_BUILDER_BODY_LAYOUT_POST_TYPE;
+        }
+
+        if (defined('ET_THEME_BUILDER_FOOTER_LAYOUT_POST_TYPE')) {
+            $layout_types[] = ET_THEME_BUILDER_FOOTER_LAYOUT_POST_TYPE;
+        }
+
+        foreach ($layout_types as $layout_type) {
+            if (!isset($layouts[$layout_type]) || !is_array($layouts[$layout_type])) {
+                continue;
+            }
+
+            $layouts[$layout_type]['id'] = 0;
+            $layouts[$layout_type]['enabled'] = false;
+            $layouts[$layout_type]['override'] = false;
+        }
+
+        return $layouts;
+    }
+}
+
+if (!function_exists('mz_plugin_compat_strip_divi_builder_body_classes_for_single_events')) {
+    function mz_plugin_compat_strip_divi_builder_body_classes_for_single_events(array $classes): array
+    {
+        if (is_admin() || !is_singular('tribe_events')) {
+            return $classes;
+        }
+
+        $remove = [
+            'et-db',
+            'et-tb-has-template',
+            'et-tb-has-footer',
+            'et-tb-has-header',
+            'et_pb_pagebuilder_layout',
+        ];
+
+        return array_values(array_diff($classes, $remove));
+    }
+}
+
+if (!function_exists('mz_plugin_compat_dequeue_divi_builder_assets_for_single_events')) {
+    function mz_plugin_compat_dequeue_divi_builder_assets_for_single_events(): void
+    {
+        if (is_admin() || !is_singular('tribe_events')) {
+            return;
+        }
+
+        $script_handles = [
+            'et-builder-cpt-modules-wrapper-js',
+            'fitvids-js',
+        ];
+
+        foreach ($script_handles as $handle) {
+            wp_dequeue_script($handle);
+            wp_deregister_script($handle);
+        }
+
+        global $wp_styles;
+
+        if (!($wp_styles instanceof WP_Styles)) {
+            return;
+        }
+
+        foreach ((array) $wp_styles->queue as $handle) {
+            if (strpos((string) $handle, 'et-builder-module-design-') !== 0) {
+                continue;
+            }
+
+            wp_dequeue_style($handle);
+        }
+    }
+}
+
+add_filter('template_include', 'mz_plugin_compat_override_single_event_template_include', 999);
+add_filter('et_theme_builder_template_layouts', 'mz_plugin_compat_disable_divi_theme_builder_for_single_events', 20);
+add_filter('body_class', 'mz_plugin_compat_strip_divi_builder_body_classes_for_single_events', 20);
+add_action('wp_enqueue_scripts', 'mz_plugin_compat_dequeue_divi_builder_assets_for_single_events', 999);

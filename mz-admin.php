@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.202
+ * Version: 1.1.215
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -8797,6 +8797,1068 @@ add_action('admin_head', function (): void {
     </script>
 <?php
 }, 1004);
+
+if (!function_exists('meza_is_locked_admin_chrome_screen')) {
+    function meza_is_locked_admin_chrome_screen(): bool
+    {
+        if (!is_admin() || !function_exists('get_current_screen')) {
+            return false;
+        }
+
+        $screen = get_current_screen();
+        if (!($screen instanceof WP_Screen)) {
+            return false;
+        }
+
+        return (string) $screen->post_type === 'tribe_events' && in_array((string) $screen->base, ['edit', 'post'], true);
+    }
+}
+
+if (!function_exists('meza_is_whitelisted_admin_footer_screen')) {
+    function meza_is_whitelisted_admin_footer_screen(): bool
+    {
+        return false;
+    }
+}
+
+if (!function_exists('meza_is_whitelisted_admin_title_screen')) {
+    function meza_is_whitelisted_admin_title_screen(): bool
+    {
+        return false;
+    }
+}
+
+if (!function_exists('meza_should_lock_admin_footer')) {
+    function meza_should_lock_admin_footer(): bool
+    {
+        return is_admin() && !meza_is_admin_chrome_exempt_screen() && !meza_is_whitelisted_admin_footer_screen();
+    }
+}
+
+if (!function_exists('meza_should_lock_admin_title_chrome')) {
+    function meza_should_lock_admin_title_chrome(): bool
+    {
+        return is_admin() && !meza_is_admin_chrome_exempt_screen() && !meza_is_whitelisted_admin_title_screen();
+    }
+}
+
+if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
+    function meza_is_admin_chrome_exempt_screen(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        if (function_exists('get_current_screen')) {
+            $screen = get_current_screen();
+            if ($screen instanceof WP_Screen) {
+                return (string) $screen->base === 'themes';
+            }
+        }
+
+        $php_self = isset($_SERVER['PHP_SELF']) ? basename((string) $_SERVER['PHP_SELF']) : '';
+
+        return $php_self === 'themes.php';
+    }
+}
+
+if (!function_exists('meza_admin_footer_default_text')) {
+    function meza_admin_footer_default_text(): string
+    {
+        return sprintf(
+            '<span id="footer-thankyou">' . __('Thank you for creating with <a href="%s">WordPress</a>.') . '</span>',
+            esc_url(__('https://wordpress.org/'))
+        );
+    }
+}
+
+if (!function_exists('meza_admin_footer_allowed_children_selectors')) {
+    function meza_admin_footer_allowed_children_selectors(): array
+    {
+        return ['#footer-left', '#footer-upgrade', '.clear'];
+    }
+}
+
+if (!function_exists('meza_admin_title_allowed_selectors')) {
+    function meza_admin_title_allowed_selectors(): array
+    {
+        return [
+            'h1.wp-heading-inline',
+            '.page-title-action',
+            '.subtitle',
+            'hr.wp-header-end',
+            '[data-meza-admin-chrome]',
+            '.meza-admin-chrome',
+        ];
+    }
+}
+
+if (!function_exists('meza_admin_content_allowed_children_selectors')) {
+    function meza_admin_content_allowed_children_selectors(): array
+    {
+        return [
+            '#wpadminbar',
+            '#wpbody',
+            '#wpfooter',
+            '.clear',
+            '[data-meza-admin-chrome]',
+            '.meza-admin-chrome',
+        ];
+    }
+}
+
+if (!function_exists('meza_should_force_admin_bar_in_admin')) {
+    function meza_should_force_admin_bar_in_admin(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        if (function_exists('meza_is_woocommerce_analytics_embed') && meza_is_woocommerce_analytics_embed()) {
+            return false;
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('meza_should_buffer_admin_chrome_html')) {
+    function meza_should_buffer_admin_chrome_html(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        if (meza_is_admin_chrome_exempt_screen()) {
+            return false;
+        }
+
+        if ((function_exists('wp_doing_ajax') && wp_doing_ajax()) || (defined('DOING_AJAX') && DOING_AJAX)) {
+            return false;
+        }
+
+        if (function_exists('wp_is_json_request') && wp_is_json_request()) {
+            return false;
+        }
+
+        if ((defined('REST_REQUEST') && REST_REQUEST) || (defined('XMLRPC_REQUEST') && XMLRPC_REQUEST)) {
+            return false;
+        }
+
+        if ((defined('IFRAME_REQUEST') && IFRAME_REQUEST) || (defined('DOING_CRON') && DOING_CRON)) {
+            return false;
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('meza_admin_wpwrap_allowed_selectors')) {
+    function meza_admin_wpwrap_allowed_selectors(): array
+    {
+        return [
+            '#wpadminbar',
+            '#wpwrap',
+            'script',
+            'noscript',
+            'style',
+            'link',
+            'svg',
+            '[data-meza-admin-chrome]',
+            '.meza-admin-chrome',
+        ];
+    }
+}
+
+if (!function_exists('meza_admin_get_env_preferred_plugin_signatures')) {
+    function meza_admin_get_env_preferred_plugin_signatures(): array
+    {
+        if (!function_exists('mz_plugins_get_env_plugin_signatures')) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('strtolower', mz_plugins_get_env_plugin_signatures()), static function ($signature): bool {
+            return is_string($signature) && $signature !== '';
+        }));
+    }
+}
+
+if (!function_exists('meza_admin_get_nonpreferred_plugin_signatures')) {
+    function meza_admin_get_nonpreferred_plugin_signatures(): array
+    {
+        if (!function_exists('mz_plugins_get_catalog') || !function_exists('mz_plugins_get_env_plugin_signatures')) {
+            return [];
+        }
+
+        $all_signatures = [];
+
+        foreach ((array) mz_plugins_get_catalog() as $plugin) {
+            $file = strtolower(trim((string) ($plugin['file'] ?? '')));
+            $slug = strtolower(trim((string) ($plugin['slug'] ?? '')));
+
+            $tokens = array_filter([
+                $slug,
+                str_replace('-', '_', $slug),
+                str_replace('-', '', $slug),
+                $file,
+                dirname($file) !== '.' ? dirname($file) : '',
+            ], static function (string $token): bool {
+                return $token !== '' && strlen($token) >= 4;
+            });
+
+            foreach ($tokens as $token) {
+                $all_signatures[$token] = true;
+            }
+        }
+
+        foreach (meza_admin_get_env_preferred_plugin_signatures() as $signature) {
+            unset($all_signatures[(string) $signature]);
+        }
+
+        return array_keys($all_signatures);
+    }
+}
+
+if (!function_exists('meza_admin_dom_element_has_class')) {
+    function meza_admin_dom_element_has_class(DOMElement $element, string $class_name): bool
+    {
+        $classes = preg_split('/\s+/', trim((string) $element->getAttribute('class'))) ?: [];
+
+        return in_array($class_name, $classes, true);
+    }
+}
+
+if (!function_exists('meza_admin_dom_element_matches_selector')) {
+    function meza_admin_dom_element_matches_selector(DOMElement $element, string $selector): bool
+    {
+        $selector = trim($selector);
+        if ($selector === '') {
+            return false;
+        }
+
+        if ($selector[0] === '#') {
+            return $element->getAttribute('id') === substr($selector, 1);
+        }
+
+        if ($selector[0] === '.') {
+            return meza_admin_dom_element_has_class($element, substr($selector, 1));
+        }
+
+        if ($selector[0] === '[' && substr($selector, -1) === ']') {
+            return $element->hasAttribute(trim($selector, '[]'));
+        }
+
+        if (str_contains($selector, '.')) {
+            [$tag_name, $class_name] = array_pad(explode('.', $selector, 2), 2, '');
+
+            return strtolower($element->tagName) === strtolower($tag_name)
+                && meza_admin_dom_element_has_class($element, $class_name);
+        }
+
+        return strtolower($element->tagName) === strtolower($selector);
+    }
+}
+
+if (!function_exists('meza_admin_dom_element_matches_any_selector')) {
+    function meza_admin_dom_element_matches_any_selector(DOMElement $element, array $selectors): bool
+    {
+        foreach ($selectors as $selector) {
+            if (meza_admin_dom_element_matches_selector($element, (string) $selector)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_admin_dom_element_attribute_haystack')) {
+    function meza_admin_dom_element_attribute_haystack(DOMElement $element): string
+    {
+        $parts = [strtolower($element->tagName)];
+
+        if ($element->hasAttributes()) {
+            foreach ($element->attributes as $attribute) {
+                if (!($attribute instanceof DOMAttr)) {
+                    continue;
+                }
+
+                $parts[] = strtolower($attribute->name);
+                $parts[] = strtolower((string) $attribute->value);
+            }
+        }
+
+        return implode(' ', $parts);
+    }
+}
+
+if (!function_exists('meza_admin_dom_element_matches_plugin_signatures')) {
+    function meza_admin_dom_element_matches_plugin_signatures(DOMElement $element, array $signatures): bool
+    {
+        if ($signatures === []) {
+            return false;
+        }
+
+        $haystack = meza_admin_dom_element_attribute_haystack($element);
+
+        foreach ($signatures as $signature) {
+            $signature = strtolower(trim((string) $signature));
+            if ($signature === '') {
+                continue;
+            }
+
+            if (str_contains($haystack, $signature)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_admin_dom_get_element_children')) {
+    function meza_admin_dom_get_element_children(DOMElement $element): array
+    {
+        $children = [];
+
+        foreach ($element->childNodes as $child) {
+            if ($child instanceof DOMElement) {
+                $children[] = $child;
+            }
+        }
+
+        return $children;
+    }
+}
+
+if (!function_exists('meza_admin_dom_get_next_element_sibling')) {
+    function meza_admin_dom_get_next_element_sibling(DOMNode $node): ?DOMElement
+    {
+        $sibling = $node->nextSibling;
+
+        while ($sibling !== null && !($sibling instanceof DOMElement)) {
+            $sibling = $sibling->nextSibling;
+        }
+
+        return $sibling instanceof DOMElement ? $sibling : null;
+    }
+}
+
+if (!function_exists('meza_admin_dom_unwrap_element')) {
+    function meza_admin_dom_unwrap_element(DOMElement $element): void
+    {
+        $parent = $element->parentNode;
+        if (!($parent instanceof DOMNode)) {
+            return;
+        }
+
+        while ($element->firstChild instanceof DOMNode) {
+            $parent->insertBefore($element->firstChild, $element);
+        }
+
+        $parent->removeChild($element);
+    }
+}
+
+if (!function_exists('meza_admin_dom_element_contains_node')) {
+    function meza_admin_dom_element_contains_node(DOMElement $ancestor, DOMNode $node): bool
+    {
+        $parent = $node->parentNode;
+
+        while ($parent instanceof DOMNode) {
+            if ($parent->isSameNode($ancestor)) {
+                return true;
+            }
+
+            $parent = $parent->parentNode;
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_admin_dom_replace_inner_html')) {
+    function meza_admin_dom_replace_inner_html(DOMDocument $document, DOMElement $element, string $html): void
+    {
+        while ($element->firstChild instanceof DOMNode) {
+            $element->removeChild($element->firstChild);
+        }
+
+        $fragment = new DOMDocument('1.0', 'UTF-8');
+        $wrapper_id = '__meza-admin-fragment';
+        $flags = defined('LIBXML_HTML_NOIMPLIED') && defined('LIBXML_HTML_NODEFDTD')
+            ? LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+            : 0;
+
+        @$fragment->loadHTML('<div id="' . $wrapper_id . '">' . $html . '</div>', $flags);
+
+        $container = $fragment->getElementById($wrapper_id);
+        if (!($container instanceof DOMElement)) {
+            return;
+        }
+
+        foreach (iterator_to_array($container->childNodes) as $child) {
+            $element->appendChild($document->importNode($child, true));
+        }
+    }
+}
+
+if (!function_exists('meza_admin_dom_element_or_descendant_matches_any_selector')) {
+    function meza_admin_dom_element_or_descendant_matches_any_selector(DOMElement $element, array $selectors): bool
+    {
+        if (meza_admin_dom_element_matches_any_selector($element, $selectors)) {
+            return true;
+        }
+
+        $stack = [$element];
+
+        while ($stack !== []) {
+            /** @var DOMElement $node */
+            $node = array_pop($stack);
+
+            foreach ($node->childNodes as $child) {
+                if (!($child instanceof DOMElement)) {
+                    continue;
+                }
+
+                if (meza_admin_dom_element_matches_any_selector($child, $selectors)) {
+                    return true;
+                }
+
+                $stack[] = $child;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_sanitize_admin_chrome_html')) {
+    function meza_sanitize_admin_chrome_html(string $html): string
+    {
+        if (trim($html) === '' || !str_contains($html, 'id="wpcontent"')) {
+            return $html;
+        }
+
+        if (!class_exists('DOMDocument') || !class_exists('DOMXPath')) {
+            return $html;
+        }
+
+        $document = new DOMDocument('1.0', 'UTF-8');
+        $use_internal_errors = libxml_use_internal_errors(true);
+        $loaded = @$document->loadHTML($html);
+        libxml_clear_errors();
+        libxml_use_internal_errors($use_internal_errors);
+
+        if (!$loaded) {
+            return $html;
+        }
+
+        $xpath = new DOMXPath($document);
+        $content_selectors = meza_admin_content_allowed_children_selectors();
+        $footer_selectors = meza_admin_footer_allowed_children_selectors();
+        $title_selectors = meza_admin_title_allowed_selectors();
+        $wpwrap_selectors = meza_admin_wpwrap_allowed_selectors();
+        $disallowed_plugin_signatures = meza_admin_get_nonpreferred_plugin_signatures();
+        $bridge_stop_selectors = [
+            'h2.screen-reader-text',
+            '.subsubsub',
+            'form',
+            '.tablenav',
+            '.wp-list-table',
+            '#ajax-response',
+            '.clear',
+        ];
+
+        $wpcontent = $document->getElementById('wpcontent');
+        if ($wpcontent instanceof DOMElement) {
+            foreach (meza_admin_dom_get_element_children($wpcontent) as $child) {
+                if (!meza_admin_dom_element_matches_any_selector($child, $content_selectors)) {
+                    $wpcontent->removeChild($child);
+                }
+            }
+        }
+
+        $body = $document->getElementsByTagName('body')->item(0);
+        if ($body instanceof DOMElement) {
+            $seen_wpwrap = false;
+
+            foreach (meza_admin_dom_get_element_children($body) as $child) {
+                if ($child->getAttribute('id') === 'wpwrap') {
+                    $seen_wpwrap = true;
+                    continue;
+                }
+
+                if (!$seen_wpwrap) {
+                    continue;
+                }
+
+                if (!meza_admin_dom_element_matches_any_selector($child, $wpwrap_selectors)
+                    && meza_admin_dom_element_matches_plugin_signatures($child, $disallowed_plugin_signatures)) {
+                    $body->removeChild($child);
+                }
+            }
+        }
+
+        $wpfooter = $document->getElementById('wpfooter');
+        if ($wpfooter instanceof DOMElement) {
+            $footer_left = $document->getElementById('footer-left');
+            if ($footer_left instanceof DOMElement) {
+                meza_admin_dom_replace_inner_html($document, $footer_left, meza_admin_footer_default_text());
+            }
+
+            $footer_upgrade = $document->getElementById('footer-upgrade');
+            if ($footer_upgrade instanceof DOMElement) {
+                $footer_upgrade_html = function_exists('core_update_footer')
+                    ? (string) core_update_footer('')
+                    : sprintf(__('Version %s'), esc_html((string) get_bloginfo('version', 'display')));
+                meza_admin_dom_replace_inner_html($document, $footer_upgrade, $footer_upgrade_html);
+            }
+
+            foreach (meza_admin_dom_get_element_children($wpfooter) as $child) {
+                if (!meza_admin_dom_element_matches_any_selector($child, $footer_selectors)) {
+                    $wpfooter->removeChild($child);
+                }
+            }
+        }
+
+        foreach ($xpath->query('//*[contains(concat(" ", normalize-space(@class), " "), " ian-client ") or contains(concat(" ", normalize-space(@class), " "), " ian-sidebar ")]') ?: [] as $node) {
+            if (!($node instanceof DOMElement)) {
+                continue;
+            }
+
+            if (meza_admin_dom_element_matches_any_selector($node, ['[data-meza-admin-chrome]', '.meza-admin-chrome'])) {
+                continue;
+            }
+
+            if ($node->parentNode instanceof DOMNode) {
+                $node->parentNode->removeChild($node);
+            }
+        }
+
+        foreach ($xpath->query('//*[contains(concat(" ", normalize-space(@class), " "), " wrap ")]') ?: [] as $wrap) {
+            if (!($wrap instanceof DOMElement)) {
+                continue;
+            }
+
+            $heading = null;
+            foreach ($xpath->query('.//h1[contains(concat(" ", normalize-space(@class), " "), " wp-heading-inline ")]', $wrap) ?: [] as $node) {
+                if ($node instanceof DOMElement) {
+                    $heading = $node;
+                    break;
+                }
+            }
+
+            $header_end = null;
+            foreach ($xpath->query('.//hr[contains(concat(" ", normalize-space(@class), " "), " wp-header-end ")]', $wrap) ?: [] as $node) {
+                if ($node instanceof DOMElement) {
+                    $header_end = $node;
+                    break;
+                }
+            }
+
+            if (!($heading instanceof DOMElement) || !($header_end instanceof DOMElement)) {
+                continue;
+            }
+
+            $parent = $heading->parentNode;
+            while ($parent instanceof DOMElement && $parent !== $wrap && !meza_admin_dom_element_matches_any_selector($parent, $title_selectors)) {
+                $next_parent = $parent->parentNode;
+                meza_admin_dom_unwrap_element($parent);
+                $parent = $next_parent instanceof DOMElement ? $next_parent : null;
+            }
+
+            $in_title_region = false;
+            foreach (meza_admin_dom_get_element_children($wrap) as $child) {
+                if (!$in_title_region) {
+                    if ($child === $heading || $child->isSameNode($heading) || meza_admin_dom_element_contains_node($child, $heading)) {
+                        $in_title_region = true;
+                    } else {
+                        continue;
+                    }
+                }
+
+                if ($child === $header_end || $child->isSameNode($header_end)) {
+                    break;
+                }
+
+                if (meza_admin_dom_element_matches_any_selector($child, $title_selectors)) {
+                    continue;
+                }
+
+                if (meza_admin_dom_element_or_descendant_matches_any_selector($child, $title_selectors)) {
+                    meza_admin_dom_unwrap_element($child);
+                    continue;
+                }
+
+                if ($child->parentNode instanceof DOMNode) {
+                    $child->parentNode->removeChild($child);
+                }
+            }
+
+            $bridge_node = meza_admin_dom_get_next_element_sibling($header_end);
+            while ($bridge_node instanceof DOMElement) {
+                if (meza_admin_dom_element_matches_any_selector($bridge_node, $bridge_stop_selectors)) {
+                    break;
+                }
+
+                if (meza_admin_dom_element_or_descendant_matches_any_selector($bridge_node, $bridge_stop_selectors)) {
+                    meza_admin_dom_unwrap_element($bridge_node);
+                    $bridge_node = meza_admin_dom_get_next_element_sibling($header_end);
+                    continue;
+                }
+
+                $next_node = meza_admin_dom_get_next_element_sibling($bridge_node);
+
+                if (!meza_admin_dom_element_matches_any_selector($bridge_node, ['[data-meza-admin-chrome]', '.meza-admin-chrome'])) {
+                    if ($bridge_node->parentNode instanceof DOMNode) {
+                        $bridge_node->parentNode->removeChild($bridge_node);
+                    }
+                }
+
+                $bridge_node = $next_node;
+            }
+        }
+
+        return (string) $document->saveHTML();
+    }
+}
+
+// Sanitize admin chrome server-side so plugin-injected wrappers never paint on first render.
+add_action('admin_init', function (): void {
+    static $buffer_started = false;
+
+    if ($buffer_started || !meza_should_buffer_admin_chrome_html()) {
+        return;
+    }
+
+    ob_start(static function (string $html): string {
+        return meza_sanitize_admin_chrome_html($html);
+    });
+
+    $buffer_started = true;
+}, 0);
+
+// Keep protected admin screens on the default WordPress header/footer chrome.
+add_filter('tec_common_ian_show_icon', function ($show): bool {
+    if (meza_is_locked_admin_chrome_screen()) {
+        return false;
+    }
+
+    return (bool) $show;
+}, 1000);
+
+add_filter('show_admin_bar', function ($show): bool {
+    if (meza_should_force_admin_bar_in_admin()) {
+        return true;
+    }
+
+    return (bool) $show;
+}, PHP_INT_MAX);
+
+add_action('admin_enqueue_scripts', function (): void {
+    if (!meza_is_locked_admin_chrome_screen()) {
+        return;
+    }
+
+    wp_dequeue_style('ian-client-css');
+    wp_dequeue_script('ian-client-js');
+}, PHP_INT_MAX);
+
+add_filter('admin_footer_text', function ($text): string {
+    if (!meza_should_lock_admin_footer()) {
+        return (string) $text;
+    }
+
+    return meza_admin_footer_default_text();
+}, PHP_INT_MAX);
+
+add_filter('update_footer', function ($content): string {
+    if (!meza_should_lock_admin_footer()) {
+        return (string) $content;
+    }
+
+    if (function_exists('core_update_footer')) {
+        return (string) core_update_footer('');
+    }
+
+    global $wp_version;
+
+    return sprintf(__('Version %s'), esc_html((string) $wp_version));
+}, PHP_INT_MAX);
+
+add_action('admin_head', function (): void {
+    if (is_admin() && !meza_is_admin_chrome_exempt_screen()) {
+        $content_selectors = meza_admin_content_allowed_children_selectors();
+        $wpwrap_selectors = meza_admin_wpwrap_allowed_selectors();
+        $disallowed_plugin_signatures = meza_admin_get_nonpreferred_plugin_signatures();
+        $content_deny_selector = '#wpcontent > *';
+
+        foreach ($content_selectors as $selector) {
+            $content_deny_selector .= ':not(' . $selector . ')';
+        }
+?>
+    <style id="meza-lock-admin-content">
+        <?php echo $content_deny_selector; ?> {
+            display: none !important;
+        }
+    </style>
+    <?php if (meza_should_force_admin_bar_in_admin()) : ?>
+    <style id="meza-force-admin-bar-visible">
+        html.wp-toolbar {
+            padding-top: var(--wp-admin--admin-bar--height) !important;
+        }
+
+        #wpadminbar {
+            display: block !important;
+        }
+    </style>
+    <?php endif; ?>
+    <script id="meza-lock-admin-content-script">
+        (() => {
+            const allowedSelectors = <?php echo wp_json_encode($content_selectors); ?>;
+            const wpwrapAllowedSelectors = <?php echo wp_json_encode($wpwrap_selectors); ?>;
+            const disallowedPluginSignatures = <?php echo wp_json_encode($disallowed_plugin_signatures); ?>;
+            const protectedSpacingTargets = [
+                document.documentElement,
+                document.body,
+                document.getElementById('wpwrap'),
+                document.getElementById('wpcontent'),
+                document.getElementById('wpbody'),
+                document.getElementById('wpbody-content'),
+            ].filter((element) => element instanceof HTMLElement);
+
+            const isAllowed = (element) => {
+                if (!(element instanceof Element)) return false;
+                return allowedSelectors.some((selector) => element.matches(selector));
+            };
+
+            const isAllowedAfterWpwrap = (element) => {
+                if (!(element instanceof Element)) return false;
+                return wpwrapAllowedSelectors.some((selector) => element.matches(selector));
+            };
+
+            const matchesPluginSignatures = (element, signatures) => {
+                if (!(element instanceof Element) || !Array.isArray(signatures) || signatures.length === 0) return false;
+
+                const haystack = Array.from(element.attributes || [])
+                    .map((attribute) => `${attribute.name} ${attribute.value}`.toLowerCase())
+                    .join(' ');
+
+                return signatures.some((signature) => haystack.includes(String(signature).toLowerCase()));
+            };
+
+            const cleanupContent = () => {
+                const content = document.getElementById('wpcontent');
+                if (!(content instanceof HTMLElement)) return;
+
+                Array.from(content.children).forEach((child) => {
+                    if (!isAllowed(child)) {
+                        child.remove();
+                    }
+                });
+            };
+
+            const cleanupAfterWpwrap = () => {
+                if (!(document.body instanceof HTMLBodyElement)) return;
+
+                let seenWpwrap = false;
+                Array.from(document.body.children).forEach((child) => {
+                    if (!(child instanceof HTMLElement)) return;
+
+                    if (child.id === 'wpwrap') {
+                        seenWpwrap = true;
+                        return;
+                    }
+
+                    if (!seenWpwrap) return;
+                    if (isAllowedAfterWpwrap(child)) return;
+                    if (!matchesPluginSignatures(child, disallowedPluginSignatures)) return;
+
+                    child.remove();
+                });
+            };
+
+            const cleanupInjectedTopSpacing = () => {
+                const adminBar = document.getElementById('wpadminbar');
+                const adminBarVisible = adminBar instanceof HTMLElement
+                    && adminBar.offsetParent !== null
+                    && adminBar.getBoundingClientRect().height > 0;
+
+                if (!adminBarVisible) return;
+
+                protectedSpacingTargets.forEach((element) => {
+                    if (!(element instanceof HTMLElement)) return;
+
+                    element.style.removeProperty('margin-top');
+                    element.style.removeProperty('padding-top');
+                    element.style.removeProperty('top');
+                });
+            };
+
+            cleanupContent();
+            cleanupAfterWpwrap();
+            cleanupInjectedTopSpacing();
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', cleanupContent, { once: true });
+                document.addEventListener('DOMContentLoaded', cleanupAfterWpwrap, { once: true });
+                document.addEventListener('DOMContentLoaded', cleanupInjectedTopSpacing, { once: true });
+            } else {
+                window.addEventListener('load', cleanupContent, { once: true });
+                window.addEventListener('load', cleanupAfterWpwrap, { once: true });
+                window.addEventListener('load', cleanupInjectedTopSpacing, { once: true });
+            }
+
+            const content = document.getElementById('wpcontent');
+            if (content instanceof HTMLElement) {
+                const observer = new MutationObserver(() => {
+                    cleanupContent();
+                    cleanupAfterWpwrap();
+                    cleanupInjectedTopSpacing();
+                });
+                observer.observe(content, { childList: true });
+            }
+
+            protectedSpacingTargets.forEach((element) => {
+                const observer = new MutationObserver(cleanupInjectedTopSpacing);
+                observer.observe(element, { attributes: true, attributeFilter: ['style', 'class'] });
+            });
+
+            if (document.body instanceof HTMLElement) {
+                const bodyObserver = new MutationObserver(() => {
+                    cleanupAfterWpwrap();
+                    cleanupInjectedTopSpacing();
+                });
+                bodyObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+            }
+
+            window.addEventListener('resize', cleanupInjectedTopSpacing);
+        })();
+    </script>
+<?php
+    }
+
+    if (meza_should_lock_admin_footer()) {
+        $selectors = meza_admin_footer_allowed_children_selectors();
+        $deny_selector = '#wpfooter > *';
+        $footer_left_html = meza_admin_footer_default_text();
+        $footer_upgrade_html = function_exists('core_update_footer')
+            ? (string) core_update_footer('')
+            : sprintf(__('Version %s'), esc_html((string) get_bloginfo('version', 'display')));
+
+        foreach ($selectors as $selector) {
+            $deny_selector .= ':not(' . $selector . ')';
+        }
+?>
+    <style id="meza-lock-admin-footer">
+        <?php echo $deny_selector; ?> {
+            display: none !important;
+        }
+    </style>
+    <script id="meza-lock-admin-footer-script">
+        (() => {
+            const allowedSelectors = <?php echo wp_json_encode($selectors); ?>;
+            const expectedFooterLeft = <?php echo wp_json_encode($footer_left_html); ?>;
+            const expectedFooterUpgrade = <?php echo wp_json_encode($footer_upgrade_html); ?>;
+
+            const isAllowed = (element) => {
+                if (!(element instanceof Element)) return false;
+                return allowedSelectors.some((selector) => element.matches(selector));
+            };
+
+            const cleanupFooter = () => {
+                const footer = document.getElementById('wpfooter');
+                if (!(footer instanceof HTMLElement)) return;
+
+                const footerLeft = footer.querySelector('#footer-left');
+                if (footerLeft instanceof HTMLElement && footerLeft.innerHTML.trim() !== expectedFooterLeft.trim()) {
+                    footerLeft.innerHTML = expectedFooterLeft;
+                }
+
+                const footerUpgrade = footer.querySelector('#footer-upgrade');
+                if (footerUpgrade instanceof HTMLElement && footerUpgrade.innerHTML.trim() !== expectedFooterUpgrade.trim()) {
+                    footerUpgrade.innerHTML = expectedFooterUpgrade;
+                }
+
+                Array.from(footer.children).forEach((child) => {
+                    if (!isAllowed(child)) {
+                        child.remove();
+                    }
+                });
+            };
+
+            cleanupFooter();
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', cleanupFooter, { once: true });
+            } else {
+                window.addEventListener('load', cleanupFooter, { once: true });
+            }
+
+            const footer = document.getElementById('wpfooter');
+            if (!(footer instanceof HTMLElement)) return;
+
+            const observer = new MutationObserver(cleanupFooter);
+            observer.observe(footer, { childList: true });
+        })();
+    </script>
+<?php
+    }
+
+    if (meza_should_lock_admin_title_chrome()) {
+        $allowed_title_selectors = meza_admin_title_allowed_selectors();
+?>
+    <script id="meza-lock-admin-title-chrome-script">
+        (() => {
+            const allowedSelectors = <?php echo wp_json_encode($allowed_title_selectors); ?>;
+            const listUiStartSelector = [
+                'h2.screen-reader-text',
+                '.subsubsub',
+                'form',
+                '.tablenav',
+                '.wp-list-table',
+                '#ajax-response',
+                '.clear',
+            ].join(', ');
+
+            const isAllowed = (element) => {
+                if (!(element instanceof Element)) return false;
+                return allowedSelectors.some((selector) => element.matches(selector));
+            };
+
+            const unwrap = (element) => {
+                if (!(element instanceof HTMLElement) || !(element.parentNode instanceof Node)) return;
+
+                while (element.firstChild) {
+                    element.parentNode.insertBefore(element.firstChild, element);
+                }
+
+                element.remove();
+            };
+
+            const cleanupTitleChrome = () => {
+                document.querySelectorAll('.ian-client, .ian-sidebar').forEach((element) => {
+                    if (element instanceof HTMLElement && !element.matches('[data-meza-admin-chrome], .meza-admin-chrome')) {
+                        element.remove();
+                    }
+                });
+
+                document.querySelectorAll('.wrap').forEach((wrap) => {
+                    if (!(wrap instanceof HTMLElement)) return;
+
+                    const heading = wrap.querySelector('h1.wp-heading-inline');
+                    const headerEnd = wrap.querySelector('hr.wp-header-end');
+
+                    if (!(heading instanceof HTMLElement) || !(headerEnd instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    let parent = heading.parentElement;
+                    while (parent instanceof HTMLElement && parent !== wrap && !isAllowed(parent)) {
+                        unwrap(parent);
+                        parent = heading.parentElement;
+                    }
+
+                    let inTitleRegion = false;
+                    for (const child of Array.from(wrap.children)) {
+                        if (!(child instanceof HTMLElement)) continue;
+
+                        if (!inTitleRegion) {
+                            if (child === heading || child.contains(heading)) {
+                                inTitleRegion = true;
+                            } else {
+                                continue;
+                            }
+                        }
+
+                        if (child === headerEnd) {
+                            break;
+                        }
+
+                        if (isAllowed(child)) {
+                            continue;
+                        }
+
+                        const nestedAllowed = Array.from(child.querySelectorAll('*')).some((node) => isAllowed(node));
+                        if (nestedAllowed) {
+                            unwrap(child);
+                            continue;
+                        }
+
+                        child.remove();
+                    }
+
+                    let bridgeNode = headerEnd.nextElementSibling;
+                    while (bridgeNode instanceof HTMLElement) {
+                        if (bridgeNode.matches(listUiStartSelector)) {
+                            break;
+                        }
+
+                        if (bridgeNode.querySelector(listUiStartSelector)) {
+                            unwrap(bridgeNode);
+                            bridgeNode = headerEnd.nextElementSibling;
+                            continue;
+                        }
+
+                        const nextNode = bridgeNode.nextElementSibling;
+
+                        if (!bridgeNode.matches('[data-meza-admin-chrome], .meza-admin-chrome')) {
+                            bridgeNode.remove();
+                        }
+
+                        bridgeNode = nextNode;
+                    }
+                });
+            };
+
+            let frame = null;
+            const scheduleCleanup = () => {
+                if (frame !== null) return;
+
+                frame = window.requestAnimationFrame(() => {
+                    frame = null;
+                    cleanupTitleChrome();
+                });
+            };
+
+            cleanupTitleChrome();
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', cleanupTitleChrome, { once: true });
+            } else {
+                window.addEventListener('load', cleanupTitleChrome, { once: true });
+            }
+
+            const observer = new MutationObserver(scheduleCleanup);
+            observer.observe(document.body, { childList: true, subtree: true });
+        })();
+    </script>
+<?php
+    }
+
+    if (!meza_is_locked_admin_chrome_screen()) {
+        return;
+    }
+?>
+    <style id="meza-lock-events-admin-chrome">
+        .edit-php.post-type-tribe_events .ian-client,
+        .edit-php.post-type-tribe_events .ian-sidebar,
+        .post-php.post-type-tribe_events .ian-client,
+        .post-php.post-type-tribe_events .ian-sidebar {
+            display: none !important;
+        }
+
+        .edit-php.post-type-tribe_events .ian-header,
+        .edit-php.post-type-tribe_events .ian-inner-wrapper,
+        .post-php.post-type-tribe_events .ian-header,
+        .post-php.post-type-tribe_events .ian-inner-wrapper {
+            all: unset !important;
+            display: contents !important;
+        }
+    </style>
+<?php
+}, 1005);
 
 function meza_group_woocommerce_top_level_items(): void
 {
