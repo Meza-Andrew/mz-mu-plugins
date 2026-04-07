@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.200
+ * Version: 1.1.202
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -8285,6 +8285,51 @@ add_action('admin_head', function (): void {
         return;
     }
 ?>
+    <script id="meza-remove-active-adminmenu-inline-icon-styles">
+        (() => {
+            const removeActiveMenuIconStyles = () => {
+                document.querySelectorAll(
+                    '#adminmenu li.wp-has-current-submenu > a.wp-has-current-submenu .wp-menu-image,' +
+                    '#adminmenu li.current > a.menu-top .wp-menu-image,' +
+                    '#adminmenu li.wp-menu-open > a.menu-top .wp-menu-image'
+                ).forEach((icon) => {
+                    if (!(icon instanceof HTMLElement) || !icon.hasAttribute('style')) return;
+
+                    icon.removeAttribute('style');
+                });
+            };
+
+            const watchActiveMenuIconStyles = () => {
+                const adminMenu = document.getElementById('adminmenu');
+                if (!(adminMenu instanceof HTMLElement)) return;
+
+                removeActiveMenuIconStyles();
+
+                const observer = new MutationObserver(() => {
+                    removeActiveMenuIconStyles();
+                });
+
+                observer.observe(adminMenu, {
+                    subtree: true,
+                    childList: true,
+                    attributes: true,
+                    attributeFilter: ['style', 'class']
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', watchActiveMenuIconStyles, {
+                    once: true
+                });
+            } else {
+                watchActiveMenuIconStyles();
+            }
+
+            window.addEventListener('load', removeActiveMenuIconStyles, {
+                once: true
+            });
+        })();
+    </script>
     <style id="meza-reset-active-top-level-admin-menu-style">
         #adminmenu li.wp-has-current-submenu > a.wp-has-current-submenu,
         #adminmenu li.current > a.menu-top,
