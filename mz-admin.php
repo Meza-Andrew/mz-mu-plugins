@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.215
+ * Version: 1.1.220
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -8959,11 +8959,11 @@ if (!function_exists('meza_admin_wpwrap_allowed_selectors')) {
         return [
             '#wpadminbar',
             '#wpwrap',
-            'script',
             'noscript',
             'style',
             'link',
             'svg',
+            '#wp-auth-check-wrap',
             '[data-meza-admin-chrome]',
             '.meza-admin-chrome',
         ];
@@ -8983,39 +8983,171 @@ if (!function_exists('meza_admin_get_env_preferred_plugin_signatures')) {
     }
 }
 
-if (!function_exists('meza_admin_get_nonpreferred_plugin_signatures')) {
-    function meza_admin_get_nonpreferred_plugin_signatures(): array
+if (!function_exists('meza_admin_get_disallowed_plugin_signatures')) {
+    function meza_admin_get_disallowed_plugin_signatures(): array
     {
-        if (!function_exists('mz_plugins_get_catalog') || !function_exists('mz_plugins_get_env_plugin_signatures')) {
+        if (!function_exists('mz_plugins_get_env_plugin_signatures')) {
             return [];
         }
 
-        $all_signatures = [];
+        $preferred_signatures = array_fill_keys(meza_admin_get_env_preferred_plugin_signatures(), true);
+        $plugin_files = (array) get_option('active_plugins', []);
 
-        foreach ((array) mz_plugins_get_catalog() as $plugin) {
-            $file = strtolower(trim((string) ($plugin['file'] ?? '')));
-            $slug = strtolower(trim((string) ($plugin['slug'] ?? '')));
+        if (is_multisite()) {
+            $network_active_plugins = get_site_option('active_sitewide_plugins', []);
+            if (is_array($network_active_plugins)) {
+                $plugin_files = array_merge($plugin_files, array_keys($network_active_plugins));
+            }
+        }
+
+        $plugin_files = array_values(array_unique(array_filter(array_map('strval', $plugin_files))));
+        $disallowed_signatures = [];
+
+        if (!function_exists('get_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        $all_plugins = function_exists('get_plugins') ? (array) get_plugins() : [];
+
+        foreach ($plugin_files as $plugin_file) {
+            $plugin_file = strtolower(trim($plugin_file));
+            if ($plugin_file === '') {
+                continue;
+            }
+
+            $plugin_slug = dirname($plugin_file);
+            if ($plugin_slug === '.' || $plugin_slug === '') {
+                $plugin_slug = basename($plugin_file, '.php');
+            }
+
+            $plugin_name = strtolower(trim(wp_strip_all_tags((string) ($all_plugins[$plugin_file]['Name'] ?? ''))));
+            $plugin_title = strtolower(trim(wp_strip_all_tags((string) ($all_plugins[$plugin_file]['Title'] ?? ''))));
 
             $tokens = array_filter([
-                $slug,
-                str_replace('-', '_', $slug),
-                str_replace('-', '', $slug),
-                $file,
-                dirname($file) !== '.' ? dirname($file) : '',
+                $plugin_slug,
+                str_replace('-', '_', $plugin_slug),
+                str_replace('-', '', $plugin_slug),
+                $plugin_file,
+                dirname($plugin_file) !== '.' ? dirname($plugin_file) : '',
+                $plugin_name,
+                str_replace(' ', '-', $plugin_name),
+                str_replace(' ', '_', $plugin_name),
+                str_replace([' ', '-'], '', $plugin_name),
+                $plugin_title,
+                str_replace(' ', '-', $plugin_title),
+                str_replace(' ', '_', $plugin_title),
+                str_replace([' ', '-'], '', $plugin_title),
             ], static function (string $token): bool {
                 return $token !== '' && strlen($token) >= 4;
             });
 
             foreach ($tokens as $token) {
-                $all_signatures[$token] = true;
+                if (isset($preferred_signatures[$token])) {
+                    continue;
+                }
+
+                $disallowed_signatures[$token] = true;
             }
         }
 
-        foreach (meza_admin_get_env_preferred_plugin_signatures() as $signature) {
-            unset($all_signatures[(string) $signature]);
+        return array_keys($disallowed_signatures);
+    }
+}
+
+if (!function_exists('meza_is_template_sensitive_admin_html')) {
+    function meza_is_template_sensitive_admin_html(string $html): bool
+    {
+        $markers = [
+            'class="themes-php',
+            "class='themes-php",
+            'id="tmpl-theme-single"',
+            'id="tmpl-theme"',
+            'wp.template(',
+        ];
+
+        foreach ($markers as $marker) {
+            if (str_contains($html, $marker)) {
+                return true;
+            }
         }
 
-        return array_keys($all_signatures);
+        return false;
+    }
+}
+
+if (!function_exists('meza_admin_is_core_template_script_id')) {
+    function meza_admin_is_core_template_script_id(string $script_id): bool
+    {
+        $script_id = strtolower(trim($script_id));
+        if ($script_id === '') {
+            return false;
+        }
+
+        $allowed_prefixes = [
+            'tmpl-theme',
+            'tmpl-customize-',
+            'tmpl-nav-menu-',
+            'tmpl-available-menu-item',
+            'tmpl-menu-item-',
+            'tmpl-header-',
+            'tmpl-media-',
+            'tmpl-attachment',
+            'tmpl-audio-details',
+            'tmpl-video-details',
+            'tmpl-image-',
+            'tmpl-editor-gallery',
+            'tmpl-gallery-settings',
+            'tmpl-playlist-settings',
+            'tmpl-embed-',
+            'tmpl-crop-content',
+            'tmpl-site-icon-preview-crop',
+            'tmpl-uploader-',
+            'tmpl-wp-playlist-',
+            'tmpl-widget-',
+            'tmpl-wp-media-widget-',
+            'tmpl-wp-updates-',
+            'tmpl-item-',
+            'tmpl-community-events-',
+            'tmpl-revisions-',
+            'tmpl-health-check-issue',
+            'tmpl-application-password-row',
+            'tmpl-new-application-password',
+            'tmpl-wp-file-editor-notice',
+        ];
+
+        foreach ($allowed_prefixes as $prefix) {
+            if (str_starts_with($script_id, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_admin_is_allowed_after_wpwrap_element')) {
+    function meza_admin_is_allowed_after_wpwrap_element(DOMElement $element, array $allowed_selectors): bool
+    {
+        if (meza_admin_dom_element_matches_any_selector($element, $allowed_selectors)) {
+            return true;
+        }
+
+        if (strtolower($element->tagName) !== 'script') {
+            return false;
+        }
+
+        $type = strtolower(trim((string) $element->getAttribute('type')));
+        $script_id = (string) $element->getAttribute('id');
+
+        if ($type === '' || in_array($type, ['text/javascript', 'application/javascript', 'module', 'importmap', 'speculationrules'], true)) {
+            return true;
+        }
+
+        if (in_array($type, ['text/html', 'text/template'], true)) {
+            return meza_admin_is_core_template_script_id($script_id);
+        }
+
+        return false;
     }
 }
 
@@ -9240,6 +9372,10 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
             return $html;
         }
 
+        if (meza_is_template_sensitive_admin_html($html)) {
+            return $html;
+        }
+
         if (!class_exists('DOMDocument') || !class_exists('DOMXPath')) {
             return $html;
         }
@@ -9259,7 +9395,7 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
         $footer_selectors = meza_admin_footer_allowed_children_selectors();
         $title_selectors = meza_admin_title_allowed_selectors();
         $wpwrap_selectors = meza_admin_wpwrap_allowed_selectors();
-        $disallowed_plugin_signatures = meza_admin_get_nonpreferred_plugin_signatures();
+        $disallowed_plugin_signatures = meza_admin_get_disallowed_plugin_signatures();
         $bridge_stop_selectors = [
             'h2.screen-reader-text',
             '.subsubsub',
@@ -9293,8 +9429,21 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
                     continue;
                 }
 
-                if (!meza_admin_dom_element_matches_any_selector($child, $wpwrap_selectors)
+                if (!meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors)
                     && meza_admin_dom_element_matches_plugin_signatures($child, $disallowed_plugin_signatures)) {
+                    $body->removeChild($child);
+                    continue;
+                }
+
+                if (!meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors)
+                    && strtolower($child->tagName) !== 'script') {
+                    $body->removeChild($child);
+                    continue;
+                }
+
+                if (strtolower($child->tagName) === 'script'
+                    && !meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors)
+                    && in_array(strtolower(trim((string) $child->getAttribute('type'))), ['text/html', 'text/template'], true)) {
                     $body->removeChild($child);
                 }
             }
@@ -9488,21 +9637,24 @@ add_filter('update_footer', function ($content): string {
 }, PHP_INT_MAX);
 
 add_action('admin_head', function (): void {
-    if (is_admin() && !meza_is_admin_chrome_exempt_screen()) {
+    if (is_admin()) {
+        $lock_core_admin_content = !meza_is_admin_chrome_exempt_screen();
         $content_selectors = meza_admin_content_allowed_children_selectors();
         $wpwrap_selectors = meza_admin_wpwrap_allowed_selectors();
-        $disallowed_plugin_signatures = meza_admin_get_nonpreferred_plugin_signatures();
+        $disallowed_plugin_signatures = meza_admin_get_disallowed_plugin_signatures();
         $content_deny_selector = '#wpcontent > *';
 
         foreach ($content_selectors as $selector) {
             $content_deny_selector .= ':not(' . $selector . ')';
         }
 ?>
+    <?php if ($lock_core_admin_content) : ?>
     <style id="meza-lock-admin-content">
         <?php echo $content_deny_selector; ?> {
             display: none !important;
         }
     </style>
+    <?php endif; ?>
     <?php if (meza_should_force_admin_bar_in_admin()) : ?>
     <style id="meza-force-admin-bar-visible">
         html.wp-toolbar {
@@ -9516,6 +9668,7 @@ add_action('admin_head', function (): void {
     <?php endif; ?>
     <script id="meza-lock-admin-content-script">
         (() => {
+            const lockCoreAdminContent = <?php echo wp_json_encode($lock_core_admin_content); ?>;
             const allowedSelectors = <?php echo wp_json_encode($content_selectors); ?>;
             const wpwrapAllowedSelectors = <?php echo wp_json_encode($wpwrap_selectors); ?>;
             const disallowedPluginSignatures = <?php echo wp_json_encode($disallowed_plugin_signatures); ?>;
@@ -9538,6 +9691,63 @@ add_action('admin_head', function (): void {
                 return wpwrapAllowedSelectors.some((selector) => element.matches(selector));
             };
 
+            const isCoreTemplateScriptId = (id) => {
+                const value = String(id || '').toLowerCase().trim();
+                if (!value) return false;
+
+                const allowedPrefixes = [
+                    'tmpl-theme',
+                    'tmpl-customize-',
+                    'tmpl-nav-menu-',
+                    'tmpl-available-menu-item',
+                    'tmpl-menu-item-',
+                    'tmpl-header-',
+                    'tmpl-media-',
+                    'tmpl-attachment',
+                    'tmpl-audio-details',
+                    'tmpl-video-details',
+                    'tmpl-image-',
+                    'tmpl-editor-gallery',
+                    'tmpl-gallery-settings',
+                    'tmpl-playlist-settings',
+                    'tmpl-embed-',
+                    'tmpl-crop-content',
+                    'tmpl-site-icon-preview-crop',
+                    'tmpl-uploader-',
+                    'tmpl-wp-playlist-',
+                    'tmpl-widget-',
+                    'tmpl-wp-media-widget-',
+                    'tmpl-wp-updates-',
+                    'tmpl-item-',
+                    'tmpl-community-events-',
+                    'tmpl-revisions-',
+                    'tmpl-health-check-issue',
+                    'tmpl-application-password-row',
+                    'tmpl-new-application-password',
+                    'tmpl-wp-file-editor-notice',
+                ];
+
+                return allowedPrefixes.some((prefix) => value.startsWith(prefix));
+            };
+
+            const isAllowedAfterWpwrapElement = (element) => {
+                if (!(element instanceof Element)) return false;
+                if (isAllowedAfterWpwrap(element)) return true;
+                if (element.tagName.toLowerCase() !== 'script') return false;
+
+                const type = String(element.getAttribute('type') || '').toLowerCase().trim();
+
+                if (!type || ['text/javascript', 'application/javascript', 'module', 'importmap', 'speculationrules'].includes(type)) {
+                    return true;
+                }
+
+                if (['text/html', 'text/template'].includes(type)) {
+                    return isCoreTemplateScriptId(element.id);
+                }
+
+                return false;
+            };
+
             const matchesPluginSignatures = (element, signatures) => {
                 if (!(element instanceof Element) || !Array.isArray(signatures) || signatures.length === 0) return false;
 
@@ -9549,6 +9759,8 @@ add_action('admin_head', function (): void {
             };
 
             const cleanupContent = () => {
+                if (!lockCoreAdminContent) return;
+
                 const content = document.getElementById('wpcontent');
                 if (!(content instanceof HTMLElement)) return;
 
@@ -9572,7 +9784,19 @@ add_action('admin_head', function (): void {
                     }
 
                     if (!seenWpwrap) return;
-                    if (isAllowedAfterWpwrap(child)) return;
+                    if (isAllowedAfterWpwrapElement(child)) return;
+
+                    if (child.tagName.toLowerCase() !== 'script') {
+                        child.remove();
+                        return;
+                    }
+
+                    const type = String(child.getAttribute('type') || '').toLowerCase().trim();
+                    if (['text/html', 'text/template'].includes(type)) {
+                        child.remove();
+                        return;
+                    }
+
                     if (!matchesPluginSignatures(child, disallowedPluginSignatures)) return;
 
                     child.remove();
