@@ -230,6 +230,23 @@ if (!function_exists('mz_plugin_compat_get_source_patch_rules')) {
                     return is_string($updated) ? $updated : $contents;
                 },
             ],
+            'aios_googlebot_prefixes_guard' => [
+                'file' => '/all-in-one-wp-security-and-firewall/classes/wp-security-utility.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, "foreach ((is_array(\$json_array['prefixes'] ?? null) ? \$json_array['prefixes'] : []) as \$prefix) {")) {
+                        return $contents;
+                    }
+
+                    $updated = preg_replace(
+                        "/foreach \\(\\$json_array\\['prefixes'\\] as \\$prefix\\) \\{/",
+                        "foreach ((is_array(\$json_array['prefixes'] ?? null) ? \$json_array['prefixes'] : []) as \$prefix) {",
+                        $contents,
+                        1
+                    );
+
+                    return is_string($updated) ? $updated : $contents;
+                },
+            ],
         ];
 
         return apply_filters('mz_plugin_compat_source_patch_rules', $rules);
@@ -265,6 +282,17 @@ if (!function_exists('mz_plugin_compat_apply_source_patches')) {
 }
 
 mz_plugin_compat_apply_source_patches();
+
+add_filter('cron_schedules', static function (array $schedules): array {
+    if (!isset($schedules['fifteen_minutes'])) {
+        $schedules['fifteen_minutes'] = [
+            'interval' => 15 * MINUTE_IN_SECONDS,
+            'display' => 'Every Fifteen Minutes',
+        ];
+    }
+
+    return $schedules;
+});
 
 if (!function_exists('mz_plugin_compat_get_deprecated_notice_rules')) {
     function mz_plugin_compat_get_deprecated_notice_rules(): array
@@ -376,6 +404,22 @@ if (!function_exists('mz_plugin_compat_should_suppress_deprecated_notice')) {
     }
 }
 
+if (!function_exists('mz_plugin_compat_should_suppress_runtime_warning')) {
+    function mz_plugin_compat_should_suppress_runtime_warning(string $message, string $file): bool
+    {
+        $normalized_file = mz_plugin_compat_normalize_path($file);
+
+        if (!str_contains($normalized_file, '/wp-content/plugins/all-in-one-wp-security-and-firewall/classes/wp-security-utility.php')) {
+            return false;
+        }
+
+        $normalized_message = trim($message);
+
+        return str_contains($normalized_message, 'Undefined array key "prefixes"')
+            || str_contains($normalized_message, 'foreach() argument must be of type array|object, null given');
+    }
+}
+
 if (!function_exists('mz_plugin_compat_register_error_handler')) {
     function mz_plugin_compat_register_error_handler(): void
     {
@@ -387,10 +431,18 @@ if (!function_exists('mz_plugin_compat_register_error_handler')) {
         $previous_handler = set_error_handler(
             static function ($errno, $errstr, $errfile = '', $errline = 0) use (&$previous_handler) {
                 $is_deprecated = ($errno === E_DEPRECATED || $errno === E_USER_DEPRECATED);
+                $is_warning = in_array($errno, [E_WARNING, E_NOTICE, E_USER_WARNING, E_USER_NOTICE], true);
 
                 if (
                     $is_deprecated
                     && mz_plugin_compat_should_suppress_deprecated_notice((string) $errstr, (string) $errfile)
+                ) {
+                    return true;
+                }
+
+                if (
+                    $is_warning
+                    && mz_plugin_compat_should_suppress_runtime_warning((string) $errstr, (string) $errfile)
                 ) {
                     return true;
                 }
@@ -401,7 +453,7 @@ if (!function_exists('mz_plugin_compat_register_error_handler')) {
 
                 return false;
             },
-            E_DEPRECATED | E_USER_DEPRECATED
+            E_DEPRECATED | E_USER_DEPRECATED | E_WARNING | E_NOTICE | E_USER_WARNING | E_USER_NOTICE
         );
     }
 }
