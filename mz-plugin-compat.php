@@ -343,6 +343,7 @@ if (!function_exists('mz_plugin_compat_is_known_nullable_param_deprecation')) {
             '/wp-content/plugins/cred-frontend-editor/',
             '/wp-content/plugins/divi-booster/',
             '/wp-content/plugins/the-events-calendar/',
+            '/wp-content/plugins/wp-views/',
             '/wp-content/plugins/types.deactivated/',
             '/wp-content/plugins/wp-views.deactivated/',
         ];
