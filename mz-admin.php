@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.220
+ * Version: 1.1.222
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -8959,10 +8959,24 @@ if (!function_exists('meza_admin_wpwrap_allowed_selectors')) {
         return [
             '#wpadminbar',
             '#wpwrap',
+            '.media-modal',
+            '.media-modal-backdrop',
             'noscript',
             'style',
             'link',
             'svg',
+            '#wp-auth-check-wrap',
+            '[data-meza-admin-chrome]',
+            '.meza-admin-chrome',
+        ];
+    }
+}
+
+if (!function_exists('meza_admin_wpbody_content_trailing_allowed_selectors')) {
+    function meza_admin_wpbody_content_trailing_allowed_selectors(): array
+    {
+        return [
+            '.clear',
             '#wp-auth-check-wrap',
             '[data-meza-admin-chrome]',
             '.meza-admin-chrome',
@@ -9060,8 +9074,14 @@ if (!function_exists('meza_is_template_sensitive_admin_html')) {
         $markers = [
             'class="themes-php',
             "class='themes-php",
+            'id="tmpl-',
+            "id='tmpl-",
             'id="tmpl-theme-single"',
             'id="tmpl-theme"',
+            'type="text/template"',
+            "type='text/template'",
+            'type="text/html"',
+            "type='text/html'",
             'wp.template(',
         ];
 
@@ -9395,6 +9415,7 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
         $footer_selectors = meza_admin_footer_allowed_children_selectors();
         $title_selectors = meza_admin_title_allowed_selectors();
         $wpwrap_selectors = meza_admin_wpwrap_allowed_selectors();
+        $wpbody_content_trailing_selectors = meza_admin_wpbody_content_trailing_allowed_selectors();
         $disallowed_plugin_signatures = meza_admin_get_disallowed_plugin_signatures();
         $bridge_stop_selectors = [
             'h2.screen-reader-text',
@@ -9411,6 +9432,30 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
             foreach (meza_admin_dom_get_element_children($wpcontent) as $child) {
                 if (!meza_admin_dom_element_matches_any_selector($child, $content_selectors)) {
                     $wpcontent->removeChild($child);
+                }
+            }
+        }
+
+        $wpbody_content = $document->getElementById('wpbody-content');
+        if ($wpbody_content instanceof DOMElement) {
+            $seen_main_wrap = false;
+
+            foreach (meza_admin_dom_get_element_children($wpbody_content) as $child) {
+                if (meza_admin_dom_element_has_class($child, 'wrap')) {
+                    $seen_main_wrap = true;
+                    continue;
+                }
+
+                if (!$seen_main_wrap) {
+                    continue;
+                }
+
+                if (meza_admin_is_allowed_after_wpwrap_element($child, $wpbody_content_trailing_selectors)) {
+                    continue;
+                }
+
+                if ($child->parentNode instanceof DOMNode) {
+                    $child->parentNode->removeChild($child);
                 }
             }
         }
@@ -9641,6 +9686,7 @@ add_action('admin_head', function (): void {
         $lock_core_admin_content = !meza_is_admin_chrome_exempt_screen();
         $content_selectors = meza_admin_content_allowed_children_selectors();
         $wpwrap_selectors = meza_admin_wpwrap_allowed_selectors();
+        $wpbodyContentTrailingSelectors = meza_admin_wpbody_content_trailing_allowed_selectors();
         $disallowed_plugin_signatures = meza_admin_get_disallowed_plugin_signatures();
         $content_deny_selector = '#wpcontent > *';
 
@@ -9671,6 +9717,7 @@ add_action('admin_head', function (): void {
             const lockCoreAdminContent = <?php echo wp_json_encode($lock_core_admin_content); ?>;
             const allowedSelectors = <?php echo wp_json_encode($content_selectors); ?>;
             const wpwrapAllowedSelectors = <?php echo wp_json_encode($wpwrap_selectors); ?>;
+            const wpbodyContentTrailingSelectors = <?php echo wp_json_encode($wpbodyContentTrailingSelectors); ?>;
             const disallowedPluginSignatures = <?php echo wp_json_encode($disallowed_plugin_signatures); ?>;
             const protectedSpacingTargets = [
                 document.documentElement,
@@ -9748,6 +9795,24 @@ add_action('admin_head', function (): void {
                 return false;
             };
 
+            const isAllowedAfterWpwrapElementForSelectors = (element, selectors) => {
+                if (!(element instanceof Element)) return false;
+                if (Array.isArray(selectors) && selectors.some((selector) => element.matches(selector))) return true;
+                if (element.tagName.toLowerCase() !== 'script') return false;
+
+                const type = String(element.getAttribute('type') || '').toLowerCase().trim();
+
+                if (!type || ['text/javascript', 'application/javascript', 'module', 'importmap', 'speculationrules'].includes(type)) {
+                    return true;
+                }
+
+                if (['text/html', 'text/template'].includes(type)) {
+                    return isCoreTemplateScriptId(element.id);
+                }
+
+                return false;
+            };
+
             const matchesPluginSignatures = (element, signatures) => {
                 if (!(element instanceof Element) || !Array.isArray(signatures) || signatures.length === 0) return false;
 
@@ -9803,6 +9868,26 @@ add_action('admin_head', function (): void {
                 });
             };
 
+            const cleanupAfterMainWrap = () => {
+                const bodyContent = document.getElementById('wpbody-content');
+                if (!(bodyContent instanceof HTMLElement)) return;
+
+                let seenMainWrap = false;
+                Array.from(bodyContent.children).forEach((child) => {
+                    if (!(child instanceof HTMLElement)) return;
+
+                    if (child.classList.contains('wrap')) {
+                        seenMainWrap = true;
+                        return;
+                    }
+
+                    if (!seenMainWrap) return;
+                    if (isAllowedAfterWpwrapElementForSelectors(child, wpbodyContentTrailingSelectors)) return;
+
+                    child.remove();
+                });
+            };
+
             const cleanupInjectedTopSpacing = () => {
                 const adminBar = document.getElementById('wpadminbar');
                 const adminBarVisible = adminBar instanceof HTMLElement
@@ -9822,15 +9907,18 @@ add_action('admin_head', function (): void {
 
             cleanupContent();
             cleanupAfterWpwrap();
+            cleanupAfterMainWrap();
             cleanupInjectedTopSpacing();
 
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', cleanupContent, { once: true });
                 document.addEventListener('DOMContentLoaded', cleanupAfterWpwrap, { once: true });
+                document.addEventListener('DOMContentLoaded', cleanupAfterMainWrap, { once: true });
                 document.addEventListener('DOMContentLoaded', cleanupInjectedTopSpacing, { once: true });
             } else {
                 window.addEventListener('load', cleanupContent, { once: true });
                 window.addEventListener('load', cleanupAfterWpwrap, { once: true });
+                window.addEventListener('load', cleanupAfterMainWrap, { once: true });
                 window.addEventListener('load', cleanupInjectedTopSpacing, { once: true });
             }
 
@@ -9839,9 +9927,16 @@ add_action('admin_head', function (): void {
                 const observer = new MutationObserver(() => {
                     cleanupContent();
                     cleanupAfterWpwrap();
+                    cleanupAfterMainWrap();
                     cleanupInjectedTopSpacing();
                 });
                 observer.observe(content, { childList: true });
+            }
+
+            const bodyContent = document.getElementById('wpbody-content');
+            if (bodyContent instanceof HTMLElement) {
+                const bodyContentObserver = new MutationObserver(cleanupAfterMainWrap);
+                bodyContentObserver.observe(bodyContent, { childList: true });
             }
 
             protectedSpacingTargets.forEach((element) => {
@@ -9852,6 +9947,7 @@ add_action('admin_head', function (): void {
             if (document.body instanceof HTMLElement) {
                 const bodyObserver = new MutationObserver(() => {
                     cleanupAfterWpwrap();
+                    cleanupAfterMainWrap();
                     cleanupInjectedTopSpacing();
                 });
                 bodyObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
