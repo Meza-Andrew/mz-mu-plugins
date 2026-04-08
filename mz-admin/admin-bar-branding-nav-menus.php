@@ -7,7 +7,7 @@
 if (!function_exists('meza_get_clear_cache_admin_bar_title')) {
     function meza_get_clear_cache_admin_bar_title(): string
     {
-        return '<span class="ab-icon dashicons dashicons-database-remove" aria-hidden="true"></span><span class="ab-label">Clear Cache</span>';
+        return '<span class="ab-icon dashicons dashicons-database-remove" aria-hidden="true"></span><span class="ab-label">Clear Page and Object Cache</span>';
     }
 }
 
@@ -82,6 +82,7 @@ function meza_is_admin_bar_clear_cache_node($node): bool
 
     return str_contains($title, 'delete cache')
         || str_contains($title, 'clear page cache')
+        || str_contains($title, 'clear page and object cache')
         || $title === 'clear cache'
         || (str_contains($node_id, 'super') && str_contains($node_id, 'cache'))
         || (str_contains($href, 'wp-super-cache') && str_contains($href, 'cache'))
@@ -355,7 +356,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
             'title' => meza_get_clear_cache_admin_bar_title(),
             'href' => $flush_href,
             'group' => false,
-            'meta' => ['title' => 'Clear Cache'],
+            'meta' => ['title' => 'Clear Page and Object Cache'],
         ]);
     };
 
