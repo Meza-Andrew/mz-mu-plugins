@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.279
+ * Version: 1.1.280
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -480,6 +480,50 @@ if (!function_exists('meza_sync_site_manager_role')) {
 add_action('init', 'meza_sync_site_manager_role', 20);
 
 if (!function_exists('meza_get_post_type_capabilities')) {
+    function meza_get_cached_post_type_object(string $post_type): ?WP_Post_Type
+    {
+        static $cache = [];
+
+        $post_type = sanitize_key($post_type);
+        if ($post_type === '') {
+            return null;
+        }
+
+        if (array_key_exists($post_type, $cache)) {
+            return $cache[$post_type];
+        }
+
+        $post_type_object = get_post_type_object($post_type);
+        $cache[$post_type] = $post_type_object instanceof WP_Post_Type ? $post_type_object : null;
+
+        return $cache[$post_type];
+    }
+}
+
+if (!function_exists('meza_get_cached_object_taxonomies')) {
+    function meza_get_cached_object_taxonomies(string $post_type, string $output = 'names'): array
+    {
+        static $cache = [];
+
+        $post_type = sanitize_key($post_type);
+        $output = $output === 'objects' ? 'objects' : 'names';
+
+        if ($post_type === '') {
+            return [];
+        }
+
+        if (isset($cache[$output][$post_type])) {
+            return is_array($cache[$output][$post_type]) ? $cache[$output][$post_type] : [];
+        }
+
+        $taxonomies = get_object_taxonomies($post_type, $output);
+        $cache[$output][$post_type] = is_array($taxonomies) ? $taxonomies : [];
+
+        return $cache[$output][$post_type];
+    }
+}
+
+if (!function_exists('meza_get_post_type_capabilities')) {
     function meza_get_post_type_capabilities(string $post_type): array
     {
         $post_type = trim($post_type);
@@ -487,7 +531,7 @@ if (!function_exists('meza_get_post_type_capabilities')) {
             return [];
         }
 
-        $post_type_object = get_post_type_object($post_type);
+        $post_type_object = meza_get_cached_post_type_object($post_type);
         if (!($post_type_object instanceof WP_Post_Type) || !isset($post_type_object->cap)) {
             return [];
         }
@@ -526,7 +570,7 @@ if (!function_exists('meza_get_post_type_taxonomy_capabilities')) {
     {
         $caps = [];
 
-        foreach (get_object_taxonomies($post_type, 'objects') as $taxonomy) {
+        foreach (meza_get_cached_object_taxonomies($post_type, 'objects') as $taxonomy) {
             if (!($taxonomy instanceof WP_Taxonomy) || !isset($taxonomy->cap)) {
                 continue;
             }

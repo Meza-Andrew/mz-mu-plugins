@@ -148,7 +148,7 @@ function meza_post_type_has_permalink(string $post_type): bool
     $post_type = trim($post_type);
     if ($post_type === '') return false;
 
-    $post_type_object = get_post_type_object($post_type);
+    $post_type_object = meza_get_cached_post_type_object($post_type);
     if (!($post_type_object instanceof WP_Post_Type)) return false;
 
     if (function_exists('is_post_type_viewable') && !is_post_type_viewable($post_type_object)) {
@@ -452,13 +452,19 @@ function meza_post_type_shows_share_text_admin_columns(string $post_type): bool
 
 function meza_get_taxonomy_admin_column_sort_labels(string $post_type): array
 {
+    static $labels_cache = [];
+
     $post_type = trim($post_type);
     if ($post_type === '') {
         return [];
     }
 
+    if (array_key_exists($post_type, $labels_cache)) {
+        return $labels_cache[$post_type];
+    }
+
     $labels = [];
-    $taxonomies = get_object_taxonomies($post_type, 'objects');
+    $taxonomies = meza_get_cached_object_taxonomies($post_type, 'objects');
 
     if (!is_array($taxonomies)) {
         return [];
@@ -500,7 +506,9 @@ function meza_get_taxonomy_admin_column_sort_labels(string $post_type): array
         }
     }
 
-    return $labels;
+    $labels_cache[$post_type] = $labels;
+
+    return $labels_cache[$post_type];
 }
 
 function meza_ensure_taxonomy_admin_columns(array $columns, string $post_type): array
@@ -514,7 +522,7 @@ function meza_ensure_taxonomy_admin_columns(array $columns, string $post_type): 
         return $columns;
     }
 
-    $taxonomies = get_object_taxonomies($post_type, 'objects');
+    $taxonomies = meza_get_cached_object_taxonomies($post_type, 'objects');
     if (!is_array($taxonomies)) {
         return $columns;
     }

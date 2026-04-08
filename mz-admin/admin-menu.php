@@ -592,21 +592,31 @@ function meza_post_type_has_top_level_admin_menu(string $post_type): bool
 
 function meza_post_type_is_visible_in_admin_menu(string $post_type): bool
 {
+    static $visibility_cache = [];
+
     $post_type = sanitize_key($post_type);
     if ($post_type === '') {
         return false;
     }
 
+    if (array_key_exists($post_type, $visibility_cache)) {
+        return $visibility_cache[$post_type];
+    }
+
     if (in_array($post_type, ['post', 'page'], true)) {
+        $visibility_cache[$post_type] = true;
         return true;
     }
 
-    $post_type_object = get_post_type_object($post_type);
+    $post_type_object = meza_get_cached_post_type_object($post_type);
     if (!($post_type_object instanceof WP_Post_Type) || empty($post_type_object->show_ui)) {
+        $visibility_cache[$post_type] = false;
         return false;
     }
 
-    return $post_type_object->show_in_menu !== false;
+    $visibility_cache[$post_type] = $post_type_object->show_in_menu !== false;
+
+    return $visibility_cache[$post_type];
 }
 
 function meza_get_nontrashed_post_type_count(string $post_type): int
