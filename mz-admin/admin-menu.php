@@ -345,6 +345,28 @@ add_action('admin_init', function (): void {
     exit;
 }, 1);
 
+add_action('admin_menu', function (): void {
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $submenu;
+
+    if (!isset($submenu['upload.php']) || !is_array($submenu['upload.php'])) {
+        return;
+    }
+
+    foreach ($submenu['upload.php'] as $index => $item) {
+        if (!is_array($item) || !meza_is_admin_only_media_performance_item('upload.php', $item)) {
+            continue;
+        }
+
+        unset($submenu['upload.php'][$index]);
+    }
+
+    $submenu['upload.php'] = array_values($submenu['upload.php']);
+}, PHP_INT_MAX);
+
 function meza_get_standardized_submenu_utility_label(array $item, string $parent_slug = ''): string
 {
     $parent_slug = strtolower($parent_slug);
@@ -1442,6 +1464,11 @@ function meza_normalize_admin_plugin_menus(): void
                 || str_contains($title, 'redirection');
 
             if (meza_admin_should_hide_submenu_item_for_current_user((string) $parent_slug, $slug)) {
+                unset($items[$index]);
+                continue;
+            }
+
+            if (meza_is_site_manager_user(wp_get_current_user()) && meza_is_admin_only_media_performance_item((string) $parent_slug, $item)) {
                 unset($items[$index]);
                 continue;
             }
