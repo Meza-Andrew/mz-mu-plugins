@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.25
+ * Version: 1.4.26
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -90,7 +90,7 @@ if (!function_exists('mz_plugins_get_catalog')) {
             ['name' => 'Post Duplicator', 'slug' => 'post-duplicator', 'file' => 'post-duplicator/m4c-postduplicator.php', 'envs' => ['development', 'staging', 'qa', 'production']],
             ['name' => 'UpdraftPlus', 'slug' => 'updraftplus', 'file' => 'updraftplus/updraftplus.php', 'envs' => ['development', 'staging', 'qa', 'production']],
             ['name' => 'WordPress Importer', 'slug' => 'wordpress-importer', 'file' => 'wordpress-importer/wordpress-importer.php', 'envs' => ['development', 'staging', 'qa', 'production']],
-            ['name' => 'WP Mail SMTP', 'slug' => 'wp-mail-smtp', 'file' => 'wp-mail-smtp/wp_mail_smtp.php', 'envs' => ['development', 'staging', 'qa', 'production']],
+            ['name' => 'WP Mail SMTP', 'slug' => 'wp-mail-smtp', 'file' => 'wp-mail-smtp/wp_mail_smtp.php', 'envs' => ['development', 'staging', 'qa', 'production'], 'required_files' => ['wp-mail-smtp/wp-mail-smtp.php', 'wp-mail-smtp/src/Core.php']],
             ['name' => 'Error Log Monitor', 'slug' => 'error-log-monitor', 'file' => 'error-log-monitor/plugin.php', 'envs' => ['development', 'staging', 'qa', 'production']],
 
             // All except development
@@ -241,6 +241,45 @@ if (!function_exists('mz_plugins_catalog_runtime_requirement_message')) {
         }
 
         return implode(', ', $parts);
+    }
+}
+
+if (!function_exists('mz_plugins_catalog_required_files')) {
+    function mz_plugins_catalog_required_files(array $plugin): array
+    {
+        $required_files = [];
+        $main_file = trim((string) ($plugin['file'] ?? ''));
+
+        if ($main_file !== '') {
+            $required_files[] = ltrim($main_file, '/');
+        }
+
+        foreach ((array) ($plugin['required_files'] ?? []) as $required_file) {
+            $required_file = ltrim(trim((string) $required_file), '/');
+
+            if ($required_file !== '') {
+                $required_files[] = $required_file;
+            }
+        }
+
+        return array_values(array_unique($required_files));
+    }
+}
+
+if (!function_exists('mz_plugins_catalog_missing_required_files')) {
+    function mz_plugins_catalog_missing_required_files(array $plugin): array
+    {
+        $missing_files = [];
+
+        foreach (mz_plugins_catalog_required_files($plugin) as $required_file) {
+            $full_path = WP_PLUGIN_DIR . '/' . $required_file;
+
+            if (!file_exists($full_path) || !is_readable($full_path)) {
+                $missing_files[] = $required_file;
+            }
+        }
+
+        return $missing_files;
     }
 }
 
@@ -435,10 +474,16 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
             continue;
         }
 
-        if (isset($all[$file])) continue;
+        $missing_required_files = mz_plugins_catalog_missing_required_files($p);
+
+        if (isset($all[$file]) && $missing_required_files === []) continue;
         $slug = $p['slug'] ?? '';
         $api_error = null;
         $private_package_source = mz_plugins_resolve_private_package_source($p, $api_error);
+
+        if (isset($all[$file]) && $missing_required_files !== []) {
+            $results[] = "Repair install: {$p['name']} - missing " . implode(', ', $missing_required_files);
+        }
 
         $download = $private_package_source ?: (function ($slug, &$api_error = null) {
             $api = plugins_api('plugin_information', ['slug' => $slug, 'fields' => ['sections' => false]]);
@@ -461,12 +506,14 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
         }
         wp_clean_plugins_cache(true);
         $all = get_plugins();
-        if (isset($all[$file])) {
+        $missing_required_files = mz_plugins_catalog_missing_required_files($p);
+
+        if (isset($all[$file]) && $missing_required_files === []) {
             $results[] = "Installed: {$p['name']}";
             continue;
         }
 
-        $results[] = "Install failed (main file): {$p['name']}";
+        $results[] = "Install failed (package): {$p['name']}" . ($missing_required_files !== [] ? ' - missing ' . implode(', ', $missing_required_files) : '');
     }
 
     // ACTIVATE required
@@ -501,6 +548,13 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
             if (!isset($all[$file])) {
                 unset($pending_activation[$file]);
                 $results[] = "Skip activate (not found): {$p['name']}";
+                continue;
+            }
+
+            $missing_required_files = mz_plugins_catalog_missing_required_files($p);
+            if ($missing_required_files !== []) {
+                unset($pending_activation[$file]);
+                $results[] = "Skip activate (package): {$p['name']} missing " . implode(', ', $missing_required_files);
                 continue;
             }
 
