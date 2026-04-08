@@ -319,8 +319,17 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
 
         $title = ($title_override !== '') ? $title_override : ($node->title ?? '');
         $meta = is_array($node->meta ?? null) ? $node->meta : [];
+        $toolbar_action_classes = [];
+        if (meza_is_admin_bar_query_monitor_node($node)) {
+            $toolbar_action_classes[] = 'meza-admin-bar-toolbar-action';
+            $toolbar_action_classes[] = 'meza-admin-bar-query-monitor-action';
+        }
         if ($title_override !== '') {
-            $meta['class'] = trim(((string) ($meta['class'] ?? '')) . ' meza-admin-bar-cache-action');
+            $toolbar_action_classes[] = 'meza-admin-bar-toolbar-action';
+            $toolbar_action_classes[] = 'meza-admin-bar-cache-action';
+        }
+        if ($toolbar_action_classes !== []) {
+            $meta['class'] = trim(((string) ($meta['class'] ?? '')) . ' ' . implode(' ', $toolbar_action_classes));
         }
         if ($meta_title_override !== '') {
             $meta['title'] = $meta_title_override;
@@ -363,7 +372,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
             'group' => false,
             'meta' => [
                 'title' => 'Clear Page and Object Cache',
-                'class' => 'meza-admin-bar-cache-action',
+                'class' => 'meza-admin-bar-toolbar-action meza-admin-bar-cache-action',
             ],
         ]);
     };
@@ -995,12 +1004,12 @@ add_action('admin_head', function () {
 
 add_action('admin_head', function () {
     echo '<style id="meza-admin-bar-cache-icon-alignment">' .
-        '#wpadminbar .meza-admin-bar-cache-action > .ab-item{' .
+        '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item{' .
         'display:flex;' .
         'align-items:center;' .
         'gap:6px;' .
         '}' .
-        '#wpadminbar .meza-admin-bar-cache-action > .ab-item .ab-icon{' .
+        '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-icon{' .
         'display:inline-flex;' .
         'align-items:center;' .
         'justify-content:center;' .
@@ -1011,13 +1020,13 @@ add_action('admin_head', function () {
         'line-height:20px;' .
         'font-size:20px;' .
         '}' .
-        '#wpadminbar .meza-admin-bar-cache-action > .ab-item .ab-icon:before{' .
+        '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-icon:before{' .
         'width:20px;' .
         'height:20px;' .
         'font-size:20px;' .
         'line-height:20px;' .
         '}' .
-        '#wpadminbar .meza-admin-bar-cache-action > .ab-item .ab-label{' .
+        '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-label{' .
         'line-height:32px;' .
         '}' .
         '</style>';
