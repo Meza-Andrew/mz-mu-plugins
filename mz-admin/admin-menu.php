@@ -1449,7 +1449,7 @@ function meza_normalize_admin_plugin_menus(): void
                 continue;
             }
 
-            if (!$is_yoast_menu && str_contains($title, 'yoast')) {
+            if (str_contains($title, 'yoast')) {
                 unset($items[$index]);
                 continue;
             }
@@ -1475,6 +1475,11 @@ function meza_normalize_admin_plugin_menus(): void
             if ($is_redirection) {
                 $item[0] = 'Redirects';
                 if (isset($item[3])) $item[3] = 'Redirects';
+                continue;
+            }
+
+            if ($is_yoast_menu && !in_array($title, ['general', 'settings', 'tools'], true)) {
+                unset($items[$index]);
                 continue;
             }
 
