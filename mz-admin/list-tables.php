@@ -1878,6 +1878,163 @@ function meza_get_admin_link_column_display_text(string $url): string
     return $display;
 }
 
+function meza_extract_admin_column_emails($value): array
+{
+    if (is_array($value)) {
+        $emails = [];
+
+        foreach ($value as $item) {
+            $emails = array_merge($emails, meza_extract_admin_column_emails($item));
+        }
+
+        return array_values(array_unique(array_filter($emails)));
+    }
+
+    if (!is_scalar($value)) {
+        return [];
+    }
+
+    $text = trim((string) $value);
+    if ($text === '') {
+        return [];
+    }
+
+    preg_match_all('/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/i', $text, $matches);
+    $emails = array_map('sanitize_email', $matches[0] ?? []);
+
+    return array_values(array_unique(array_filter($emails, static function (string $email): bool {
+        return $email !== '' && is_email($email);
+    })));
+}
+
+function meza_get_admin_email_column_html($value): string
+{
+    $emails = meza_extract_admin_column_emails($value);
+    if ($emails === []) {
+        return '&mdash;';
+    }
+
+    $links = array_map(static function (string $email): string {
+        return '<a href="' . esc_url('mailto:' . $email) . '">' . esc_html($email) . '</a>';
+    }, $emails);
+
+    return implode('<br>', $links);
+}
+
+function meza_parse_admin_phone_value(string $value): array
+{
+    $value = trim(wp_strip_all_tags($value));
+    if ($value === '') {
+        return ['display' => '', 'tel' => ''];
+    }
+
+    $extension = '';
+    if (preg_match('/(?:ext\.?|extension|x)\s*[:.]?\s*(\d+)$/i', $value, $matches) === 1) {
+        $extension = trim((string) ($matches[1] ?? ''));
+        $value = trim((string) preg_replace('/(?:ext\.?|extension|x)\s*[:.]?\s*\d+$/i', '', $value));
+    }
+
+    $digits = preg_replace('/\D+/', '', $value) ?? '';
+    if ($digits === '') {
+        return ['display' => '', 'tel' => ''];
+    }
+
+    if (strlen($digits) === 11 && str_starts_with($digits, '1')) {
+        $digits = substr($digits, 1);
+    }
+
+    if (strlen($digits) !== 10) {
+        $fallback = trim(wp_strip_all_tags($value));
+
+        return [
+            'display' => $fallback,
+            'tel' => preg_replace('/\D+/', '', $value) ?? '',
+        ];
+    }
+
+    $display = sprintf(
+        '(%s) %s-%s',
+        substr($digits, 0, 3),
+        substr($digits, 3, 3),
+        substr($digits, 6, 4)
+    );
+    $tel = '+1' . $digits;
+
+    if ($extension !== '') {
+        $display .= ' ext. ' . $extension;
+        $tel .= ';ext=' . $extension;
+    }
+
+    return [
+        'display' => $display,
+        'tel' => $tel,
+    ];
+}
+
+function meza_extract_admin_column_phone_values($value): array
+{
+    if (is_array($value)) {
+        $phones = [];
+
+        foreach ($value as $item) {
+            $phones = array_merge($phones, meza_extract_admin_column_phone_values($item));
+        }
+
+        return array_values(array_unique(array_filter($phones)));
+    }
+
+    if (!is_scalar($value)) {
+        return [];
+    }
+
+    $text = trim((string) $value);
+    if ($text === '') {
+        return [];
+    }
+
+    $parts = preg_split('/[\r\n;,]+/', $text) ?: [$text];
+    $phones = [];
+
+    foreach ($parts as $part) {
+        $part = trim((string) $part);
+        if ($part === '') {
+            continue;
+        }
+
+        $parsed = meza_parse_admin_phone_value($part);
+        if (($parsed['display'] ?? '') === '' || ($parsed['tel'] ?? '') === '') {
+            continue;
+        }
+
+        $phones[] = $part;
+    }
+
+    return array_values(array_unique($phones));
+}
+
+function meza_get_admin_phone_column_html($value): string
+{
+    $phones = meza_extract_admin_column_phone_values($value);
+    if ($phones === []) {
+        return '&mdash;';
+    }
+
+    $links = [];
+    foreach ($phones as $phone) {
+        $parsed = meza_parse_admin_phone_value((string) $phone);
+        $display = trim((string) ($parsed['display'] ?? ''));
+        $tel = trim((string) ($parsed['tel'] ?? ''));
+
+        if ($display === '' || $tel === '') {
+            continue;
+        }
+
+        $links[] = '<a href="' . esc_url('tel:' . $tel) . '">' . esc_html($display) . '</a>';
+    }
+
+    return $links !== [] ? implode('<br>', $links) : '&mdash;';
+}
+
 function meza_customize_users_admin_columns(array $columns): array
 {
     if (!is_array($columns)) return $columns;
@@ -3652,7 +3809,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             $recipients = mzf_parse_recipients(get_post_meta((int) $post_id, 'email_recipients', true));
         }
 
-        echo !empty($recipients) ? esc_html(implode(' ', $recipients)) : '&mdash;';
+        echo meza_get_admin_email_column_html($recipients);
         return;
     }
     if ($column === 'mz_product_type') {
@@ -5313,3 +5470,156 @@ add_filter('posts_clauses', function (array $clauses, WP_Query $q): array {
 
     return $clauses;
 }, 30, 2);
+
+add_action('admin_head', function (): void {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen)) {
+        return;
+    }
+
+    if ((string) ($screen->base ?? '') !== 'edit' && (string) ($screen->id ?? '') !== 'users') {
+        return;
+    }
+?>
+    <script id="meza-admin-contact-column-normalizer">
+        (() => {
+            const phoneTokens = ['phone', 'telephone', 'tel', 'mobile', 'cell', 'fax'];
+            const emailTokens = ['email', 'e-mail'];
+
+            const normalize = (value) => String(value || '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            const hasToken = (value, tokens) => {
+                const normalized = normalize(value);
+                return tokens.some((token) => normalized.includes(token));
+            };
+
+            const getColumnType = (cell) => {
+                if (!(cell instanceof HTMLElement)) return '';
+
+                const haystack = [
+                    String(cell.id || ''),
+                    String(cell.className || ''),
+                    String(cell.textContent || ''),
+                ].join(' ');
+
+                if (hasToken(haystack, emailTokens)) return 'email';
+                if (hasToken(haystack, phoneTokens)) return 'phone';
+
+                return '';
+            };
+
+            const extractEmails = (value) => {
+                const matches = String(value || '').match(/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/gi);
+                return Array.from(new Set((matches || []).map((email) => email.trim()).filter(Boolean)));
+            };
+
+            const parsePhone = (value) => {
+                let text = String(value || '').trim();
+                if (!text) return null;
+
+                let extension = '';
+                const extensionMatch = text.match(/(?:ext\.?|extension|x)\s*[:.]?\s*(\d+)$/i);
+                if (extensionMatch) {
+                    extension = String(extensionMatch[1] || '').trim();
+                    text = text.replace(/(?:ext\.?|extension|x)\s*[:.]?\s*\d+$/i, '').trim();
+                }
+
+                let digits = text.replace(/\D+/g, '');
+                if (!digits) return null;
+                if (digits.length === 11 && digits.startsWith('1')) {
+                    digits = digits.slice(1);
+                }
+                if (digits.length !== 10) return null;
+
+                let display = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+                let tel = `+1${digits}`;
+
+                if (extension) {
+                    display += ` ext. ${extension}`;
+                    tel += `;ext=${extension}`;
+                }
+
+                return { display, tel };
+            };
+
+            const extractPhones = (value) => {
+                const parts = String(value || '')
+                    .split(/[\r\n;,]+/)
+                    .map((part) => part.trim())
+                    .filter(Boolean);
+
+                const parsed = parts
+                    .map((part) => parsePhone(part))
+                    .filter(Boolean);
+
+                return parsed.filter((phone, index, all) => (
+                    all.findIndex((candidate) => candidate.tel === phone.tel) === index
+                ));
+            };
+
+            const maybeNormalizeCell = (cell, type) => {
+                if (!(cell instanceof HTMLElement) || !type) return;
+                if (cell.querySelector(type === 'email' ? 'a[href^="mailto:"]' : 'a[href^="tel:"]')) return;
+                if (cell.querySelector('.row-actions, .toggle-row')) return;
+
+                const rawText = String(cell.textContent || '').trim();
+                if (!rawText || rawText === '—') return;
+
+                if (type === 'email') {
+                    const emails = extractEmails(rawText);
+                    if (!emails.length) return;
+
+                    cell.innerHTML = emails.map((email) => (
+                        `<a href="mailto:${email}">${email}</a>`
+                    )).join('<br>');
+                    return;
+                }
+
+                const phones = extractPhones(rawText);
+                if (!phones.length) return;
+
+                cell.innerHTML = phones.map((phone) => (
+                    `<a href="tel:${phone.tel}">${phone.display}</a>`
+                )).join('<br>');
+            };
+
+            const syncTable = (table) => {
+                if (!(table instanceof HTMLTableElement)) return;
+
+                const headerRow = table.tHead?.rows?.[table.tHead.rows.length - 1];
+                if (!(headerRow instanceof HTMLTableRowElement)) return;
+
+                const columnTypes = Array.from(headerRow.children).map((cell) => getColumnType(cell));
+                if (!columnTypes.some(Boolean)) return;
+
+                Array.from(table.tBodies).forEach((tbody) => {
+                    Array.from(tbody.rows).forEach((row) => {
+                        Array.from(row.children).forEach((cell, index) => {
+                            maybeNormalizeCell(cell, columnTypes[index] || '');
+                        });
+                    });
+                });
+            };
+
+            const sync = () => {
+                document.querySelectorAll('table.wp-list-table').forEach(syncTable);
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', sync, { once: true });
+            } else {
+                sync();
+            }
+
+            const observer = new MutationObserver(sync);
+            observer.observe(document.documentElement, {
+                childList: true,
+                subtree: true,
+            });
+        })();
+    </script>
+<?php
+});
