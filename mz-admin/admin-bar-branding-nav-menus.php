@@ -4,6 +4,51 @@
  *  ADMIN BAR CLEANUP
  *  ================================ */
 
+if (!function_exists('meza_get_clear_cache_admin_bar_title')) {
+    function meza_get_clear_cache_admin_bar_title(): string
+    {
+        return '<span class="ab-icon dashicons dashicons-database-remove" aria-hidden="true"></span><span class="ab-label">Clear Cache</span>';
+    }
+}
+
+if (!function_exists('meza_is_clear_cache_request')) {
+    function meza_is_clear_cache_request(): bool
+    {
+        $request_uri = strtolower((string) ($_SERVER['REQUEST_URI'] ?? ''));
+        $wpaas_action = strtolower((string) ($_REQUEST['wpaas_action'] ?? ''));
+        $wpsc_delete_cache = strtolower((string) ($_REQUEST['wpsc_delete_cache'] ?? ''));
+
+        return $wpaas_action === 'flush_cache'
+            || $wpsc_delete_cache !== ''
+            || str_contains($request_uri, 'wpaas_action=flush_cache')
+            || str_contains($request_uri, 'wpsc_delete_cache');
+    }
+}
+
+if (!function_exists('meza_flush_object_cache_backends')) {
+    function meza_flush_object_cache_backends(): void
+    {
+        global $wp_object_cache;
+
+        if (function_exists('wp_cache_flush')) {
+            wp_cache_flush();
+            return;
+        }
+
+        if (is_object($wp_object_cache) && method_exists($wp_object_cache, 'flush')) {
+            $wp_object_cache->flush();
+        }
+    }
+}
+
+add_action('init', function (): void {
+    if (!meza_can_access_clear_cache() || !meza_is_clear_cache_request()) {
+        return;
+    }
+
+    meza_flush_object_cache_backends();
+}, 5);
+
 function meza_is_admin_bar_query_monitor_node($node): bool
 {
     if (!is_object($node)) return false;
@@ -307,7 +352,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         $wp_admin_bar->add_node([
             'id' => $flush_node_id,
             'parent' => $toolbar_parent,
-            'title' => 'Clear Cache',
+            'title' => meza_get_clear_cache_admin_bar_title(),
             'href' => $flush_href,
             'group' => false,
             'meta' => ['title' => 'Clear Cache'],
@@ -329,7 +374,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
     // - page cache when WP Super Cache is installed
     // - server cache only on qa/production when WP Super Cache is not installed
     if ($should_show_page_cache) {
-        $add_clone($delete_cache_node, 'Clear Cache', $toolbar_parent);
+        $add_clone($delete_cache_node, meza_get_clear_cache_admin_bar_title(), $toolbar_parent);
         return;
     }
 
