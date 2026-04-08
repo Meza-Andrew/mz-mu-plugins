@@ -290,6 +290,47 @@ function meza_should_grant_site_manager_utility_submenu_access(string $parent_sl
     return $has_import || $has_export || $has_tools || $has_settings || $has_status;
 }
 
+function meza_current_site_manager_request_matches_utility_submenu(): bool
+{
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return false;
+    }
+
+    global $submenu;
+
+    if (!is_array($submenu) || $submenu === []) {
+        return false;
+    }
+
+    $candidates = array_map('strtolower', meza_get_current_admin_menu_slug_candidates());
+    if ($candidates === []) {
+        return false;
+    }
+
+    foreach ($submenu as $parent_slug => $items) {
+        if (!is_array($items)) {
+            continue;
+        }
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $submenu_slug = strtolower((string) ($item[2] ?? ''));
+            if ($submenu_slug === '' || !in_array($submenu_slug, $candidates, true)) {
+                continue;
+            }
+
+            if (meza_should_grant_site_manager_utility_submenu_access((string) $parent_slug, $item)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $user): array {
     if (!meza_is_site_manager_user($user)) {
         return $allcaps;
@@ -309,17 +350,26 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $
 
     $utility_caps = ['manage_options', 'edit_theme_options', 'import', 'export'];
     $needs_utility_grant = count(array_intersect($requested_caps, $utility_caps)) > 0;
+    $is_utility_submenu_request = meza_current_site_manager_request_matches_utility_submenu();
 
-    if (!$needs_utility_grant) {
+    if (!$needs_utility_grant && !$is_utility_submenu_request) {
         return $allcaps;
     }
 
-    if (!doing_action('admin_menu') && !meza_site_manager_is_utility_admin_request()) {
+    if (!doing_action('admin_menu') && !$is_utility_submenu_request && !meza_site_manager_is_utility_admin_request()) {
         return $allcaps;
     }
 
     foreach ($utility_caps as $cap) {
         $allcaps[$cap] = true;
+    }
+
+    if ($is_utility_submenu_request) {
+        foreach ($requested_caps as $cap) {
+            if ($cap !== '') {
+                $allcaps[$cap] = true;
+            }
+        }
     }
 
     return $allcaps;
