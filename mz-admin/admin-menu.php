@@ -3265,6 +3265,60 @@ if (!function_exists('meza_should_lock_admin_title_chrome')) {
 }
 
 if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
+    function meza_is_preferred_plugin_admin_screen(?WP_Screen $screen = null): bool
+    {
+        $signatures = [];
+
+        if (function_exists('mz_plugins_get_env_plugin_signatures')) {
+            $signatures = array_values(array_filter(array_map('strtolower', mz_plugins_get_env_plugin_signatures()), static function ($signature): bool {
+                return is_string($signature) && $signature !== '';
+            }));
+        }
+
+        // WP Super Cache needs to keep its native screen wrappers and injected UI intact.
+        $signatures = array_values(array_unique(array_merge($signatures, [
+            'wp-super-cache',
+            'wpsupercache',
+            'wp super cache',
+        ])));
+
+        if ($signatures === []) {
+            return false;
+        }
+
+        if (!($screen instanceof WP_Screen) && function_exists('get_current_screen')) {
+            $screen = get_current_screen();
+        }
+
+        $haystacks = [];
+
+        if ($screen instanceof WP_Screen) {
+            $haystacks[] = strtolower((string) ($screen->id ?? ''));
+            $haystacks[] = strtolower((string) ($screen->base ?? ''));
+            $haystacks[] = strtolower((string) ($screen->parent_base ?? ''));
+            $haystacks[] = strtolower((string) ($screen->parent_file ?? ''));
+        }
+
+        $haystacks[] = strtolower((string) ($_GET['page'] ?? ''));
+        $haystacks[] = strtolower((string) ($_GET['plugin_status'] ?? ''));
+        $haystacks[] = strtolower((string) ($_SERVER['REQUEST_URI'] ?? ''));
+        $haystacks[] = strtolower((string) ($_SERVER['PHP_SELF'] ?? ''));
+
+        $haystacks = array_values(array_filter(array_map('trim', $haystacks), static function (string $value): bool {
+            return $value !== '';
+        }));
+
+        foreach ($haystacks as $haystack) {
+            foreach ($signatures as $signature) {
+                if ($signature !== '' && str_contains($haystack, $signature)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     function meza_is_admin_chrome_exempt_screen(): bool
     {
         if (!is_admin()) {
@@ -3274,13 +3328,23 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         if (function_exists('get_current_screen')) {
             $screen = get_current_screen();
             if ($screen instanceof WP_Screen) {
-                return (string) $screen->base === 'themes';
+                if ((string) $screen->base === 'themes') {
+                    return true;
+                }
+
+                if (meza_is_preferred_plugin_admin_screen($screen)) {
+                    return true;
+                }
             }
         }
 
         $php_self = isset($_SERVER['PHP_SELF']) ? basename((string) $_SERVER['PHP_SELF']) : '';
 
-        return $php_self === 'themes.php';
+        if ($php_self === 'themes.php') {
+            return true;
+        }
+
+        return meza_is_preferred_plugin_admin_screen();
     }
 }
 
