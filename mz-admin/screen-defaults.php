@@ -1034,6 +1034,14 @@ if (!function_exists('meza_get_post_admin_list_per_page')) {
     }
 }
 
+if (!function_exists('meza_get_post_admin_list_screen_option_name')) {
+    function meza_get_post_admin_list_screen_option_name(string $post_type): string
+    {
+        $post_type = sanitize_key($post_type);
+        return $post_type !== '' ? 'edit_' . $post_type . '_per_page' : '';
+    }
+}
+
 // Keep post-type admin lists light enough to stay responsive on content-heavy sites.
 add_action('current_screen', function ($screen): void {
     if (!($screen instanceof WP_Screen)) return;
@@ -1042,9 +1050,11 @@ add_action('current_screen', function ($screen): void {
     $post_type = sanitize_key((string) ($screen->post_type ?? ''));
     if ($post_type === '') return;
 
-    $option = $post_type === 'page'
-        ? 'edit_pages_per_page'
-        : 'edit_' . $post_type . '_per_page';
+    $post_type_object = get_post_type_object($post_type);
+    if (!($post_type_object instanceof WP_Post_Type) || empty($post_type_object->show_ui)) return;
+
+    $option = meza_get_post_admin_list_screen_option_name($post_type);
+    if ($option === '') return;
     $target_per_page = meza_get_post_admin_list_per_page();
     $user_id = get_current_user_id();
 
@@ -1092,6 +1102,11 @@ add_action('pre_get_posts', function (WP_Query $query): void {
         return;
     }
 
+    $post_type_object = get_post_type_object($post_type);
+    if (!($post_type_object instanceof WP_Post_Type) || empty($post_type_object->show_ui)) {
+        return;
+    }
+
     $target_per_page = meza_get_post_admin_list_per_page();
     $current_per_page = (int) $query->get('posts_per_page');
 
@@ -1100,7 +1115,7 @@ add_action('pre_get_posts', function (WP_Query $query): void {
     }
 
     $archive_per_page = (int) $query->get('posts_per_archive_page');
-    if ($archive_per_page > $target_per_page) {
+    if ($archive_per_page <= 0 || $archive_per_page > $target_per_page) {
         $query->set('posts_per_archive_page', $target_per_page);
     }
 
