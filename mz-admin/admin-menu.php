@@ -5914,10 +5914,7 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_move_single_item_top_level_menus_into_settings();
     meza_cleanup_menu_separators();
     meza_filter_events_role_admin_menu();
-    meza_filter_dashboard_submenu_items();
-    meza_remove_admin_menu_counters();
-    meza_alphabetize_fallback_plugin_submenus();
-    meza_finalize_tools_submenu_order();
+    meza_apply_tail_admin_menu_mutations();
     meza_filter_disabled_tag_taxonomy_submenus();
     meza_enforce_restricted_top_level_utility_menus();
     meza_prune_empty_top_level_admin_menu_groups();
@@ -6243,8 +6240,8 @@ function meza_remove_admin_menu_counters(): void
     unset($items);
 }
 
-// Move Site Health from Tools to Dashboard, directly under Updates.
-add_action('admin_menu', function () {
+function meza_move_site_health_tools_submenu_to_dashboard(): void
+{
     global $submenu;
 
     if (!isset($submenu['tools.php']) || !is_array($submenu['tools.php'])) return;
@@ -6287,16 +6284,10 @@ add_action('admin_menu', function () {
     }
 
     array_splice($submenu['index.php'], $insert_at, 0, [$site_health_item]);
-}, 100000);
+}
 
-// Keep Dashboard submenu limited to Home, Updates, and Site Health.
-add_action('admin_menu', 'meza_filter_dashboard_submenu_items', 100001);
-
-// Remove admin-menu counters everywhere except Dashboard > Updates and Site Health.
-add_action('admin_menu', 'meza_remove_admin_menu_counters', 100002);
-
-// Streamline Tools submenu items.
-add_action('admin_menu', function () {
+function meza_streamline_tools_submenu_items(): void
+{
     global $submenu;
 
     if (!isset($submenu['tools.php']) || !is_array($submenu['tools.php'])) return;
@@ -6318,7 +6309,7 @@ add_action('admin_menu', function () {
     unset($item);
 
     $submenu['tools.php'] = meza_sort_tools_submenu_items(array_values($submenu['tools.php']));
-}, 100001);
+}
 
 // Keep Tools > Import highlighted on the WordPress importer screen.
 add_filter('parent_file', function ($parent_file) {
@@ -6339,8 +6330,8 @@ add_filter('submenu_file', function ($submenu_file) {
     return 'admin.php?import=wordpress';
 });
 
-// Normalize post-type "Add New" submenu labels to "Add {Post Type}".
-add_action('admin_menu', function () {
+function meza_normalize_post_type_add_new_submenu_labels(): void
+{
     global $submenu;
 
     foreach ($submenu as $parent_slug => &$items) {
@@ -6415,10 +6406,10 @@ add_action('admin_menu', function () {
         unset($item);
     }
     unset($items);
-}, 100002);
+}
 
-// Simplify content-menu taxonomy/import/export submenu labels by removing the parent content type name.
-add_action('admin_menu', function () {
+function meza_simplify_content_menu_submenu_labels(): void
+{
     global $menu, $submenu;
 
     foreach ($submenu as $parent_slug => &$items) {
@@ -6508,7 +6499,7 @@ add_action('admin_menu', function () {
         $items = meza_sort_submenu_items_with_standard_structure($items, (string) $parent_slug, $is_post_type_parent ? $post_type : '');
     }
     unset($items);
-}, 100003);
+}
 
 function meza_alphabetize_fallback_plugin_submenus(): void
 {
@@ -6595,5 +6586,17 @@ function meza_finalize_tools_submenu_order(): void
     $submenu['tools.php'] = meza_sort_tools_submenu_items($submenu['tools.php']);
 }
 
-add_action('admin_menu', 'meza_alphabetize_fallback_plugin_submenus', 100004);
-add_action('admin_menu', 'meza_finalize_tools_submenu_order', PHP_INT_MAX - 1);
+function meza_apply_tail_admin_menu_mutations(): void
+{
+    meza_move_site_health_tools_submenu_to_dashboard();
+    meza_filter_dashboard_submenu_items();
+    meza_streamline_tools_submenu_items();
+    meza_remove_admin_menu_counters();
+    meza_normalize_post_type_add_new_submenu_labels();
+    meza_simplify_content_menu_submenu_labels();
+    meza_alphabetize_fallback_plugin_submenus();
+    meza_finalize_tools_submenu_order();
+}
+
+// Apply the late dashboard/tools/submenu cleanup as a single ordered pass.
+add_action('admin_menu', 'meza_apply_tail_admin_menu_mutations', PHP_INT_MAX - 1);
