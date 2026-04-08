@@ -276,18 +276,9 @@ function meza_should_grant_site_manager_utility_submenu_access(string $parent_sl
         return false;
     }
 
-    $slug = strtolower((string) ($item[2] ?? ''));
-    $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+    $utility_label = meza_get_standardized_submenu_utility_label($item, $parent_slug);
 
-    $has_import = preg_match('/\bimport\b/i', $title) === 1 || str_contains($slug, 'import');
-    $has_export = preg_match('/\bexport\b/i', $title) === 1 || str_contains($slug, 'export');
-    $has_tools = preg_match('/\btools?\b/i', $title) === 1
-        || preg_match('/(^|[_-])tools?([_-]|$)/i', $slug) === 1;
-    $has_settings = preg_match('/\bsettings?\b/i', $title) === 1
-        || preg_match('/(^|[_-])settings?([_-]|$)/i', $slug) === 1;
-    $has_status = preg_match('/\bstatus\b/i', $title) === 1 || str_contains($slug, 'status');
-
-    return $has_import || $has_export || $has_tools || $has_settings || $has_status;
+    return in_array($utility_label, ['Import', 'Export', 'Import/Export', 'Tools', 'Settings'], true);
 }
 
 function meza_current_site_manager_request_matches_utility_submenu(): bool
