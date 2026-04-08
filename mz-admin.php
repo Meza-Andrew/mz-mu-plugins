@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.274
+ * Version: 1.1.275
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -28,6 +28,57 @@ if (!function_exists('str_starts_with')) {
         $needle = (string) $needle;
         if ($needle === '') return true;
         return strncmp((string) $haystack, $needle, strlen($needle)) === 0;
+    }
+}
+
+if (!function_exists('meza_normalize_sync_payload')) {
+    function meza_normalize_sync_payload($value)
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $normalized = [];
+        foreach ($value as $key => $item) {
+            $normalized[$key] = meza_normalize_sync_payload($item);
+        }
+
+        if ($normalized !== [] && array_keys($normalized) !== range(0, count($normalized) - 1)) {
+            ksort($normalized);
+        }
+
+        return $normalized;
+    }
+}
+
+if (!function_exists('meza_get_sync_signature')) {
+    function meza_get_sync_signature(array $payload): string
+    {
+        return md5((string) wp_json_encode(meza_normalize_sync_payload($payload)));
+    }
+}
+
+if (!function_exists('meza_get_stored_sync_signature')) {
+    function meza_get_stored_sync_signature(string $option_name): string
+    {
+        $signature = get_option($option_name, '');
+        return is_string($signature) ? $signature : '';
+    }
+}
+
+if (!function_exists('meza_store_sync_signature')) {
+    function meza_store_sync_signature(string $option_name, string $signature): void
+    {
+        if ($signature === '') {
+            return;
+        }
+
+        if (get_option($option_name, null) === null) {
+            add_option($option_name, $signature, '', false);
+            return;
+        }
+
+        update_option($option_name, $signature, false);
     }
 }
 
@@ -207,6 +258,37 @@ if (!function_exists('meza_sync_site_manager_role')) {
         $role_key = meza_site_manager_role_key();
         $target_caps = meza_site_manager_capabilities();
         $role = get_role($role_key);
+        $administrator_role = get_role('administrator');
+        $admin_required_caps = [
+            meza_submission_manager_capability(),
+            meza_backup_manager_capability(),
+            meza_customer_sign_generator_capability(),
+        ];
+        $sync_signature = meza_get_sync_signature([
+            'role_key' => $role_key,
+            'target_caps' => $target_caps,
+            'admin_required_caps' => $admin_required_caps,
+        ]);
+        $stored_signature = meza_get_stored_sync_signature('meza_sync_site_manager_role_signature');
+
+        if (
+            $role instanceof WP_Role
+            && $administrator_role instanceof WP_Role
+            && $stored_signature === $sync_signature
+        ) {
+            $administrator_caps_are_synced = true;
+
+            foreach ($admin_required_caps as $cap) {
+                if (!$administrator_role->has_cap($cap)) {
+                    $administrator_caps_are_synced = false;
+                    break;
+                }
+            }
+
+            if ($administrator_caps_are_synced) {
+                return;
+            }
+        }
 
         if (!($role instanceof WP_Role)) {
             add_role($role_key, 'Site Manager', $target_caps);
@@ -236,7 +318,6 @@ if (!function_exists('meza_sync_site_manager_role')) {
             }
         }
 
-        $administrator_role = get_role('administrator');
         if ($administrator_role instanceof WP_Role) {
             if (!$administrator_role->has_cap(meza_submission_manager_capability())) {
                 $administrator_role->add_cap(meza_submission_manager_capability());
@@ -261,6 +342,8 @@ if (!function_exists('meza_sync_site_manager_role')) {
         ) {
             $current_user->get_role_caps();
         }
+
+        meza_store_sync_signature('meza_sync_site_manager_role_signature', $sync_signature);
     }
 }
 add_action('init', 'meza_sync_site_manager_role', 20);
@@ -715,6 +798,20 @@ if (!function_exists('meza_sync_events_roles')) {
                 'caps' => meza_get_events_role_capabilities(false),
             ],
         ];
+        $sync_signature = meza_get_sync_signature($roles_to_sync);
+        $stored_signature = meza_get_stored_sync_signature('meza_sync_events_roles_signature');
+        $roles_are_present = true;
+
+        foreach (array_keys($roles_to_sync) as $role_key) {
+            if (!(get_role((string) $role_key) instanceof WP_Role)) {
+                $roles_are_present = false;
+                break;
+            }
+        }
+
+        if ($roles_are_present && $stored_signature === $sync_signature) {
+            return;
+        }
 
         foreach ($roles_to_sync as $role_key => $config) {
             $target_caps = (array) ($config['caps'] ?? []);
@@ -755,6 +852,8 @@ if (!function_exists('meza_sync_events_roles')) {
         if (meza_is_events_limited_role($current_user)) {
             $current_user->get_role_caps();
         }
+
+        meza_store_sync_signature('meza_sync_events_roles_signature', $sync_signature);
     }
 }
 add_action('init', 'meza_sync_events_roles', 20);
@@ -771,6 +870,28 @@ if (!function_exists('meza_sync_event_capabilities_from_post_access')) {
             meza_events_manager_role_key(),
             meza_events_editor_role_key(),
         ];
+        $capability_map = meza_get_event_post_capability_source_map();
+        $signature_payload = [];
+
+        foreach (array_keys((array) $wp_roles->roles) as $role_key) {
+            $role_key = (string) $role_key;
+            if ($role_key === '' || in_array($role_key, $skip_roles, true)) {
+                continue;
+            }
+
+            $role_data = (array) ($wp_roles->roles[$role_key] ?? []);
+            $role_caps = (array) ($role_data['capabilities'] ?? []);
+            $signature_payload[$role_key] = [];
+
+            foreach ($capability_map as $target_cap => $source_cap) {
+                $signature_payload[$role_key][(string) $target_cap] = !empty($role_caps[(string) $source_cap]);
+            }
+        }
+
+        $sync_signature = meza_get_sync_signature($signature_payload);
+        if (meza_get_stored_sync_signature('meza_sync_event_capabilities_signature') === $sync_signature) {
+            return;
+        }
 
         foreach (array_keys((array) $wp_roles->roles) as $role_key) {
             $role_key = (string) $role_key;
@@ -783,7 +904,7 @@ if (!function_exists('meza_sync_event_capabilities_from_post_access')) {
                 continue;
             }
 
-            foreach (meza_get_event_post_capability_source_map() as $target_cap => $source_cap) {
+            foreach ($capability_map as $target_cap => $source_cap) {
                 $target_cap = trim((string) $target_cap);
                 $source_cap = trim((string) $source_cap);
                 if ($target_cap === '' || $source_cap === '') {
@@ -807,6 +928,8 @@ if (!function_exists('meza_sync_event_capabilities_from_post_access')) {
         if ($current_user instanceof WP_User) {
             $current_user->get_role_caps();
         }
+
+        meza_store_sync_signature('meza_sync_event_capabilities_signature', $sync_signature);
     }
 }
 add_action('init', 'meza_sync_event_capabilities_from_post_access', 21);
@@ -969,6 +1092,14 @@ if (!function_exists('meza_sync_site_kit_dashboard_sharing')) {
             'analytics-4' => 'owner',
             'search-console' => 'owner',
         ];
+        $sync_signature = meza_get_sync_signature([
+            'shared_roles' => $shared_roles,
+            'target_modules' => $target_modules,
+        ]);
+
+        if (meza_get_stored_sync_signature('meza_sync_site_kit_dashboard_sharing_signature') === $sync_signature) {
+            return;
+        }
 
         $changed = false;
 
@@ -1004,6 +1135,8 @@ if (!function_exists('meza_sync_site_kit_dashboard_sharing')) {
         if ($changed) {
             update_option($option_name, $sharing_settings, false);
         }
+
+        meza_store_sync_signature('meza_sync_site_kit_dashboard_sharing_signature', $sync_signature);
     }
 }
 add_action('init', 'meza_sync_site_kit_dashboard_sharing', 25);
