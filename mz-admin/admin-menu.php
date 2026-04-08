@@ -935,16 +935,7 @@ function meza_dedupe_tools_submenu_links(): void
             continue;
         }
 
-        $item_title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
         $item_slug = (string) ($item[2] ?? '');
-
-        if (
-            str_contains($item_title, 'redirect')
-            || str_contains(strtolower($item_slug), 'redirect')
-        ) {
-            unset($submenu['tools.php'][$index]);
-            continue;
-        }
 
         if ($item_slug === '' || in_array($item_slug, $protected_tools_slugs, true)) {
             continue;
