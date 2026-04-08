@@ -1002,35 +1002,41 @@ add_action('admin_head', function () {
         '</style>';
 }, 99999);
 
-add_action('admin_head', function () {
-    echo '<style id="meza-admin-bar-cache-icon-alignment">' .
-        '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item{' .
-        'display:flex;' .
-        'align-items:center;' .
-        'gap:6px;' .
-        '}' .
-        '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-icon{' .
-        'display:inline-flex;' .
-        'align-items:center;' .
-        'justify-content:center;' .
-        'width:20px;' .
-        'min-width:20px;' .
-        'height:20px;' .
-        'margin:0;' .
-        'line-height:20px;' .
-        'font-size:20px;' .
-        '}' .
-        '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-icon:before{' .
-        'width:20px;' .
-        'height:20px;' .
-        'font-size:20px;' .
-        'line-height:20px;' .
-        '}' .
-        '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-label{' .
-        'line-height:32px;' .
-        '}' .
-        '</style>';
-}, 99999);
+if (!function_exists('meza_output_admin_bar_toolbar_alignment_css')) {
+    function meza_output_admin_bar_toolbar_alignment_css(): void
+    {
+        echo '<style id="meza-admin-bar-cache-icon-alignment">' .
+            '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item{' .
+            'display:flex;' .
+            'align-items:center;' .
+            'gap:6px;' .
+            '}' .
+            '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-icon{' .
+            'display:inline-flex;' .
+            'align-items:center;' .
+            'justify-content:center;' .
+            'width:20px;' .
+            'min-width:20px;' .
+            'height:20px;' .
+            'margin:0;' .
+            'line-height:20px;' .
+            'font-size:20px;' .
+            '}' .
+            '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-icon:before{' .
+            'width:20px;' .
+            'height:20px;' .
+            'font-size:20px;' .
+            'line-height:20px;' .
+            '}' .
+            '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-label{' .
+            'line-height:32px;' .
+            '}' .
+            '</style>';
+    }
+}
+
+add_action('admin_head', 'meza_output_admin_bar_toolbar_alignment_css', 99999);
+add_action('wp_head', 'meza_output_admin_bar_toolbar_alignment_css', 99999);
 
 /** Resolve the site's Primary nav menu so Appearance > Menus opens on a predictable default. */
 function meza_get_primary_nav_menu_id(): int
