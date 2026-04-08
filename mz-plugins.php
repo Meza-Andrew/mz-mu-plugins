@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.24
+ * Version: 1.4.25
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -94,8 +94,8 @@ if (!function_exists('mz_plugins_get_catalog')) {
             ['name' => 'Error Log Monitor', 'slug' => 'error-log-monitor', 'file' => 'error-log-monitor/plugin.php', 'envs' => ['development', 'staging', 'qa', 'production']],
 
             // All except development
-            ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['development'], 'activate' => false],
-            ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['staging', 'qa', 'production']],
+            ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['development'], 'activate' => false, 'signatures' => ['wpseo', 'wpseo_page_settings']],
+            ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['staging', 'qa', 'production'], 'signatures' => ['wpseo', 'wpseo_page_settings']],
             ['name' => 'ACF Content Analysis for Yoast SEO', 'slug' => 'acf-content-analysis-for-yoast-seo', 'file' => 'acf-content-analysis-for-yoast-seo/yoast-acf-analysis.php', 'envs' => ['staging', 'qa', 'production'], 'requires_active' => ['advanced-custom-fields-pro/acf.php', 'wordpress-seo/wp-seo.php'], 'requires_wp' => '6.6', 'requires_php' => '7.2.5'],
             ['name' => 'Admin Columns', 'slug' => 'codepress-admin-columns', 'file' => 'codepress-admin-columns/codepress-admin-columns.php', 'envs' => ['staging', 'qa', 'production']],
             ['name' => 'Admin Menu Editor', 'slug' => 'admin-menu-editor', 'file' => 'admin-menu-editor/menu-editor.php', 'envs' => ['staging', 'qa', 'production']],
@@ -145,6 +145,14 @@ if (!function_exists('mz_plugins_get_env_plugin_signatures')) {
             ], static function (string $token): bool {
                 return $token !== '' && strlen($token) >= 4;
             });
+
+            $custom_signatures = array_filter(array_map(static function ($signature): string {
+                return strtolower(trim((string) $signature));
+            }, (array) ($plugin['signatures'] ?? [])), static function (string $signature): bool {
+                return $signature !== '' && strlen($signature) >= 4;
+            });
+
+            $tokens = array_merge($tokens, $custom_signatures);
 
             foreach ($tokens as $token) {
                 $signatures[$token] = true;
