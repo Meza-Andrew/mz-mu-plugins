@@ -203,16 +203,9 @@ function meza_is_admin_only_media_performance_item(string $parent_slug, array $i
         return false;
     }
 
-    $slug = strtolower((string) ($item[2] ?? ''));
     $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
 
-    if ($title !== 'performance' && !str_contains($title, 'performance')) {
-        return false;
-    }
-
-    return str_contains($slug, 'webp')
-        || str_contains($slug, 'converter-for-media')
-        || str_contains($slug, 'performance');
+    return $title === 'performance' || str_contains($title, 'performance');
 }
 
 function meza_site_manager_is_utility_admin_request(): bool
