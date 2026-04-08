@@ -7,7 +7,7 @@
 if (!function_exists('meza_get_clear_cache_admin_bar_title')) {
     function meza_get_clear_cache_admin_bar_title(): string
     {
-        return '<span class="ab-icon dashicons dashicons-database-remove" aria-hidden="true"></span><span class="ab-label">Clear Page and Object Cache</span>';
+        return '<span class="ab-icon dashicons dashicons-database-remove" aria-hidden="true"></span><span class="ab-label">Clear Cache</span>';
     }
 }
 
