@@ -4365,6 +4365,38 @@ add_action('pre_get_posts', function (WP_Query $q) {
  *  CTA ADMIN SORTING
  *  ================================ */
 
+if (!function_exists('meza_seed_edit_screen_default_sort_request')) {
+    function meza_seed_edit_screen_default_sort_request(WP_Screen $screen): void
+    {
+        if ((string) ($screen->base ?? '') !== 'edit') return;
+
+        $post_type = sanitize_key((string) ($screen->post_type ?? ''));
+        if ($post_type === '') return;
+
+        if ((isset($_GET['orderby']) && $_GET['orderby'] !== '') || (isset($_REQUEST['orderby']) && $_REQUEST['orderby'] !== '')) {
+            return;
+        }
+
+        $orderby = 'modified';
+        $order = 'desc';
+
+        if (meza_post_type_menu_order_admin_column_is_visible($post_type)) {
+            $orderby = 'menu_order';
+            $order = 'asc';
+        }
+
+        $_GET['orderby'] = $orderby;
+        $_REQUEST['orderby'] = $orderby;
+        $_GET['order'] = $order;
+        $_REQUEST['order'] = $order;
+    }
+}
+
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen)) return;
+    meza_seed_edit_screen_default_sort_request($screen);
+}, 1);
+
 // Default all admin post list tables to "Last Modified" DESC unless user selected a different sort.
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
