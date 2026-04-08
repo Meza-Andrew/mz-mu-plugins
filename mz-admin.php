@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.226
+ * Version: 1.1.271
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -436,6 +436,160 @@ if (!function_exists('meza_can_access_content_permissions_panel')) {
             'administrator',
             meza_site_manager_role_key(),
         ]);
+    }
+}
+
+if (!function_exists('meza_get_admin_notice_hook_names')) {
+    function meza_get_admin_notice_hook_names(): array
+    {
+        return [
+            'admin_notices',
+            'all_admin_notices',
+            'network_admin_notices',
+            'user_admin_notices',
+        ];
+    }
+}
+
+if (!function_exists('meza_get_callback_signature')) {
+    function meza_get_callback_signature($callback): string
+    {
+        if (is_string($callback)) {
+            return $callback;
+        }
+
+        if ($callback instanceof Closure) {
+            return 'closure';
+        }
+
+        if (is_array($callback)) {
+            $target = $callback[0] ?? null;
+            $method = (string) ($callback[1] ?? '');
+
+            if (is_object($target)) {
+                return get_class($target) . '::' . $method;
+            }
+
+            if (is_string($target)) {
+                return $target . '::' . $method;
+            }
+        }
+
+        if (is_object($callback) && method_exists($callback, '__invoke')) {
+            return get_class($callback) . '::__invoke';
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('meza_get_callback_source_file')) {
+    function meza_get_callback_source_file($callback): string
+    {
+        try {
+            if (is_string($callback) && function_exists($callback)) {
+                $reflection = new ReflectionFunction($callback);
+                return wp_normalize_path((string) $reflection->getFileName());
+            }
+
+            if ($callback instanceof Closure) {
+                $reflection = new ReflectionFunction($callback);
+                return wp_normalize_path((string) $reflection->getFileName());
+            }
+
+            if (is_array($callback) && count($callback) >= 2) {
+                $target = $callback[0];
+                $method = (string) $callback[1];
+
+                if ((is_object($target) || is_string($target)) && method_exists($target, $method)) {
+                    $reflection = new ReflectionMethod($target, $method);
+                    return wp_normalize_path((string) $reflection->getFileName());
+                }
+            }
+
+            if (is_object($callback) && method_exists($callback, '__invoke')) {
+                $reflection = new ReflectionMethod($callback, '__invoke');
+                return wp_normalize_path((string) $reflection->getFileName());
+            }
+        } catch (ReflectionException $exception) {
+            return '';
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('meza_string_matches_plugin_signatures')) {
+    function meza_string_matches_plugin_signatures(string $value, array $signatures): bool
+    {
+        $value = strtolower(trim(wp_normalize_path($value)));
+        if ($value === '' || $signatures === []) {
+            return false;
+        }
+
+        foreach ($signatures as $signature) {
+            $signature = strtolower(trim((string) $signature));
+            if ($signature === '') {
+                continue;
+            }
+
+            if (str_contains($value, $signature)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_should_suppress_admin_notice_callback')) {
+    function meza_should_suppress_admin_notice_callback($callback): bool
+    {
+        $signature = strtolower(trim(meza_get_callback_signature($callback)));
+        if ($signature !== '' && (str_contains($signature, 'meza_') || str_contains($signature, 'mz_'))) {
+            return false;
+        }
+
+        $source_file = meza_get_callback_source_file($callback);
+        if ($source_file === '') {
+            return false;
+        }
+
+        if (
+            str_contains($source_file, '/wp-admin/')
+            || str_contains($source_file, '/wp-includes/')
+            || str_contains($source_file, '/wp-content/mu-plugins/mz-mu-plugins/')
+        ) {
+            return false;
+        }
+
+        return str_contains($source_file, '/wp-content/plugins/')
+            || str_contains($source_file, '/wp-content/mu-plugins/');
+    }
+}
+
+if (!function_exists('meza_suppress_non_meza_plugin_admin_notice_callbacks')) {
+    function meza_suppress_non_meza_plugin_admin_notice_callbacks(): void
+    {
+        global $wp_filter;
+
+        foreach (meza_get_admin_notice_hook_names() as $hook_name) {
+            $hook = $wp_filter[$hook_name] ?? null;
+            if (!($hook instanceof WP_Hook) || !is_array($hook->callbacks)) {
+                continue;
+            }
+
+            foreach ($hook->callbacks as $priority => $callbacks) {
+                foreach ((array) $callbacks as $callback_data) {
+                    $callback = $callback_data['function'] ?? null;
+                    if ($callback === null || !meza_should_suppress_admin_notice_callback($callback)) {
+                        continue;
+                    }
+
+                    remove_action($hook_name, $callback, (int) $priority);
+                }
+            }
+        }
     }
 }
 
@@ -1504,6 +1658,8 @@ function meza_get_organization_like_post_types(): array
         'partners',
         'sponsor',
         'sponsors',
+        'tribe_venue',
+        'tribe_organizer',
     ];
 }
 
@@ -1538,6 +1694,10 @@ function meza_post_type_organization_link_admin_column_is_default_visible(string
 
 function meza_page_marketing_admin_columns_are_default_visible(string $post_type): bool
 {
+    if (!meza_acf_fields_are_available()) {
+        return false;
+    }
+
     return trim($post_type) === 'page';
 }
 
@@ -1547,6 +1707,11 @@ function meza_post_type_uses_native_admin_columns(string $post_type): bool
     if ($post_type === '') return false;
 
     return meza_post_type_supports_menu_order_admin_column($post_type);
+}
+
+function meza_acf_fields_are_available(): bool
+{
+    return function_exists('get_field');
 }
 
 function meza_post_has_permalink(int $post_id): bool
@@ -1646,6 +1811,16 @@ function meza_get_post_type_summary_admin_column_label(string $post_type): strin
     return in_array(trim($post_type), ['cta', 'form'], true) ? __('Subhead') : __('Summary');
 }
 
+function meza_post_type_shows_share_text_admin_columns(string $post_type): bool
+{
+    $post_type = trim($post_type);
+    if ($post_type === '' || meza_is_acf_admin_post_type($post_type)) {
+        return false;
+    }
+
+    return meza_post_type_has_permalink($post_type) && meza_post_type_is_visible_in_admin_menu($post_type);
+}
+
 function meza_get_taxonomy_admin_column_sort_labels(string $post_type): array
 {
     $post_type = trim($post_type);
@@ -1661,7 +1836,7 @@ function meza_get_taxonomy_admin_column_sort_labels(string $post_type): array
     }
 
     foreach ($taxonomies as $taxonomy_name => $taxonomy) {
-        if (!($taxonomy instanceof WP_Taxonomy) || empty($taxonomy->show_admin_column)) {
+        if (!($taxonomy instanceof WP_Taxonomy) || empty($taxonomy->show_ui)) {
             continue;
         }
 
@@ -1692,7 +1867,256 @@ function meza_get_taxonomy_admin_column_sort_labels(string $post_type): array
         }
     }
 
+    if ($post_type === 'tribe_events') {
+        $events_taxonomy = get_taxonomy('tribe_events_cat');
+        $events_label = '';
+
+        if ($events_taxonomy instanceof WP_Taxonomy) {
+            $events_label = trim(wp_strip_all_tags((string) ($events_taxonomy->labels->name ?? '')));
+        }
+
+        if ($events_label === '') {
+            $events_label = __('Event Categories');
+        }
+
+        foreach (['events-cats', 'tribe_events_cat', 'taxonomy-tribe_events_cat', strtolower($events_label)] as $token) {
+            $labels[strtolower(trim((string) $token))] = $events_label;
+        }
+    }
+
     return $labels;
+}
+
+function meza_ensure_taxonomy_admin_columns(array $columns, string $post_type): array
+{
+    if (!is_array($columns)) {
+        return [];
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return $columns;
+    }
+
+    $taxonomies = get_object_taxonomies($post_type, 'objects');
+    if (!is_array($taxonomies)) {
+        return $columns;
+    }
+
+    foreach ($taxonomies as $taxonomy_name => $taxonomy) {
+        if (!($taxonomy instanceof WP_Taxonomy) || empty($taxonomy->show_ui)) {
+            continue;
+        }
+
+        $preferred_key = 'taxonomy-' . (string) $taxonomy_name;
+        $candidate_keys = [$preferred_key, (string) $taxonomy_name];
+
+        if ($post_type === 'post' && $taxonomy_name === 'category') {
+            $candidate_keys[] = 'categories';
+            $candidate_keys[] = 'category';
+        }
+
+        if ($post_type === 'tribe_events' && $taxonomy_name === 'tribe_events_cat') {
+            array_unshift($candidate_keys, 'events-cats');
+        }
+
+        $already_exists = false;
+        foreach ($candidate_keys as $candidate_key) {
+            if ($candidate_key !== '' && array_key_exists($candidate_key, $columns)) {
+                $already_exists = true;
+                break;
+            }
+        }
+
+        if ($already_exists) {
+            continue;
+        }
+
+        $column_label = trim(wp_strip_all_tags((string) ($taxonomy->labels->name ?? '')));
+        if ($column_label === '') {
+            $column_label = ucwords(str_replace(['-', '_'], ' ', (string) $taxonomy_name));
+        }
+
+        $columns[$preferred_key] = $column_label;
+    }
+
+    return $columns;
+}
+
+function meza_get_taxonomy_admin_column_keys_for_post_type(string $post_type): array
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return [];
+    }
+
+    $taxonomies = get_object_taxonomies($post_type, 'objects');
+    if (!is_array($taxonomies)) {
+        return [];
+    }
+
+    $keys = [];
+
+    foreach ($taxonomies as $taxonomy_name => $taxonomy) {
+        if (!($taxonomy instanceof WP_Taxonomy) || empty($taxonomy->show_ui)) {
+            continue;
+        }
+
+        $keys[] = 'taxonomy-' . (string) $taxonomy_name;
+        $keys[] = (string) $taxonomy_name;
+
+        if ($post_type === 'tribe_events' && $taxonomy_name === 'tribe_events_cat') {
+            $keys[] = 'events-cats';
+        }
+    }
+
+    return array_values(array_unique(array_filter(array_map('strval', $keys))));
+}
+
+function meza_get_taxonomy_admin_column_width_selectors(string $post_type): array
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return [];
+    }
+
+    $selectors = [];
+
+    foreach (meza_get_taxonomy_admin_column_keys_for_post_type($post_type) as $key) {
+        $key = trim((string) $key);
+        if ($key === '') {
+            continue;
+        }
+
+        $selectors[] = '.wp-list-table th#' . $key;
+        $selectors[] = '.wp-list-table th.column-' . $key;
+        $selectors[] = '.wp-list-table td.column-' . $key;
+
+        if (!str_starts_with($key, 'taxonomy-')) {
+            $selectors[] = '.wp-list-table th.column-taxonomy-' . $key;
+            $selectors[] = '.wp-list-table td.column-taxonomy-' . $key;
+        }
+    }
+
+    return array_values(array_unique($selectors));
+}
+
+function meza_post_type_uses_admin_columns_layout(string $post_type): bool
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return false;
+    }
+
+    if (!is_admin()) {
+        return false;
+    }
+
+    if (!function_exists('is_plugin_active')) {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    }
+
+    if (!function_exists('is_plugin_active') || !is_plugin_active('codepress-admin-columns/codepress-admin-columns.php')) {
+        return false;
+    }
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+
+    return $screen instanceof WP_Screen
+        && $screen->base === 'edit'
+        && (string) ($screen->post_type ?? '') === $post_type;
+}
+
+function meza_get_compact_date_admin_column_width_selectors(string $post_type): array
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return [];
+    }
+
+    $selectors = [];
+    $candidate_keys = ['start-date', 'end-date', 'start_date', 'end_date'];
+
+    foreach (array_values(array_unique($candidate_keys)) as $key) {
+        $selectors[] = '.wp-list-table th#' . $key;
+        $selectors[] = '.wp-list-table th.column-' . $key;
+        $selectors[] = '.wp-list-table td.column-' . $key;
+    }
+
+    return array_values(array_unique($selectors));
+}
+
+function meza_get_current_admin_column_width_selectors(array $columns, array $tokens): array
+{
+    if (!is_array($columns) || $columns === [] || $tokens === []) {
+        return [];
+    }
+
+    $selectors = [];
+
+    foreach ($columns as $key => $label) {
+        $key = trim((string) $key);
+        if ($key === '' || !meza_admin_column_matches_tokens($key, $label, $tokens)) {
+            continue;
+        }
+
+        $selectors[] = '.wp-list-table th#' . $key;
+        $selectors[] = '.wp-list-table th.column-' . $key;
+        $selectors[] = '.wp-list-table td.column-' . $key;
+    }
+
+    return array_values(array_unique($selectors));
+}
+
+function meza_get_event_date_admin_column_keys(array $columns): array
+{
+    if (!is_array($columns)) {
+        return ['start' => '', 'end' => ''];
+    }
+
+    $resolved = [
+        'start' => '',
+        'end' => '',
+    ];
+
+    foreach ($columns as $key => $label) {
+        $key = (string) $key;
+
+        if ($resolved['start'] === '' && meza_admin_column_matches_tokens($key, $label, ['start-date', 'start_date', 'start date'])) {
+            $resolved['start'] = $key;
+            continue;
+        }
+
+        if ($resolved['end'] === '' && meza_admin_column_matches_tokens($key, $label, ['end-date', 'end_date', 'end date'])) {
+            $resolved['end'] = $key;
+        }
+    }
+
+    return $resolved;
+}
+
+function meza_combine_event_date_admin_columns(array $columns, string $post_type): array
+{
+    if (!is_array($columns)) {
+        return [];
+    }
+
+    if (!meza_is_event_post_type($post_type)) {
+        return $columns;
+    }
+
+    $date_keys = meza_get_event_date_admin_column_keys($columns);
+    $start_key = (string) ($date_keys['start'] ?? '');
+    $end_key = (string) ($date_keys['end'] ?? '');
+
+    if ($start_key === '' || $end_key === '' || !array_key_exists($start_key, $columns) || !array_key_exists($end_key, $columns)) {
+        return $columns;
+    }
+
+    $columns[$start_key] = __('Date');
+    unset($columns[$end_key]);
+
+    return $columns;
 }
 
 function meza_get_sorted_taxonomy_admin_column_keys(array $columns, string $post_type): array
@@ -1720,13 +2144,56 @@ function meza_get_sorted_taxonomy_admin_column_keys(array $columns, string $post
         }
 
         $taxonomy_columns[(string) $key] = [
+            'taxonomy' => meza_get_admin_column_taxonomy_name((string) $key, $post_type),
             'label' => strtolower($sort_label),
             'position' => $position,
         ];
         $position++;
     }
 
-    uasort($taxonomy_columns, static function (array $a, array $b): int {
+    $grouped_taxonomy_columns = [];
+
+    foreach ($taxonomy_columns as $key => $data) {
+        $taxonomy_name = trim((string) ($data['taxonomy'] ?? ''));
+        if ($taxonomy_name === '') {
+            $taxonomy_name = strtolower(trim((string) $key));
+        }
+
+        if (!isset($grouped_taxonomy_columns[$taxonomy_name])) {
+            $grouped_taxonomy_columns[$taxonomy_name] = [];
+        }
+
+        $grouped_taxonomy_columns[$taxonomy_name][$key] = $data;
+    }
+
+    $preferred_taxonomy_columns = [];
+
+    foreach ($grouped_taxonomy_columns as $taxonomy_name => $group) {
+        if ($post_type === 'post' && $taxonomy_name === 'category') {
+            foreach (['categories', 'taxonomy-category', 'category'] as $preferred_key) {
+                if (isset($group[$preferred_key])) {
+                    $preferred_taxonomy_columns[$preferred_key] = $group[$preferred_key];
+                    continue 2;
+                }
+            }
+        }
+
+        if ($post_type === 'tribe_events' && $taxonomy_name === 'tribe_events_cat') {
+            foreach (['events-cats', 'taxonomy-tribe_events_cat', 'tribe_events_cat'] as $preferred_key) {
+                if (isset($group[$preferred_key])) {
+                    $preferred_taxonomy_columns[$preferred_key] = $group[$preferred_key];
+                    continue 2;
+                }
+            }
+        }
+
+        $first_key = array_key_first($group);
+        if (is_string($first_key) && $first_key !== '') {
+            $preferred_taxonomy_columns[$first_key] = $group[$first_key];
+        }
+    }
+
+    uasort($preferred_taxonomy_columns, static function (array $a, array $b): int {
         $label_compare = strnatcasecmp((string) ($a['label'] ?? ''), (string) ($b['label'] ?? ''));
         if ($label_compare !== 0) {
             return $label_compare;
@@ -1735,7 +2202,7 @@ function meza_get_sorted_taxonomy_admin_column_keys(array $columns, string $post
         return ((int) ($a['position'] ?? 0)) <=> ((int) ($b['position'] ?? 0));
     });
 
-    return array_keys($taxonomy_columns);
+    return array_keys($preferred_taxonomy_columns);
 }
 
 function meza_reinsert_sorted_taxonomy_columns(array $columns, string $post_type): array
@@ -1746,6 +2213,10 @@ function meza_reinsert_sorted_taxonomy_columns(array $columns, string $post_type
 
     $sorted_taxonomy_keys = meza_get_sorted_taxonomy_admin_column_keys($columns, $post_type);
     if (count($sorted_taxonomy_keys) < 2) {
+        return $columns;
+    }
+
+    if (meza_post_type_uses_admin_columns_layout($post_type)) {
         return $columns;
     }
 
@@ -1777,9 +2248,28 @@ function meza_reinsert_sorted_taxonomy_columns(array $columns, string $post_type
     return $rebuilt;
 }
 
-function meza_should_preserve_taxonomy_admin_column_layout(string $post_type): bool
+function meza_normalize_admin_column_token(string $value): string
 {
-    return trim($post_type) === 'tribe_events';
+    return strtolower(trim(wp_strip_all_tags($value)));
+}
+
+function meza_admin_column_matches_tokens(string $key, $label, array $tokens): bool
+{
+    $normalized_key = meza_normalize_admin_column_token($key);
+    $normalized_label = meza_normalize_admin_column_token((string) $label);
+
+    foreach ($tokens as $token) {
+        $token = meza_normalize_admin_column_token((string) $token);
+        if ($token === '') {
+            continue;
+        }
+
+        if ($normalized_key === $token || $normalized_label === $token) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function meza_move_taxonomy_columns_before_meta_columns(array $columns, string $post_type): array
@@ -1789,7 +2279,11 @@ function meza_move_taxonomy_columns_before_meta_columns(array $columns, string $
     }
 
     $post_type = trim($post_type);
-    if ($post_type === '' || meza_should_preserve_taxonomy_admin_column_layout($post_type)) {
+    if ($post_type === '') {
+        return $columns;
+    }
+
+    if (meza_post_type_uses_admin_columns_layout($post_type)) {
         return $columns;
     }
 
@@ -1798,30 +2292,35 @@ function meza_move_taxonomy_columns_before_meta_columns(array $columns, string $
         return $columns;
     }
 
-    $anchor_keys = [
+    $anchor_tokens = [
         'mz_profile_link',
         'mz_organization_url',
         'wpseo-title',
         'wpseo-metadesc',
         'mz_share_title',
         'mz_share_description',
+        'link',
+        'meta title',
+        'meta description',
+        'share title',
+        'share description',
     ];
 
     if (meza_post_type_uses_share_image_admin_column($post_type)) {
-        $anchor_keys[] = 'mz_thumbnail';
+        $anchor_tokens[] = 'mz_thumbnail';
+        $anchor_tokens[] = meza_get_post_type_thumbnail_admin_column_label($post_type);
     }
 
-    $anchor_keys = array_fill_keys($anchor_keys, true);
     $taxonomy_key_map = array_fill_keys($sorted_taxonomy_keys, true);
     $anchor_key = '';
 
-    foreach (array_keys($columns) as $key) {
+    foreach ($columns as $key => $label) {
         $key = (string) $key;
         if (isset($taxonomy_key_map[$key])) {
             continue;
         }
 
-        if (isset($anchor_keys[$key])) {
+        if (meza_admin_column_matches_tokens($key, $label, $anchor_tokens)) {
             $anchor_key = $key;
             break;
         }
@@ -1857,6 +2356,353 @@ function meza_move_taxonomy_columns_before_meta_columns(array $columns, string $
 
     return $rebuilt;
 }
+
+function meza_move_custom_admin_columns_before_meta_columns(array $columns, string $post_type): array
+{
+    if (!is_array($columns)) {
+        return [];
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return $columns;
+    }
+
+    if (meza_post_type_uses_admin_columns_layout($post_type)) {
+        return $columns;
+    }
+
+    if ($post_type === 'tribe_events') {
+        return $columns;
+    }
+
+    $anchor_tokens = [
+        'mz_profile_link',
+        'mz_organization_url',
+        'wpseo-title',
+        'wpseo-metadesc',
+        'mz_share_title',
+        'mz_share_description',
+        'link',
+        'meta title',
+        'meta description',
+        'share title',
+        'share description',
+    ];
+
+    if (meza_post_type_uses_share_image_admin_column($post_type)) {
+        $anchor_tokens[] = 'mz_thumbnail';
+        $anchor_tokens[] = meza_get_post_type_thumbnail_admin_column_label($post_type);
+    }
+
+    $taxonomy_key_map = array_fill_keys(meza_get_sorted_taxonomy_admin_column_keys($columns, $post_type), true);
+    $reserved_key_map = array_fill_keys([
+        'cb',
+        'title',
+        'mz_id',
+        'mz_menu_order',
+        'mz_thumbnail',
+        'mz_profile_title',
+        'mz_profile_link',
+        'mz_organization_url',
+        'mz_summary',
+        'mz_faq_count',
+        'mz_cta_link',
+        'mz_cta_secondary_link',
+        'mz_slug',
+        'mz_form_recipients',
+        'mz_review_quote',
+        'mz_review_citer',
+        'mz_page_headline',
+        'mz_page_cta',
+        'mz_page_form',
+        'start-date',
+        'end-date',
+        'mz_modified',
+        'modified',
+        'mz_published',
+        'date',
+    ], true);
+    $excluded_custom_column_tokens = [];
+
+    if ($post_type === 'provider') {
+        $excluded_custom_column_tokens[] = 'is this provider accepting new patients?';
+    }
+
+    $custom_keys = [];
+
+    foreach (array_keys($columns) as $key) {
+        $key = (string) $key;
+        if (
+            $key === ''
+            || isset($taxonomy_key_map[$key])
+            || isset($reserved_key_map[$key])
+            || meza_admin_column_matches_tokens($key, $columns[$key] ?? '', $anchor_tokens)
+            || meza_admin_column_matches_tokens($key, $columns[$key] ?? '', $excluded_custom_column_tokens)
+        ) {
+            continue;
+        }
+
+        $custom_keys[] = $key;
+    }
+
+    if (empty($custom_keys)) {
+        return $columns;
+    }
+
+    $custom_key_map = array_fill_keys($custom_keys, true);
+    $anchor_key = '';
+
+    foreach ($columns as $key => $label) {
+        $key = (string) $key;
+        if (isset($custom_key_map[$key])) {
+            continue;
+        }
+
+        if (meza_admin_column_matches_tokens($key, $label, $anchor_tokens)) {
+            $anchor_key = $key;
+            break;
+        }
+    }
+
+    if ($anchor_key === '') {
+        return $columns;
+    }
+
+    $rebuilt = [];
+    $inserted = false;
+
+    foreach ($columns as $key => $label) {
+        $key = (string) $key;
+
+        if (!$inserted && $key === $anchor_key) {
+            foreach ($custom_keys as $custom_key) {
+                $rebuilt[$custom_key] = $columns[$custom_key];
+            }
+            $inserted = true;
+        }
+
+        if (isset($custom_key_map[$key])) {
+            continue;
+        }
+
+        $rebuilt[$key] = $label;
+    }
+
+    return $inserted ? $rebuilt : $columns;
+}
+
+function meza_apply_default_admin_column_order(array $columns, string $post_type): array
+{
+    if (!is_array($columns)) {
+        return [];
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return $columns;
+    }
+
+    $ordered = [];
+    $used = [];
+    $used_taxonomies = [];
+
+    $append = static function (string $key) use (&$ordered, &$columns, &$used, &$used_taxonomies, $post_type): void {
+        if ($key === '' || isset($used[$key]) || !array_key_exists($key, $columns)) {
+            return;
+        }
+
+        $taxonomy_name = meza_get_admin_column_taxonomy_name($key, $post_type);
+        if ($taxonomy_name !== '' && isset($used_taxonomies[$taxonomy_name])) {
+            $used[$key] = true;
+            return;
+        }
+
+        $ordered[$key] = $columns[$key];
+        $used[$key] = true;
+
+        if ($taxonomy_name !== '') {
+            $used_taxonomies[$taxonomy_name] = true;
+        }
+    };
+
+    $append_first_match = static function (array $tokens) use (&$columns, &$used, $append): void {
+        foreach ($columns as $key => $label) {
+            $key = (string) $key;
+            if ($key === '' || isset($used[$key])) {
+                continue;
+            }
+
+            if (!meza_admin_column_matches_tokens($key, $label, $tokens)) {
+                continue;
+            }
+
+            $append($key);
+            return;
+        }
+    };
+
+    $append_taxonomy_columns = static function () use ($append, $columns, $post_type): void {
+        foreach (meza_get_sorted_taxonomy_admin_column_keys($columns, $post_type) as $key) {
+            $append((string) $key);
+        }
+    };
+
+    $append_first_match(['cb']);
+    $append_first_match(['mz_id', 'id']);
+    $append_first_match(['mz_menu_order', '#']);
+
+    $thumbnail_label = meza_normalize_admin_column_token(meza_get_post_type_thumbnail_admin_column_label($post_type));
+    if ($thumbnail_label !== '' && $thumbnail_label !== 'share image') {
+        $append_first_match(['mz_thumbnail', $thumbnail_label]);
+    }
+
+    $append_first_match(['title', 'name', 'headline (h2)']);
+    $append_first_match(['mz_profile_title']);
+    $append_first_match(['mz_summary', 'summary']);
+    $append_first_match(['mz_profile_link', 'mz_organization_url', 'mz_page_link', 'link']);
+    $append_taxonomy_columns();
+    $append_first_match(['mz_page_headline', 'page headline (h1)']);
+    $append_first_match(['mz_page_cta', 'page cta']);
+    $append_first_match(['mz_page_form', 'page form']);
+    $append_first_match(['wpseo-title', 'meta title']);
+    $append_first_match(['wpseo-metadesc', 'meta description']);
+    $append_first_match(['share image']);
+    $append_first_match(['mz_share_title', 'share title']);
+    $append_first_match(['mz_share_description', 'share description']);
+    $append_first_match(['mz_modified', 'modified']);
+    $append_first_match(['mz_published', 'published', 'date']);
+
+    foreach (array_keys($columns) as $key) {
+        $append((string) $key);
+    }
+
+    return $ordered;
+}
+
+function meza_build_reordered_acp_column_collection($columns, string $post_type): ?AC\ColumnCollection
+{
+    if (!class_exists('AC\\ColumnCollection') || !($columns instanceof AC\ColumnIterator)) {
+        return null;
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return null;
+    }
+
+    $column_map = [];
+    $labels = [];
+
+    foreach ($columns as $column) {
+        if (!is_object($column) || !method_exists($column, 'get_id') || !method_exists($column, 'get_label')) {
+            continue;
+        }
+
+        $id = trim((string) $column->get_id());
+        if ($id === '') {
+            continue;
+        }
+
+        $column_map[$id] = $column;
+        $labels[$id] = (string) $column->get_label();
+    }
+
+    if ($column_map === []) {
+        return null;
+    }
+
+    $desired = meza_normalize_admin_columns_managed_headings($labels, $post_type, false);
+    $ordered = new AC\ColumnCollection();
+    $used = [];
+
+    foreach (array_keys($desired) as $id) {
+        $id = (string) $id;
+        if ($id === '' || !isset($column_map[$id]) || isset($used[$id])) {
+            continue;
+        }
+
+        $ordered->add($column_map[$id]);
+        $used[$id] = true;
+    }
+
+    foreach ($column_map as $id => $column) {
+        if (isset($used[$id])) {
+            continue;
+        }
+
+        $ordered->add($column);
+    }
+
+    return $ordered;
+}
+
+function meza_get_acp_column_collection_ids($columns): array
+{
+    if (!($columns instanceof AC\ColumnIterator)) {
+        return [];
+    }
+
+    $ids = [];
+
+    foreach ($columns as $column) {
+        if (!is_object($column) || !method_exists($column, 'get_id')) {
+            continue;
+        }
+
+        $id = trim((string) $column->get_id());
+        if ($id !== '') {
+            $ids[] = $id;
+        }
+    }
+
+    return $ids;
+}
+
+function meza_run_acp_default_admin_column_order_migration(): void
+{
+    if (!class_exists('AC\\Registry') || !class_exists('AC\\ListScreenRepository\\Storage')) {
+        return;
+    }
+
+    $target_version = '1.1.247';
+    if ((string) get_option('meza_acp_default_admin_column_order_migration') === $target_version) {
+        return;
+    }
+
+    $storage = AC\Registry::get(AC\ListScreenRepository\Storage::class);
+    if (!($storage instanceof AC\ListScreenRepository\Storage)) {
+        return;
+    }
+
+    foreach ($storage->find_all() as $list_screen) {
+        if (!is_object($list_screen) || !method_exists($list_screen, 'get_post_type') || !method_exists($list_screen, 'get_columns')) {
+            continue;
+        }
+
+        $post_type = trim((string) $list_screen->get_post_type());
+        if ($post_type === '') {
+            continue;
+        }
+
+        $existing_columns = $list_screen->get_columns();
+        $reordered_columns = meza_build_reordered_acp_column_collection($existing_columns, $post_type);
+        if (!($reordered_columns instanceof AC\ColumnCollection)) {
+            continue;
+        }
+
+        if (meza_get_acp_column_collection_ids($existing_columns) === meza_get_acp_column_collection_ids($reordered_columns)) {
+            continue;
+        }
+
+        $list_screen->set_columns($reordered_columns);
+        $storage->save($list_screen);
+    }
+
+    update_option('meza_acp_default_admin_column_order_migration', $target_version, false);
+}
+
+add_action('admin_init', 'meza_run_acp_default_admin_column_order_migration', 1000);
 
 function meza_get_post_edit_panel_admin_label_map(string $post_type): array
 {
@@ -1975,12 +2821,105 @@ function meza_get_post_yoast_meta_value(int $post_id, array $meta_keys): string
         if (!is_string($value)) continue;
 
         $value = trim(wp_strip_all_tags($value));
+        $value = meza_resolve_seo_template_tokens_for_post($value, $post_id);
         if ($value !== '') {
             return $value;
         }
     }
 
     return '';
+}
+
+function meza_contains_seo_template_tokens(string $value): bool
+{
+    $value = trim($value);
+    if ($value === '') {
+        return false;
+    }
+
+    return preg_match('/%%[^%]+%%/', $value) === 1;
+}
+
+function meza_resolve_seo_template_tokens_for_post(string $value, int $post_id): string
+{
+    $value = trim(wp_strip_all_tags($value));
+    if ($value === '') {
+        return '';
+    }
+
+    if (!meza_contains_seo_template_tokens($value)) {
+        return $value;
+    }
+
+    $post = get_post($post_id);
+
+    if ($post instanceof WP_Post && class_exists('WPSEO_Replace_Vars')) {
+        try {
+            $replace_vars = new WPSEO_Replace_Vars();
+            if (method_exists($replace_vars, 'replace')) {
+                $resolved = $replace_vars->replace($value, $post);
+                if (is_string($resolved)) {
+                    $resolved = trim(wp_strip_all_tags($resolved));
+                    if ($resolved !== '' && !meza_contains_seo_template_tokens($resolved)) {
+                        return $resolved;
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+        }
+    }
+
+    $post_type_object = $post instanceof WP_Post ? get_post_type_object($post->post_type) : null;
+    $excerpt = '';
+    if ($post instanceof WP_Post) {
+        $excerpt_source = (string) ($post->post_excerpt !== '' ? $post->post_excerpt : $post->post_content);
+        $excerpt = trim(wp_strip_all_tags(wp_trim_words($excerpt_source, 30, '')));
+    }
+
+    $separator = (string) apply_filters('document_title_separator', '-');
+    if ($separator === '') {
+        $separator = '-';
+    }
+
+    $replacements = [
+        '%%sitename%%'   => get_bloginfo('name'),
+        '%%sitedesc%%'   => get_bloginfo('description'),
+        '%%tagline%%'    => get_bloginfo('description'),
+        '%%title%%'      => $post instanceof WP_Post ? get_the_title($post) : '',
+        '%%excerpt%%'    => $excerpt,
+        '%%excerpt_only%%' => $excerpt,
+        '%%sep%%'        => $separator,
+        '%%page%%'       => '',
+        '%%currentyear%%' => wp_date('Y'),
+        '%%currentdate%%' => wp_date(get_option('date_format') ?: 'F j, Y'),
+        '%%date%%'       => $post instanceof WP_Post ? get_the_date('', $post) : '',
+        '%%pt_single%%'  => $post_type_object->labels->singular_name ?? '',
+    ];
+
+    $resolved = str_ireplace(array_keys($replacements), array_values($replacements), $value);
+    $resolved = preg_replace('/\s+/', ' ', trim((string) $resolved)) ?? '';
+    $resolved = preg_replace('/(?:\s*' . preg_quote($separator, '/') . '\s*){2,}/', ' ' . $separator . ' ', $resolved) ?? $resolved;
+    $resolved = trim((string) $resolved, " \t\n\r\0\x0B-:|");
+
+    if ($resolved === '' || meza_contains_seo_template_tokens($resolved)) {
+        return '';
+    }
+
+    return $resolved;
+}
+
+function meza_get_post_yoast_title_value(int $post_id): string
+{
+    return meza_get_post_yoast_meta_value($post_id, [
+        '_yoast_wpseo_title',
+    ]);
+}
+
+function meza_get_post_yoast_description_value(int $post_id): string
+{
+    return meza_get_post_yoast_meta_value($post_id, [
+        '_yoast_wpseo_metadesc',
+    ]);
 }
 
 function meza_get_post_yoast_share_title_value(int $post_id): string
@@ -1992,6 +2931,28 @@ function meza_get_post_yoast_share_title_value(int $post_id): string
     ]);
 }
 
+function meza_truncate_admin_column_text(string $value, int $limit): string
+{
+    $value = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($value)) ?? '');
+    if ($value === '' || $limit <= 0) {
+        return '';
+    }
+
+    if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+        if (mb_strlen($value) <= $limit) {
+            return $value;
+        }
+
+        return rtrim(mb_substr($value, 0, max(1, $limit - 3))) . '...';
+    }
+
+    if (strlen($value) <= $limit) {
+        return $value;
+    }
+
+    return rtrim(substr($value, 0, max(1, $limit - 3))) . '...';
+}
+
 function meza_get_post_yoast_share_description_value(int $post_id): string
 {
     return meza_get_post_yoast_meta_value($post_id, [
@@ -1999,6 +2960,265 @@ function meza_get_post_yoast_share_description_value(int $post_id): string
         '_yoast_wpseo_twitter-description',
         '_yoast_wpseo_metadesc',
     ]);
+}
+
+function meza_get_admin_column_taxonomy_name(string $column, string $post_type): string
+{
+    $column = trim($column);
+    $post_type = trim($post_type);
+
+    if ($column === '' || $post_type === '') {
+        return '';
+    }
+
+    if ($post_type === 'tribe_events' && $column === 'events-cats') {
+        return 'tribe_events_cat';
+    }
+
+    if ($post_type === 'post' && in_array($column, ['categories', 'taxonomy-category'], true)) {
+        return 'category';
+    }
+
+    $candidates = [];
+
+    if (str_starts_with($column, 'taxonomy-')) {
+        $candidates[] = substr($column, 9);
+    }
+
+    $candidates[] = $column;
+
+    $taxonomies = get_object_taxonomies($post_type, 'names');
+    if (!is_array($taxonomies)) {
+        return '';
+    }
+
+    foreach ($candidates as $candidate) {
+        $candidate = sanitize_key((string) $candidate);
+        if ($candidate !== '' && in_array($candidate, $taxonomies, true)) {
+            return $candidate;
+        }
+    }
+
+    return '';
+}
+
+function meza_resolve_taxonomy_from_admin_column_key(string $column, string $post_type): string
+{
+    return meza_get_admin_column_taxonomy_name($column, $post_type);
+}
+
+function meza_is_event_post_type(string $post_type): bool
+{
+    $post_type = strtolower(trim($post_type));
+
+    return $post_type !== '' && str_contains($post_type, 'event');
+}
+
+function meza_get_event_admin_column_datetime_value(int $post_id, string $context): string
+{
+    $post_id = (int) $post_id;
+    $context = strtolower(trim($context));
+
+    if ($post_id <= 0 || !in_array($context, ['start', 'end'], true)) {
+        return '';
+    }
+
+    $meta_keys = $context === 'start'
+        ? ['_EventStartDate', 'start_datetime', 'start_date', '_event_start_date']
+        : ['_EventEndDate', 'end_datetime', 'end_date', '_event_end_date'];
+
+    foreach ($meta_keys as $meta_key) {
+        $value = get_post_meta($post_id, $meta_key, true);
+        if (is_string($value) && trim($value) !== '') {
+            return trim($value);
+        }
+    }
+
+    return '';
+}
+
+function meza_format_event_admin_datetime(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    $parts = meza_get_event_admin_datetime_parts($value);
+    if ($parts === []) {
+        return '';
+    }
+
+    $timestamp = (int) $parts['timestamp'];
+    $include_time = !empty($parts['has_time']);
+    $date_label = str_replace(' ', "\u{00A0}", wp_date('F j, Y', $timestamp));
+
+    return $include_time
+        ? $date_label . "\n" . wp_date('g:ia', $timestamp)
+        : $date_label;
+}
+
+function meza_get_event_admin_datetime_parts(string $value): array
+{
+    $value = trim($value);
+    if ($value === '') {
+        return [];
+    }
+
+    $timezone = function_exists('wp_timezone')
+        ? wp_timezone()
+        : new DateTimeZone((string) date_default_timezone_get());
+    $datetime = date_create_immutable($value, $timezone);
+
+    if (!($datetime instanceof DateTimeImmutable)) {
+        return [];
+    }
+
+    $timestamp = $datetime->getTimestamp();
+
+    $hour = (int) $datetime->format('G');
+    $minute = (int) $datetime->format('i');
+    $second = (int) $datetime->format('s');
+    $has_explicit_time = (bool) preg_match('/\b\d{1,2}:\d{2}\b/i', $value);
+    $is_midnight = $hour === 0 && $minute === 0 && $second === 0;
+    $is_all_day_end = $hour === 23 && $minute === 59;
+    $has_time = $has_explicit_time && !$is_midnight && !$is_all_day_end;
+
+    return [
+        'timestamp' => $timestamp,
+        'has_time' => $has_time,
+    ];
+}
+
+function meza_format_event_admin_datetime_range(string $start_value, string $end_value): string
+{
+    $start_parts = meza_get_event_admin_datetime_parts($start_value);
+    $end_parts = meza_get_event_admin_datetime_parts($end_value);
+
+    if ($start_parts === [] && $end_parts === []) {
+        return '';
+    }
+
+    if ($start_parts === []) {
+        return meza_format_event_admin_datetime($end_value);
+    }
+
+    if ($end_parts === []) {
+        return meza_format_event_admin_datetime($start_value);
+    }
+
+    $start_timestamp = (int) $start_parts['timestamp'];
+    $end_timestamp = (int) $end_parts['timestamp'];
+    $start_has_time = !empty($start_parts['has_time']);
+    $end_has_time = !empty($end_parts['has_time']);
+
+    $same_day = wp_date('Y-m-d', $start_timestamp) === wp_date('Y-m-d', $end_timestamp);
+    if ($same_day) {
+        $day_label = str_replace(' ', "\u{00A0}", wp_date('F j, Y', $start_timestamp));
+
+        if (!$start_has_time && !$end_has_time) {
+            return $day_label;
+        }
+
+        if ($start_has_time && !$end_has_time) {
+            return $day_label . "\n" . wp_date('g:ia', $start_timestamp);
+        }
+
+        if (!$start_has_time && $end_has_time) {
+            return $day_label . "\n" . wp_date('g:ia', $end_timestamp);
+        }
+
+        $same_meridiem = wp_date('a', $start_timestamp) === wp_date('a', $end_timestamp);
+        $start_time = $same_meridiem ? wp_date('g:i', $start_timestamp) : wp_date('g:ia', $start_timestamp);
+        $end_time = wp_date('g:ia', $end_timestamp);
+        $separator = $same_meridiem ? '-' : ' - ';
+
+        return $day_label . "\n" . $start_time . $separator . $end_time;
+    }
+
+    if (wp_date('Y', $start_timestamp) === wp_date('Y', $end_timestamp)) {
+        if (wp_date('F', $start_timestamp) === wp_date('F', $end_timestamp)) {
+            return str_replace(' ', "\u{00A0}", wp_date('F j', $start_timestamp)) . '-' . str_replace(' ', "\u{00A0}", wp_date('j, Y', $end_timestamp));
+        }
+
+        return str_replace(' ', "\u{00A0}", wp_date('F j', $start_timestamp)) . ' - ' . str_replace(' ', "\u{00A0}", wp_date('F j, Y', $end_timestamp));
+    }
+
+    return str_replace(' ', "\u{00A0}", wp_date('F j, Y', $start_timestamp)) . ' - ' . str_replace(' ', "\u{00A0}", wp_date('F j, Y', $end_timestamp));
+}
+
+function meza_get_event_admin_datetime_range_html(string $start_value, string $end_value): string
+{
+    $formatted = meza_format_event_admin_datetime_range($start_value, $end_value);
+    if ($formatted === '') {
+        return '';
+    }
+
+    $parts = preg_split('/\R/', $formatted, 2);
+    $date = trim((string) ($parts[0] ?? ''));
+    $time = trim((string) ($parts[1] ?? ''));
+
+    if ($date === '') {
+        return '';
+    }
+
+    $html = '<span class="meza-event-date-line">' . esc_html($date) . '</span>';
+
+    if ($time !== '') {
+        $html .= '<div class="meza-title-permalink"><span class="meza-event-date-time">' . esc_html($time) . '</span></div>';
+    }
+
+    return $html;
+}
+
+function meza_render_taxonomy_admin_column(string $taxonomy, WP_Post $post): bool
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if ($taxonomy === '' || !taxonomy_exists($taxonomy)) {
+        return false;
+    }
+
+    $terms = get_the_terms($post, $taxonomy);
+    if (is_wp_error($terms)) {
+        echo '&mdash;';
+        return true;
+    }
+
+    if (!is_array($terms) || $terms === []) {
+        echo '&mdash;';
+        return true;
+    }
+
+    $links = [];
+
+    foreach ($terms as $term) {
+        if (!($term instanceof WP_Term)) {
+            continue;
+        }
+
+        $filter_url = add_query_arg([
+            'post_type' => $post->post_type,
+            $taxonomy => $term->slug,
+        ], admin_url('edit.php'));
+
+        $links[] = '<a href="' . esc_url($filter_url) . '">' . esc_html($term->name) . '</a>';
+    }
+
+    echo $links !== [] ? implode(', ', $links) : '&mdash;';
+    return true;
+}
+
+function meza_get_taxonomy_admin_column_html(string $taxonomy, WP_Post $post): string
+{
+    ob_start();
+    $rendered = meza_render_taxonomy_admin_column($taxonomy, $post);
+    $html = trim((string) ob_get_clean());
+
+    if (!$rendered) {
+        return '';
+    }
+
+    return $html !== '' ? $html : '&mdash;';
 }
 
 function meza_get_admin_link_column_display_text(string $url): string
@@ -2348,6 +3568,32 @@ function meza_insert_admin_column_after(array $columns, string $after_key, strin
     return $updated;
 }
 
+function meza_insert_admin_column_before(array $columns, string $before_key, string $new_key, string $label): array
+{
+    if (array_key_exists($new_key, $columns)) {
+        $columns[$new_key] = $label;
+        return $columns;
+    }
+
+    $updated = [];
+    $inserted = false;
+
+    foreach ($columns as $key => $value) {
+        if (!$inserted && (string) $key === $before_key) {
+            $updated[$new_key] = $label;
+            $inserted = true;
+        }
+
+        $updated[$key] = $value;
+    }
+
+    if (!$inserted) {
+        $updated[$new_key] = $label;
+    }
+
+    return $updated;
+}
+
 function meza_ensure_summary_admin_column(array $columns, string $post_type): array
 {
     if (!is_array($columns)) {
@@ -2396,6 +3642,281 @@ function meza_ensure_menu_order_admin_column(array $columns, string $post_type):
     }
 
     return meza_insert_admin_column_after($columns, 'title', 'mz_menu_order', __('#'));
+}
+
+function meza_ensure_share_text_admin_columns(array $columns, string $post_type): array
+{
+    if (!is_array($columns)) {
+        $columns = [];
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type === '' || !meza_post_type_shows_share_text_admin_columns($post_type)) {
+        unset($columns['mz_share_title'], $columns['mz_share_description']);
+        return $columns;
+    }
+
+    $taxonomy_keys = meza_get_sorted_taxonomy_admin_column_keys($columns, $post_type);
+    $last_taxonomy_key = $taxonomy_keys !== [] ? $taxonomy_keys[count($taxonomy_keys) - 1] : '';
+    $pre_meta_anchors = array_values(array_filter([
+        'mz_page_form',
+        'mz_page_cta',
+        'mz_page_headline',
+        $last_taxonomy_key,
+        'mz_profile_link',
+        'mz_organization_url',
+        'mz_summary',
+        'mz_profile_title',
+        'title',
+    ]));
+
+    if (!array_key_exists('mz_share_title', $columns)) {
+        if (array_key_exists('wpseo-title', $columns)) {
+            $columns = meza_insert_admin_column_after($columns, 'wpseo-title', 'mz_share_title', __('Share Title'));
+        } elseif (array_key_exists('mz_thumbnail', $columns)) {
+            $columns = meza_insert_admin_column_after($columns, 'mz_thumbnail', 'mz_share_title', __('Share Title'));
+        } elseif (array_key_exists('wpseo-metadesc', $columns)) {
+            $columns = meza_insert_admin_column_after($columns, 'wpseo-metadesc', 'mz_share_title', __('Share Title'));
+        } elseif ($pre_meta_anchors !== []) {
+            $columns = meza_insert_missing_admin_column($columns, $pre_meta_anchors, 'mz_share_title', __('Share Title'));
+        } else {
+            $columns['mz_share_title'] = __('Share Title');
+        }
+    } else {
+        $columns['mz_share_title'] = __('Share Title');
+    }
+
+    if (!array_key_exists('mz_share_description', $columns)) {
+        if (array_key_exists('wpseo-metadesc', $columns)) {
+            $columns = meza_insert_admin_column_after($columns, 'wpseo-metadesc', 'mz_share_description', __('Share Description'));
+        } elseif (array_key_exists('mz_share_title', $columns)) {
+            $columns = meza_insert_admin_column_after($columns, 'mz_share_title', 'mz_share_description', __('Share Description'));
+        } elseif (array_key_exists('mz_thumbnail', $columns)) {
+            $columns = meza_insert_admin_column_after($columns, 'mz_thumbnail', 'mz_share_description', __('Share Description'));
+        } elseif ($pre_meta_anchors !== []) {
+            $columns = meza_insert_missing_admin_column($columns, $pre_meta_anchors, 'mz_share_description', __('Share Description'));
+        } else {
+            $columns['mz_share_description'] = __('Share Description');
+        }
+    } else {
+        $columns['mz_share_description'] = __('Share Description');
+    }
+
+    return $columns;
+}
+
+function meza_ensure_modified_published_admin_columns(array $columns): array
+{
+    if (!is_array($columns)) {
+        $columns = [];
+    }
+
+    $anchors = [
+        'mz_share_description',
+        'mz_share_title',
+        'mz_thumbnail',
+        'wpseo-metadesc',
+        'wpseo-title',
+        'mz_page_form',
+        'mz_page_cta',
+        'mz_page_headline',
+        'mz_organization_url',
+        'mz_profile_link',
+        'mz_summary',
+        'mz_profile_title',
+        'title',
+    ];
+
+    if (!array_key_exists('mz_modified', $columns) && !array_key_exists('modified', $columns)) {
+        $columns = meza_insert_missing_admin_column($columns, $anchors, 'mz_modified', __('Modified'));
+    } elseif (array_key_exists('mz_modified', $columns)) {
+        $columns['mz_modified'] = __('Modified');
+    } elseif (array_key_exists('modified', $columns)) {
+        $columns['modified'] = __('Modified');
+    }
+
+    if (!array_key_exists('mz_published', $columns) && !array_key_exists('date', $columns)) {
+        $columns = meza_insert_missing_admin_column($columns, array_merge(['mz_modified'], $anchors), 'mz_published', __('Published'));
+    } elseif (array_key_exists('mz_published', $columns)) {
+        $columns['mz_published'] = __('Published');
+    } elseif (array_key_exists('date', $columns)) {
+        $columns['date'] = __('Published');
+    }
+
+    return $columns;
+}
+
+function meza_insert_missing_admin_column(array $columns, array $anchors, string $key, string $label): array
+{
+    if ($key === '') {
+        return $columns;
+    }
+
+    if (array_key_exists($key, $columns)) {
+        $columns[$key] = $label;
+        return $columns;
+    }
+
+    foreach ($anchors as $anchor) {
+        $anchor = trim((string) $anchor);
+        if ($anchor !== '' && array_key_exists($anchor, $columns)) {
+            return meza_insert_admin_column_after($columns, $anchor, $key, $label);
+        }
+    }
+
+    $columns[$key] = $label;
+
+    return $columns;
+}
+
+function meza_insert_missing_admin_column_before(array $columns, array $anchors, string $key, string $label): array
+{
+    if ($key === '') {
+        return $columns;
+    }
+
+    if (array_key_exists($key, $columns)) {
+        $columns[$key] = $label;
+        return $columns;
+    }
+
+    foreach ($anchors as $anchor) {
+        $anchor = trim((string) $anchor);
+        if ($anchor !== '' && array_key_exists($anchor, $columns)) {
+            return meza_insert_admin_column_before($columns, $anchor, $key, $label);
+        }
+    }
+
+    $columns[$key] = $label;
+
+    return $columns;
+}
+
+function meza_ensure_standard_admin_columns(array $columns, string $post_type): array
+{
+    if (!is_array($columns)) {
+        $columns = [];
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return $columns;
+    }
+
+    $supports_thumbnail = post_type_supports($post_type, 'thumbnail');
+    $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
+    $show_cta_link_column = ($post_type === 'cta');
+    $show_cta_secondary_link_column = ($post_type === 'cta');
+    $show_form_recipients_column = ($post_type === 'form');
+    $show_organization_url_column = meza_post_type_is_organization_like($post_type);
+    $show_profile_title_column = ($post_type === 'profile');
+    $show_profile_link_column = ($post_type === 'profile');
+    $show_faq_count_column = ($post_type === 'faq');
+    $show_form_slug_column = ($post_type === 'form');
+    $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
+    $show_summary_column = meza_post_type_shows_summary_admin_column($post_type);
+    $taxonomy_keys = meza_get_sorted_taxonomy_admin_column_keys($columns, $post_type);
+    $first_taxonomy_key = $taxonomy_keys[0] ?? '';
+    $last_taxonomy_key = $taxonomy_keys !== [] ? $taxonomy_keys[count($taxonomy_keys) - 1] : '';
+
+    $columns = meza_insert_missing_admin_column($columns, ['cb'], 'mz_id', __('ID'));
+
+    if (meza_post_type_supports_menu_order_admin_column($post_type)) {
+        $columns = meza_insert_missing_admin_column($columns, ['mz_id', 'cb'], 'mz_menu_order', __('#'));
+    } else {
+        unset($columns['mz_menu_order']);
+    }
+
+    if ($supports_thumbnail) {
+        $columns = meza_insert_missing_admin_column(
+            $columns,
+            ['mz_menu_order', 'mz_id', 'cb'],
+            'mz_thumbnail',
+            meza_get_post_type_thumbnail_admin_column_label($post_type)
+        );
+    } else {
+        unset($columns['mz_thumbnail']);
+    }
+
+    if ($show_profile_title_column) {
+        $columns = meza_insert_missing_admin_column($columns, ['title'], 'mz_profile_title', __('Title'));
+    } else {
+        unset($columns['mz_profile_title']);
+    }
+
+    if ($show_profile_link_column) {
+        if ($first_taxonomy_key !== '') {
+            $columns = meza_insert_missing_admin_column_before($columns, [$first_taxonomy_key], 'mz_profile_link', __('Link'));
+        } else {
+            $columns = meza_insert_missing_admin_column($columns, ['mz_summary', 'mz_profile_title', 'title'], 'mz_profile_link', __('Link'));
+        }
+    } else {
+        unset($columns['mz_profile_link']);
+    }
+
+    if ($show_organization_url_column) {
+        if ($first_taxonomy_key !== '') {
+            $columns = meza_insert_missing_admin_column_before($columns, [$first_taxonomy_key], 'mz_organization_url', __('Link'));
+        } else {
+            $columns = meza_insert_missing_admin_column($columns, ['mz_summary', 'title'], 'mz_organization_url', __('Link'));
+        }
+    } else {
+        unset($columns['mz_organization_url']);
+    }
+
+    if ($show_summary_column) {
+        $columns = meza_insert_missing_admin_column($columns, ['title'], 'mz_summary', meza_get_post_type_summary_admin_column_label($post_type));
+    } else {
+        unset($columns['mz_summary']);
+    }
+
+    if ($show_faq_count_column) {
+        $columns = meza_insert_missing_admin_column($columns, ['title', 'mz_summary'], 'mz_faq_count', __('Count'));
+    } else {
+        unset($columns['mz_faq_count']);
+    }
+
+    if ($show_cta_link_column) {
+        $columns = meza_insert_missing_admin_column($columns, ['mz_published', 'mz_modified', 'mz_share_description', 'mz_share_title', 'mz_thumbnail', 'wpseo-metadesc', 'wpseo-title'], 'mz_cta_link', __('Link (Primary)'));
+    } else {
+        unset($columns['mz_cta_link']);
+    }
+
+    if ($show_cta_secondary_link_column) {
+        $columns = meza_insert_missing_admin_column($columns, ['mz_cta_link'], 'mz_cta_secondary_link', __('Link (Secondary)'));
+    } else {
+        unset($columns['mz_cta_secondary_link']);
+    }
+
+    if ($show_form_slug_column) {
+        $columns = meza_insert_missing_admin_column($columns, ['mz_published', 'mz_modified', 'mz_share_description', 'mz_share_title', 'mz_thumbnail', 'wpseo-metadesc', 'wpseo-title'], 'mz_slug', __('Slug'));
+    } else {
+        unset($columns['mz_slug']);
+    }
+
+    if ($show_form_recipients_column) {
+        $columns = meza_insert_missing_admin_column($columns, ['mz_slug'], 'mz_form_recipients', __('Recipients'));
+    } else {
+        unset($columns['mz_form_recipients']);
+    }
+
+    if ($show_review_columns) {
+        $columns = meza_insert_missing_admin_column($columns, ['title', 'mz_summary'], 'mz_review_quote', __('Quote'));
+        $columns = meza_insert_missing_admin_column($columns, ['mz_review_quote', 'title', 'mz_summary'], 'mz_review_citer', __('Citer'));
+    } else {
+        unset($columns['mz_review_quote'], $columns['mz_review_citer']);
+    }
+
+    if ($show_page_columns) {
+        $page_anchor_candidates = array_values(array_filter([$last_taxonomy_key, 'mz_profile_link', 'mz_organization_url', 'mz_summary', 'mz_profile_title', 'title']));
+        $columns = meza_insert_missing_admin_column($columns, $page_anchor_candidates, 'mz_page_headline', __('Page Headline (H1)'));
+        $columns = meza_insert_missing_admin_column($columns, ['mz_page_headline'], 'mz_page_cta', __('Page CTA'));
+        $columns = meza_insert_missing_admin_column($columns, ['mz_page_cta', 'mz_page_headline'], 'mz_page_form', __('Page Form'));
+    } else {
+        unset($columns['mz_page_headline'], $columns['mz_page_cta'], $columns['mz_page_form']);
+    }
+
+    return $columns;
 }
 
 function meza_place_summary_before_taxonomy_columns(array $columns, string $post_type): array
@@ -2456,16 +3977,19 @@ add_filter('ac/headings', function ($headings, $list_screen) {
         && $screen->base === 'edit'
         && (string) ($screen->post_type ?? '') === $post_type
     ) {
-        $headings = meza_normalize_admin_columns_managed_headings($headings, $post_type);
+        $headings = meza_normalize_admin_columns_managed_headings($headings, $post_type, true);
+    } else {
+        $headings = meza_normalize_admin_columns_managed_headings($headings, $post_type, false);
     }
-
-    $headings = meza_ensure_menu_order_admin_column($headings, $post_type);
-    $headings = meza_ensure_summary_admin_column($headings, $post_type);
-    return meza_place_summary_before_taxonomy_columns($headings, $post_type);
+    return $headings;
 }, 1000, 2);
 
 function meza_page_form_admin_column_is_default_visible(string $post_type): bool
 {
+    if (!meza_acf_fields_are_available()) {
+        return false;
+    }
+
     return (trim($post_type) === 'page');
 }
 
@@ -2480,15 +4004,17 @@ function meza_summary_admin_column_is_default_visible(string $post_type): bool
     if ($post_type === '') return false;
     if (!meza_post_type_shows_summary_admin_column($post_type)) return false;
 
-    return ($post_type !== 'page');
+    return ($post_type === 'organization');
 }
 
-function meza_normalize_admin_columns_managed_headings(array $columns, string $post_type): array
+function meza_normalize_admin_columns_managed_headings(array $columns, string $post_type, bool $preserve_existing_order = false): array
 {
     if (!is_array($columns)) return $columns;
 
     $post_type = trim($post_type);
     if ($post_type === '') return $columns;
+    $columns = meza_ensure_taxonomy_admin_columns($columns, $post_type);
+    $columns = meza_combine_event_date_admin_columns($columns, $post_type);
 
     $supports_thumbnail = post_type_supports($post_type, 'thumbnail');
     $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
@@ -2502,12 +4028,7 @@ function meza_normalize_admin_columns_managed_headings(array $columns, string $p
     $show_form_slug_column = ($post_type === 'form');
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
     $show_summary_column = meza_post_type_shows_summary_admin_column($post_type);
-    $show_yoast_share_columns = defined('WPSEO_VERSION') && (
-        array_key_exists('wpseo-title', $columns)
-        || array_key_exists('wpseo-metadesc', $columns)
-        || array_key_exists('mz_share_title', $columns)
-        || array_key_exists('mz_share_description', $columns)
-    );
+    $show_yoast_share_columns = meza_post_type_shows_share_text_admin_columns($post_type);
     $thumbnail_column_label = meza_get_post_type_thumbnail_admin_column_label($post_type);
     $title_column_label = (
         ($post_type === 'profile' || meza_post_type_is_organization_like($post_type))
@@ -2627,8 +4148,22 @@ function meza_normalize_admin_columns_managed_headings(array $columns, string $p
         }
     }
 
-    return meza_move_taxonomy_columns_before_meta_columns(
-        meza_reinsert_sorted_taxonomy_columns($columns, $post_type),
+    $columns = meza_ensure_standard_admin_columns($columns, $post_type);
+    $columns = meza_ensure_share_text_admin_columns($columns, $post_type);
+    $columns = meza_ensure_modified_published_admin_columns($columns);
+
+    if ($preserve_existing_order) {
+        return $columns;
+    }
+
+    return meza_apply_default_admin_column_order(
+        meza_move_custom_admin_columns_before_meta_columns(
+            meza_move_taxonomy_columns_before_meta_columns(
+                meza_reinsert_sorted_taxonomy_columns($columns, $post_type),
+                $post_type
+            ),
+            $post_type
+        ),
         $post_type
     );
 }
@@ -2640,6 +4175,13 @@ function meza_normalize_datetime_columns(array $columns): array
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
     $post_type = ($screen instanceof WP_Screen) ? (string) ($screen->post_type ?? '') : '';
     if ($post_type === 'product') return $columns;
+    if ($post_type !== '' && meza_post_type_uses_admin_columns_layout($post_type)) {
+        return meza_normalize_admin_columns_managed_headings($columns, $post_type, true);
+    }
+    if ($post_type !== '') {
+        $columns = meza_ensure_taxonomy_admin_columns($columns, $post_type);
+        $columns = meza_combine_event_date_admin_columns($columns, $post_type);
+    }
     $supports_thumbnail = ($post_type !== '' && post_type_supports($post_type, 'thumbnail'));
     $show_menu_order_column = meza_post_type_supports_menu_order_admin_column($post_type);
     $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
@@ -2654,12 +4196,7 @@ function meza_normalize_datetime_columns(array $columns): array
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
     $show_summary_column = meza_post_type_shows_summary_admin_column($post_type);
     $show_share_image_with_seo_columns = ($supports_thumbnail && meza_post_type_uses_share_image_admin_column($post_type));
-    $show_yoast_share_columns = !meza_is_acf_admin_post_type($post_type)
-        && defined('WPSEO_VERSION')
-        && (
-            array_key_exists('wpseo-title', $columns)
-            || array_key_exists('wpseo-metadesc', $columns)
-        );
+    $show_yoast_share_columns = meza_post_type_shows_share_text_admin_columns($post_type);
     $thumbnail_column_label = meza_get_post_type_thumbnail_admin_column_label($post_type);
     $title_column_label = (
         ($post_type === 'profile' || meza_post_type_is_organization_like($post_type))
@@ -2755,95 +4292,70 @@ function meza_normalize_datetime_columns(array $columns): array
         if (!isset($updated['mz_share_description'])) $updated['mz_share_description'] = __('Share Description');
     }
 
-    // Enforce editorial column order.
-    $ordered = [];
-    $used = [];
+    $updated = meza_ensure_share_text_admin_columns($updated, $post_type);
+    $updated = meza_ensure_modified_published_admin_columns($updated);
 
-    $append = static function (string $key) use (&$ordered, &$updated, &$used): void {
-        if (isset($used[$key])) return;
-        if (!array_key_exists($key, $updated)) return;
-        $ordered[$key] = $updated[$key];
-        $used[$key] = true;
-    };
-    $append_taxonomy_columns = static function () use (&$updated, $append, $post_type): void {
-        foreach (meza_get_sorted_taxonomy_admin_column_keys($updated, $post_type) as $key) {
-            $append((string) $key);
-        }
-    };
+    return meza_apply_default_admin_column_order(
+        meza_move_taxonomy_columns_before_meta_columns(
+            meza_reinsert_sorted_taxonomy_columns($updated, $post_type),
+            $post_type
+        ),
+        $post_type
+    );
+}
 
-    // Keep bulk checkbox first when present.
-    $append('cb');
+function meza_customize_popup_admin_columns(array $columns): array
+{
+    $post_type = 'popup';
+    $columns = is_array($columns) ? $columns : [];
+    $columns = meza_normalize_admin_columns_managed_headings($columns, $post_type);
+    $columns = meza_ensure_menu_order_admin_column($columns, $post_type);
+    $columns = meza_ensure_summary_admin_column($columns, $post_type);
 
-    if ($post_type === 'page') {
-        // Pages: id, order, title, summary, page fields, SEO/share, then remaining editorial fields.
-        $append('mz_id');
-        if ($show_menu_order_column) $append('mz_menu_order');
-        if (!$show_share_image_with_seo_columns) $append('mz_thumbnail');
-        $append('title');
-        if ($show_summary_column) $append('mz_summary');
-        if ($show_page_columns) {
-            $append('mz_page_headline');
-            $append('mz_page_cta');
-            $append('mz_page_form');
-        }
-        $append('wpseo-title');
-        $append('wpseo-metadesc');
-        if ($show_share_image_with_seo_columns) $append('mz_thumbnail');
-        if ($show_yoast_share_columns) $append('mz_share_title');
-        if ($show_yoast_share_columns) $append('mz_share_description');
-        if ($show_organization_url_column) $append('mz_organization_url');
-        $append_taxonomy_columns();
-        if ($show_cta_link_column) $append('mz_cta_link');
-        if ($show_cta_secondary_link_column) $append('mz_cta_secondary_link');
-        if ($show_form_slug_column) $append('mz_slug');
-        if ($show_form_recipients_column) $append('mz_form_recipients');
-        if ($show_review_columns) {
-            $append('mz_review_quote');
-            $append('mz_review_citer');
+    if (!array_key_exists('mz_id', $columns)) {
+        if (array_key_exists('cb', $columns)) {
+            $columns = meza_insert_admin_column_after($columns, 'cb', 'mz_id', __('ID'));
+        } else {
+            $columns = ['mz_id' => __('ID')] + $columns;
         }
     } else {
-        $append('mz_id');
-        if ($show_menu_order_column) $append('mz_menu_order');
-        if (!$show_share_image_with_seo_columns) $append('mz_thumbnail');
-        $append('title');
-        if ($show_summary_column) $append('mz_summary');
-        if ($show_page_columns) {
-            $append('mz_page_headline');
-            $append('mz_page_cta');
-            $append('mz_page_form');
-        }
-        $append('wpseo-title');
-        $append('wpseo-metadesc');
-        if ($show_share_image_with_seo_columns) $append('mz_thumbnail');
-        if ($show_yoast_share_columns) $append('mz_share_title');
-        if ($show_yoast_share_columns) $append('mz_share_description');
-        if ($show_profile_title_column) $append('mz_profile_title');
-        if ($show_profile_link_column) $append('mz_profile_link');
-        if ($show_organization_url_column) $append('mz_organization_url');
-        $append_taxonomy_columns();
-        if ($show_faq_count_column) $append('mz_faq_count');
-        if ($show_cta_link_column) $append('mz_cta_link');
-        if ($show_cta_secondary_link_column) $append('mz_cta_secondary_link');
-        if ($show_form_slug_column) $append('mz_slug');
-        if ($show_form_recipients_column) $append('mz_form_recipients');
-        if ($show_review_columns) {
-            $append('mz_review_quote');
-            $append('mz_review_citer');
-        }
+        $columns['mz_id'] = __('ID');
     }
 
-    // Append any remaining columns in their original order.
-    foreach (array_keys($updated) as $key) {
+    if (!array_key_exists('mz_modified', $columns)) {
+        $columns['mz_modified'] = __('Modified');
+    }
+
+    if (!array_key_exists('mz_published', $columns)) {
+        $columns['mz_published'] = __('Published');
+    }
+
+    $ordered = [];
+    $append = static function (string $key) use (&$ordered, $columns): void {
+        if ($key === '' || !array_key_exists($key, $columns) || array_key_exists($key, $ordered)) {
+            return;
+        }
+
+        $ordered[$key] = $columns[$key];
+    };
+
+    foreach (['cb', 'mz_id', 'mz_menu_order', 'title', 'mz_summary', 'enabled', 'popup_title', 'class', 'views', 'conversions', 'popup_category', 'popup_tag'] as $key) {
+        $append($key);
+    }
+
+    foreach (array_keys($columns) as $key) {
         $append((string) $key);
     }
 
     $append('mz_modified');
-    $append('modified');
     $append('mz_published');
     $append('date');
 
-    return meza_move_taxonomy_columns_before_meta_columns(
-        meza_reinsert_sorted_taxonomy_columns($ordered, $post_type),
+    return meza_move_custom_admin_columns_before_meta_columns(
+        meza_move_taxonomy_columns_before_meta_columns(
+            meza_reinsert_sorted_taxonomy_columns($ordered, $post_type),
+            $post_type
+        ),
         $post_type
     );
 }
@@ -3184,7 +4696,7 @@ add_action('current_screen', function ($screen): void {
     $user_id = get_current_user_id();
     if ($user_id <= 0) return;
 
-    $meta_key = 'meza_page_marketing_visibility_initialized_post_types_v1';
+    $meta_key = 'meza_page_marketing_visibility_initialized_post_types_v2';
     $initialized_post_types = get_user_meta($user_id, $meta_key, true);
     $initialized_post_types = is_array($initialized_post_types)
         ? array_values(array_unique(array_map('strval', $initialized_post_types)))
@@ -3219,6 +4731,15 @@ add_action('current_screen', function ($screen): void {
         if (!is_array($columns)) $columns = [];
         if ($post_type === '' || !meza_post_type_has_permalink($post_type)) return $columns;
         if (meza_is_acf_admin_post_type($post_type)) return $columns;
+        if (meza_post_type_uses_admin_columns_layout($post_type)) return $columns;
+
+        $columns = meza_move_taxonomy_columns_before_meta_columns(
+            meza_reinsert_sorted_taxonomy_columns(
+                meza_ensure_taxonomy_admin_columns($columns, $post_type),
+                $post_type
+            ),
+            $post_type
+        );
 
         return meza_insert_admin_column_after($columns, 'mz_page_cta', 'mz_page_form', __('Page Form'));
     }, 1000);
@@ -3228,7 +4749,7 @@ add_action('current_screen', function ($screen): void {
     $user_id = get_current_user_id();
     if ($user_id <= 0) return;
 
-    $meta_key = 'meza_page_form_hidden_migrated_post_types_v2';
+    $meta_key = 'meza_page_form_hidden_migrated_post_types_v4';
     $migrated_post_types = get_user_meta($user_id, $meta_key, true);
     $migrated_post_types = is_array($migrated_post_types)
         ? array_values(array_unique(array_map('strval', $migrated_post_types)))
@@ -3258,7 +4779,7 @@ add_action('current_screen', function ($screen): void {
     $user_id = get_current_user_id();
     if ($user_id <= 0) return;
 
-    $meta_key = 'meza_summary_visibility_initialized_post_types_v1';
+    $meta_key = 'meza_summary_visibility_initialized_post_types_v2';
     $initialized_post_types = get_user_meta($user_id, $meta_key, true);
     $initialized_post_types = is_array($initialized_post_types)
         ? array_values(array_unique(array_map('strval', $initialized_post_types)))
@@ -3301,7 +4822,7 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
         return array_values(array_unique($hidden));
     }
 
-    $meta_key = 'meza_page_form_hidden_migrated_post_types_v2';
+    $meta_key = 'meza_page_form_hidden_migrated_post_types_v4';
     $migrated_post_types = get_user_meta($user_id, $meta_key, true);
     $migrated_post_types = is_array($migrated_post_types)
         ? array_values(array_unique(array_map('strval', $migrated_post_types)))
@@ -3337,7 +4858,7 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
         return array_values(array_unique($hidden));
     }
 
-    $meta_key = 'meza_summary_visibility_initialized_post_types_v1';
+    $meta_key = 'meza_summary_visibility_initialized_post_types_v2';
     $initialized_post_types = get_user_meta($user_id, $meta_key, true);
     $initialized_post_types = is_array($initialized_post_types)
         ? array_values(array_unique(array_map('strval', $initialized_post_types)))
@@ -3367,6 +4888,30 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
     return array_values(array_diff($hidden, ['mz_menu_order']));
 }, 1100, 3);
+
+add_filter('default_hidden_columns', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if ($post_type === '') return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+
+    return array_values(array_diff($hidden, meza_get_taxonomy_admin_column_keys_for_post_type($post_type)));
+}, 1200, 2);
+
+add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
+    unset($use_defaults);
+
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if ($post_type === '') return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+
+    return array_values(array_diff($hidden, meza_get_taxonomy_admin_column_keys_for_post_type($post_type)));
+}, 1200, 3);
 
 add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     unset($use_defaults);
@@ -3414,7 +4959,7 @@ function meza_register_taxonomy_sortable_columns(array $cols): array
     if (!is_array($taxonomies)) return $cols;
 
     foreach ($taxonomies as $taxonomy => $taxonomy_obj) {
-        if (!is_object($taxonomy_obj) || empty($taxonomy_obj->show_admin_column)) continue;
+        if (!($taxonomy_obj instanceof WP_Taxonomy) || empty($taxonomy_obj->show_ui)) continue;
 
         $cols["taxonomy-{$taxonomy}"] = ["mz_tax_{$taxonomy}", false];
     }
@@ -3422,8 +4967,19 @@ function meza_register_taxonomy_sortable_columns(array $cols): array
     return $cols;
 }
 
+function meza_should_render_meza_posts_list_column(string $column): bool
+{
+    $column = trim($column);
+
+    return $column !== '' && str_starts_with($column, 'mz_');
+}
+
 function meza_render_posts_list_column(string $column, int $post_id): void
 {
+    if (!meza_should_render_meza_posts_list_column($column)) {
+        return;
+    }
+
     $post = get_post((int) $post_id);
     if (!($post instanceof WP_Post)) {
         if (
@@ -3538,11 +5094,19 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     }
     if ($column === 'mz_share_title') {
         $share_title = meza_get_post_yoast_share_title_value((int) $post_id);
+        if ($share_title === '') {
+            $share_title = meza_get_post_yoast_title_value((int) $post_id);
+        }
+        $share_title = meza_truncate_admin_column_text($share_title, 60);
         echo ($share_title !== '') ? esc_html($share_title) : '&mdash;';
         return;
     }
     if ($column === 'mz_share_description') {
         $share_description = meza_get_post_yoast_share_description_value((int) $post_id);
+        if ($share_description === '') {
+            $share_description = meza_get_post_yoast_description_value((int) $post_id);
+        }
+        $share_description = meza_truncate_admin_column_text($share_description, 110);
         echo ($share_description !== '') ? esc_html($share_description) : '&mdash;';
         return;
     }
@@ -3921,12 +5485,19 @@ add_action('current_screen', function ($screen) {
 
     add_filter("manage_{$post_type}_posts_columns", 'meza_normalize_datetime_columns', 1000);
     add_filter("manage_{$post_type}_posts_columns", function ($columns) use ($post_type) {
+        if (meza_post_type_uses_admin_columns_layout($post_type)) {
+            return is_array($columns) ? $columns : [];
+        }
         return meza_ensure_summary_admin_column(is_array($columns) ? $columns : [], $post_type);
     }, 100000);
     add_action("manage_{$post_type}_posts_custom_column", 'meza_render_posts_list_column', 100, 2);
     add_filter("manage_edit-{$post_type}_sortable_columns", 'meza_register_datetime_sortable_columns', 1000);
     add_filter("manage_edit-{$post_type}_sortable_columns", 'meza_register_taxonomy_sortable_columns', 1001);
 });
+
+add_filter('pum_popup_columns', function ($columns) {
+    return meza_customize_popup_admin_columns(is_array($columns) ? $columns : []);
+}, 1000);
 
 function meza_remove_yoast_score_filters(): void
 {
@@ -4061,6 +5632,8 @@ add_action('admin_head', function () {
 
     echo '<style id="meza-woocommerce-admin-layout-reset">#wpbody{margin-top:0!important;}</style>';
 }, 1000);
+
+add_action('admin_init', 'meza_suppress_non_meza_plugin_admin_notice_callbacks', 0);
 
 add_action('admin_head', function () {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
@@ -6564,6 +8137,130 @@ function meza_is_default_wordpress_submenu_item(string $parent_slug, array $item
     return isset($core_submenus[$parent_slug]) && in_array($slug, $core_submenus[$parent_slug], true);
 }
 
+function meza_can_view_settings_tools_submenu_items($user = null): bool
+{
+    return meza_user_has_any_role($user, ['administrator', meza_site_manager_role_key()]);
+}
+
+function meza_should_restrict_settings_tools_submenu_items($user = null): bool
+{
+    return !meza_can_view_settings_tools_submenu_items($user);
+}
+
+function meza_is_site_manager_user($user = null): bool
+{
+    return meza_user_has_any_role($user, [meza_site_manager_role_key()]);
+}
+
+function meza_site_manager_is_utility_admin_request(): bool
+{
+    if (!is_admin()) {
+        return false;
+    }
+
+    global $pagenow;
+
+    if (in_array((string) $pagenow, ['tools.php', 'import.php', 'export.php'], true)) {
+        return true;
+    }
+
+    $request_values = [
+        isset($_GET['page']) ? (string) wp_unslash($_GET['page']) : '',
+        isset($_GET['tab']) ? (string) wp_unslash($_GET['tab']) : '',
+        isset($_GET['post_type']) ? (string) wp_unslash($_GET['post_type']) : '',
+        isset($_GET['taxonomy']) ? (string) wp_unslash($_GET['taxonomy']) : '',
+        isset($_GET['action']) ? (string) wp_unslash($_GET['action']) : '',
+    ];
+
+    foreach ($request_values as $value) {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            continue;
+        }
+
+        if (
+            preg_match('/\b(import|export|tools?|settings?|status)\b/i', $value) === 1
+            || preg_match('/(^|[_-])(import|export|tools?|settings?|status)([_-]|$)/i', $value) === 1
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function meza_is_restricted_settings_tools_submenu_item(string $parent_slug, array $item): bool
+{
+    $parent_slug = strtolower($parent_slug);
+
+    if (meza_is_default_wordpress_submenu_item($parent_slug, $item)) {
+        return false;
+    }
+
+    if (in_array($parent_slug, ['options-general.php', 'tools.php'], true)) {
+        return true;
+    }
+
+    $utility_label = meza_get_standardized_submenu_utility_label($item, $parent_slug);
+
+    return in_array($utility_label, ['Import', 'Export', 'Import/Export', 'Tools', 'Settings', 'Status'], true);
+}
+
+function meza_should_grant_site_manager_utility_submenu_access(string $parent_slug, array $item): bool
+{
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return false;
+    }
+
+    if (meza_is_default_wordpress_submenu_item($parent_slug, $item)) {
+        return false;
+    }
+
+    $slug = strtolower((string) ($item[2] ?? ''));
+    $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+    $has_import = preg_match('/\bimport\b/i', $title) === 1 || str_contains($slug, 'import');
+    $has_export = preg_match('/\bexport\b/i', $title) === 1 || str_contains($slug, 'export');
+    $has_tools = preg_match('/\btools?\b/i', $title) === 1
+        || preg_match('/(^|[_-])tools?([_-]|$)/i', $slug) === 1;
+    $has_settings = preg_match('/\bsettings?\b/i', $title) === 1
+        || preg_match('/(^|[_-])settings?([_-]|$)/i', $slug) === 1;
+    $has_status = preg_match('/\bstatus\b/i', $title) === 1 || str_contains($slug, 'status');
+
+    return $has_import || $has_export || $has_tools || $has_settings || $has_status;
+}
+
+add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $user): array {
+    if (!meza_is_site_manager_user($user)) {
+        return $allcaps;
+    }
+
+    $requested_caps = array_values(array_unique(array_map(static function ($cap): string {
+        return strtolower((string) $cap);
+    }, $caps)));
+
+    if ($requested_caps === []) {
+        return $allcaps;
+    }
+
+    $utility_caps = ['manage_options', 'edit_theme_options', 'import', 'export'];
+    $needs_utility_grant = count(array_intersect($requested_caps, $utility_caps)) > 0;
+
+    if (!$needs_utility_grant) {
+        return $allcaps;
+    }
+
+    if (!doing_action('admin_menu') && !meza_site_manager_is_utility_admin_request()) {
+        return $allcaps;
+    }
+
+    foreach ($utility_caps as $cap) {
+        $allcaps[$cap] = true;
+    }
+
+    return $allcaps;
+}, 5, 4);
+
 function meza_get_standardized_submenu_utility_label(array $item, string $parent_slug = ''): string
 {
     $parent_slug = strtolower($parent_slug);
@@ -6881,6 +8578,50 @@ function meza_post_type_is_visible_in_admin_menu(string $post_type): bool
     }
 
     return $post_type_object->show_in_menu !== false;
+}
+
+function meza_get_nontrashed_post_type_count(string $post_type): int
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '') {
+        return 0;
+    }
+
+    $counts = wp_count_posts($post_type);
+    if (!is_object($counts)) {
+        return 0;
+    }
+
+    $total = 0;
+
+    foreach (get_object_vars($counts) as $status => $count) {
+        $status = sanitize_key((string) $status);
+        if (in_array($status, ['auto-draft', 'trash', 'inherit'], true)) {
+            continue;
+        }
+
+        $total += (int) $count;
+    }
+
+    return $total;
+}
+
+function meza_should_hide_calendar_embeds_submenu_for_current_user(): bool
+{
+    $user = wp_get_current_user();
+    if (!($user instanceof WP_User)) {
+        return false;
+    }
+
+    if (in_array('administrator', (array) $user->roles, true)) {
+        return false;
+    }
+
+    if (!in_array(meza_site_manager_role_key(), (array) $user->roles, true)) {
+        return false;
+    }
+
+    return meza_get_nontrashed_post_type_count('tribe_calendar_embed') < 1;
 }
 
 function meza_dedupe_post_type_submenu_links(): void
@@ -7295,6 +9036,7 @@ function meza_normalize_admin_plugin_menus(): void
     global $menu, $submenu;
 
     if (!is_array($menu) || !is_array($submenu)) return;
+    $should_restrict_settings_tools_submenu_items = meza_should_restrict_settings_tools_submenu_items();
     foreach ($menu as $index => &$item) {
         if (!is_array($item)) continue;
 
@@ -7449,6 +9191,14 @@ function meza_normalize_admin_plugin_menus(): void
             $is_redirection = str_contains($slug, 'redirection')
                 || str_contains($title, 'redirection');
 
+            if (
+                meza_should_hide_calendar_embeds_submenu_for_current_user()
+                && $slug === 'edit.php?post_type=tribe_calendar_embed'
+            ) {
+                unset($items[$index]);
+                continue;
+            }
+
             if (meza_submenu_label_contains_banned_words($raw_title)) {
                 unset($items[$index]);
                 continue;
@@ -7478,6 +9228,18 @@ function meza_normalize_admin_plugin_menus(): void
             }
 
             if (meza_is_resource_submenu_item((string) $parent_slug, $item)) {
+                unset($items[$index]);
+                continue;
+            }
+
+            if (meza_should_grant_site_manager_utility_submenu_access((string) $parent_slug, $item)) {
+                $item[1] = 'read';
+            }
+
+            if (
+                $should_restrict_settings_tools_submenu_items
+                && meza_is_restricted_settings_tools_submenu_item((string) $parent_slug, $item)
+            ) {
                 unset($items[$index]);
                 continue;
             }
@@ -7704,14 +9466,29 @@ function meza_rebuild_content_menu_group(): void
     $sort_entries($with_permalink);
     $sort_entries($without_permalink);
 
-    $grouped_items = array_map(
-        static function (array $entry): array {
-            return $entry['item'];
-        },
-        $with_permalink
-    );
+    $grouped_items = [];
 
-    if (!empty($with_permalink) && !empty($without_permalink)) {
+    foreach ($with_permalink as $entry) {
+        $grouped_items[] = $entry['item'];
+    }
+
+    if (!empty($with_permalink) && (!empty($media_items) || !empty($without_permalink))) {
+        $grouped_items[] = [
+            '',
+            'read',
+            'separator-meza-content-media',
+            '',
+            'wp-menu-separator',
+        ];
+    }
+
+    if (!empty($media_items)) {
+        foreach ($media_items as $media_item) {
+            $grouped_items[] = $media_item;
+        }
+    }
+
+    if ((!empty($with_permalink) || !empty($media_items)) && !empty($without_permalink)) {
         $grouped_items[] = [
             '',
             'read',
@@ -7723,22 +9500,6 @@ function meza_rebuild_content_menu_group(): void
 
     foreach ($without_permalink as $entry) {
         $grouped_items[] = $entry['item'];
-    }
-
-    if (!empty($media_items)) {
-        if (!empty($grouped_items)) {
-            $grouped_items[] = [
-                '',
-                'read',
-                'separator-meza-content-media',
-                '',
-                'wp-menu-separator',
-            ];
-        }
-
-        foreach ($media_items as $media_item) {
-            $grouped_items[] = $media_item;
-        }
     }
 
     $rebuilt = [];
@@ -7826,7 +9587,7 @@ function meza_rebuild_content_menu_group(): void
     }
 }
 
-// Group top-level content menus after Dashboard: permalink-capable first, then non-viewable/admin-only.
+// Group top-level content menus after Dashboard: permalink-capable first, then Media, then non-viewable/admin-only.
 add_action('admin_menu', 'meza_rebuild_content_menu_group', PHP_INT_MAX - 1);
 
 function meza_reorder_dashboard_utility_items(): void
@@ -9411,6 +11172,38 @@ if (!function_exists('meza_admin_wpbody_content_trailing_allowed_selectors')) {
     }
 }
 
+if (!function_exists('meza_admin_wpbody_content_pre_wrap_allowed_selectors')) {
+    function meza_admin_wpbody_content_pre_wrap_allowed_selectors(): array
+    {
+        return [
+            '#screen-meta',
+            '#screen-meta-links',
+            '.notice',
+            '.update-nag',
+            '.updated',
+            '.error',
+            'script',
+            '.clear',
+            '[data-meza-admin-chrome]',
+            '.meza-admin-chrome',
+        ];
+    }
+}
+
+if (!function_exists('meza_admin_notice_selector_matches')) {
+    function meza_admin_notice_selector_matches(DOMElement $element): bool
+    {
+        $class_names = preg_split('/\s+/', strtolower(trim((string) $element->getAttribute('class')))) ?: [];
+        $class_lookup = array_fill_keys(array_filter($class_names), true);
+
+        if (isset($class_lookup['notice']) || isset($class_lookup['update-nag']) || isset($class_lookup['updated']) || isset($class_lookup['error'])) {
+            return true;
+        }
+
+        return false;
+    }
+}
+
 if (!function_exists('meza_admin_get_env_preferred_plugin_signatures')) {
     function meza_admin_get_env_preferred_plugin_signatures(): array
     {
@@ -9782,6 +11575,27 @@ if (!function_exists('meza_admin_dom_replace_inner_html')) {
     }
 }
 
+if (!function_exists('meza_admin_dom_wrap_element')) {
+    function meza_admin_dom_wrap_element(DOMDocument $document, DOMElement $element, string $tag_name, array $attributes = []): ?DOMElement
+    {
+        $parent = $element->parentNode;
+        if (!($parent instanceof DOMNode)) {
+            return null;
+        }
+
+        $wrapper = $document->createElement($tag_name);
+
+        foreach ($attributes as $attribute_name => $attribute_value) {
+            $wrapper->setAttribute((string) $attribute_name, (string) $attribute_value);
+        }
+
+        $parent->insertBefore($wrapper, $element);
+        $wrapper->appendChild($element);
+
+        return $wrapper;
+    }
+}
+
 if (!function_exists('meza_admin_dom_element_or_descendant_matches_any_selector')) {
     function meza_admin_dom_element_or_descendant_matches_any_selector(DOMElement $element, array $selectors): bool
     {
@@ -9842,6 +11656,7 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
         $footer_selectors = meza_admin_footer_allowed_children_selectors();
         $title_selectors = meza_admin_title_allowed_selectors();
         $wpwrap_selectors = meza_admin_wpwrap_allowed_selectors();
+        $wpbody_content_pre_wrap_selectors = meza_admin_wpbody_content_pre_wrap_allowed_selectors();
         $wpbody_content_trailing_selectors = meza_admin_wpbody_content_trailing_allowed_selectors();
         $disallowed_plugin_signatures = meza_admin_get_disallowed_plugin_signatures();
         $bridge_stop_selectors = [
@@ -9853,6 +11668,22 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
             '#ajax-response',
             '.clear',
         ];
+
+        foreach ($xpath->query('//form[@id="posts-filter"]//table[contains(concat(" ", normalize-space(@class), " "), " wp-list-table ")]') ?: [] as $table) {
+            if (!($table instanceof DOMElement)) {
+                continue;
+            }
+
+            $parent = $table->parentNode;
+            if ($parent instanceof DOMElement && meza_admin_dom_element_has_class($parent, 'meza-admin-table-scroll')) {
+                continue;
+            }
+
+            meza_admin_dom_wrap_element($document, $table, 'div', [
+                'class' => 'meza-admin-table-scroll',
+                'style' => 'display:block;width:100%;max-width:100%;max-height:calc(100vh - 260px);overflow:auto;-webkit-overflow-scrolling:touch;',
+            ]);
+        }
 
         $wpcontent = $document->getElementById('wpcontent');
         if ($wpcontent instanceof DOMElement) {
@@ -9868,12 +11699,33 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
             $seen_main_wrap = false;
 
             foreach (meza_admin_dom_get_element_children($wpbody_content) as $child) {
-                if (meza_admin_dom_element_has_class($child, 'wrap')) {
-                    $seen_main_wrap = true;
+                if (!$seen_main_wrap) {
+                    if (meza_admin_dom_element_has_class($child, 'wrap')) {
+                        $seen_main_wrap = true;
+                        continue;
+                    }
+
+                    if (meza_admin_dom_element_matches_any_selector($child, $wpbody_content_pre_wrap_selectors)) {
+                        continue;
+                    }
+
+                    if (
+                        !meza_admin_dom_element_matches_any_selector($child, ['[data-meza-admin-chrome]', '.meza-admin-chrome'])
+                        && meza_admin_dom_element_matches_plugin_signatures($child, $disallowed_plugin_signatures)
+                    ) {
+                        $wpbody_content->removeChild($child);
+                        continue;
+                    }
+
+                    if ($child->parentNode instanceof DOMNode) {
+                        $child->parentNode->removeChild($child);
+                    }
+
                     continue;
                 }
 
-                if (!$seen_main_wrap) {
+                if (meza_admin_dom_element_has_class($child, 'wrap')) {
+                    $seen_main_wrap = true;
                     continue;
                 }
 
@@ -9949,6 +11801,28 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
             }
 
             if (meza_admin_dom_element_matches_any_selector($node, ['[data-meza-admin-chrome]', '.meza-admin-chrome'])) {
+                continue;
+            }
+
+            if ($node->parentNode instanceof DOMNode) {
+                $node->parentNode->removeChild($node);
+            }
+        }
+
+        foreach ($xpath->query('//*') ?: [] as $node) {
+            if (!($node instanceof DOMElement)) {
+                continue;
+            }
+
+            if (!meza_admin_notice_selector_matches($node)) {
+                continue;
+            }
+
+            if (meza_admin_dom_element_matches_any_selector($node, ['[data-meza-admin-chrome]', '.meza-admin-chrome'])) {
+                continue;
+            }
+
+            if (!meza_admin_dom_element_matches_plugin_signatures($node, $disallowed_plugin_signatures)) {
                 continue;
             }
 
@@ -10111,8 +11985,11 @@ add_filter('update_footer', function ($content): string {
 add_action('admin_head', function (): void {
     if (is_admin()) {
         $lock_core_admin_content = !meza_is_admin_chrome_exempt_screen();
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $is_edit_screen = $screen instanceof WP_Screen && $screen->base === 'edit';
         $content_selectors = meza_admin_content_allowed_children_selectors();
         $wpwrap_selectors = meza_admin_wpwrap_allowed_selectors();
+        $wpbodyContentPreWrapSelectors = meza_admin_wpbody_content_pre_wrap_allowed_selectors();
         $wpbodyContentTrailingSelectors = meza_admin_wpbody_content_trailing_allowed_selectors();
         $disallowed_plugin_signatures = meza_admin_get_disallowed_plugin_signatures();
         $content_deny_selector = '#wpcontent > *';
@@ -10142,8 +12019,10 @@ add_action('admin_head', function (): void {
     <script id="meza-lock-admin-content-script">
         (() => {
             const lockCoreAdminContent = <?php echo wp_json_encode($lock_core_admin_content); ?>;
+            const isEditScreen = <?php echo wp_json_encode($is_edit_screen); ?>;
             const allowedSelectors = <?php echo wp_json_encode($content_selectors); ?>;
             const wpwrapAllowedSelectors = <?php echo wp_json_encode($wpwrap_selectors); ?>;
+            const wpbodyContentPreWrapSelectors = <?php echo wp_json_encode($wpbodyContentPreWrapSelectors); ?>;
             const wpbodyContentTrailingSelectors = <?php echo wp_json_encode($wpbodyContentTrailingSelectors); ?>;
             const disallowedPluginSignatures = <?php echo wp_json_encode($disallowed_plugin_signatures); ?>;
             const protectedSpacingTargets = [
@@ -10153,7 +12032,7 @@ add_action('admin_head', function (): void {
                 document.getElementById('wpcontent'),
                 document.getElementById('wpbody'),
                 document.getElementById('wpbody-content'),
-            ].filter((element) => element instanceof HTMLElement);
+            ].filter((element) => element && typeof element.nodeType === 'number');
 
             const isAllowed = (element) => {
                 if (!(element instanceof Element)) return false;
@@ -10163,6 +12042,11 @@ add_action('admin_head', function (): void {
             const isAllowedAfterWpwrap = (element) => {
                 if (!(element instanceof Element)) return false;
                 return wpwrapAllowedSelectors.some((selector) => element.matches(selector));
+            };
+
+            const isAllowedBeforeMainWrap = (element) => {
+                if (!(element instanceof Element)) return false;
+                return wpbodyContentPreWrapSelectors.some((selector) => element.matches(selector));
             };
 
             const isCoreTemplateScriptId = (id) => {
@@ -10303,15 +12187,44 @@ add_action('admin_head', function (): void {
                 Array.from(bodyContent.children).forEach((child) => {
                     if (!(child instanceof HTMLElement)) return;
 
+                    if (!seenMainWrap) {
+                        if (child.classList.contains('wrap')) {
+                            seenMainWrap = true;
+                            return;
+                        }
+
+                        if (isAllowedBeforeMainWrap(child)) {
+                            return;
+                        }
+
+                        if (
+                            !child.matches('[data-meza-admin-chrome], .meza-admin-chrome')
+                            && matchesPluginSignatures(child, disallowedPluginSignatures)
+                        ) {
+                            child.remove();
+                            return;
+                        }
+
+                        child.remove();
+                        return;
+                    }
+
                     if (child.classList.contains('wrap')) {
                         seenMainWrap = true;
                         return;
                     }
-
-                    if (!seenMainWrap) return;
                     if (isAllowedAfterWpwrapElementForSelectors(child, wpbodyContentTrailingSelectors)) return;
 
                     child.remove();
+                });
+            };
+
+            const cleanupPluginNotices = () => {
+                document.querySelectorAll('.notice, .update-nag, .updated, .error, .pum-alerts').forEach((node) => {
+                    if (!(node instanceof HTMLElement)) return;
+                    if (node.matches('[data-meza-admin-chrome], .meza-admin-chrome')) return;
+                    if (!matchesPluginSignatures(node, disallowedPluginSignatures)) return;
+                    node.remove();
                 });
             };
 
@@ -10335,49 +12248,61 @@ add_action('admin_head', function (): void {
             cleanupContent();
             cleanupAfterWpwrap();
             cleanupAfterMainWrap();
+            cleanupPluginNotices();
             cleanupInjectedTopSpacing();
 
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', cleanupContent, { once: true });
                 document.addEventListener('DOMContentLoaded', cleanupAfterWpwrap, { once: true });
                 document.addEventListener('DOMContentLoaded', cleanupAfterMainWrap, { once: true });
+                document.addEventListener('DOMContentLoaded', cleanupPluginNotices, { once: true });
                 document.addEventListener('DOMContentLoaded', cleanupInjectedTopSpacing, { once: true });
             } else {
                 window.addEventListener('load', cleanupContent, { once: true });
                 window.addEventListener('load', cleanupAfterWpwrap, { once: true });
                 window.addEventListener('load', cleanupAfterMainWrap, { once: true });
+                window.addEventListener('load', cleanupPluginNotices, { once: true });
                 window.addEventListener('load', cleanupInjectedTopSpacing, { once: true });
             }
 
-            const content = document.getElementById('wpcontent');
-            if (content instanceof HTMLElement) {
-                const observer = new MutationObserver(() => {
-                    cleanupContent();
-                    cleanupAfterWpwrap();
-                    cleanupAfterMainWrap();
-                    cleanupInjectedTopSpacing();
+            if (!isEditScreen) {
+                const content = document.getElementById('wpcontent');
+                if (content instanceof HTMLElement) {
+                    const observer = new MutationObserver(() => {
+                        cleanupContent();
+                        cleanupAfterWpwrap();
+                        cleanupAfterMainWrap();
+                        cleanupPluginNotices();
+                        cleanupInjectedTopSpacing();
+                    });
+                    observer.observe(content, { childList: true });
+                }
+
+                const bodyContent = document.getElementById('wpbody-content');
+                if (bodyContent instanceof HTMLElement) {
+                    const bodyContentObserver = new MutationObserver(() => {
+                        cleanupAfterMainWrap();
+                        cleanupPluginNotices();
+                    });
+                    bodyContentObserver.observe(bodyContent, { childList: true });
+                }
+
+                protectedSpacingTargets.forEach((element) => {
+                    if (!element || typeof element.nodeType !== 'number') return;
+
+                    const observer = new MutationObserver(cleanupInjectedTopSpacing);
+                    observer.observe(element, { attributes: true, attributeFilter: ['style', 'class'] });
                 });
-                observer.observe(content, { childList: true });
-            }
 
-            const bodyContent = document.getElementById('wpbody-content');
-            if (bodyContent instanceof HTMLElement) {
-                const bodyContentObserver = new MutationObserver(cleanupAfterMainWrap);
-                bodyContentObserver.observe(bodyContent, { childList: true });
-            }
-
-            protectedSpacingTargets.forEach((element) => {
-                const observer = new MutationObserver(cleanupInjectedTopSpacing);
-                observer.observe(element, { attributes: true, attributeFilter: ['style', 'class'] });
-            });
-
-            if (document.body instanceof HTMLElement) {
-                const bodyObserver = new MutationObserver(() => {
-                    cleanupAfterWpwrap();
-                    cleanupAfterMainWrap();
-                    cleanupInjectedTopSpacing();
-                });
-                bodyObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+                if (document.body instanceof HTMLElement) {
+                    const bodyObserver = new MutationObserver(() => {
+                        cleanupAfterWpwrap();
+                        cleanupAfterMainWrap();
+                        cleanupPluginNotices();
+                        cleanupInjectedTopSpacing();
+                    });
+                    bodyObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+                }
             }
 
             window.addEventListener('resize', cleanupInjectedTopSpacing);
@@ -10577,8 +12502,10 @@ add_action('admin_head', function (): void {
                 window.addEventListener('load', cleanupTitleChrome, { once: true });
             }
 
-            const observer = new MutationObserver(scheduleCleanup);
-            observer.observe(document.body, { childList: true, subtree: true });
+            if (document.body instanceof HTMLBodyElement) {
+                const observer = new MutationObserver(scheduleCleanup);
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
         })();
     </script>
 <?php
@@ -11153,8 +13080,174 @@ function meza_cleanup_menu_separators(): void
     $menu = $cleaned;
 }
 
+function meza_prune_empty_top_level_admin_menu_groups(): void
+{
+    global $menu, $submenu;
+
+    if (!is_array($menu) || empty($menu)) {
+        return;
+    }
+
+    $protected_top_level_slugs = [
+        'index.php',
+        'profile.php',
+    ];
+
+    $top_level_requires_accessible_children = static function (array $item): bool {
+        $slug = strtolower((string) ($item[2] ?? ''));
+
+        if (in_array($slug, ['tools.php', 'options-general.php'], true)) {
+            return true;
+        }
+
+        $utility_label = meza_get_standardized_submenu_utility_label($item);
+
+        return in_array($utility_label, ['Tools', 'Settings'], true);
+    };
+
+    $has_real_accessible_child_items = static function (string $parent_slug, array $submenu_items): bool {
+        $normalized_parent_slug = strtolower($parent_slug);
+
+        foreach ($submenu_items as $submenu_item) {
+            if (!is_array($submenu_item)) {
+                continue;
+            }
+
+            $submenu_slug = strtolower((string) ($submenu_item[2] ?? ''));
+            if ($submenu_slug === '' || $submenu_slug === $normalized_parent_slug) {
+                continue;
+            }
+
+            if (meza_is_restricted_settings_tools_submenu_item($normalized_parent_slug, $submenu_item)) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    };
+
+    $filtered_menu = [];
+
+    foreach ($menu as $item) {
+        if (!is_array($item)) {
+            $filtered_menu[] = $item;
+            continue;
+        }
+
+        $slug = (string) ($item[2] ?? '');
+        if ($slug === '' || in_array($slug, $protected_top_level_slugs, true)) {
+            $filtered_menu[] = $item;
+            continue;
+        }
+
+        if (!array_key_exists($slug, (array) $submenu)) {
+            if ($top_level_requires_accessible_children($item)) {
+                continue;
+            }
+
+            $filtered_menu[] = $item;
+            continue;
+        }
+
+        $submenu_items = array_values(array_filter((array) ($submenu[$slug] ?? []), static function ($submenu_item): bool {
+            return is_array($submenu_item);
+        }));
+
+        $has_real_child_items = $has_real_accessible_child_items($slug, $submenu_items);
+
+        if ($submenu_items === [] || (!$has_real_child_items && $top_level_requires_accessible_children($item))) {
+            unset($submenu[$slug]);
+            continue;
+        }
+
+        $filtered_menu[] = $item;
+    }
+
+    $menu = $filtered_menu;
+}
+
+add_action('admin_menu', 'meza_prune_empty_top_level_admin_menu_groups', PHP_INT_MAX - 1);
+
+function meza_restore_settings_utility_group_separator(): void
+{
+    global $menu;
+
+    if (!is_array($menu) || empty($menu)) {
+        return;
+    }
+
+    $is_separator = static function ($item): bool {
+        if (!is_array($item)) {
+            return false;
+        }
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $classes = strtolower((string) ($item[4] ?? ''));
+
+        return str_starts_with($slug, 'separator') || str_contains($classes, 'wp-menu-separator');
+    };
+
+    $first_utility_index = null;
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item) || !meza_is_settings_utility_menu_item($item)) {
+            continue;
+        }
+
+        $first_utility_index = (int) $index;
+        break;
+    }
+
+    if ($first_utility_index === null || $first_utility_index <= 0) {
+        return;
+    }
+
+    $previous_item = $menu[$first_utility_index - 1] ?? null;
+    if ($is_separator($previous_item)) {
+        return;
+    }
+
+    array_splice($menu, $first_utility_index, 0, [[
+        '',
+        'read',
+        'separator-meza-settings-utilities',
+        '',
+        'wp-menu-separator',
+    ]]);
+}
+
+add_action('admin_menu', 'meza_restore_settings_utility_group_separator', PHP_INT_MAX - 1);
 // Final top-level menu cleanup pass.
 add_action('admin_menu', 'meza_cleanup_menu_separators', PHP_INT_MAX);
+
+function meza_enforce_restricted_top_level_utility_menus(): void
+{
+    global $menu, $submenu;
+
+    if (!meza_should_restrict_settings_tools_submenu_items()) {
+        return;
+    }
+
+    if (function_exists('remove_menu_page')) {
+        remove_menu_page('tools.php');
+    }
+
+    if (is_array($menu)) {
+        $menu = array_values(array_filter($menu, static function ($item): bool {
+            if (!is_array($item)) {
+                return true;
+            }
+
+            return strtolower((string) ($item[2] ?? '')) !== 'tools.php';
+        }));
+    }
+
+    if (is_array($submenu) && isset($submenu['tools.php'])) {
+        unset($submenu['tools.php']);
+    }
+}
 
 // Preserve the rebuilt top-level menu order after WooCommerce's menu_order filter runs.
 add_filter('custom_menu_order', '__return_true', PHP_INT_MAX);
@@ -11308,6 +13401,33 @@ function meza_filter_events_role_admin_menu(): void
 }
 add_action('admin_menu', 'meza_filter_events_role_admin_menu', PHP_INT_MAX);
 
+function meza_hide_empty_calendar_embeds_submenu_for_site_managers(): void
+{
+    if (!meza_should_hide_calendar_embeds_submenu_for_current_user()) {
+        return;
+    }
+
+    global $submenu;
+
+    remove_submenu_page('edit.php?post_type=tribe_events', 'edit.php?post_type=tribe_calendar_embed');
+
+    if (!isset($submenu['edit.php?post_type=tribe_events']) || !is_array($submenu['edit.php?post_type=tribe_events'])) {
+        return;
+    }
+
+    $submenu['edit.php?post_type=tribe_events'] = array_values(array_filter(
+        $submenu['edit.php?post_type=tribe_events'],
+        static function ($item): bool {
+            if (!is_array($item)) {
+                return false;
+            }
+
+            return strtolower((string) ($item[2] ?? '')) !== 'edit.php?post_type=tribe_calendar_embed';
+        }
+    ));
+}
+add_action('admin_menu', 'meza_hide_empty_calendar_embeds_submenu_for_site_managers', PHP_INT_MAX - 1);
+
 function meza_get_current_admin_post_type(): string
 {
     $post_type = isset($_GET['post_type']) ? sanitize_key(wp_unslash((string) $_GET['post_type'])) : '';
@@ -11449,6 +13569,10 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_alphabetize_fallback_plugin_submenus();
     meza_finalize_tools_submenu_order();
     meza_filter_disabled_tag_taxonomy_submenus();
+    meza_enforce_restricted_top_level_utility_menus();
+    meza_prune_empty_top_level_admin_menu_groups();
+    meza_restore_settings_utility_group_separator();
+    meza_cleanup_menu_separators();
 }
 
 function meza_get_admin_menu_editor_property(object $instance, string $property)
@@ -12559,20 +14683,113 @@ add_action('admin_head-edit.php', function () {
     if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
 
     $post_type = (string) ($screen->post_type ?? '');
+    $is_acp_layout = meza_post_type_uses_admin_columns_layout($post_type);
     $is_acf_screen = meza_is_acf_admin_post_type((string) ($screen->post_type ?? ''));
+    $current_columns = apply_filters("manage_{$post_type}_posts_columns", []);
+    $taxonomy_width_selectors = meza_get_taxonomy_admin_column_width_selectors($post_type);
+    $compact_date_width_selectors = meza_get_compact_date_admin_column_width_selectors($post_type);
     $taxonomy_column_labels = array_values(array_unique(array_filter(array_map(
         static function ($label): string {
             return strtolower(trim(wp_strip_all_tags((string) $label)));
         },
         array_values(meza_get_taxonomy_admin_column_sort_labels($post_type))
     ))));
+    $runtime_taxonomy_width_selectors = meza_get_current_admin_column_width_selectors(
+        is_array($current_columns) ? $current_columns : [],
+        $taxonomy_column_labels
+    );
+    $runtime_modified_published_width_selectors = meza_get_current_admin_column_width_selectors(
+        is_array($current_columns) ? $current_columns : [],
+        ['modified', 'published', 'date']
+    );
+    $column_width_css = $is_acp_layout
+        ? '.wp-list-table .column-mz_id{width:65px;}' .
+            '.wp-list-table .column-mz_menu_order{width:65px;}' .
+            '.wp-list-table .column-mz_cta_link{width:200px;}' .
+            '.wp-list-table .column-mz_cta_secondary_link{width:200px;}' .
+            '.wp-list-table .column-website{width:200px;}' .
+            '.wp-list-table .column-mz_faq_count{width:80px;}' .
+            '.wp-list-table .column-mz_form_recipients{width:150px;}' .
+            '.wp-list-table .column-mz_slug{width:175px;}' .
+            '.wp-list-table .column-mz_organization_url{width:200px;}' .
+            '.wp-list-table .column-mz_profile_link{width:200px;}' .
+            '.wp-list-table .column-mz_profile_title{width:175px;}' .
+            '.wp-list-table .column-mz_summary{width:325px;}' .
+            '.wp-list-table .column-mz_review_quote{width:325px;}' .
+            '.wp-list-table .column-mz_review_citer{width:175px;}' .
+            '.wp-list-table .column-mz_thumbnail{width:125px;min-width:125px;max-width:125px;}' .
+            '.wp-list-table .column-title{width:225px;}' .
+            '.wp-list-table .column-mz_modified,.wp-list-table .column-modified,.wp-list-table .column-mz_published,.wp-list-table .column-date{width:225px;}' .
+            '.wp-list-table th.column-categories,.wp-list-table td.column-categories{width:225px;}' .
+            '.wp-list-table th[class*="column-taxonomy-"],.wp-list-table td[class*="column-taxonomy-"]{width:225px;}' .
+            '.wp-list-table th.meza-admin-taxonomy-column,.wp-list-table td.meza-admin-taxonomy-column{width:225px;}' .
+            '.wp-list-table th.meza-admin-compact-date-column,.wp-list-table td.meza-admin-compact-date-column{width:200px;}' .
+            ($taxonomy_width_selectors !== []
+                ? implode(',', $taxonomy_width_selectors) . '{width:225px;}'
+                : '') .
+            ($runtime_taxonomy_width_selectors !== []
+                ? implode(',', $runtime_taxonomy_width_selectors) . '{width:225px;}'
+                : '') .
+            ($runtime_modified_published_width_selectors !== []
+                ? implode(',', $runtime_modified_published_width_selectors) . '{width:225px;}'
+                : '') .
+            ($compact_date_width_selectors !== []
+                ? implode(',', array_filter($compact_date_width_selectors, static fn($selector): bool => str_contains($selector, 'th'))) . '{width:200px;white-space:nowrap;}'
+                : '') .
+            ($compact_date_width_selectors !== []
+                ? implode(',', array_filter($compact_date_width_selectors, static fn($selector): bool => str_contains($selector, 'td'))) . '{width:200px;white-space:normal;line-height:1.4;}'
+                : '') .
+            '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:225px;}' .
+            '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:175px;}' .
+            '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:175px;}'
+        : '.wp-list-table .column-mz_id{width:65px;max-width:65px;}' .
+            '.wp-list-table .column-mz_menu_order{width:65px;max-width:65px;}' .
+            '.wp-list-table .column-mz_cta_link{width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_cta_secondary_link{width:200px;max-width:200px;}' .
+            '.wp-list-table .column-website{width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_faq_count{width:80px;max-width:80px;}' .
+            '.wp-list-table .column-mz_form_recipients{width:150px;max-width:150px;}' .
+            '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
+            '.wp-list-table .column-mz_organization_url{width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_profile_link{width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_profile_title{width:175px;max-width:175px;}' .
+            '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
+            '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
+            '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
+            '.wp-list-table .column-mz_thumbnail{width:125px;}' .
+            '.wp-list-table .column-title{width:225px;}' .
+            '.wp-list-table .column-mz_modified,.wp-list-table .column-modified,.wp-list-table .column-mz_published,.wp-list-table .column-date{width:225px;max-width:225px;}' .
+            '.wp-list-table th.column-categories,.wp-list-table td.column-categories{width:225px;max-width:225px;}' .
+            '.wp-list-table th[class*="column-taxonomy-"],.wp-list-table td[class*="column-taxonomy-"]{width:225px;}' .
+            '.wp-list-table th.meza-admin-taxonomy-column,.wp-list-table td.meza-admin-taxonomy-column{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table th.meza-admin-compact-date-column,.wp-list-table td.meza-admin-compact-date-column{width:200px;min-width:200px;max-width:200px;}' .
+            ($taxonomy_width_selectors !== []
+                ? implode(',', $taxonomy_width_selectors) . '{width:225px;min-width:225px;max-width:225px;}'
+                : '') .
+            ($runtime_taxonomy_width_selectors !== []
+                ? implode(',', $runtime_taxonomy_width_selectors) . '{width:225px;min-width:225px;max-width:225px;}'
+                : '') .
+            ($runtime_modified_published_width_selectors !== []
+                ? implode(',', $runtime_modified_published_width_selectors) . '{width:225px;min-width:225px;max-width:225px;}'
+                : '') .
+            ($compact_date_width_selectors !== []
+                ? implode(',', array_filter($compact_date_width_selectors, static fn($selector): bool => str_contains($selector, 'th'))) . '{width:200px;min-width:200px;max-width:200px;white-space:nowrap;}'
+                : '') .
+            ($compact_date_width_selectors !== []
+                ? implode(',', array_filter($compact_date_width_selectors, static fn($selector): bool => str_contains($selector, 'td'))) . '{width:200px;min-width:200px;max-width:200px;white-space:normal;line-height:1.4;}'
+                : '') .
+            '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:225px;max-width:225px;}' .
+            '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:175px;max-width:175px;}' .
+            '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:175px;max-width:175px;}';
 
     echo '<style id="meza-admin-list-column-widths">' .
-        '.meza-admin-table-scroll{width:100%;max-width:100%;max-height:calc(100vh - 260px);overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid #c3c4c7;box-sizing:border-box;background:#fff;}' .
-        '.meza-admin-table-scroll table.wp-list-table{min-width:max-content;border-collapse:separate;border-spacing:0;border:none!important;box-shadow:none!important;}' .
+        '.meza-admin-table-scroll{display:block;width:100%;max-width:100%;max-height:calc(100vh - 260px);overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid #c3c4c7;box-sizing:border-box;background:#fff;}' .
+        '.meza-admin-table-scroll table.wp-list-table{min-width:max-content;border-collapse:separate;border-spacing:0;border:none!important;box-shadow:none!important;table-layout:auto!important;}' .
         '.meza-admin-table-scroll table.wp-list-table thead,.meza-admin-table-scroll table.wp-list-table tfoot{position:relative;z-index:4;}' .
-        '.meza-admin-table-scroll table.wp-list-table thead th,.meza-admin-table-scroll table.wp-list-table thead td{position:sticky;top:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 -1px 0 #ccd0d4;background-clip:padding-box;}' .
-        '.meza-admin-table-scroll table.wp-list-table tfoot th,.meza-admin-table-scroll table.wp-list-table tfoot td{position:sticky;bottom:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 1px 0 #ccd0d4;background-clip:padding-box;}' .
+        '.meza-admin-table-scroll table.wp-list-table thead th,.meza-admin-table-scroll table.wp-list-table thead td{position:sticky;top:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 -1px 0 #ccd0d4;background-clip:padding-box;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' .
+        '.meza-admin-table-scroll table.wp-list-table thead th a,.meza-admin-table-scroll table.wp-list-table thead td a,.meza-admin-table-scroll table.wp-list-table tfoot th a,.meza-admin-table-scroll table.wp-list-table tfoot td a{display:inline-flex;align-items:center;gap:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;}' .
+        '.meza-admin-table-scroll table.wp-list-table thead th .sorting-indicators,.meza-admin-table-scroll table.wp-list-table thead td .sorting-indicators,.meza-admin-table-scroll table.wp-list-table tfoot th .sorting-indicators,.meza-admin-table-scroll table.wp-list-table tfoot td .sorting-indicators{flex:0 0 auto;}' .
+        '.meza-admin-table-scroll table.wp-list-table tfoot th,.meza-admin-table-scroll table.wp-list-table tfoot td{position:sticky;bottom:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 1px 0 #ccd0d4;background-clip:padding-box;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' .
         '.meza-admin-table-scroll table.wp-list-table tbody td{position:relative;z-index:1;background-clip:padding-box;}' .
         '.wp-list-table thead th.sorted,.wp-list-table tfoot th.sorted{background:#eef4ff;color:#0a4b78;box-shadow:inset 0 -1px 0 #b8d3ea;}' .
         '.wp-list-table th.sorted a,.wp-list-table th.sorted a:focus,.wp-list-table th.sorted a:visited{color:#0a4b78;}' .
@@ -12608,41 +14825,60 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table .column-title .meza-title-template .dashicons{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:14px;width:14px;height:14px;line-height:14px;position:relative;}' .
         '.wp-list-table .column-title .meza-title-permalink a{color:#646970;text-decoration:none;overflow-wrap:anywhere;word-break:break-word;}' .
         '.wp-list-table .column-title .meza-title-permalink a:hover{color:#2271b1;text-decoration:underline;}' .
-        '.wp-list-table .column-mz_modified,.wp-list-table .column-mz_published{width:225px;}' .
-        '.wp-list-table th.column-categories,.wp-list-table td.column-categories{width:225px;max-width:225px;}' .
-        '.wp-list-table th[class*="column-taxonomy-"],.wp-list-table td[class*="column-taxonomy-"]{width:225px;}' .
-        '.wp-list-table th.meza-admin-taxonomy-column,.wp-list-table td.meza-admin-taxonomy-column{width:225px!important;min-width:225px!important;max-width:225px!important;}' .
-        '.wp-list-table th.meza-admin-compact-date-column,.wp-list-table td.meza-admin-compact-date-column{width:200px!important;min-width:200px!important;max-width:200px!important;white-space:nowrap!important;}' .
-        '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:225px;max-width:225px;}' .
-        '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:175px;max-width:175px;}' .
-        '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:175px;max-width:175px;}' .
+        '.wp-list-table th.meza-admin-compact-date-column{white-space:nowrap;}' .
+        '.wp-list-table td.meza-admin-compact-date-column{white-space:normal;line-height:1.4;}' .
+        '.wp-list-table td.meza-admin-compact-date-column .meza-event-date-line{display:block;white-space:nowrap;}' .
+        '.wp-list-table td.meza-admin-compact-date-column .meza-title-permalink{font-size:12px;line-height:1.4;margin:2px 0 0;color:#646970;}' .
+        '.wp-list-table td.meza-admin-compact-date-column .meza-event-date-time{color:#646970;}' .
+        $column_width_css .
         '</style>';
 
     if ($post_type === 'product') {
         echo '<style id="meza-product-admin-column-widths">' .
-            '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px!important;min-width:48px!important;max-width:48px!important;text-align:center;}' .
-            '.wp-list-table th.column-mz_thumbnail,.wp-list-table td.column-mz_thumbnail{width:78px!important;min-width:78px!important;max-width:78px!important;}' .
+            ($is_acp_layout
+                ? '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px;text-align:center;}' .
+                    '.wp-list-table th.column-mz_thumbnail,.wp-list-table td.column-mz_thumbnail{width:78px;}'
+                : '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px;min-width:48px;max-width:48px;text-align:center;}' .
+                    '.wp-list-table th.column-mz_thumbnail,.wp-list-table td.column-mz_thumbnail{width:78px;min-width:78px;max-width:78px;}') .
             '.wp-list-table td.column-mz_thumbnail{vertical-align:top!important;}' .
             '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap{display:inline-block!important;width:78px!important;max-width:100%!important;line-height:0!important;margin:0 0 6px!important;}' .
             '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap>a{display:inline-block!important;width:100%!important;line-height:0!important;}' .
             '.wp-list-table td.column-mz_thumbnail img{display:block!important;width:78px!important;height:auto!important;max-width:78px!important;margin:0!important;}' .
-            '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px!important;min-width:240px!important;max-width:240px!important;}' .
-            '.wp-list-table th.column-price,.wp-list-table td.column-price{width:90px!important;min-width:90px!important;max-width:90px!important;white-space:nowrap!important;}' .
-            '.wp-list-table th.column-is_in_stock,.wp-list-table td.column-is_in_stock{width:110px!important;min-width:110px!important;max-width:110px!important;white-space:nowrap!important;}' .
-            '.wp-list-table th.column-taxonomy-product_brand,.wp-list-table td.column-taxonomy-product_brand{width:130px!important;min-width:130px!important;max-width:130px!important;}' .
-            '.wp-list-table th.column-mz_product_type,.wp-list-table td.column-mz_product_type{width:140px!important;min-width:140px!important;max-width:140px!important;}' .
-            '.wp-list-table th.column-sku,.wp-list-table td.column-sku{width:190px!important;min-width:190px!important;max-width:190px!important;}' .
-            '.wp-list-table th.column-product_cat,.wp-list-table td.column-product_cat,.wp-list-table th.column-taxonomy-product_cat,.wp-list-table td.column-taxonomy-product_cat{width:190px!important;min-width:190px!important;max-width:190px!important;}' .
-            '.wp-list-table th.column-product_tag,.wp-list-table td.column-product_tag,.wp-list-table th.column-taxonomy-product_tag,.wp-list-table td.column-taxonomy-product_tag{width:180px!important;min-width:180px!important;max-width:180px!important;}' .
-            '.wp-list-table th.column-mz_page_link,.wp-list-table td.column-mz_page_link{width:320px!important;min-width:320px!important;max-width:320px!important;}' .
-            '.wp-list-table th.column-wpseo-title,.wp-list-table td.column-wpseo-title{width:260px!important;min-width:260px!important;max-width:260px!important;}' .
-            '.wp-list-table th.column-mz_share_title,.wp-list-table td.column-mz_share_title{width:260px!important;min-width:260px!important;max-width:260px!important;}' .
-            '.wp-list-table th.column-wpseo-metadesc,.wp-list-table td.column-wpseo-metadesc{width:320px!important;min-width:320px!important;max-width:320px!important;}' .
-            '.wp-list-table th.column-mz_share_description,.wp-list-table td.column-mz_share_description{width:320px!important;min-width:320px!important;max-width:320px!important;}' .
-            '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:260px!important;min-width:260px!important;max-width:260px!important;}' .
-            '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:220px!important;min-width:220px!important;max-width:220px!important;}' .
-            '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:220px!important;min-width:220px!important;max-width:220px!important;}' .
-            '.wp-list-table th.column-mz_modified,.wp-list-table td.column-mz_modified,.wp-list-table th.column-mz_published,.wp-list-table td.column-mz_published{width:220px!important;min-width:220px!important;max-width:220px!important;vertical-align:top!important;}' .
+            ($is_acp_layout
+                ? '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px;}' .
+                    '.wp-list-table th.column-price,.wp-list-table td.column-price{width:90px;white-space:nowrap;}' .
+                    '.wp-list-table th.column-is_in_stock,.wp-list-table td.column-is_in_stock{width:110px;white-space:nowrap;}' .
+                    '.wp-list-table th.column-taxonomy-product_brand,.wp-list-table td.column-taxonomy-product_brand{width:130px;}' .
+                    '.wp-list-table th.column-mz_product_type,.wp-list-table td.column-mz_product_type{width:140px;}' .
+                    '.wp-list-table th.column-sku,.wp-list-table td.column-sku{width:190px;}' .
+                    '.wp-list-table th.column-product_cat,.wp-list-table td.column-product_cat,.wp-list-table th.column-taxonomy-product_cat,.wp-list-table td.column-taxonomy-product_cat{width:190px;}' .
+                    '.wp-list-table th.column-product_tag,.wp-list-table td.column-product_tag,.wp-list-table th.column-taxonomy-product_tag,.wp-list-table td.column-taxonomy-product_tag{width:180px;}' .
+                    '.wp-list-table th.column-mz_page_link,.wp-list-table td.column-mz_page_link{width:320px;}' .
+                    '.wp-list-table th.column-wpseo-title,.wp-list-table td.column-wpseo-title{width:260px;}' .
+                    '.wp-list-table th.column-mz_share_title,.wp-list-table td.column-mz_share_title{width:260px;}' .
+                    '.wp-list-table th.column-wpseo-metadesc,.wp-list-table td.column-wpseo-metadesc{width:320px;}' .
+                    '.wp-list-table th.column-mz_share_description,.wp-list-table td.column-mz_share_description{width:320px;}' .
+                    '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:260px;}' .
+                    '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:220px;}' .
+                    '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:220px;}' .
+                    '.wp-list-table th.column-mz_modified,.wp-list-table td.column-mz_modified,.wp-list-table th.column-mz_published,.wp-list-table td.column-mz_published{width:220px;vertical-align:top!important;}'
+                : '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px;min-width:240px;max-width:240px;}' .
+                    '.wp-list-table th.column-price,.wp-list-table td.column-price{width:90px;min-width:90px;max-width:90px;white-space:nowrap;}' .
+                    '.wp-list-table th.column-is_in_stock,.wp-list-table td.column-is_in_stock{width:110px;min-width:110px;max-width:110px;white-space:nowrap;}' .
+                    '.wp-list-table th.column-taxonomy-product_brand,.wp-list-table td.column-taxonomy-product_brand{width:130px;min-width:130px;max-width:130px;}' .
+                    '.wp-list-table th.column-mz_product_type,.wp-list-table td.column-mz_product_type{width:140px;min-width:140px;max-width:140px;}' .
+                    '.wp-list-table th.column-sku,.wp-list-table td.column-sku{width:190px;min-width:190px;max-width:190px;}' .
+                    '.wp-list-table th.column-product_cat,.wp-list-table td.column-product_cat,.wp-list-table th.column-taxonomy-product_cat,.wp-list-table td.column-taxonomy-product_cat{width:190px;min-width:190px;max-width:190px;}' .
+                    '.wp-list-table th.column-product_tag,.wp-list-table td.column-product_tag,.wp-list-table th.column-taxonomy-product_tag,.wp-list-table td.column-taxonomy-product_tag{width:180px;min-width:180px;max-width:180px;}' .
+                    '.wp-list-table th.column-mz_page_link,.wp-list-table td.column-mz_page_link{width:320px;min-width:320px;max-width:320px;}' .
+                    '.wp-list-table th.column-wpseo-title,.wp-list-table td.column-wpseo-title{width:260px;min-width:260px;max-width:260px;}' .
+                    '.wp-list-table th.column-mz_share_title,.wp-list-table td.column-mz_share_title{width:260px;min-width:260px;max-width:260px;}' .
+                    '.wp-list-table th.column-wpseo-metadesc,.wp-list-table td.column-wpseo-metadesc{width:320px;min-width:320px;max-width:320px;}' .
+                    '.wp-list-table th.column-mz_share_description,.wp-list-table td.column-mz_share_description{width:320px;min-width:320px;max-width:320px;}' .
+                    '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:260px;min-width:260px;max-width:260px;}' .
+                    '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:220px;min-width:220px;max-width:220px;}' .
+                    '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:220px;min-width:220px;max-width:220px;}' .
+                    '.wp-list-table th.column-mz_modified,.wp-list-table td.column-mz_modified,.wp-list-table th.column-mz_published,.wp-list-table td.column-mz_published{width:220px;min-width:220px;max-width:220px;vertical-align:top!important;}') .
             '.wp-list-table td.column-sku,.wp-list-table td.column-product_cat,.wp-list-table td.column-taxonomy-product_cat,.wp-list-table td.column-product_tag,.wp-list-table td.column-taxonomy-product_tag,.wp-list-table td.column-mz_page_link,.wp-list-table td.column-wpseo-title,.wp-list-table td.column-mz_share_title,.wp-list-table td.column-wpseo-metadesc,.wp-list-table td.column-mz_share_description,.wp-list-table td.column-mz_page_headline,.wp-list-table td.column-mz_page_cta,.wp-list-table td.column-mz_page_form{white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;vertical-align:top!important;}' .
             '.wp-list-table td.column-mz_page_link a:first-child{display:block;white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;}' .
             '.wp-list-table td.column-mz_page_link .row-actions{display:flex;flex-wrap:wrap;align-items:center;gap:0;line-height:1.3;}' .
@@ -12663,25 +14899,6 @@ add_action('admin_head-edit.php', function () {
         'table.wp-list-table.fixed col.column-terms,.wp-list-table th.column-terms,.wp-list-table td.column-terms{width:125px!important;min-width:125px!important;max-width:125px!important;}' .
         'table.wp-list-table.fixed col.column-fields,.wp-list-table th.column-fields,.wp-list-table td.column-fields{width:125px!important;min-width:125px!important;max-width:125px!important;}' .
         '</style>';
-});
-
-add_action('admin_print_footer_scripts-edit.php', function (): void {
-    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') {
-        return;
-    }
-
-    $post_type = (string) ($screen->post_type ?? '');
-    if (meza_should_preserve_taxonomy_admin_column_layout($post_type)) {
-        return;
-    }
-
-    $taxonomy_column_labels = array_values(array_unique(array_filter(array_map(
-        static function ($label): string {
-            return strtolower(trim(wp_strip_all_tags((string) $label)));
-        },
-        array_values(meza_get_taxonomy_admin_column_sort_labels($post_type))
-    ))));
 ?>
     <script id="meza-admin-list-column-classifier">
         (() => {
@@ -12754,18 +14971,353 @@ add_action('admin_print_footer_scripts-edit.php', function (): void {
                 document.querySelectorAll('table.wp-list-table').forEach(syncTable);
             };
 
-            sync();
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', sync, { once: true });
+            } else {
+                sync();
+            }
+        })();
+    </script>
+<?php
+});
+
+add_action('admin_head-edit.php', function (): void {
+?>
+    <script id="meza-admin-seo-column-truncation">
+        (() => {
+            const limits = {
+                'column-wpseo-title': 60,
+                'column-wpseo-metadesc': 160,
+                'column-mz_share_title': 60,
+                'column-mz_share_description': 110,
+            };
+
+            const normalizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+            const hasSeoTokens = (value) => /%%[^%]+%%/i.test(String(value || ''));
+
+            const isUnsetPlaceholder = (value) => {
+                const normalized = normalizeText(value).toLowerCase();
+                if (!normalized) return true;
+                if (normalized === '-' || normalized === '—') return true;
+                if (hasSeoTokens(normalized)) return true;
+                return normalized.includes('not set');
+            };
+
+            const truncateText = (value, limit) => {
+                const normalized = normalizeText(value);
+                if (isUnsetPlaceholder(normalized)) return '';
+                if (!limit || normalized.length <= limit) return normalized;
+                return normalized.slice(0, Math.max(1, limit - 3)).trimEnd() + '...';
+            };
+
+            const getRowCell = (row, className) => row instanceof HTMLTableRowElement
+                ? row.querySelector(`td.${className}, th.${className}`)
+                : null;
+
+            const clearCell = (cell) => {
+                if (!(cell instanceof HTMLElement)) return;
+                cell.textContent = '—';
+                cell.removeAttribute('title');
+            };
+
+            const setCellText = (cell, text) => {
+                if (!(cell instanceof HTMLElement)) return;
+                if (!text) return;
+                cell.textContent = text;
+                cell.title = normalizeText(text);
+            };
+
+            const syncRow = (row) => {
+                if (!(row instanceof HTMLTableRowElement)) return;
+
+                Object.entries(limits).forEach(([className, limit]) => {
+                    const cell = getRowCell(row, className);
+                    if (!(cell instanceof HTMLElement)) return;
+
+                    if (className === 'column-mz_share_title' || className === 'column-mz_share_description') {
+                        const currentText = normalizeText(cell.textContent);
+                        if (isUnsetPlaceholder(currentText)) {
+                            const fallbackClass = className === 'column-mz_share_title'
+                                ? 'column-wpseo-title'
+                                : 'column-wpseo-metadesc';
+                            const fallbackCell = getRowCell(row, fallbackClass);
+                            if (fallbackCell instanceof HTMLElement) {
+                                const fallbackText = truncateText(fallbackCell.textContent, limit);
+                                if (fallbackText) {
+                                    setCellText(cell, fallbackText);
+                                    return;
+                                }
+                            }
+
+                            clearCell(cell);
+                            return;
+                        }
+                    }
+
+                    const text = truncateText(cell.textContent, limit);
+                    if (text) {
+                        setCellText(cell, text);
+                    } else if (isUnsetPlaceholder(cell.textContent)) {
+                        clearCell(cell);
+                    }
+                });
+            };
+
+            const sync = () => {
+                document.querySelectorAll('table.wp-list-table tbody tr').forEach(syncRow);
+            };
 
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', sync, { once: true });
             } else {
-                window.addEventListener('load', sync, { once: true });
+                sync();
+            }
+        })();
+    </script>
+<?php
+});
+
+add_action('admin_head-edit.php', function (): void {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') {
+        return;
+    }
+
+    $post_type = (string) ($screen->post_type ?? '');
+    $posts = $GLOBALS['wp_query']->posts ?? [];
+    if (!is_array($posts) || $posts === []) {
+        return;
+    }
+
+    $current_columns = apply_filters("manage_{$post_type}_posts_columns", []);
+    $event_date_column_keys = is_array($current_columns) ? meza_get_event_date_admin_column_keys($current_columns) : ['start' => '', 'end' => ''];
+
+    $column_map = [];
+    $taxonomy_keys = meza_get_taxonomy_admin_column_keys_for_post_type($post_type);
+
+    foreach ($posts as $post) {
+        if (!($post instanceof WP_Post)) {
+            continue;
+        }
+
+        foreach ($taxonomy_keys as $column_key) {
+            $taxonomy = meza_resolve_taxonomy_from_admin_column_key((string) $column_key, $post_type);
+            if ($taxonomy === '') {
+                continue;
             }
 
-            const body = document.getElementById('wpbody-content');
-            if (body instanceof HTMLElement) {
-                const observer = new MutationObserver(() => sync());
-                observer.observe(body, { childList: true, subtree: true });
+            $column_html = meza_get_taxonomy_admin_column_html($taxonomy, $post);
+            if ($column_html === '') {
+                continue;
+            }
+
+            $column_map[(int) $post->ID][(string) $column_key] = $column_html;
+        }
+    }
+
+    if (!meza_is_event_post_type($post_type)) {
+        if ($column_map === []) {
+            return;
+        }
+?>
+    <script id="meza-admin-column-content-normalizer">
+        (() => {
+            const columnMap = <?php echo wp_json_encode($column_map); ?> || {};
+
+            const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+            const getColumnKeys = (cell) => {
+                if (!(cell instanceof HTMLElement)) {
+                    return [];
+                }
+
+                const keys = [];
+                const id = String(cell.id || '').trim();
+                if (id) {
+                    keys.push(id);
+                }
+
+                String(cell.className || '')
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .forEach((className) => {
+                        if (className.startsWith('column-')) {
+                            keys.push(className.slice(7));
+                        }
+                    });
+
+                return Array.from(new Set(keys.filter(Boolean)));
+            };
+
+            const sync = () => {
+                document.querySelectorAll('table.wp-list-table').forEach((table) => {
+                    if (!(table instanceof HTMLTableElement)) return;
+
+                    const headerRow = table.tHead?.rows?.[table.tHead.rows.length - 1];
+                    if (!(headerRow instanceof HTMLTableRowElement)) return;
+
+                    const columnKeysByIndex = Array.from(headerRow.children).map((cell) => getColumnKeys(cell));
+
+                    Array.from(table.tBodies).forEach((tbody) => {
+                        Array.from(tbody.rows).forEach((row) => {
+                            if (!(row instanceof HTMLTableRowElement)) return;
+
+                            const match = String(row.id || '').match(/^post-(\d+)$/);
+                            if (!match) return;
+
+                            const postColumns = columnMap[match[1]];
+                            if (!postColumns) return;
+
+                            Array.from(row.children).forEach((cell, index) => {
+                                if (!(cell instanceof HTMLElement)) return;
+
+                                const matchedKey = (columnKeysByIndex[index] || []).find((key) => key && postColumns[key]);
+                                if (!matchedKey) return;
+
+                                cell.innerHTML = postColumns[matchedKey] || '&mdash;';
+                            });
+                        });
+                    });
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', sync, { once: true });
+            } else {
+                sync();
+            }
+        })();
+    </script>
+<?php
+        return;
+    }
+
+    $date_map = [];
+
+    foreach ($posts as $post) {
+        if (!($post instanceof WP_Post)) {
+            continue;
+        }
+
+        $start_raw = meza_get_event_admin_column_datetime_value((int) $post->ID, 'start');
+        $end_raw = meza_get_event_admin_column_datetime_value((int) $post->ID, 'end');
+        $combined_date = meza_format_event_admin_datetime_range($start_raw, $end_raw);
+
+        if ($combined_date === '') {
+            continue;
+        }
+
+        $date_value = meza_get_event_admin_datetime_range_html($start_raw, $end_raw);
+        $start_column_key = trim((string) ($event_date_column_keys['start'] ?? ''));
+        if ($start_column_key === '') {
+            $start_column_key = 'start-date';
+        }
+
+        $date_map[(int) $post->ID] = [
+            $start_column_key => $date_value,
+            'start-date'      => $date_value,
+            'start_date'      => $date_value,
+        ];
+    }
+
+    if ($column_map === [] && $date_map === []) {
+        return;
+    }
+?>
+    <script id="meza-admin-column-content-normalizer">
+        (() => {
+            const columnMap = <?php echo wp_json_encode($column_map); ?> || {};
+            const dateMap = <?php echo wp_json_encode($date_map); ?> || {};
+            const eventDateColumnKeys = <?php echo wp_json_encode(array_values(array_filter(array_unique(array_map('strval', [
+                $event_date_column_keys['start'] ?? '',
+                'start-date',
+                'start_date',
+            ]))))); ?> || [];
+            const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+            const getColumnKeys = (cell) => {
+                if (!(cell instanceof HTMLElement)) {
+                    return [];
+                }
+
+                const keys = [];
+                const id = String(cell.id || '').trim();
+                if (id) {
+                    keys.push(id);
+                }
+
+                String(cell.className || '')
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .forEach((className) => {
+                        if (className.startsWith('column-')) {
+                            keys.push(className.slice(7));
+                        }
+                    });
+
+                const label = normalize(cell.textContent);
+                if (label === 'start date') {
+                    keys.push('start-date', 'start_date');
+                }
+                if (label === 'date') {
+                    keys.push(...eventDateColumnKeys);
+                }
+
+                return Array.from(new Set(keys.filter(Boolean)));
+            };
+
+            const getColumnKeysByIndex = (table) => {
+                const headerRow = table?.tHead?.rows?.[table.tHead.rows.length - 1];
+                if (!(headerRow instanceof HTMLTableRowElement)) {
+                    return [];
+                }
+
+                return Array.from(headerRow.children).map((cell) => getColumnKeys(cell));
+            };
+
+            const sync = () => {
+                document.querySelectorAll('table.wp-list-table').forEach((table) => {
+                    if (!(table instanceof HTMLTableElement)) return;
+
+                    const columnKeysByIndex = getColumnKeysByIndex(table);
+                    if (!columnKeysByIndex.length) return;
+
+                    Array.from(table.tBodies).forEach((tbody) => {
+                        Array.from(tbody.rows).forEach((row) => {
+                            if (!(row instanceof HTMLTableRowElement)) return;
+
+                            const match = String(row.id || '').match(/^post-(\d+)$/);
+                            if (!match) return;
+
+                            const postColumns = columnMap[match[1]] || {};
+                            const postDates = dateMap[match[1]];
+
+                            Array.from(row.children).forEach((cell, index) => {
+                                if (!(cell instanceof HTMLElement)) return;
+
+                                const keys = columnKeysByIndex[index] || [];
+                                const taxonomyKey = keys.find((key) => key && postColumns[key]);
+                                if (taxonomyKey) {
+                                    cell.innerHTML = postColumns[taxonomyKey] || '&mdash;';
+                                    return;
+                                }
+
+                                if (!postDates) return;
+
+                                const dateKey = keys.find((key) => key && postDates[key]);
+                                if (!dateKey) return;
+
+                                cell.innerHTML = postDates[dateKey] || '&mdash;';
+                            });
+                        });
+                    });
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', sync, { once: true });
+            } else {
+                sync();
             }
         })();
     </script>
@@ -12831,7 +15383,7 @@ add_action('admin_footer-edit.php', function () {
 
     echo '<script id="meza-admin-table-scroll-wrap">' .
         '(function(){' .
-        'var table=document.querySelector("#posts-filter table.wp-list-table");' .
+        'var table=document.querySelector("#posts-filter table.wp-list-table, .wrap table.wp-list-table");' .
         'if(!table)return;' .
         'if(table.parentElement&&table.parentElement.classList.contains("meza-admin-table-scroll"))return;' .
         'var wrapper=document.createElement("div");' .
@@ -14854,10 +17406,12 @@ function meza_render_yoast_panel_state_script(): void
                     window.requestAnimationFrame(syncTarget);
                 });
 
-                observer.observe(document.body, {
-                    childList: true,
-                    subtree: true,
-                });
+                if (document.body instanceof HTMLBodyElement) {
+                    observer.observe(document.body, {
+                        childList: true,
+                        subtree: true,
+                    });
+                }
 
                 window.setTimeout(syncTarget, 300);
                 window.setTimeout(syncTarget, 1000);
@@ -14967,10 +17521,12 @@ function meza_render_post_panel_label_sync_script(): void
                     window.requestAnimationFrame(syncLabels);
                 });
 
-                observer.observe(document.body, {
-                    childList: true,
-                    subtree: true,
-                });
+                if (document.body instanceof HTMLBodyElement) {
+                    observer.observe(document.body, {
+                        childList: true,
+                        subtree: true,
+                    });
+                }
 
                 window.setTimeout(syncLabels, 300);
                 window.setTimeout(syncLabels, 1000);
