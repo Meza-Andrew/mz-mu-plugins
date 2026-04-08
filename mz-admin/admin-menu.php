@@ -345,6 +345,71 @@ function meza_get_standardized_submenu_utility_label(array $item, string $parent
     return '';
 }
 
+function meza_is_sqlite_object_cache_menu_item(string $slug, string $title): bool
+{
+    return str_contains($slug, 'sqlite-object-cache')
+        || str_contains($slug, 'sqlite_object_cache')
+        || str_contains($slug, 'sqliteobjectcache')
+        || $title === 'sqlite object cache';
+}
+
+function meza_get_settings_submenu_priority_labels(): array
+{
+    return [
+        'Contact Information',
+        'Business Information',
+        'CRM Integration',
+        'Page Cache',
+        'Object Cache',
+        'Image Performance',
+        'Post Ordering',
+        'Post Duplication',
+        'Admin Columns',
+        'Admin Menu',
+    ];
+}
+
+function meza_reorder_settings_submenu_items(array $items): array
+{
+    $ordered_labels = meza_get_settings_submenu_priority_labels();
+    $ordered_items = [];
+    $matched_indexes = [];
+    $privacy_index = null;
+
+    foreach ($items as $index => $item) {
+        if (!is_array($item)) continue;
+
+        $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
+
+        if (strcasecmp($label, 'Privacy') === 0 && $privacy_index === null) {
+            $privacy_index = (int) $index;
+        }
+
+        $label_match_index = array_search($label, $ordered_labels, true);
+        if ($label_match_index === false) continue;
+
+        $ordered_items[$label_match_index] = $item;
+        $matched_indexes[] = (int) $index;
+    }
+
+    if ($privacy_index === null || empty($matched_indexes)) {
+        return $items;
+    }
+
+    rsort($matched_indexes, SORT_NUMERIC);
+    foreach ($matched_indexes as $matched_index) {
+        array_splice($items, $matched_index, 1);
+        if ($matched_index < $privacy_index) {
+            $privacy_index--;
+        }
+    }
+
+    ksort($ordered_items);
+    array_splice($items, $privacy_index + 1, 0, array_values($ordered_items));
+
+    return $items;
+}
+
 function meza_reorder_standardized_submenu_utility_items(array $items): array
 {
     $order_map = [
@@ -1449,6 +1514,7 @@ function meza_normalize_admin_plugin_menus(): void
             $is_wp_super_cache = str_contains($slug, 'wp-super-cache')
                 || str_contains($slug, 'wpsupercache')
                 || $title === 'wp super cache';
+            $is_sqlite_object_cache = meza_is_sqlite_object_cache_menu_item($slug, $title);
             $is_menu_editor = $slug === 'menu_editor'
                 || str_contains($slug, 'menu_editor')
                 || str_contains($slug, 'menu-editor')
@@ -1481,6 +1547,12 @@ function meza_normalize_admin_plugin_menus(): void
                 continue;
             }
 
+            if ($parent_slug === 'options-general.php' && $is_sqlite_object_cache) {
+                $item[0] = 'Object Cache';
+                if (isset($item[3])) $item[3] = 'Object Cache';
+                continue;
+            }
+
             if ($is_menu_editor) {
                 $item[0] = 'Admin Menu';
                 if (isset($item[3])) $item[3] = 'Admin Menu';
@@ -1498,50 +1570,7 @@ function meza_normalize_admin_plugin_menus(): void
         $items = array_values($items);
 
         if ($parent_slug === 'options-general.php') {
-            $ordered_labels = [
-                'Contact Information',
-                'Business Information',
-                'CRM Integration',
-                'Page Cache',
-                'Image Performance',
-                'Post Ordering',
-                'Post Duplication',
-                'Admin Columns',
-                'Admin Menu',
-            ];
-
-            $ordered_items = [];
-            $matched_indexes = [];
-            $privacy_index = null;
-
-            foreach ($items as $index => $item) {
-                if (!is_array($item)) continue;
-
-                $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
-
-                if (strcasecmp($label, 'Privacy') === 0 && $privacy_index === null) {
-                    $privacy_index = (int) $index;
-                }
-
-                $label_match_index = array_search($label, $ordered_labels, true);
-                if ($label_match_index === false) continue;
-
-                $ordered_items[$label_match_index] = $item;
-                $matched_indexes[] = (int) $index;
-            }
-
-            if ($privacy_index !== null && !empty($matched_indexes)) {
-                rsort($matched_indexes, SORT_NUMERIC);
-                foreach ($matched_indexes as $matched_index) {
-                    array_splice($items, $matched_index, 1);
-                    if ($matched_index < $privacy_index) {
-                        $privacy_index--;
-                    }
-                }
-
-                ksort($ordered_items);
-                array_splice($items, $privacy_index + 1, 0, array_values($ordered_items));
-            }
+            $items = meza_reorder_settings_submenu_items($items);
         }
 
         if ($parent_slug !== 'options-general.php') {
@@ -5267,7 +5296,12 @@ function meza_move_single_item_top_level_menus_into_settings(): void
 
         $parent_slug = (string) ($item[2] ?? '');
         $top_level_label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
+        $normalized_top_level_label = strtolower($top_level_label);
         if ($parent_slug === '' || $top_level_label === '') continue;
+
+        if (meza_is_sqlite_object_cache_menu_item(strtolower($parent_slug), $normalized_top_level_label)) {
+            $top_level_label = 'Object Cache';
+        }
 
         $child_items = array_values(array_filter((array) ($submenu[$parent_slug] ?? []), static function ($child): bool {
             return is_array($child);
@@ -5324,6 +5358,7 @@ function meza_move_single_item_top_level_menus_into_settings(): void
         });
 
         $submenu['options-general.php'] = array_merge($submenu['options-general.php'], $moved_items);
+        $submenu['options-general.php'] = meza_reorder_settings_submenu_items(array_values($submenu['options-general.php']));
     }
 
     if (!empty($menu_indexes_to_remove)) {

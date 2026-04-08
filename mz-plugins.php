@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.20
+ * Version: 1.4.21
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -109,6 +109,7 @@ if (!function_exists('mz_plugins_get_catalog')) {
             ['name' => 'Converter for Media', 'slug' => 'webp-converter-for-media', 'file' => 'webp-converter-for-media/webp-converter-for-media.php', 'envs' => ['qa', 'production']],
             ['name' => 'Redirection', 'slug' => 'redirection', 'file' => 'redirection/redirection.php', 'envs' => ['qa', 'production']],
             ['name' => 'WP Super Cache', 'slug' => 'wp-super-cache', 'file' => 'wp-super-cache/wp-cache.php', 'envs' => ['qa', 'production']],
+            ['name' => 'SQLite Object Cache', 'slug' => 'sqlite-object-cache', 'file' => 'sqlite-object-cache/sqlite-object-cache.php', 'envs' => ['qa', 'production'], 'requires' => ['wp-super-cache/wp-cache.php']],
 
             // Production only
             ['name' => 'Site Kit by Google', 'slug' => 'google-site-kit', 'file' => 'google-site-kit/google-site-kit.php', 'envs' => ['production']],
@@ -152,6 +153,32 @@ if (!function_exists('mz_plugins_get_env_plugin_signatures')) {
         }
 
         return array_keys($signatures);
+    }
+}
+
+if (!function_exists('mz_plugins_catalog_dependencies_met')) {
+    function mz_plugins_catalog_dependencies_met(array $plugin, array $should_install = [], array $all_plugins = []): bool
+    {
+        $requires = array_filter((array) ($plugin['requires'] ?? []), static function ($required_plugin): bool {
+            return is_string($required_plugin) && trim($required_plugin) !== '';
+        });
+
+        foreach ($requires as $required_plugin) {
+            $required_plugin = trim((string) $required_plugin);
+            $required_plugin_path = WP_PLUGIN_DIR . '/' . $required_plugin;
+
+            if (isset($should_install[$required_plugin])) {
+                continue;
+            }
+
+            if (isset($all_plugins[$required_plugin]) || file_exists($required_plugin_path)) {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
     }
 }
 
@@ -224,6 +251,11 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
 
     // INSTALL any missing that we want to have in this env
     foreach ($should_install as $file => $p) {
+        if (!mz_plugins_catalog_dependencies_met($p, $should_install, $all)) {
+            $results[] = "Skip install (requires): {$p['name']}";
+            continue;
+        }
+
         if (isset($all[$file])) continue;
         $slug = $p['slug'] ?? '';
         $zip  = '';
@@ -255,6 +287,11 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
 
     // ACTIVATE required
     foreach ($should_activate as $file => $p) {
+        if (!mz_plugins_catalog_dependencies_met($p, $should_install, $all)) {
+            $results[] = "Skip activate (requires): {$p['name']}";
+            continue;
+        }
+
         if (is_plugin_active($file) || (is_multisite() && is_plugin_active_for_network($file))) continue;
         if (!isset($all[$file])) {
             wp_clean_plugins_cache(true);
