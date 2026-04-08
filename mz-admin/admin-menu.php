@@ -3693,9 +3693,13 @@ if (!function_exists('meza_admin_is_core_template_script_id')) {
 }
 
 if (!function_exists('meza_admin_is_allowed_after_wpwrap_element')) {
-    function meza_admin_is_allowed_after_wpwrap_element(DOMElement $element, array $allowed_selectors): bool
+    function meza_admin_is_allowed_after_wpwrap_element(DOMElement $element, array $allowed_selectors, array $preferred_plugin_signatures = []): bool
     {
         if (meza_admin_dom_element_matches_any_selector($element, $allowed_selectors)) {
+            return true;
+        }
+
+        if (meza_admin_dom_element_matches_plugin_signatures($element, $preferred_plugin_signatures)) {
             return true;
         }
 
@@ -3985,6 +3989,7 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
         $wpwrap_selectors = meza_admin_wpwrap_allowed_selectors();
         $wpbody_content_pre_wrap_selectors = meza_admin_wpbody_content_pre_wrap_allowed_selectors();
         $wpbody_content_trailing_selectors = meza_admin_wpbody_content_trailing_allowed_selectors();
+        $preferred_plugin_signatures = meza_admin_get_env_preferred_plugin_signatures();
         $disallowed_plugin_signatures = meza_admin_get_disallowed_plugin_signatures();
         $bridge_stop_selectors = [
             'h2.screen-reader-text',
@@ -4036,6 +4041,10 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
                         continue;
                     }
 
+                    if (meza_admin_dom_element_matches_plugin_signatures($child, $preferred_plugin_signatures)) {
+                        continue;
+                    }
+
                     if (
                         !meza_admin_dom_element_matches_any_selector($child, ['[data-meza-admin-chrome]', '.meza-admin-chrome'])
                         && meza_admin_dom_element_matches_plugin_signatures($child, $disallowed_plugin_signatures)
@@ -4056,7 +4065,7 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
                     continue;
                 }
 
-                if (meza_admin_is_allowed_after_wpwrap_element($child, $wpbody_content_trailing_selectors)) {
+                if (meza_admin_is_allowed_after_wpwrap_element($child, $wpbody_content_trailing_selectors, $preferred_plugin_signatures)) {
                     continue;
                 }
 
@@ -4080,20 +4089,20 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
                     continue;
                 }
 
-                if (!meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors)
+                if (!meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors, $preferred_plugin_signatures)
                     && meza_admin_dom_element_matches_plugin_signatures($child, $disallowed_plugin_signatures)) {
                     $body->removeChild($child);
                     continue;
                 }
 
-                if (!meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors)
+                if (!meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors, $preferred_plugin_signatures)
                     && strtolower($child->tagName) !== 'script') {
                     $body->removeChild($child);
                     continue;
                 }
 
                 if (strtolower($child->tagName) === 'script'
-                    && !meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors)
+                    && !meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors, $preferred_plugin_signatures)
                     && in_array(strtolower(trim((string) $child->getAttribute('type'))), ['text/html', 'text/template'], true)) {
                     $body->removeChild($child);
                 }
@@ -4360,6 +4369,7 @@ add_action('admin_head', function (): void {
             const wpwrapAllowedSelectors = <?php echo wp_json_encode($wpwrap_selectors); ?>;
             const wpbodyContentPreWrapSelectors = <?php echo wp_json_encode($wpbodyContentPreWrapSelectors); ?>;
             const wpbodyContentTrailingSelectors = <?php echo wp_json_encode($wpbodyContentTrailingSelectors); ?>;
+            const preferredPluginSignatures = <?php echo wp_json_encode(meza_admin_get_env_preferred_plugin_signatures()); ?>;
             const disallowedPluginSignatures = <?php echo wp_json_encode($disallowed_plugin_signatures); ?>;
             const protectedSpacingTargets = [
                 document.documentElement,
@@ -4427,6 +4437,7 @@ add_action('admin_head', function (): void {
             const isAllowedAfterWpwrapElement = (element) => {
                 if (!(element instanceof Element)) return false;
                 if (isAllowedAfterWpwrap(element)) return true;
+                if (matchesPluginSignatures(element, preferredPluginSignatures)) return true;
                 if (element.tagName.toLowerCase() !== 'script') return false;
 
                 const type = String(element.getAttribute('type') || '').toLowerCase().trim();
@@ -4445,6 +4456,7 @@ add_action('admin_head', function (): void {
             const isAllowedAfterWpwrapElementForSelectors = (element, selectors) => {
                 if (!(element instanceof Element)) return false;
                 if (Array.isArray(selectors) && selectors.some((selector) => element.matches(selector))) return true;
+                if (matchesPluginSignatures(element, preferredPluginSignatures)) return true;
                 if (element.tagName.toLowerCase() !== 'script') return false;
 
                 const type = String(element.getAttribute('type') || '').toLowerCase().trim();
@@ -4533,6 +4545,10 @@ add_action('admin_head', function (): void {
                             return;
                         }
 
+                        if (matchesPluginSignatures(child, preferredPluginSignatures)) {
+                            return;
+                        }
+
                         if (
                             !child.matches('[data-meza-admin-chrome], .meza-admin-chrome')
                             && matchesPluginSignatures(child, disallowedPluginSignatures)
@@ -4549,6 +4565,7 @@ add_action('admin_head', function (): void {
                         seenMainWrap = true;
                         return;
                     }
+                    if (matchesPluginSignatures(child, preferredPluginSignatures)) return;
                     if (isAllowedAfterWpwrapElementForSelectors(child, wpbodyContentTrailingSelectors)) return;
 
                     child.remove();
