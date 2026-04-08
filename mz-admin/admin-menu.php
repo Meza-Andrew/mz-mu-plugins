@@ -3361,6 +3361,17 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
                     return true;
                 }
 
+                $screen_values = array_map('strtolower', array_filter([
+                    (string) ($screen->id ?? ''),
+                    (string) ($screen->base ?? ''),
+                    (string) ($screen->parent_base ?? ''),
+                    (string) ($screen->parent_file ?? ''),
+                ]));
+
+                if (count(array_intersect($screen_values, ['site-health', 'site-health.php', 'tools_page_site-health'])) > 0) {
+                    return true;
+                }
+
                 if ((string) $screen->base === 'themes') {
                     return true;
                 }
@@ -3374,6 +3385,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         $php_self = isset($_SERVER['PHP_SELF']) ? basename((string) $_SERVER['PHP_SELF']) : '';
 
         if ($php_self === 'themes.php') {
+            return true;
+        }
+
+        if ($php_self === 'site-health.php') {
             return true;
         }
 
@@ -3703,7 +3718,7 @@ if (!function_exists('meza_admin_is_allowed_after_wpwrap_element')) {
             return true;
         }
 
-        if (meza_admin_dom_element_matches_plugin_signatures($element, $preferred_plugin_signatures)) {
+        if (meza_admin_dom_element_or_descendant_matches_plugin_signatures($element, $preferred_plugin_signatures)) {
             return true;
         }
 
@@ -3816,6 +3831,40 @@ if (!function_exists('meza_admin_dom_element_matches_plugin_signatures')) {
 
             if (str_contains($haystack, $signature)) {
                 return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_admin_dom_element_or_descendant_matches_plugin_signatures')) {
+    function meza_admin_dom_element_or_descendant_matches_plugin_signatures(DOMElement $element, array $signatures): bool
+    {
+        if ($signatures === []) {
+            return false;
+        }
+
+        if (meza_admin_dom_element_matches_plugin_signatures($element, $signatures)) {
+            return true;
+        }
+
+        $stack = [$element];
+
+        while ($stack !== []) {
+            /** @var DOMElement $node */
+            $node = array_pop($stack);
+
+            foreach ($node->childNodes as $child) {
+                if (!($child instanceof DOMElement)) {
+                    continue;
+                }
+
+                if (meza_admin_dom_element_matches_plugin_signatures($child, $signatures)) {
+                    return true;
+                }
+
+                $stack[] = $child;
             }
         }
 
@@ -4045,13 +4094,13 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
                         continue;
                     }
 
-                    if (meza_admin_dom_element_matches_plugin_signatures($child, $preferred_plugin_signatures)) {
+                    if (meza_admin_dom_element_or_descendant_matches_plugin_signatures($child, $preferred_plugin_signatures)) {
                         continue;
                     }
 
                     if (
                         !meza_admin_dom_element_matches_any_selector($child, ['[data-meza-admin-chrome]', '.meza-admin-chrome'])
-                        && meza_admin_dom_element_matches_plugin_signatures($child, $disallowed_plugin_signatures)
+                        && meza_admin_dom_element_or_descendant_matches_plugin_signatures($child, $disallowed_plugin_signatures)
                     ) {
                         $wpbody_content->removeChild($child);
                         continue;
@@ -4438,10 +4487,19 @@ add_action('admin_head', function (): void {
                 return allowedPrefixes.some((prefix) => value.startsWith(prefix));
             };
 
+            const matchesPluginSignaturesDeep = (element, signatures) => {
+                if (!(element instanceof Element) || !Array.isArray(signatures) || signatures.length === 0) return false;
+                if (matchesPluginSignatures(element, signatures)) return true;
+
+                return Array.from(element.querySelectorAll('*')).some((node) => (
+                    node instanceof Element && matchesPluginSignatures(node, signatures)
+                ));
+            };
+
             const isAllowedAfterWpwrapElement = (element) => {
                 if (!(element instanceof Element)) return false;
                 if (isAllowedAfterWpwrap(element)) return true;
-                if (matchesPluginSignatures(element, preferredPluginSignatures)) return true;
+                if (matchesPluginSignaturesDeep(element, preferredPluginSignatures)) return true;
                 if (element.tagName.toLowerCase() !== 'script') return false;
 
                 const type = String(element.getAttribute('type') || '').toLowerCase().trim();
@@ -4460,7 +4518,7 @@ add_action('admin_head', function (): void {
             const isAllowedAfterWpwrapElementForSelectors = (element, selectors) => {
                 if (!(element instanceof Element)) return false;
                 if (Array.isArray(selectors) && selectors.some((selector) => element.matches(selector))) return true;
-                if (matchesPluginSignatures(element, preferredPluginSignatures)) return true;
+                if (matchesPluginSignaturesDeep(element, preferredPluginSignatures)) return true;
                 if (element.tagName.toLowerCase() !== 'script') return false;
 
                 const type = String(element.getAttribute('type') || '').toLowerCase().trim();
@@ -4549,13 +4607,13 @@ add_action('admin_head', function (): void {
                             return;
                         }
 
-                        if (matchesPluginSignatures(child, preferredPluginSignatures)) {
+                        if (matchesPluginSignaturesDeep(child, preferredPluginSignatures)) {
                             return;
                         }
 
                         if (
                             !child.matches('[data-meza-admin-chrome], .meza-admin-chrome')
-                            && matchesPluginSignatures(child, disallowedPluginSignatures)
+                            && matchesPluginSignaturesDeep(child, disallowedPluginSignatures)
                         ) {
                             child.remove();
                             return;
@@ -4569,7 +4627,7 @@ add_action('admin_head', function (): void {
                         seenMainWrap = true;
                         return;
                     }
-                    if (matchesPluginSignatures(child, preferredPluginSignatures)) return;
+                    if (matchesPluginSignaturesDeep(child, preferredPluginSignatures)) return;
                     if (isAllowedAfterWpwrapElementForSelectors(child, wpbodyContentTrailingSelectors)) return;
 
                     child.remove();
