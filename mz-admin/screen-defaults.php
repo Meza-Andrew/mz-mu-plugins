@@ -472,31 +472,26 @@ add_filter('screen_settings', function ($screen_settings, $screen) {
     ) ?? $screen_settings;
 }, 200, 2);
 
-add_action('current_screen', function ($screen): void {
-    if (!($screen instanceof WP_Screen)) return;
+function meza_render_admin_help_tab_hide(): void
+{
+    echo '<style id="meza-admin-help-tab-hide">#contextual-help-link-wrap,#contextual-help-wrap{display:none!important;}</style>';
+}
 
-    $screen->remove_help_tabs();
-    $screen->set_help_sidebar('');
-}, 250);
-
-// Post edit screen: hide extra Screen Options sections, remove helper copy, and alphabetize Screen Elements.
-add_action('admin_head', function (): void {
+function meza_render_post_screen_options_cleanup(): void
+{
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
     if (!($screen instanceof WP_Screen)) return;
-    $screen_base = (string) ($screen->base ?? '');
+
     $post_type = (string) ($screen->post_type ?? '');
 
-    echo '<style id="meza-admin-help-tab-hide">#contextual-help-link-wrap,#contextual-help-wrap{display:none!important;}</style>';
-
-    if (in_array($screen_base, ['post', 'post-new'], true)) {
-        echo '<style id="meza-post-screen-options-cleanup">#screen-options-wrap .columns-prefs,#screen-options-wrap .metabox-prefs>p{display:none!important;}</style>';
-        if (!meza_can_access_content_permissions_panel()) {
-            echo '<style id="meza-post-content-permissions-hide">#ame-cpe-content-permissions,#screen-options-wrap label[for="ame-cpe-content-permissions-hide"]{display:none!important;}</style>';
-        }
-        if ($post_type === 'post') {
-            echo '<style id="meza-post-screen-elements-hide">#screen-options-wrap label[for="trackbacksdiv-hide"],#screen-options-wrap label[for="slugdiv-hide"],#screen-options-wrap label[for="commentstatusdiv-hide"],#screen-options-wrap label[for="commentsdiv-hide"],#screen-options-wrap label[for="tagsdiv-post_tag-hide"],#screen-options-wrap label[for="authordiv-hide"]{display:none!important;}</style>';
-        }
-        echo <<<'HTML'
+    echo '<style id="meza-post-screen-options-cleanup">#screen-options-wrap .columns-prefs,#screen-options-wrap .metabox-prefs>p{display:none!important;}</style>';
+    if (!meza_can_access_content_permissions_panel()) {
+        echo '<style id="meza-post-content-permissions-hide">#ame-cpe-content-permissions,#screen-options-wrap label[for="ame-cpe-content-permissions-hide"]{display:none!important;}</style>';
+    }
+    if ($post_type === 'post') {
+        echo '<style id="meza-post-screen-elements-hide">#screen-options-wrap label[for="trackbacksdiv-hide"],#screen-options-wrap label[for="slugdiv-hide"],#screen-options-wrap label[for="commentstatusdiv-hide"],#screen-options-wrap label[for="commentsdiv-hide"],#screen-options-wrap label[for="tagsdiv-post_tag-hide"],#screen-options-wrap label[for="authordiv-hide"]{display:none!important;}</style>';
+    }
+    echo <<<'HTML'
 <script id="meza-post-screen-options-sort">
 document.addEventListener('DOMContentLoaded', function () {
     var containers = document.querySelectorAll('#screen-options-wrap .metabox-prefs-container');
@@ -520,11 +515,15 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 HTML;
+}
+
+function meza_render_term_content_permissions_cleanup(): void
+{
+    if (meza_can_access_content_permissions_panel()) {
         return;
     }
 
-    if ($screen_base === 'term' && !meza_can_access_content_permissions_panel()) {
-        echo <<<'HTML'
+    echo <<<'HTML'
 <script id="meza-term-content-permissions-remove">
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.ame-cpe-term-box').forEach(function (panel) {
@@ -533,8 +532,26 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 HTML;
+}
+
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen)) return;
+
+    $screen->remove_help_tabs();
+    $screen->set_help_sidebar('');
+    $screen_base = (string) ($screen->base ?? '');
+
+    if (in_array($screen_base, ['post', 'post-new'], true)) {
+        add_action('admin_head', 'meza_render_post_screen_options_cleanup', 200);
+        return;
     }
-}, 200);
+
+    if ($screen_base === 'term') {
+        add_action('admin_head', 'meza_render_term_content_permissions_cleanup', 200);
+    }
+}, 250);
+
+add_action('admin_head', 'meza_render_admin_help_tab_hide', 200);
 
 // Post edit screen: keep Slug unchecked in Screen Options except on forms, even for users with saved preferences.
 add_filter('hidden_meta_boxes', function ($hidden, $screen) {

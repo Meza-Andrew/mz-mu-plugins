@@ -2545,6 +2545,7 @@ add_action('admin_head', function (): void {
 <?php
 }, 1002);
 
+// Keep WooCommerce-related admin menu patches together instead of injecting them in separate head callbacks.
 add_action('admin_head', function (): void {
     if (!is_admin()) {
         return;
@@ -2578,14 +2579,6 @@ add_action('admin_head', function (): void {
             }
         })();
     </script>
-<?php
-}, 1002);
-
-add_action('admin_head', function (): void {
-    if (!is_admin()) {
-        return;
-    }
-?>
     <script id="meza-force-adminmenu-wc-admin-navigation">
         (() => {
             const navigateToAdminMenuLink = (event) => {
@@ -2600,15 +2593,6 @@ add_action('admin_head', function (): void {
             document.addEventListener('click', navigateToAdminMenuLink, true);
         })();
     </script>
-<?php
-}, 1003);
-
-// Reset active top-level admin menu items back to standard WordPress styling.
-add_action('admin_head', function (): void {
-    if (!is_admin()) {
-        return;
-    }
-?>
     <script id="meza-remove-active-adminmenu-inline-icon-styles">
         (() => {
             const removeActiveMenuIconStyles = () => {

@@ -4205,45 +4205,13 @@ function meza_is_woocommerce_admin_screen($screen): bool
         || str_starts_with($screen_base, 'woocommerce_page_wc-');
 }
 
-add_filter('option_wpseo', 'meza_disable_yoast_cornerstone_option', 1000);
-add_filter('wpseo_cornerstone_post_types', '__return_empty_array', 1000);
-
-add_action('current_screen', function ($screen) {
-    if (!($screen instanceof WP_Screen)) return;
-
-    if ($screen->base === 'edit') {
-        meza_remove_yoast_score_filters();
-
-        $post_type = (string) ($screen->post_type ?? '');
-        if ($post_type !== '') {
-            add_filter("views_edit-{$post_type}", 'meza_remove_yoast_edit_view_tabs', 9999);
-            add_filter("views_edit-{$post_type}", 'meza_remove_sorting_view_tab', 100000);
-        }
-    }
-
-    if (!meza_is_woocommerce_admin_screen($screen)) return;
-
-    if (class_exists(\Automattic\WooCommerce\Internal\Admin\Loader::class)) {
-        remove_action('in_admin_header', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'embed_page_header']);
-        remove_filter('admin_body_class', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'add_admin_body_classes']);
-        remove_action('admin_head', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'remove_notices']);
-        remove_action('admin_notices', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'inject_before_notices'], -9999);
-        remove_action('admin_notices', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'inject_after_notices'], PHP_INT_MAX);
-    }
-}, 1000);
-
-add_action('admin_head', function () {
-    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-    if (!meza_is_woocommerce_admin_screen($screen)) return;
-
+function meza_render_woocommerce_admin_layout_reset(): void
+{
     echo '<style id="meza-woocommerce-admin-layout-reset">#wpbody{margin-top:0!important;}</style>';
-}, 1000);
+}
 
-add_action('admin_init', 'meza_suppress_non_meza_plugin_admin_notice_callbacks', 0);
-
-add_action('admin_head', function () {
-    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-    if (!meza_is_woocommerce_admin_screen($screen)) return;
+function meza_render_woocommerce_admin_title_case_script(): void
+{
 ?>
     <script id="meza-woocommerce-admin-title-case">
         (() => {
@@ -4309,7 +4277,39 @@ add_action('admin_head', function () {
         })();
     </script>
 <?php
-}, 1001);
+}
+
+add_filter('option_wpseo', 'meza_disable_yoast_cornerstone_option', 1000);
+add_filter('wpseo_cornerstone_post_types', '__return_empty_array', 1000);
+
+add_action('current_screen', function ($screen) {
+    if (!($screen instanceof WP_Screen)) return;
+
+    if ($screen->base === 'edit') {
+        meza_remove_yoast_score_filters();
+
+        $post_type = (string) ($screen->post_type ?? '');
+        if ($post_type !== '') {
+            add_filter("views_edit-{$post_type}", 'meza_remove_yoast_edit_view_tabs', 9999);
+            add_filter("views_edit-{$post_type}", 'meza_remove_sorting_view_tab', 100000);
+        }
+    }
+
+    if (!meza_is_woocommerce_admin_screen($screen)) return;
+
+    add_action('admin_head', 'meza_render_woocommerce_admin_layout_reset', 1000);
+    add_action('admin_head', 'meza_render_woocommerce_admin_title_case_script', 1001);
+
+    if (class_exists(\Automattic\WooCommerce\Internal\Admin\Loader::class)) {
+        remove_action('in_admin_header', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'embed_page_header']);
+        remove_filter('admin_body_class', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'add_admin_body_classes']);
+        remove_action('admin_head', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'remove_notices']);
+        remove_action('admin_notices', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'inject_before_notices'], -9999);
+        remove_action('admin_notices', [\Automattic\WooCommerce\Internal\Admin\Loader::class, 'inject_after_notices'], PHP_INT_MAX);
+    }
+}, 1000);
+
+add_action('admin_init', 'meza_suppress_non_meza_plugin_admin_notice_callbacks', 0);
 
 add_filter('woocommerce_products_admin_list_table_filters', function ($filters) {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
