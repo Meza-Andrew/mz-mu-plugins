@@ -1009,6 +1009,54 @@ add_action('admin_init', function () {
     remove_action('welcome_panel', 'wp_welcome_panel');
 });
 
+if (!function_exists('meza_get_post_admin_list_per_page')) {
+    function meza_get_post_admin_list_per_page(): int
+    {
+        $per_page = (int) apply_filters('meza_post_admin_list_per_page', 20);
+        return $per_page > 0 ? $per_page : 20;
+    }
+}
+
+// Keep post-type admin lists light enough to stay responsive on content-heavy sites.
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen)) return;
+    if ((string) ($screen->base ?? '') !== 'edit') return;
+
+    $post_type = sanitize_key((string) ($screen->post_type ?? ''));
+    if ($post_type === '') return;
+
+    $option = $post_type === 'page'
+        ? 'edit_pages_per_page'
+        : 'edit_' . $post_type . '_per_page';
+    $target_per_page = meza_get_post_admin_list_per_page();
+    $user_id = get_current_user_id();
+
+    add_filter($option, function ($per_page) use ($target_per_page) {
+        $per_page = (int) $per_page;
+        if ($per_page <= 0) {
+            return $target_per_page;
+        }
+
+        return min($per_page, $target_per_page);
+    });
+
+    add_filter('get_user_option_' . $option, function ($value) use ($target_per_page) {
+        $value = (int) $value;
+        if ($value <= 0) {
+            return $target_per_page;
+        }
+
+        return min($value, $target_per_page);
+    });
+
+    if ($user_id <= 0) return;
+
+    $saved_value = (int) get_user_option($option, $user_id);
+    if ($saved_value !== $target_per_page) {
+        update_user_option($user_id, $option, $target_per_page, false);
+    }
+}, 20);
+
 function meza_get_allowed_tag_post_types(): array
 {
     $post_types = apply_filters('meza_allowed_tag_post_types', ['product']);
