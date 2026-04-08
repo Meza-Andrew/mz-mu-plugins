@@ -181,6 +181,40 @@ function meza_is_site_manager_user($user = null): bool
     return meza_user_has_any_role($user, [meza_site_manager_role_key()]);
 }
 
+function meza_is_admin_only_media_performance_request(): bool
+{
+    if (!is_admin()) {
+        return false;
+    }
+
+    $page = strtolower(trim(isset($_GET['page']) ? (string) wp_unslash($_GET['page']) : ''));
+    if ($page === '') {
+        return false;
+    }
+
+    return str_contains($page, 'webp')
+        || str_contains($page, 'converter-for-media')
+        || str_contains($page, 'performance');
+}
+
+function meza_is_admin_only_media_performance_item(string $parent_slug, array $item): bool
+{
+    if (strtolower($parent_slug) !== 'upload.php') {
+        return false;
+    }
+
+    $slug = strtolower((string) ($item[2] ?? ''));
+    $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+    if ($title !== 'performance' && !str_contains($title, 'performance')) {
+        return false;
+    }
+
+    return str_contains($slug, 'webp')
+        || str_contains($slug, 'converter-for-media')
+        || str_contains($slug, 'performance');
+}
+
 function meza_site_manager_is_utility_admin_request(): bool
 {
     if (!is_admin()) {
@@ -241,6 +275,10 @@ function meza_should_grant_site_manager_utility_submenu_access(string $parent_sl
         return false;
     }
 
+    if (meza_is_admin_only_media_performance_item($parent_slug, $item)) {
+        return false;
+    }
+
     if (meza_is_default_wordpress_submenu_item($parent_slug, $item)) {
         return false;
     }
@@ -261,6 +299,10 @@ function meza_should_grant_site_manager_utility_submenu_access(string $parent_sl
 
 add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $user): array {
     if (!meza_is_site_manager_user($user)) {
+        return $allcaps;
+    }
+
+    if (meza_is_admin_only_media_performance_request()) {
         return $allcaps;
     }
 
@@ -289,6 +331,19 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $
 
     return $allcaps;
 }, 5, 4);
+
+add_action('admin_init', function (): void {
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    if (!meza_is_admin_only_media_performance_request()) {
+        return;
+    }
+
+    wp_safe_redirect(admin_url('upload.php'));
+    exit;
+}, 1);
 
 function meza_get_standardized_submenu_utility_label(array $item, string $parent_slug = ''): string
 {
