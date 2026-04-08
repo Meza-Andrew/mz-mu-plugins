@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.22
+ * Version: 1.4.23
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -251,6 +251,104 @@ if (!function_exists('mz_plugins_format_error_message')) {
     }
 }
 
+if (!function_exists('mz_plugins_get_private_package_candidates')) {
+    function mz_plugins_get_private_package_candidates(array $plugin): array
+    {
+        $candidates = [];
+
+        $zip = trim((string) ($plugin['zip'] ?? ''));
+        if ($zip !== '') {
+            $candidates[] = $zip;
+        }
+
+        $zip_const = trim((string) ($plugin['zip_const'] ?? ''));
+        if ($zip_const !== '') {
+            if (defined($zip_const)) {
+                $constant_value = trim((string) constant($zip_const));
+                if ($constant_value !== '') {
+                    $candidates[] = $constant_value;
+                }
+            }
+
+            $env_value = getenv($zip_const);
+            if (is_string($env_value)) {
+                $env_value = trim($env_value);
+                if ($env_value !== '') {
+                    $candidates[] = $env_value;
+                }
+            }
+        }
+
+        return array_values(array_unique($candidates));
+    }
+}
+
+if (!function_exists('mz_plugins_resolve_private_package_source')) {
+    function mz_plugins_resolve_private_package_source(array $plugin, ?WP_Error &$error = null): string
+    {
+        $candidates = mz_plugins_get_private_package_candidates($plugin);
+
+        if ($candidates === []) {
+            $error = new WP_Error(
+                'mz_plugins_private_package_missing',
+                sprintf(
+                    'No private package source configured for %s.',
+                    (string) ($plugin['name'] ?? 'this plugin')
+                )
+            );
+            return '';
+        }
+
+        $checked_paths = [];
+
+        foreach ($candidates as $candidate) {
+            if (preg_match('#^https?://#i', $candidate) === 1) {
+                return $candidate;
+            }
+
+            $path_candidates = [$candidate];
+
+            if (!str_starts_with($candidate, '/')) {
+                $path_candidates[] = ABSPATH . ltrim($candidate, '/');
+                $path_candidates[] = WP_CONTENT_DIR . '/' . ltrim($candidate, '/');
+            }
+
+            foreach ($path_candidates as $path_candidate) {
+                $normalized_path = trim((string) $path_candidate);
+                if ($normalized_path === '') {
+                    continue;
+                }
+
+                $checked_paths[] = $normalized_path;
+
+                if (!file_exists($normalized_path) || !is_readable($normalized_path)) {
+                    continue;
+                }
+
+                return $normalized_path;
+            }
+        }
+
+        $zip_const = trim((string) ($plugin['zip_const'] ?? ''));
+        $error_message = sprintf(
+            'Private package source not found or not readable for %s.',
+            (string) ($plugin['name'] ?? 'this plugin')
+        );
+
+        if ($zip_const !== '') {
+            $error_message .= ' Configure ' . $zip_const . ' as a readable file path or HTTPS URL on this environment.';
+        }
+
+        if ($checked_paths !== []) {
+            $error_message .= ' Checked: ' . implode(', ', array_unique($checked_paths));
+        }
+
+        $error = new WP_Error('mz_plugins_private_package_unreadable', $error_message);
+
+        return '';
+    }
+}
+
 // Catalog: 'envs' = envs where it should be ACTIVE; 'activate' false => keep installed but deactivated.
 $catalog = mz_plugins_get_catalog();
 
@@ -332,15 +430,10 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
 
         if (isset($all[$file])) continue;
         $slug = $p['slug'] ?? '';
-        $zip  = '';
         $api_error = null;
-        if (!empty($p['zip'])) {
-            $zip = $p['zip'];
-        } elseif (!empty($p['zip_const']) && defined($p['zip_const']) && constant($p['zip_const'])) {
-            $zip = constant($p['zip_const']);
-        }
+        $private_package_source = mz_plugins_resolve_private_package_source($p, $api_error);
 
-        $download = $zip ?: (function ($slug, &$api_error = null) {
+        $download = $private_package_source ?: (function ($slug, &$api_error = null) {
             $api = plugins_api('plugin_information', ['slug' => $slug, 'fields' => ['sections' => false]]);
             if (is_wp_error($api)) {
                 $api_error = $api;
