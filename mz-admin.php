@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.307
+ * Version: 1.1.308
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -588,6 +588,9 @@ if (!function_exists('meza_site_manager_capabilities')) {
             'list_users',
             'import',
             'export',
+            'gform_full_access',
+            'gravityforms_edit_forms',
+            'gravityforms_view_entries',
         ];
 
         foreach ($site_manager_extras as $cap) {
