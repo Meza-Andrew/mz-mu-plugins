@@ -3372,7 +3372,7 @@ if (!function_exists('meza_should_lock_admin_footer')) {
 if (!function_exists('meza_should_lock_admin_title_chrome')) {
     function meza_should_lock_admin_title_chrome(): bool
     {
-        return is_admin() && !meza_is_admin_chrome_exempt_screen() && !meza_is_whitelisted_admin_title_screen();
+        return is_admin() && !meza_is_admin_chrome_exempt_screen() && !meza_is_soft_plugin_admin_screen() && !meza_is_whitelisted_admin_title_screen();
     }
 }
 
@@ -3467,6 +3467,11 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         return false;
     }
 
+    function meza_is_soft_plugin_admin_screen(?WP_Screen $screen = null): bool
+    {
+        return meza_is_dynamic_plugin_admin_screen($screen) && !meza_is_preferred_plugin_admin_screen($screen);
+    }
+
     function meza_is_admin_chrome_exempt_screen(): bool
     {
         if (!is_admin()) {
@@ -3495,10 +3500,6 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
                     return true;
                 }
 
-                if (meza_is_dynamic_plugin_admin_screen($screen)) {
-                    return true;
-                }
-
                 if (meza_is_preferred_plugin_admin_screen($screen)) {
                     return true;
                 }
@@ -3512,10 +3513,6 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         }
 
         if ($php_self === 'site-health.php') {
-            return true;
-        }
-
-        if (meza_is_dynamic_plugin_admin_screen()) {
             return true;
         }
 
@@ -3671,6 +3668,65 @@ if (!function_exists('meza_admin_notice_selector_matches')) {
 
         if (isset($class_lookup['notice']) || isset($class_lookup['update-nag']) || isset($class_lookup['updated']) || isset($class_lookup['error'])) {
             return true;
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_admin_promotional_keyword_tokens')) {
+    function meza_admin_promotional_keyword_tokens(): array
+    {
+        return [
+            'upsell',
+            'upgrade',
+            'go-pro',
+            'go_pro',
+            'gopro',
+            'promo',
+            'promotion',
+            'marketing',
+            'telemetry',
+            'newsletter',
+            'review',
+            'rating',
+            'notice-bar',
+            'notice_bar',
+            'proplus',
+            'pro-plus',
+        ];
+    }
+}
+
+if (!function_exists('meza_admin_promotional_phrase_tokens')) {
+    function meza_admin_promotional_phrase_tokens(): array
+    {
+        return [
+            'upgrade to',
+            'unlock advanced features',
+            'allow data sharing',
+            'rate ',
+            'review us',
+            'live analytics',
+            'enhanced targeting',
+            'go pro',
+        ];
+    }
+}
+
+if (!function_exists('meza_admin_string_contains_any_token')) {
+    function meza_admin_string_contains_any_token(string $haystack, array $tokens): bool
+    {
+        $haystack = strtolower(trim($haystack));
+        if ($haystack === '') {
+            return false;
+        }
+
+        foreach ($tokens as $token) {
+            $token = strtolower(trim((string) $token));
+            if ($token !== '' && str_contains($haystack, $token)) {
+                return true;
+            }
         }
 
         return false;
@@ -4137,6 +4193,73 @@ if (!function_exists('meza_admin_dom_element_or_descendant_matches_any_selector'
     }
 }
 
+if (!function_exists('meza_admin_dom_element_has_primary_admin_layout')) {
+    function meza_admin_dom_element_has_primary_admin_layout(DOMElement $element): bool
+    {
+        $layout_selectors = [
+            'form',
+            '.form-table',
+            '.nav-tab-wrapper',
+            '.wp-list-table',
+            '.postbox',
+            '.metabox-holder',
+            'input',
+            'select',
+            'textarea',
+            'button',
+        ];
+
+        return meza_admin_dom_element_or_descendant_matches_any_selector($element, $layout_selectors);
+    }
+}
+
+if (!function_exists('meza_admin_dom_element_is_promotional_injection')) {
+    function meza_admin_dom_element_is_promotional_injection(DOMElement $element): bool
+    {
+        $attribute_haystack = meza_admin_dom_element_attribute_haystack($element);
+        $text_haystack = strtolower(trim(wp_strip_all_tags((string) $element->textContent)));
+
+        $has_keyword_match = meza_admin_string_contains_any_token($attribute_haystack, meza_admin_promotional_keyword_tokens())
+            || meza_admin_string_contains_any_token($text_haystack, meza_admin_promotional_phrase_tokens());
+
+        if (!$has_keyword_match) {
+            return false;
+        }
+
+        if (meza_admin_dom_element_has_primary_admin_layout($element)
+            && !meza_admin_string_contains_any_token($attribute_haystack, ['notice-bar', 'notice_bar', 'upsell', 'telemetry', 'review', 'rating'])) {
+            return false;
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('meza_admin_dom_element_is_removable_plugin_injection')) {
+    function meza_admin_dom_element_is_removable_plugin_injection(DOMElement $element, array $disallowed_plugin_signatures = []): bool
+    {
+        if (meza_admin_dom_element_matches_any_selector($element, ['[data-meza-admin-chrome]', '.meza-admin-chrome'])) {
+            return false;
+        }
+
+        $attribute_haystack = meza_admin_dom_element_attribute_haystack($element);
+        $is_notice_like = meza_admin_notice_selector_matches($element)
+            || meza_admin_string_contains_any_token($attribute_haystack, ['pum-alerts', 'pum-alert', 'alert-holder', 'notice-bar', 'notice_bar', 'review-notice', 'telemetry']);
+
+        if ($is_notice_like) {
+            if (meza_admin_dom_element_matches_plugin_signatures($element, $disallowed_plugin_signatures)) {
+                return true;
+            }
+
+            if (meza_admin_dom_element_is_promotional_injection($element)) {
+                return true;
+            }
+        }
+
+        return meza_admin_dom_element_is_promotional_injection($element);
+    }
+}
+
 if (!function_exists('meza_sanitize_admin_chrome_html')) {
     function meza_sanitize_admin_chrome_html(string $html): string
     {
@@ -4171,6 +4294,7 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
         $wpbody_content_trailing_selectors = meza_admin_wpbody_content_trailing_allowed_selectors();
         $preferred_plugin_signatures = meza_admin_get_env_preferred_plugin_signatures();
         $disallowed_plugin_signatures = meza_admin_get_disallowed_plugin_signatures();
+        $is_soft_plugin_screen = meza_is_soft_plugin_admin_screen();
         $bridge_stop_selectors = [
             'h2.screen-reader-text',
             '.subsubsub',
@@ -4217,6 +4341,14 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
                         continue;
                     }
 
+                    if ($is_soft_plugin_screen) {
+                        if (meza_admin_dom_element_is_removable_plugin_injection($child, $disallowed_plugin_signatures)) {
+                            $wpbody_content->removeChild($child);
+                        }
+
+                        continue;
+                    }
+
                     if (meza_admin_dom_element_matches_any_selector($child, $wpbody_content_pre_wrap_selectors)) {
                         continue;
                     }
@@ -4245,6 +4377,14 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
                     continue;
                 }
 
+                if ($is_soft_plugin_screen) {
+                    if (meza_admin_dom_element_is_removable_plugin_injection($child, $disallowed_plugin_signatures) && $child->parentNode instanceof DOMNode) {
+                        $child->parentNode->removeChild($child);
+                    }
+
+                    continue;
+                }
+
                 if (meza_admin_is_allowed_after_wpwrap_element($child, $wpbody_content_trailing_selectors, $preferred_plugin_signatures)) {
                     continue;
                 }
@@ -4269,6 +4409,18 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
                     continue;
                 }
 
+                if ($is_soft_plugin_screen) {
+                    if (meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors, $preferred_plugin_signatures)) {
+                        continue;
+                    }
+
+                    if (meza_admin_dom_element_is_removable_plugin_injection($child, $disallowed_plugin_signatures)) {
+                        $body->removeChild($child);
+                    }
+
+                    continue;
+                }
+
                 if (!meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors, $preferred_plugin_signatures)
                     && meza_admin_dom_element_matches_plugin_signatures($child, $disallowed_plugin_signatures)) {
                     $body->removeChild($child);
@@ -4285,6 +4437,24 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
                     && !meza_admin_is_allowed_after_wpwrap_element($child, $wpwrap_selectors, $preferred_plugin_signatures)
                     && in_array(strtolower(trim((string) $child->getAttribute('type'))), ['text/html', 'text/template'], true)) {
                     $body->removeChild($child);
+                }
+            }
+        }
+
+        if ($is_soft_plugin_screen) {
+            foreach ($xpath->query('//*[contains(concat(" ", normalize-space(@class), " "), " wrap ")]') ?: [] as $wrap) {
+                if (!($wrap instanceof DOMElement)) {
+                    continue;
+                }
+
+                foreach (meza_admin_dom_get_element_children($wrap) as $child) {
+                    if (!meza_admin_dom_element_is_removable_plugin_injection($child, $disallowed_plugin_signatures)) {
+                        continue;
+                    }
+
+                    if ($child->parentNode instanceof DOMNode) {
+                        $child->parentNode->removeChild($child);
+                    }
                 }
             }
         }
@@ -4330,16 +4500,22 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
                 continue;
             }
 
-            if (!meza_admin_notice_selector_matches($node)) {
-                continue;
-            }
-
             if (meza_admin_dom_element_matches_any_selector($node, ['[data-meza-admin-chrome]', '.meza-admin-chrome'])) {
                 continue;
             }
 
-            if (!meza_admin_dom_element_matches_plugin_signatures($node, $disallowed_plugin_signatures)) {
-                continue;
+            if ($is_soft_plugin_screen) {
+                if (!meza_admin_dom_element_is_removable_plugin_injection($node, $disallowed_plugin_signatures)) {
+                    continue;
+                }
+            } else {
+                if (!meza_admin_notice_selector_matches($node)) {
+                    continue;
+                }
+
+                if (!meza_admin_dom_element_matches_plugin_signatures($node, $disallowed_plugin_signatures)) {
+                    continue;
+                }
             }
 
             if ($node->parentNode instanceof DOMNode) {
@@ -4347,6 +4523,7 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
             }
         }
 
+        if (!$is_soft_plugin_screen) {
         foreach ($xpath->query('//*[contains(concat(" ", normalize-space(@class), " "), " wrap ")]') ?: [] as $wrap) {
             if (!($wrap instanceof DOMElement)) {
                 continue;
@@ -4430,6 +4607,7 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
                 $bridge_node = $next_node;
             }
         }
+        }
 
         return (string) $document->saveHTML();
     }
@@ -4508,8 +4686,9 @@ add_filter('update_footer', function ($content): string {
 add_action('admin_head', function (): void {
     if (is_admin()) {
         $is_admin_chrome_exempt_screen = meza_is_admin_chrome_exempt_screen();
-        $lock_core_admin_content = !$is_admin_chrome_exempt_screen;
         $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $is_soft_plugin_screen = meza_is_soft_plugin_admin_screen($screen);
+        $lock_core_admin_content = !$is_admin_chrome_exempt_screen && !$is_soft_plugin_screen;
         $is_edit_screen = $screen instanceof WP_Screen && $screen->base === 'edit';
         $content_selectors = meza_admin_content_allowed_children_selectors();
         $wpwrap_selectors = meza_admin_wpwrap_allowed_selectors();
@@ -4543,6 +4722,7 @@ add_action('admin_head', function (): void {
     <script id="meza-lock-admin-content-script">
         (() => {
             const isAdminChromeExemptScreen = <?php echo wp_json_encode($is_admin_chrome_exempt_screen); ?>;
+            const isSoftPluginScreen = <?php echo wp_json_encode($is_soft_plugin_screen); ?>;
             const lockCoreAdminContent = <?php echo wp_json_encode($lock_core_admin_content); ?>;
             const isEditScreen = <?php echo wp_json_encode($is_edit_screen); ?>;
             const allowedSelectors = <?php echo wp_json_encode($content_selectors); ?>;
@@ -4671,6 +4851,88 @@ add_action('admin_head', function (): void {
                 return signatures.some((signature) => haystack.includes(String(signature).toLowerCase()));
             };
 
+            const promoKeywords = [
+                'upsell',
+                'upgrade',
+                'go-pro',
+                'go_pro',
+                'gopro',
+                'promo',
+                'promotion',
+                'marketing',
+                'telemetry',
+                'newsletter',
+                'review',
+                'rating',
+                'notice-bar',
+                'notice_bar',
+                'proplus',
+                'pro-plus',
+            ];
+
+            const promoPhrases = [
+                'upgrade to',
+                'unlock advanced features',
+                'allow data sharing',
+                'rate ',
+                'review us',
+                'live analytics',
+                'enhanced targeting',
+                'go pro',
+            ];
+
+            const containsAnyToken = (haystack, tokens) => {
+                const value = String(haystack || '').toLowerCase().trim();
+                if (!value) return false;
+
+                return Array.isArray(tokens) && tokens.some((token) => {
+                    const normalizedToken = String(token || '').toLowerCase().trim();
+                    return normalizedToken && value.includes(normalizedToken);
+                });
+            };
+
+            const hasPrimaryAdminLayout = (element) => {
+                if (!(element instanceof Element)) return false;
+
+                const layoutSelector = 'form, .form-table, .nav-tab-wrapper, .wp-list-table, .postbox, .metabox-holder, input, select, textarea, button';
+                return element.matches(layoutSelector) || !!element.querySelector(layoutSelector);
+            };
+
+            const isPromotionalInjection = (element) => {
+                if (!(element instanceof Element)) return false;
+
+                const attributeHaystack = Array.from(element.attributes || [])
+                    .map((attribute) => `${attribute.name} ${attribute.value}`.toLowerCase())
+                    .join(' ');
+                const textHaystack = String(element.textContent || '').toLowerCase().trim();
+                const hasKeywordMatch = containsAnyToken(attributeHaystack, promoKeywords) || containsAnyToken(textHaystack, promoPhrases);
+
+                if (!hasKeywordMatch) return false;
+                if (hasPrimaryAdminLayout(element) && !containsAnyToken(attributeHaystack, ['notice-bar', 'notice_bar', 'upsell', 'telemetry', 'review', 'rating'])) {
+                    return false;
+                }
+
+                return true;
+            };
+
+            const isRemovablePluginInjection = (element) => {
+                if (!(element instanceof Element)) return false;
+                if (element.matches('[data-meza-admin-chrome], .meza-admin-chrome')) return false;
+
+                const attributeHaystack = Array.from(element.attributes || [])
+                    .map((attribute) => `${attribute.name} ${attribute.value}`.toLowerCase())
+                    .join(' ');
+                const isNoticeLike = element.matches('.notice, .update-nag, .updated, .error, .pum-alerts')
+                    || containsAnyToken(attributeHaystack, ['pum-alerts', 'pum-alert', 'alert-holder', 'notice-bar', 'notice_bar', 'review-notice', 'telemetry']);
+
+                if (isNoticeLike) {
+                    if (matchesPluginSignatures(element, disallowedPluginSignatures)) return true;
+                    if (isPromotionalInjection(element)) return true;
+                }
+
+                return isPromotionalInjection(element);
+            };
+
             const cleanupContent = () => {
                 if (!lockCoreAdminContent) return;
 
@@ -4697,6 +4959,13 @@ add_action('admin_head', function (): void {
                     }
 
                     if (!seenWpwrap) return;
+                    if (isSoftPluginScreen) {
+                        if (isAllowedAfterWpwrapElement(child)) return;
+                        if (isRemovablePluginInjection(child)) {
+                            child.remove();
+                        }
+                        return;
+                    }
                     if (isAllowedAfterWpwrapElement(child)) return;
 
                     if (child.tagName.toLowerCase() !== 'script') {
@@ -4730,6 +4999,13 @@ add_action('admin_head', function (): void {
                             return;
                         }
 
+                        if (isSoftPluginScreen) {
+                            if (isRemovablePluginInjection(child)) {
+                                child.remove();
+                            }
+                            return;
+                        }
+
                         if (isAllowedBeforeMainWrap(child)) {
                             return;
                         }
@@ -4754,6 +5030,12 @@ add_action('admin_head', function (): void {
                         seenMainWrap = true;
                         return;
                     }
+                    if (isSoftPluginScreen) {
+                        if (isRemovablePluginInjection(child)) {
+                            child.remove();
+                        }
+                        return;
+                    }
                     if (matchesPluginSignaturesDeep(child, preferredPluginSignatures)) return;
                     if (isAllowedAfterWpwrapElementForSelectors(child, wpbodyContentTrailingSelectors)) return;
 
@@ -4762,10 +5044,9 @@ add_action('admin_head', function (): void {
             };
 
             const cleanupPluginNotices = () => {
-                document.querySelectorAll('.notice, .update-nag, .updated, .error, .pum-alerts').forEach((node) => {
+                document.querySelectorAll('.notice, .update-nag, .updated, .error, .pum-alerts, .pum-notice-bar-wrapper, .pum-pro-upsell-banner, [class*="upsell"], [class*="telemetry"], [class*="review-notice"], [class*="notice-bar"]').forEach((node) => {
                     if (!(node instanceof HTMLElement)) return;
-                    if (node.matches('[data-meza-admin-chrome], .meza-admin-chrome')) return;
-                    if (!matchesPluginSignatures(node, disallowedPluginSignatures)) return;
+                    if (!isRemovablePluginInjection(node)) return;
                     node.remove();
                 });
             };
