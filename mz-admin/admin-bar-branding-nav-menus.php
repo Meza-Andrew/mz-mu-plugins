@@ -312,15 +312,17 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         return;
     }
 
-    $add_clone = static function ($node, string $title_override = '', $parent_override = null) use ($wp_admin_bar): void {
+    $add_clone = static function ($node, string $title_override = '', $parent_override = null, string $meta_title_override = '') use ($wp_admin_bar): void {
         if (!($node instanceof stdClass)) return;
         $node_id = (string) ($node->id ?? '');
         if ($node_id === '') return;
 
         $title = ($title_override !== '') ? $title_override : ($node->title ?? '');
         $meta = is_array($node->meta ?? null) ? $node->meta : [];
-        if ($title_override !== '') {
-            $meta['title'] = $title_override;
+        if ($meta_title_override !== '') {
+            $meta['title'] = $meta_title_override;
+        } elseif ($title_override !== '') {
+            $meta['title'] = trim(wp_strip_all_tags($title_override));
         }
 
         $wp_admin_bar->add_node([
@@ -375,7 +377,7 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
     // - page cache when WP Super Cache is installed
     // - server cache only on qa/production when WP Super Cache is not installed
     if ($should_show_page_cache) {
-        $add_clone($delete_cache_node, meza_get_clear_cache_admin_bar_title(), $toolbar_parent);
+        $add_clone($delete_cache_node, meza_get_clear_cache_admin_bar_title(), $toolbar_parent, 'Clear Page and Object Cache');
         return;
     }
 
