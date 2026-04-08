@@ -360,6 +360,23 @@ add_action('admin_menu', function (): void {
     $submenu['upload.php'] = array_values($submenu['upload.php']);
 }, PHP_INT_MAX);
 
+function meza_remove_media_performance_menu_for_site_managers(): void
+{
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $submenu;
+
+    if (!isset($submenu['upload.php']) || !is_array($submenu['upload.php'])) {
+        return;
+    }
+
+    $submenu['upload.php'] = array_values(array_filter($submenu['upload.php'], static function ($item): bool {
+        return !is_array($item) || !meza_is_admin_only_media_performance_item('upload.php', $item);
+    }));
+}
+
 function meza_get_standardized_submenu_utility_label(array $item, string $parent_slug = ''): string
 {
     $parent_slug = strtolower($parent_slug);
@@ -6207,6 +6224,7 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_apply_tail_admin_menu_mutations();
     meza_filter_disabled_tag_taxonomy_submenus();
     meza_enforce_restricted_top_level_utility_menus();
+    meza_remove_media_performance_menu_for_site_managers();
     meza_prune_empty_top_level_admin_menu_groups();
     meza_restore_settings_utility_group_separator();
     meza_restore_default_fallback_group_separator();
