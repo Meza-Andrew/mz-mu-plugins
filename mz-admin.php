@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.278
+ * Version: 1.1.279
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -665,15 +665,15 @@ if (!function_exists('meza_get_admin_notice_hook_names')) {
     }
 }
 
-if (!function_exists('meza_get_callback_signature')) {
-    function meza_get_callback_signature($callback): string
+if (!function_exists('meza_get_callback_cache_key')) {
+    function meza_get_callback_cache_key($callback): string
     {
         if (is_string($callback)) {
-            return $callback;
+            return 'function:' . $callback;
         }
 
         if ($callback instanceof Closure) {
-            return 'closure';
+            return 'closure:' . spl_object_hash($callback);
         }
 
         if (is_array($callback)) {
@@ -681,55 +681,99 @@ if (!function_exists('meza_get_callback_signature')) {
             $method = (string) ($callback[1] ?? '');
 
             if (is_object($target)) {
-                return get_class($target) . '::' . $method;
+                return 'method:' . get_class($target) . ':' . spl_object_hash($target) . ':' . $method;
             }
 
             if (is_string($target)) {
-                return $target . '::' . $method;
+                return 'static:' . $target . ':' . $method;
             }
         }
 
         if (is_object($callback) && method_exists($callback, '__invoke')) {
-            return get_class($callback) . '::__invoke';
+            return 'invokable:' . get_class($callback) . ':' . spl_object_hash($callback);
         }
 
         return '';
     }
 }
 
+if (!function_exists('meza_get_callback_signature')) {
+    function meza_get_callback_signature($callback): string
+    {
+        static $signature_cache = [];
+
+        $cache_key = meza_get_callback_cache_key($callback);
+        if ($cache_key !== '' && array_key_exists($cache_key, $signature_cache)) {
+            return $signature_cache[$cache_key];
+        }
+
+        $signature = '';
+
+        if (is_string($callback)) {
+            $signature = $callback;
+        } elseif ($callback instanceof Closure) {
+            $signature = 'closure';
+        } elseif (is_array($callback)) {
+            $target = $callback[0] ?? null;
+            $method = (string) ($callback[1] ?? '');
+
+            if (is_object($target)) {
+                $signature = get_class($target) . '::' . $method;
+            } elseif (is_string($target)) {
+                $signature = $target . '::' . $method;
+            }
+        } elseif (is_object($callback) && method_exists($callback, '__invoke')) {
+            $signature = get_class($callback) . '::__invoke';
+        }
+
+        if ($cache_key !== '') {
+            $signature_cache[$cache_key] = $signature;
+        }
+
+        return $signature;
+    }
+}
+
 if (!function_exists('meza_get_callback_source_file')) {
     function meza_get_callback_source_file($callback): string
     {
+        static $source_file_cache = [];
+
+        $cache_key = meza_get_callback_cache_key($callback);
+        if ($cache_key !== '' && array_key_exists($cache_key, $source_file_cache)) {
+            return $source_file_cache[$cache_key];
+        }
+
+        $source_file = '';
+
         try {
             if (is_string($callback) && function_exists($callback)) {
                 $reflection = new ReflectionFunction($callback);
-                return wp_normalize_path((string) $reflection->getFileName());
-            }
-
-            if ($callback instanceof Closure) {
+                $source_file = wp_normalize_path((string) $reflection->getFileName());
+            } elseif ($callback instanceof Closure) {
                 $reflection = new ReflectionFunction($callback);
-                return wp_normalize_path((string) $reflection->getFileName());
-            }
-
-            if (is_array($callback) && count($callback) >= 2) {
+                $source_file = wp_normalize_path((string) $reflection->getFileName());
+            } elseif (is_array($callback) && count($callback) >= 2) {
                 $target = $callback[0];
                 $method = (string) $callback[1];
 
                 if ((is_object($target) || is_string($target)) && method_exists($target, $method)) {
                     $reflection = new ReflectionMethod($target, $method);
-                    return wp_normalize_path((string) $reflection->getFileName());
+                    $source_file = wp_normalize_path((string) $reflection->getFileName());
                 }
-            }
-
-            if (is_object($callback) && method_exists($callback, '__invoke')) {
+            } elseif (is_object($callback) && method_exists($callback, '__invoke')) {
                 $reflection = new ReflectionMethod($callback, '__invoke');
-                return wp_normalize_path((string) $reflection->getFileName());
+                $source_file = wp_normalize_path((string) $reflection->getFileName());
             }
         } catch (ReflectionException $exception) {
-            return '';
+            $source_file = '';
         }
 
-        return '';
+        if ($cache_key !== '') {
+            $source_file_cache[$cache_key] = $source_file;
+        }
+
+        return $source_file;
     }
 }
 
@@ -759,26 +803,42 @@ if (!function_exists('meza_string_matches_plugin_signatures')) {
 if (!function_exists('meza_should_suppress_admin_notice_callback')) {
     function meza_should_suppress_admin_notice_callback($callback): bool
     {
+        static $suppression_cache = [];
+
+        $cache_key = meza_get_callback_cache_key($callback);
+        if ($cache_key !== '' && array_key_exists($cache_key, $suppression_cache)) {
+            return $suppression_cache[$cache_key];
+        }
+
         $signature = strtolower(trim(meza_get_callback_signature($callback)));
+        $should_suppress = false;
+
         if ($signature !== '' && (str_contains($signature, 'meza_') || str_contains($signature, 'mz_'))) {
+            if ($cache_key !== '') {
+                $suppression_cache[$cache_key] = false;
+            }
             return false;
         }
 
         $source_file = meza_get_callback_source_file($callback);
         if ($source_file === '') {
-            return false;
-        }
-
-        if (
+            $should_suppress = false;
+        } elseif (
             str_contains($source_file, '/wp-admin/')
             || str_contains($source_file, '/wp-includes/')
             || str_contains($source_file, '/wp-content/mu-plugins/mz-mu-plugins/')
         ) {
-            return false;
+            $should_suppress = false;
+        } else {
+            $should_suppress = str_contains($source_file, '/wp-content/plugins/')
+                || str_contains($source_file, '/wp-content/mu-plugins/');
         }
 
-        return str_contains($source_file, '/wp-content/plugins/')
-            || str_contains($source_file, '/wp-content/mu-plugins/');
+        if ($cache_key !== '') {
+            $suppression_cache[$cache_key] = $should_suppress;
+        }
+
+        return $should_suppress;
     }
 }
 
