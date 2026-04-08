@@ -80,8 +80,7 @@ function meza_replace_glance_items()
             continue;
         }
 
-        $count_obj = wp_count_posts($post_type_name);
-        $published = (int) $count_obj->publish;
+        $published = meza_get_published_post_type_count($post_type_name);
 
         if ($published === 0) {
             continue;
@@ -133,6 +132,19 @@ if (!function_exists('meza_admin_can_view_gravity_forms_dashboard_item')) {
 if (!function_exists('meza_admin_get_gravity_forms_count')) {
     function meza_admin_get_gravity_forms_count(): int
     {
+        static $cached_form_count = null;
+
+        if ($cached_form_count !== null) {
+            return $cached_form_count;
+        }
+
+        $transient_key = 'meza_admin_gravity_forms_count';
+        $cached_transient = get_transient($transient_key);
+        if ($cached_transient !== false) {
+            $cached_form_count = max(0, (int) $cached_transient);
+            return $cached_form_count;
+        }
+
         $form_count = 0;
 
         if (class_exists('GFFormsModel') && method_exists('GFFormsModel', 'get_forms')) {
@@ -153,9 +165,24 @@ if (!function_exists('meza_admin_get_gravity_forms_count')) {
             }
         }
 
-        return max(0, $form_count);
+        $cached_form_count = max(0, $form_count);
+        set_transient($transient_key, $cached_form_count, 120);
+
+        return $cached_form_count;
     }
 }
+
+if (!function_exists('meza_admin_flush_gravity_forms_count_cache')) {
+    function meza_admin_flush_gravity_forms_count_cache(): void
+    {
+        delete_transient('meza_admin_gravity_forms_count');
+    }
+}
+
+add_action('gform_after_save_form', 'meza_admin_flush_gravity_forms_count_cache');
+add_action('gform_after_delete_form', 'meza_admin_flush_gravity_forms_count_cache');
+add_action('gform_post_form_trashed', 'meza_admin_flush_gravity_forms_count_cache');
+add_action('gform_post_form_restored', 'meza_admin_flush_gravity_forms_count_cache');
 
 if (!function_exists('meza_admin_get_gravity_forms_dashboard_items')) {
     function meza_admin_get_gravity_forms_dashboard_items(): array
@@ -261,7 +288,7 @@ function meza_hide_default_glance_items_css(): void
         }
     </style>';
 }
-add_action('admin_head', 'meza_hide_default_glance_items_css');
+add_action('admin_head-index.php', 'meza_hide_default_glance_items_css');
 
 /** ================================
  *  WYSIWYG NORMALIZATION

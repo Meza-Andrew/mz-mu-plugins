@@ -616,23 +616,7 @@ function meza_get_nontrashed_post_type_count(string $post_type): int
         return 0;
     }
 
-    $counts = wp_count_posts($post_type);
-    if (!is_object($counts)) {
-        return 0;
-    }
-
-    $total = 0;
-
-    foreach (get_object_vars($counts) as $status => $count) {
-        $status = sanitize_key((string) $status);
-        if (in_array($status, ['auto-draft', 'trash', 'inherit'], true)) {
-            continue;
-        }
-
-        $total += (int) $count;
-    }
-
-    return $total;
+    return meza_get_nontrashed_post_type_count_cached($post_type);
 }
 
 function meza_should_hide_calendar_embeds_submenu_for_current_user(): bool

@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.275
+ * Version: 1.1.276
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -81,6 +81,137 @@ if (!function_exists('meza_store_sync_signature')) {
         update_option($option_name, $signature, false);
     }
 }
+
+if (!function_exists('meza_get_post_counts_cache_ttl')) {
+    function meza_get_post_counts_cache_ttl(): int
+    {
+        $ttl = (int) apply_filters('meza_admin_post_counts_cache_ttl', 300);
+        return $ttl > 0 ? $ttl : 300;
+    }
+}
+
+if (!function_exists('meza_get_post_type_counts_cache_key')) {
+    function meza_get_post_type_counts_cache_key(string $post_type): string
+    {
+        return 'meza_post_counts_' . md5(sanitize_key($post_type));
+    }
+}
+
+if (!function_exists('meza_get_post_type_counts')) {
+    function meza_get_post_type_counts(string $post_type): array
+    {
+        $post_type = sanitize_key($post_type);
+        if ($post_type === '') {
+            return [];
+        }
+
+        if (!isset($GLOBALS['meza_post_type_counts_request_cache']) || !is_array($GLOBALS['meza_post_type_counts_request_cache'])) {
+            $GLOBALS['meza_post_type_counts_request_cache'] = [];
+        }
+
+        if (array_key_exists($post_type, $GLOBALS['meza_post_type_counts_request_cache'])) {
+            return is_array($GLOBALS['meza_post_type_counts_request_cache'][$post_type])
+                ? $GLOBALS['meza_post_type_counts_request_cache'][$post_type]
+                : [];
+        }
+
+        $transient_key = meza_get_post_type_counts_cache_key($post_type);
+        $cached_counts = get_transient($transient_key);
+
+        if (is_array($cached_counts)) {
+            $GLOBALS['meza_post_type_counts_request_cache'][$post_type] = $cached_counts;
+            return $cached_counts;
+        }
+
+        $counts = wp_count_posts($post_type);
+        if (!is_object($counts)) {
+            $GLOBALS['meza_post_type_counts_request_cache'][$post_type] = [];
+            return [];
+        }
+
+        $normalized_counts = [];
+
+        foreach (get_object_vars($counts) as $status => $count) {
+            $normalized_counts[sanitize_key((string) $status)] = (int) $count;
+        }
+
+        $GLOBALS['meza_post_type_counts_request_cache'][$post_type] = $normalized_counts;
+        set_transient($transient_key, $normalized_counts, meza_get_post_counts_cache_ttl());
+
+        return $normalized_counts;
+    }
+}
+
+if (!function_exists('meza_get_published_post_type_count')) {
+    function meza_get_published_post_type_count(string $post_type): int
+    {
+        $counts = meza_get_post_type_counts($post_type);
+        return max(0, (int) ($counts['publish'] ?? 0));
+    }
+}
+
+if (!function_exists('meza_get_nontrashed_post_type_count_cached')) {
+    function meza_get_nontrashed_post_type_count_cached(string $post_type): int
+    {
+        $counts = meza_get_post_type_counts($post_type);
+        $total = 0;
+
+        foreach ($counts as $status => $count) {
+            $status = sanitize_key((string) $status);
+            if (in_array($status, ['auto-draft', 'trash', 'inherit'], true)) {
+                continue;
+            }
+
+            $total += (int) $count;
+        }
+
+        return $total;
+    }
+}
+
+if (!function_exists('meza_flush_post_type_counts_cache')) {
+    function meza_flush_post_type_counts_cache(string $post_type): void
+    {
+        $post_type = sanitize_key($post_type);
+        if ($post_type === '') {
+            return;
+        }
+
+        if (isset($GLOBALS['meza_post_type_counts_request_cache']) && is_array($GLOBALS['meza_post_type_counts_request_cache'])) {
+            unset($GLOBALS['meza_post_type_counts_request_cache'][$post_type]);
+        }
+
+        delete_transient(meza_get_post_type_counts_cache_key($post_type));
+    }
+}
+
+if (!function_exists('meza_flush_post_type_counts_cache_for_post')) {
+    function meza_flush_post_type_counts_cache_for_post(int $post_id): void
+    {
+        if ($post_id <= 0) {
+            return;
+        }
+
+        $post_type = get_post_type($post_id);
+        if (!is_string($post_type) || $post_type === '') {
+            return;
+        }
+
+        meza_flush_post_type_counts_cache($post_type);
+    }
+}
+
+add_action('save_post', function (int $post_id, WP_Post $post): void {
+    if ($post_id <= 0) {
+        return;
+    }
+
+    meza_flush_post_type_counts_cache((string) $post->post_type);
+}, 20, 2);
+
+add_action('trashed_post', 'meza_flush_post_type_counts_cache_for_post', 20);
+add_action('untrashed_post', 'meza_flush_post_type_counts_cache_for_post', 20);
+add_action('before_delete_post', 'meza_flush_post_type_counts_cache_for_post', 20);
 
 if (!function_exists('meza_submission_manager_capability')) {
     function meza_submission_manager_capability(): string
