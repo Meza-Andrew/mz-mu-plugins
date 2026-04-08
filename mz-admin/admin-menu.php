@@ -4289,7 +4289,8 @@ add_filter('update_footer', function ($content): string {
 
 add_action('admin_head', function (): void {
     if (is_admin()) {
-        $lock_core_admin_content = !meza_is_admin_chrome_exempt_screen();
+        $is_admin_chrome_exempt_screen = meza_is_admin_chrome_exempt_screen();
+        $lock_core_admin_content = !$is_admin_chrome_exempt_screen;
         $screen = function_exists('get_current_screen') ? get_current_screen() : null;
         $is_edit_screen = $screen instanceof WP_Screen && $screen->base === 'edit';
         $content_selectors = meza_admin_content_allowed_children_selectors();
@@ -4323,6 +4324,7 @@ add_action('admin_head', function (): void {
     <?php endif; ?>
     <script id="meza-lock-admin-content-script">
         (() => {
+            const isAdminChromeExemptScreen = <?php echo wp_json_encode($is_admin_chrome_exempt_screen); ?>;
             const lockCoreAdminContent = <?php echo wp_json_encode($lock_core_admin_content); ?>;
             const isEditScreen = <?php echo wp_json_encode($is_edit_screen); ?>;
             const allowedSelectors = <?php echo wp_json_encode($content_selectors); ?>;
@@ -4549,6 +4551,12 @@ add_action('admin_head', function (): void {
                     element.style.removeProperty('top');
                 });
             };
+
+            if (isAdminChromeExemptScreen) {
+                cleanupInjectedTopSpacing();
+                window.addEventListener('resize', cleanupInjectedTopSpacing);
+                return;
+            }
 
             cleanupContent();
             cleanupAfterWpwrap();
