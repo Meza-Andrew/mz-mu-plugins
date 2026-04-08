@@ -3285,6 +3285,42 @@ if (!function_exists('meza_should_lock_admin_title_chrome')) {
 }
 
 if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
+    function meza_is_dynamic_plugin_admin_screen(?WP_Screen $screen = null): bool
+    {
+        $page = isset($_GET['page']) ? strtolower(trim(sanitize_text_field(wp_unslash((string) $_GET['page'])))) : '';
+        if ($page === '') {
+            return false;
+        }
+
+        if (!($screen instanceof WP_Screen) && function_exists('get_current_screen')) {
+            $screen = get_current_screen();
+        }
+
+        $request_file = strtolower((string) basename((string) ($_SERVER['PHP_SELF'] ?? '')));
+        if (in_array($request_file, ['admin.php', 'options-general.php', 'tools.php', 'themes.php', 'plugins.php', 'users.php', 'upload.php', 'edit.php'], true)) {
+            return true;
+        }
+
+        if (!($screen instanceof WP_Screen)) {
+            return false;
+        }
+
+        $haystacks = array_map('strtolower', array_filter([
+            (string) ($screen->id ?? ''),
+            (string) ($screen->base ?? ''),
+            (string) ($screen->parent_base ?? ''),
+            (string) ($screen->parent_file ?? ''),
+        ]));
+
+        foreach ($haystacks as $haystack) {
+            if (str_contains($haystack, '_page_') || str_contains($haystack, $page)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     function meza_is_preferred_plugin_admin_screen(?WP_Screen $screen = null): bool
     {
         $signatures = [];
@@ -3367,6 +3403,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
                     return true;
                 }
 
+                if (meza_is_dynamic_plugin_admin_screen($screen)) {
+                    return true;
+                }
+
                 if (meza_is_preferred_plugin_admin_screen($screen)) {
                     return true;
                 }
@@ -3380,6 +3420,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         }
 
         if ($php_self === 'site-health.php') {
+            return true;
+        }
+
+        if (meza_is_dynamic_plugin_admin_screen()) {
             return true;
         }
 
