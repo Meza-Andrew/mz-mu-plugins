@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.282
+ * Version: 1.1.283
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -180,6 +180,124 @@ if (!function_exists('meza_migrate_nonautoload_options')) {
     }
 }
 
+if (!function_exists('meza_get_transient_cleanup_option_patterns')) {
+    function meza_get_transient_cleanup_option_patterns(): array
+    {
+        return [
+            '_site_transient_t15s-registry-gforms',
+            '_site_transient_timeout_t15s-registry-gforms',
+            '_transient_GFCache_%',
+            '_transient_timeout_GFCache_%',
+            '_site_transient_GFCache_%',
+            '_site_transient_timeout_GFCache_%',
+            '_transient_wpv_cached_view_%',
+            '_transient_timeout_wpv_cached_view_%',
+            '_transient_wpv_cached_form_%',
+            '_transient_timeout_wpv_cached_form_%',
+            '_transient_wpv_cached_loop_%',
+            '_transient_timeout_wpv_cached_loop_%',
+            '_transient_wpv_transient_%',
+            '_transient_timeout_wpv_transient_%',
+            '_transient_toolset_types_cache_sg_%',
+            '_transient_timeout_toolset_types_cache_sg_%',
+        ];
+    }
+}
+
+if (!function_exists('meza_delete_options_by_like_patterns')) {
+    function meza_delete_options_by_like_patterns(array $patterns): int
+    {
+        global $wpdb;
+
+        if (!($wpdb instanceof wpdb)) {
+            return 0;
+        }
+
+        $total_deleted = 0;
+
+        foreach ($patterns as $pattern) {
+            $pattern = trim((string) $pattern);
+            if ($pattern === '') {
+                continue;
+            }
+
+            if (str_contains($pattern, '%')) {
+                $deleted = $wpdb->query(
+                    $wpdb->prepare(
+                        "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+                        $pattern
+                    )
+                );
+            } else {
+                $deleted = $wpdb->delete(
+                    $wpdb->options,
+                    ['option_name' => $pattern],
+                    ['%s']
+                );
+            }
+
+            if (is_numeric($deleted) && $deleted > 0) {
+                $total_deleted += (int) $deleted;
+            }
+        }
+
+        if ($total_deleted > 0) {
+            wp_cache_delete('alloptions', 'options');
+        }
+
+        return $total_deleted;
+    }
+}
+
+if (!function_exists('meza_should_disable_transient_autoload')) {
+    function meza_should_disable_transient_autoload(string $transient): bool
+    {
+        $transient = trim($transient);
+        if ($transient === '') {
+            return false;
+        }
+
+        foreach ([
+            'GFCache_',
+            'wpv_cached_view_',
+            'wpv_cached_form_',
+            'wpv_cached_loop_',
+            'wpv_transient_',
+            'toolset_types_cache_sg_',
+        ] as $prefix) {
+            if (str_starts_with($transient, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_force_transient_option_nonautoload')) {
+    function meza_force_transient_option_nonautoload(string $transient, $value = null, int $expiration = 0): void
+    {
+        if ($expiration > 0 || !meza_should_disable_transient_autoload($transient)) {
+            return;
+        }
+
+        meza_set_option_autoload('_transient_' . $transient, false);
+    }
+}
+
+if (!function_exists('meza_cleanup_oversized_transient_caches')) {
+    function meza_cleanup_oversized_transient_caches(): void
+    {
+        $migration_option = 'meza_transient_cache_cleanup_20260408_v2';
+        if (get_option($migration_option, '') === 'done') {
+            return;
+        }
+
+        meza_delete_options_by_like_patterns(meza_get_transient_cleanup_option_patterns());
+        update_option($migration_option, 'done', false);
+    }
+}
+
 if (!function_exists('meza_get_post_counts_cache_ttl')) {
     function meza_get_post_counts_cache_ttl(): int
     {
@@ -311,6 +429,8 @@ add_action('trashed_post', 'meza_flush_post_type_counts_cache_for_post', 20);
 add_action('untrashed_post', 'meza_flush_post_type_counts_cache_for_post', 20);
 add_action('before_delete_post', 'meza_flush_post_type_counts_cache_for_post', 20);
 add_action('init', 'meza_migrate_nonautoload_options', 20);
+add_action('init', 'meza_cleanup_oversized_transient_caches', 21);
+add_action('set_transient', 'meza_force_transient_option_nonautoload', 20, 3);
 
 if (!function_exists('meza_submission_manager_capability')) {
     function meza_submission_manager_capability(): string
