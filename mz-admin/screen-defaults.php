@@ -1074,6 +1074,45 @@ add_action('current_screen', function ($screen): void {
     }
 }, 20);
 
+// Enforce the post-list page size on the actual main admin query too, since some
+// edit screens can rebuild the query with a larger payload after screen options load.
+add_action('pre_get_posts', function (WP_Query $query): void {
+    global $pagenow;
+
+    if (!is_admin() || !$query->is_main_query() || $pagenow !== 'edit.php') {
+        return;
+    }
+
+    $post_type = sanitize_key((string) $query->get('post_type'));
+    if ($post_type === '') {
+        $post_type = 'post';
+    }
+
+    if (!post_type_exists($post_type)) {
+        return;
+    }
+
+    $target_per_page = meza_get_post_admin_list_per_page();
+    $current_per_page = (int) $query->get('posts_per_page');
+
+    if ($current_per_page <= 0 || $current_per_page > $target_per_page) {
+        $query->set('posts_per_page', $target_per_page);
+    }
+
+    $archive_per_page = (int) $query->get('posts_per_archive_page');
+    if ($archive_per_page > $target_per_page) {
+        $query->set('posts_per_archive_page', $target_per_page);
+    }
+
+    if (
+        is_post_type_hierarchical($post_type)
+        && (string) $query->get('fields') === 'id=>parent'
+        && (int) $query->get('posts_per_page') === $target_per_page
+    ) {
+        $query->set('fields', '');
+    }
+}, 5);
+
 function meza_get_allowed_tag_post_types(): array
 {
     $post_types = apply_filters('meza_allowed_tag_post_types', ['product']);
