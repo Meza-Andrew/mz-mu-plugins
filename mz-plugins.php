@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.21
+ * Version: 1.4.22
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -95,11 +95,11 @@ if (!function_exists('mz_plugins_get_catalog')) {
             ['name' => 'Error Log Monitor', 'slug' => 'error-log-monitor', 'file' => 'error-log-monitor/plugin.php', 'envs' => ['development', 'staging', 'qa', 'production']],
 
             // All except development
-            ['name' => 'ACF Content Analysis for Yoast SEO', 'slug' => 'acf-content-analysis-for-yoast-seo', 'file' => 'acf-content-analysis-for-yoast-seo/acf-content-analysis-for-yoast-seo.php', 'envs' => ['staging', 'qa', 'production']],
-            ['name' => 'Admin Columns', 'slug' => 'codepress-admin-columns', 'file' => 'codepress-admin-columns/codepress-admin-columns.php', 'envs' => ['staging', 'qa', 'production']],
-            ['name' => 'Admin Menu Editor', 'slug' => 'admin-menu-editor', 'file' => 'admin-menu-editor/menu-editor.php', 'envs' => ['staging', 'qa', 'production']],
             ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['development'], 'activate' => false],
             ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['staging', 'qa', 'production']],
+            ['name' => 'ACF Content Analysis for Yoast SEO', 'slug' => 'acf-content-analysis-for-yoast-seo', 'file' => 'acf-content-analysis-for-yoast-seo/yoast-acf-analysis.php', 'envs' => ['staging', 'qa', 'production'], 'requires_active' => ['advanced-custom-fields-pro/acf.php', 'wordpress-seo/wp-seo.php'], 'requires_wp' => '6.6', 'requires_php' => '7.2.5'],
+            ['name' => 'Admin Columns', 'slug' => 'codepress-admin-columns', 'file' => 'codepress-admin-columns/codepress-admin-columns.php', 'envs' => ['staging', 'qa', 'production']],
+            ['name' => 'Admin Menu Editor', 'slug' => 'admin-menu-editor', 'file' => 'admin-menu-editor/menu-editor.php', 'envs' => ['staging', 'qa', 'production']],
 
             // All except production
             ['name' => 'Query Monitor', 'slug' => 'query-monitor', 'file' => 'query-monitor/query-monitor.php', 'envs' => ['development', 'staging', 'qa']],
@@ -107,7 +107,7 @@ if (!function_exists('mz_plugins_get_catalog')) {
             // QA + Production only
             ['name' => 'All-In-One Security (AIOS)', 'slug' => 'all-in-one-wp-security-and-firewall', 'file' => 'all-in-one-wp-security-and-firewall/wp-security.php', 'envs' => ['qa', 'production']],
             ['name' => 'Converter for Media', 'slug' => 'webp-converter-for-media', 'file' => 'webp-converter-for-media/webp-converter-for-media.php', 'envs' => ['qa', 'production']],
-            ['name' => 'Redirection', 'slug' => 'redirection', 'file' => 'redirection/redirection.php', 'envs' => ['qa', 'production']],
+            ['name' => 'Redirection', 'slug' => 'redirection', 'file' => 'redirection/redirection.php', 'envs' => ['qa', 'production'], 'requires_wp' => '6.5', 'requires_php' => '7.4'],
             ['name' => 'WP Super Cache', 'slug' => 'wp-super-cache', 'file' => 'wp-super-cache/wp-cache.php', 'envs' => ['qa', 'production']],
             ['name' => 'SQLite Object Cache', 'slug' => 'sqlite-object-cache', 'file' => 'sqlite-object-cache/sqlite-object-cache.php', 'envs' => ['qa', 'production'], 'requires' => ['wp-super-cache/wp-cache.php']],
 
@@ -179,6 +179,75 @@ if (!function_exists('mz_plugins_catalog_dependencies_met')) {
         }
 
         return true;
+    }
+}
+
+if (!function_exists('mz_plugins_catalog_activation_dependencies_met')) {
+    function mz_plugins_catalog_activation_dependencies_met(array $plugin): bool
+    {
+        $required_plugins = array_filter((array) ($plugin['requires_active'] ?? []), static function ($required_plugin): bool {
+            return is_string($required_plugin) && trim($required_plugin) !== '';
+        });
+
+        foreach ($required_plugins as $required_plugin) {
+            $required_plugin = trim((string) $required_plugin);
+
+            if (!is_plugin_active($required_plugin) && !(is_multisite() && is_plugin_active_for_network($required_plugin))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('mz_plugins_catalog_runtime_requirements_met')) {
+    function mz_plugins_catalog_runtime_requirements_met(array $plugin): bool
+    {
+        $requires_wp = trim((string) ($plugin['requires_wp'] ?? ''));
+        if ($requires_wp !== '' && version_compare((string) get_bloginfo('version'), $requires_wp, '<')) {
+            return false;
+        }
+
+        $requires_php = trim((string) ($plugin['requires_php'] ?? ''));
+        if ($requires_php !== '' && version_compare(PHP_VERSION, $requires_php, '<')) {
+            return false;
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('mz_plugins_catalog_runtime_requirement_message')) {
+    function mz_plugins_catalog_runtime_requirement_message(array $plugin): string
+    {
+        $parts = [];
+        $requires_wp = trim((string) ($plugin['requires_wp'] ?? ''));
+        $requires_php = trim((string) ($plugin['requires_php'] ?? ''));
+
+        if ($requires_wp !== '') {
+            $parts[] = 'WP ' . $requires_wp . '+';
+        }
+
+        if ($requires_php !== '') {
+            $parts[] = 'PHP ' . $requires_php . '+';
+        }
+
+        return implode(', ', $parts);
+    }
+}
+
+if (!function_exists('mz_plugins_format_error_message')) {
+    function mz_plugins_format_error_message($error, string $fallback = ''): string
+    {
+        if (is_wp_error($error)) {
+            $message = trim($error->get_error_message());
+            if ($message !== '') {
+                return $message;
+            }
+        }
+
+        return $fallback;
     }
 }
 
@@ -256,55 +325,113 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
             continue;
         }
 
+        if (!mz_plugins_catalog_runtime_requirements_met($p)) {
+            $results[] = "Skip install (runtime): {$p['name']} requires " . mz_plugins_catalog_runtime_requirement_message($p);
+            continue;
+        }
+
         if (isset($all[$file])) continue;
         $slug = $p['slug'] ?? '';
         $zip  = '';
+        $api_error = null;
         if (!empty($p['zip'])) {
             $zip = $p['zip'];
         } elseif (!empty($p['zip_const']) && defined($p['zip_const']) && constant($p['zip_const'])) {
             $zip = constant($p['zip_const']);
         }
 
-        $download = $zip ?: (function ($slug) {
+        $download = $zip ?: (function ($slug, &$api_error = null) {
             $api = plugins_api('plugin_information', ['slug' => $slug, 'fields' => ['sections' => false]]);
-            if (is_wp_error($api) || empty($api->download_link)) return '';
+            if (is_wp_error($api)) {
+                $api_error = $api;
+                return '';
+            }
+            if (empty($api->download_link)) return '';
             return $api->download_link;
-        })($slug);
+        })($slug, $api_error);
 
         if (!$download) {
-            $results[] = "Install failed (resolve): {$p['name']}";
+            $results[] = "Install failed (resolve): {$p['name']}" . ($api_error instanceof WP_Error ? ' - ' . mz_plugins_format_error_message($api_error) : '');
             continue;
         }
         $ok = $upgrader->install($download);
         if (is_wp_error($ok) || !$ok) {
-            $results[] = "Install failed: {$p['name']}";
+            $results[] = "Install failed: {$p['name']}" . ($ok instanceof WP_Error ? ' - ' . mz_plugins_format_error_message($ok) : '');
             continue;
         }
         wp_clean_plugins_cache(true);
         $all = get_plugins();
-        if (isset($all[$file])) $results[] = "Installed: {$p['name']}";
+        if (isset($all[$file])) {
+            $results[] = "Installed: {$p['name']}";
+            continue;
+        }
+
+        $results[] = "Install failed (main file): {$p['name']}";
     }
 
     // ACTIVATE required
-    foreach ($should_activate as $file => $p) {
-        if (!mz_plugins_catalog_dependencies_met($p, $should_install, $all)) {
-            $results[] = "Skip activate (requires): {$p['name']}";
+    $pending_activation = $should_activate;
+    $activation_progress = true;
+
+    while (!empty($pending_activation) && $activation_progress) {
+        $activation_progress = false;
+
+        foreach ($pending_activation as $file => $p) {
+            if (!mz_plugins_catalog_dependencies_met($p, $should_install, $all)) {
+                unset($pending_activation[$file]);
+                $results[] = "Skip activate (requires): {$p['name']}";
+                continue;
+            }
+
+            if (!mz_plugins_catalog_runtime_requirements_met($p)) {
+                unset($pending_activation[$file]);
+                $results[] = "Skip activate (runtime): {$p['name']} requires " . mz_plugins_catalog_runtime_requirement_message($p);
+                continue;
+            }
+
+            if (is_plugin_active($file) || (is_multisite() && is_plugin_active_for_network($file))) {
+                unset($pending_activation[$file]);
+                continue;
+            }
+
+            if (!isset($all[$file])) {
+                wp_clean_plugins_cache(true);
+                $all = get_plugins();
+            }
+            if (!isset($all[$file])) {
+                unset($pending_activation[$file]);
+                $results[] = "Skip activate (not found): {$p['name']}";
+                continue;
+            }
+
+            if (!mz_plugins_catalog_activation_dependencies_met($p)) {
+                continue;
+            }
+
+            $err = activate_plugin($file, '', $network_wide, true);
+            unset($pending_activation[$file]);
+            $activation_progress = true;
+
+            if (is_wp_error($err)) {
+                $results[] = "Activation failed: {$p['name']} - " . mz_plugins_format_error_message($err, 'Unknown activation error');
+                continue;
+            }
+
+            $results[] = "Activated: {$p['name']}";
+        }
+    }
+
+    foreach ($pending_activation as $file => $p) {
+        $required_plugins = array_filter((array) ($p['requires_active'] ?? []), static function ($required_plugin): bool {
+            return is_string($required_plugin) && trim($required_plugin) !== '';
+        });
+
+        if ($required_plugins !== []) {
+            $results[] = "Skip activate (requires active): {$p['name']}";
             continue;
         }
 
-        if (is_plugin_active($file) || (is_multisite() && is_plugin_active_for_network($file))) continue;
-        if (!isset($all[$file])) {
-            wp_clean_plugins_cache(true);
-            $all = get_plugins();
-        }
-        if (!isset($all[$file])) {
-            $results[] = "Skip activate (not found): {$p['name']}";
-            continue;
-        }
-
-        $err = activate_plugin($file, '', $network_wide, true);
-        if (is_wp_error($err)) $results[] = "Activation failed: {$p['name']}";
-        else $results[] = "Activated: {$p['name']}";
+        $results[] = "Skip activate (pending): {$p['name']}";
     }
 
     // DEACTIVATE catalog-managed plugins that should NOT be active in this env
