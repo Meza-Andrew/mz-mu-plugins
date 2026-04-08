@@ -5,7 +5,7 @@
  * Description: Core site settings, defaults, and bootstrap configuration.
  * Author: Meza LLC
  * Author URI: https://meza.design
- * Version: 1.8.5
+ * Version: 1.8.6
  */
 
 /** ================================
@@ -55,7 +55,7 @@ const MEZA_POSTS_PER_PAGE      = 10;
 const MEZA_POSTS_PER_RSS       = 10;
 const MEZA_UPLOADS_YM_FOLDERS  = 1;
 const MEZA_PERMALINK_STRUCTURE = '/%postname%/';
-const MEZA_ADMIN_ITEMS_PER_PAGE = 200;
+const MEZA_ADMIN_ITEMS_PER_PAGE = 20;
 
 /** Editor defaults */
 const MEZA_DEFAULT_EDITOR      = 'classic';
@@ -627,6 +627,14 @@ add_action('muplugins_loaded', function () {
 }, 1);
 
 /** Build the list of screen-option keys used by posts, taxonomies, media, users, and network tables. */
+function meza_admin_items_per_page_target(): int
+{
+    $target = (int) apply_filters('meza_admin_items_per_page_target', (int) MEZA_ADMIN_ITEMS_PER_PAGE);
+
+    return $target > 0 ? $target : 20;
+}
+
+/** Build the list of screen-option keys used by posts, taxonomies, media, users, and network tables. */
 function meza_admin_per_page_option_keys(): array
 {
     $options = [
@@ -748,7 +756,7 @@ function meza_action_scheduler_admin_item_count(): int
 add_action('admin_init', function () {
     foreach (meza_admin_per_page_option_keys() as $option_key) {
         add_filter("get_user_option_{$option_key}", function ($value, $option, $user) {
-            return MEZA_ADMIN_ITEMS_PER_PAGE;
+            return meza_admin_items_per_page_target();
         }, 9999, 3);
     }
 }, 1);
@@ -756,32 +764,33 @@ add_action('admin_init', function () {
 /** Keep saved screen-option values locked to MEZA_ADMIN_ITEMS_PER_PAGE. */
 add_filter('set-screen-option', function ($status, $option, $value) {
     if (!in_array((string)$option, meza_admin_per_page_option_keys(), true)) return $status;
-    return MEZA_ADMIN_ITEMS_PER_PAGE;
+    return meza_admin_items_per_page_target();
 }, 9999, 3);
 
 /** Hide the Pagination screen option on post and taxonomy lists that do not exceed the forced page size. */
 add_action('admin_head', function () {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
     if (!($screen instanceof WP_Screen)) return;
+    $target = meza_admin_items_per_page_target();
 
     if ($screen->base === 'edit') {
         $post_type = (string) ($screen->post_type ?? '');
         if ($post_type === '') return;
 
-        if (meza_post_type_admin_item_count($post_type) > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+        if (meza_post_type_admin_item_count($post_type) > $target) return;
     } elseif ($screen->base === 'edit-tags') {
         $taxonomy = (string) ($screen->taxonomy ?? '');
         if ($taxonomy === '') return;
 
-        if (meza_taxonomy_admin_item_count($taxonomy) > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+        if (meza_taxonomy_admin_item_count($taxonomy) > $target) return;
     } elseif ($screen->base === 'plugins') {
-        if (meza_plugins_admin_item_count() > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+        if (meza_plugins_admin_item_count() > $target) return;
     } elseif ($screen->base === 'upload') {
-        if (meza_media_admin_item_count() > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+        if (meza_media_admin_item_count() > $target) return;
     } elseif ($screen->base === 'users') {
-        if (meza_users_admin_item_count() > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+        if (meza_users_admin_item_count() > $target) return;
     } elseif ($screen->id === 'tools_page_action-scheduler') {
-        if (meza_action_scheduler_admin_item_count() > MEZA_ADMIN_ITEMS_PER_PAGE) return;
+        if (meza_action_scheduler_admin_item_count() > $target) return;
     } else {
         return;
     }

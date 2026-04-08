@@ -1029,7 +1029,10 @@ add_action('admin_init', function () {
 if (!function_exists('meza_get_post_admin_list_per_page')) {
     function meza_get_post_admin_list_per_page(): int
     {
-        $per_page = (int) apply_filters('meza_post_admin_list_per_page', 20);
+        $default_per_page = function_exists('meza_admin_items_per_page_target')
+            ? meza_admin_items_per_page_target()
+            : 20;
+        $per_page = (int) apply_filters('meza_post_admin_list_per_page', $default_per_page);
         return $per_page > 0 ? $per_page : 20;
     }
 }
