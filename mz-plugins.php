@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.23
+ * Version: 1.4.24
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -13,7 +13,6 @@
  * Optional toggles in wp-config.php:
  *   define('MZ_PRUNE_PLUGINS', true);         // uninstall plugins not meant for this environment
  *   define('MZ_HIDE_NON_ENV_PLUGINS', true);  // hide any non-env plugins from the Plugins screen
- *   define('MZ_ACF_PRO_ZIP', 'https://example.com/advanced-custom-fields-pro.zip'); // private ZIP if needed
  */
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) return;
@@ -85,7 +84,7 @@ if (!function_exists('mz_plugins_get_catalog')) {
     {
         return [
             // All
-            ['name' => 'Advanced Custom Fields PRO', 'slug' => 'advanced-custom-fields-pro', 'file' => 'advanced-custom-fields-pro/acf.php', 'envs' => ['development', 'staging', 'qa', 'production'], 'zip_const' => 'MZ_ACF_PRO_ZIP'],
+            ['name' => 'Advanced Custom Fields PRO', 'slug' => 'advanced-custom-fields-pro', 'file' => 'advanced-custom-fields-pro/acf.php', 'envs' => ['development', 'staging', 'qa', 'production'], 'zip' => 'https://downloads.meza.design/vendor/advanced-custom-fields-pro.zip'],
             ['name' => 'Classic Editor', 'slug' => 'classic-editor', 'file' => 'classic-editor/classic-editor.php', 'envs' => ['development', 'staging', 'qa', 'production']],
             ['name' => 'Intuitive Custom Post Order', 'slug' => 'intuitive-custom-post-order', 'file' => 'intuitive-custom-post-order/intuitive-custom-post-order.php', 'envs' => ['development', 'staging', 'qa', 'production']],
             ['name' => 'Post Duplicator', 'slug' => 'post-duplicator', 'file' => 'post-duplicator/m4c-postduplicator.php', 'envs' => ['development', 'staging', 'qa', 'production']],
