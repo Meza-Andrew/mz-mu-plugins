@@ -3357,6 +3357,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         if (function_exists('get_current_screen')) {
             $screen = get_current_screen();
             if ($screen instanceof WP_Screen) {
+                if ((string) $screen->id === 'edit-page') {
+                    return true;
+                }
+
                 if ((string) $screen->base === 'themes') {
                     return true;
                 }
