@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.295
+ * Version: 1.1.296
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1953,13 +1953,15 @@ add_filter('wpseo_submenu_pages', function (array $submenu_pages): array {
         }
 
         $slug = (string) ($item[4] ?? '');
-        return !in_array($slug, ['wpseo_workouts', 'wpseo_redirects'], true);
+        return !in_array($slug, ['wpseo_workouts', 'wpseo_redirects', 'wpseo_page_academy', 'wpseo_licenses'], true);
     }));
 }, PHP_INT_MAX);
 
 add_action('admin_menu', function (): void {
     remove_submenu_page('wpseo_dashboard', 'wpseo_workouts');
     remove_submenu_page('wpseo_dashboard', 'wpseo_redirects');
+    remove_submenu_page('wpseo_dashboard', 'wpseo_page_academy');
+    remove_submenu_page('wpseo_dashboard', 'wpseo_licenses');
 }, 99);
 
 add_action('admin_init', function (): void {
