@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.281
+ * Version: 1.1.282
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -79,6 +79,104 @@ if (!function_exists('meza_store_sync_signature')) {
         }
 
         update_option($option_name, $signature, false);
+    }
+}
+
+if (!function_exists('meza_set_option_autoload')) {
+    function meza_set_option_autoload(string $option_name, bool $autoload): bool
+    {
+        $option_name = trim($option_name);
+        if ($option_name === '') {
+            return false;
+        }
+
+        global $wpdb;
+
+        if (!($wpdb instanceof wpdb)) {
+            return false;
+        }
+
+        $current_autoload = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT autoload FROM $wpdb->options WHERE option_name = %s LIMIT 1",
+                $option_name
+            )
+        );
+
+        if (!is_string($current_autoload) || $current_autoload === '') {
+            return false;
+        }
+
+        $autoload_values = function_exists('wp_autoload_values_to_autoload')
+            ? wp_autoload_values_to_autoload()
+            : ['yes', 'on', 'auto-on', 'auto'];
+
+        $should_autoload = in_array($current_autoload, $autoload_values, true);
+        if ($should_autoload === $autoload) {
+            return true;
+        }
+
+        $updated = $wpdb->update(
+            $wpdb->options,
+            ['autoload' => $autoload ? 'on' : 'off'],
+            ['option_name' => $option_name],
+            ['%s'],
+            ['%s']
+        );
+
+        if ($updated === false) {
+            return false;
+        }
+
+        if ($autoload) {
+            wp_cache_delete($option_name, 'options');
+            wp_cache_delete('alloptions', 'options');
+            return true;
+        }
+
+        $alloptions = wp_load_alloptions(true);
+        if (isset($alloptions[$option_name])) {
+            unset($alloptions[$option_name]);
+            wp_cache_set('alloptions', $alloptions, 'options');
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('meza_get_nonautoload_option_names')) {
+    function meza_get_nonautoload_option_names(): array
+    {
+        return [
+            'et_google_fonts_cache',
+            'monsterinsights_report_data_overview',
+            'otgs-installer-log',
+            'et_bloom_stats_cache',
+        ];
+    }
+}
+
+if (!function_exists('meza_migrate_nonautoload_options')) {
+    function meza_migrate_nonautoload_options(): void
+    {
+        $migration_option = 'meza_nonautoload_option_migration_20260408_v2';
+        if (get_option($migration_option, '') === 'done') {
+            return;
+        }
+
+        foreach (meza_get_nonautoload_option_names() as $option_name) {
+            if (!is_string($option_name) || $option_name === '') {
+                continue;
+            }
+
+            if (get_option($option_name, null) === null) {
+                continue;
+            }
+
+            meza_set_option_autoload($option_name, false);
+        }
+
+        update_option($migration_option, 'done', false);
     }
 }
 
@@ -212,6 +310,7 @@ add_action('save_post', function (int $post_id, WP_Post $post): void {
 add_action('trashed_post', 'meza_flush_post_type_counts_cache_for_post', 20);
 add_action('untrashed_post', 'meza_flush_post_type_counts_cache_for_post', 20);
 add_action('before_delete_post', 'meza_flush_post_type_counts_cache_for_post', 20);
+add_action('init', 'meza_migrate_nonautoload_options', 20);
 
 if (!function_exists('meza_submission_manager_capability')) {
     function meza_submission_manager_capability(): string
