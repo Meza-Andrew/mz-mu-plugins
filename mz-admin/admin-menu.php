@@ -3714,6 +3714,34 @@ if (!function_exists('meza_admin_promotional_phrase_tokens')) {
     }
 }
 
+if (!function_exists('meza_admin_soft_plugin_prehide_selectors')) {
+    function meza_admin_soft_plugin_prehide_selectors(): array
+    {
+        return [
+            '.pum-alerts',
+            '.pum-notice-bar-wrapper',
+            '.pum-pro-upsell-banner',
+            '[class*="upsell"]',
+            '[id*="upsell"]',
+            '[class*="telemetry"]',
+            '[id*="telemetry"]',
+            '[class*="review-notice"]',
+            '[id*="review-notice"]',
+            '[class*="notice-bar"]',
+            '[id*="notice-bar"]',
+            '[class*="promo-banner"]',
+            '[class*="promo_banner"]',
+            '[id*="promo-banner"]',
+            '[class*="go-pro"]',
+            '[class*="go_pro"]',
+            '[id*="go-pro"]',
+            '[class*="proplus"]',
+            '[class*="pro-plus"]',
+            '[id*="proplus"]',
+        ];
+    }
+}
+
 if (!function_exists('meza_admin_string_contains_any_token')) {
     function meza_admin_string_contains_any_token(string $haystack, array $tokens): bool
     {
@@ -4695,6 +4723,7 @@ add_action('admin_head', function (): void {
         $wpbodyContentPreWrapSelectors = meza_admin_wpbody_content_pre_wrap_allowed_selectors();
         $wpbodyContentTrailingSelectors = meza_admin_wpbody_content_trailing_allowed_selectors();
         $disallowed_plugin_signatures = meza_admin_get_disallowed_plugin_signatures();
+        $soft_plugin_prehide_selectors = meza_admin_soft_plugin_prehide_selectors();
         $content_deny_selector = '#wpcontent > *';
 
         foreach ($content_selectors as $selector) {
@@ -4705,6 +4734,14 @@ add_action('admin_head', function (): void {
     <style id="meza-lock-admin-content">
         <?php echo $content_deny_selector; ?> {
             display: none !important;
+        }
+    </style>
+    <?php endif; ?>
+    <?php if ($is_soft_plugin_screen && $soft_plugin_prehide_selectors !== []) : ?>
+    <style id="meza-soft-plugin-prehide">
+        <?php echo implode(",\n        ", $soft_plugin_prehide_selectors); ?> {
+            display: none !important;
+            visibility: hidden !important;
         }
     </style>
     <?php endif; ?>
@@ -4729,6 +4766,7 @@ add_action('admin_head', function (): void {
             const wpwrapAllowedSelectors = <?php echo wp_json_encode($wpwrap_selectors); ?>;
             const wpbodyContentPreWrapSelectors = <?php echo wp_json_encode($wpbodyContentPreWrapSelectors); ?>;
             const wpbodyContentTrailingSelectors = <?php echo wp_json_encode($wpbodyContentTrailingSelectors); ?>;
+            const softPluginPrehideSelectors = <?php echo wp_json_encode($soft_plugin_prehide_selectors); ?>;
             const preferredPluginSignatures = <?php echo wp_json_encode(meza_admin_get_env_preferred_plugin_signatures()); ?>;
             const disallowedPluginSignatures = <?php echo wp_json_encode($disallowed_plugin_signatures); ?>;
             const protectedSpacingTargets = [
@@ -5044,7 +5082,7 @@ add_action('admin_head', function (): void {
             };
 
             const cleanupPluginNotices = () => {
-                document.querySelectorAll('.notice, .update-nag, .updated, .error, .pum-alerts, .pum-notice-bar-wrapper, .pum-pro-upsell-banner, [class*="upsell"], [class*="telemetry"], [class*="review-notice"], [class*="notice-bar"]').forEach((node) => {
+                document.querySelectorAll(['.notice', '.update-nag', '.updated', '.error', ...softPluginPrehideSelectors].join(', ')).forEach((node) => {
                     if (!(node instanceof HTMLElement)) return;
                     if (!isRemovablePluginInjection(node)) return;
                     node.remove();
