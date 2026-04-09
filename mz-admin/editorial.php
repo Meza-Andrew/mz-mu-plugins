@@ -47,9 +47,9 @@ add_filter('wp_insert_attachment_data', function ($data, $postarr) {
     return $data;
 }, 10, 2);
 
-/** Dashboard: replace the default "At a Glance" list with counts for the post types editors actually manage. */
+/** Dashboard: replace the default "At a Glance" list with counts for the admin-editable post types editors can manage. */
 if (!function_exists('meza_get_site_overview_dashboard_post_type_items')) {
-    function meza_get_site_overview_dashboard_post_type_items(): array
+    function meza_get_site_overview_dashboard_post_type_items(bool $include_zero_counts = false): array
     {
         $items = [];
         $post_types = get_post_types(['show_ui' => true], 'objects');
@@ -72,16 +72,26 @@ if (!function_exists('meza_get_site_overview_dashboard_post_type_items')) {
                 continue;
             }
 
-            if (!meza_post_type_is_visible_in_admin_menu($post_type_name)) {
-                continue;
-            }
-
             if (empty($post_type->show_ui) || empty($post_type->cap->edit_posts) || !current_user_can($post_type->cap->edit_posts)) {
                 continue;
             }
 
+            $is_hidden_menu_post_type = $post_type_name !== 'post'
+                && $post_type_name !== 'page'
+                && $post_type->show_in_menu === false;
+
+            if (
+                $is_hidden_menu_post_type
+                && !(
+                    function_exists('meza_admin_bar_allows_hidden_post_type_new_node')
+                    && meza_admin_bar_allows_hidden_post_type_new_node($post_type_name)
+                )
+            ) {
+                continue;
+            }
+
             $published = meza_get_published_post_type_count($post_type_name);
-            if ($published < 1) {
+            if (!$include_zero_counts && $published < 1) {
                 continue;
             }
 

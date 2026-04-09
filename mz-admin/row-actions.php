@@ -217,10 +217,6 @@ add_filter('post_row_actions', 'meza_remove_quick_edit_action', 1000, 2);
 add_filter('page_row_actions', 'meza_remove_quick_edit_action', 1000, 2);
 
 add_filter('user_row_actions', function (array $actions, WP_User $user): array {
-    if (!function_exists('meza_is_site_manager_user') || !meza_is_site_manager_user(wp_get_current_user())) {
-        return $actions;
-    }
-
     unset($actions['view']);
 
     foreach ($actions as $key => $action) {
@@ -361,3 +357,17 @@ add_action('admin_bar_menu', function ($wp_admin_bar) {
         'meta' => $meta,
     ]);
 }, 100001);
+
+add_action('admin_bar_menu', function ($wp_admin_bar) {
+    if (!($wp_admin_bar instanceof WP_Admin_Bar)) {
+        return;
+    }
+
+    global $pagenow;
+
+    if (!in_array($pagenow, ['user-edit.php', 'profile.php'], true)) {
+        return;
+    }
+
+    $wp_admin_bar->remove_node('view');
+}, 100002);

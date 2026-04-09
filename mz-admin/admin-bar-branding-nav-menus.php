@@ -504,7 +504,7 @@ function meza_filter_admin_bar_new_content_menu($wp_admin_bar): void
     }
 
     if (function_exists('meza_get_site_overview_dashboard_post_type_items')) {
-        foreach (meza_get_site_overview_dashboard_post_type_items() as $item) {
+        foreach (meza_get_site_overview_dashboard_post_type_items(true) as $item) {
             if (!is_array($item)) {
                 continue;
             }

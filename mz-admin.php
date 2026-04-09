@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.392
+ * Version: 1.1.398
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1141,6 +1141,30 @@ if (!function_exists('meza_suppress_non_meza_plugin_admin_notice_callbacks')) {
 }
 
 if (!function_exists('meza_can_access_admin_bar_new_content_node')) {
+    function meza_admin_bar_allows_hidden_post_type_new_node(string $post_type): bool
+    {
+        $post_type = sanitize_key($post_type);
+        if ($post_type === '') {
+            return false;
+        }
+
+        $post_type_object = get_post_type_object($post_type);
+        if (!($post_type_object instanceof WP_Post_Type)) {
+            return false;
+        }
+
+        $labels = $post_type_object->labels ?? null;
+        $haystack = implode(' ', array_filter([
+            $post_type,
+            is_object($labels) ? (string) ($labels->name ?? '') : '',
+            is_object($labels) ? (string) ($labels->singular_name ?? '') : '',
+        ], static function ($value): bool {
+            return is_string($value) && trim($value) !== '';
+        }));
+
+        return preg_match('/\b(organizers?|venues?)\b/i', $haystack) === 1;
+    }
+
     function meza_can_access_admin_bar_new_content_node($node): bool
     {
         if (!is_object($node)) {
@@ -1211,6 +1235,15 @@ if (!function_exists('meza_can_access_admin_bar_new_content_node')) {
 
             $post_type_object = get_post_type_object($post_type);
             if (!($post_type_object instanceof WP_Post_Type) || !isset($post_type_object->cap)) {
+                return false;
+            }
+
+            if (
+                $post_type !== 'post'
+                && $post_type !== 'page'
+                && $post_type_object->show_in_menu === false
+                && !meza_admin_bar_allows_hidden_post_type_new_node($post_type)
+            ) {
                 return false;
             }
 
