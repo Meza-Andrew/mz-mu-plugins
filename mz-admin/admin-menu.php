@@ -3541,6 +3541,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
                     return true;
                 }
 
+                if (count(array_intersect($screen_values, ['plugin-install', 'plugin-install.php'])) > 0) {
+                    return true;
+                }
+
                 if ((string) $screen->base === 'themes') {
                     return true;
                 }
@@ -3562,6 +3566,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         }
 
         if ($php_self === 'options-privacy.php') {
+            return true;
+        }
+
+        if ($php_self === 'plugin-install.php') {
             return true;
         }
 
