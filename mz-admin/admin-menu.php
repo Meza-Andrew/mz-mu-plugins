@@ -3537,6 +3537,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
                     return true;
                 }
 
+                if (count(array_intersect($screen_values, ['options-privacy', 'options-privacy.php'])) > 0) {
+                    return true;
+                }
+
                 if ((string) $screen->base === 'themes') {
                     return true;
                 }
@@ -3554,6 +3558,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         }
 
         if ($php_self === 'site-health.php') {
+            return true;
+        }
+
+        if ($php_self === 'options-privacy.php') {
             return true;
         }
 

@@ -397,6 +397,14 @@ add_filter('wp_mail_smtp_tasks_admin_hide_as_menu', function ($hide_as_menu) {
     return $hide_as_menu;
 }, 200);
 
+add_filter('pdfemb_tasks_admin_hide_as_menu', function ($hide_as_menu) {
+    if (current_user_can('manage_options')) {
+        return false;
+    }
+
+    return $hide_as_menu;
+}, 200);
+
 function meza_post_type_shows_summary_admin_column(string $post_type): bool
 {
     $post_type = trim($post_type);
