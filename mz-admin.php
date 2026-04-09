@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.318
+ * Version: 1.1.328
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -568,6 +568,13 @@ if (!function_exists('meza_customer_sign_generator_capability')) {
     }
 }
 
+if (!function_exists('meza_redirect_manager_capability')) {
+    function meza_redirect_manager_capability(): string
+    {
+        return 'edit_theme_options';
+    }
+}
+
 if (!function_exists('meza_site_manager_capabilities')) {
     function meza_site_manager_capabilities(): array
     {
@@ -589,6 +596,7 @@ if (!function_exists('meza_site_manager_capabilities')) {
         $site_manager_extras = [
             meza_submission_manager_capability(),
             meza_customer_sign_generator_capability(),
+            'wpseo_manage_options',
             'edit_theme_options',
             'list_users',
             'import',
@@ -1604,10 +1612,19 @@ if (!function_exists('meza_sync_site_kit_dashboard_sharing')) {
 }
 add_action('init', 'meza_sync_site_kit_dashboard_sharing', 25);
 
+if (!function_exists('meza_is_site_kit_plugin_available')) {
+    function meza_is_site_kit_plugin_available(): bool
+    {
+        return file_exists(WP_PLUGIN_DIR . '/google-site-kit/google-site-kit.php')
+            || class_exists('\Google\Site_Kit\Core\Util\Google_Icon')
+            || class_exists('\Google\Site_Kit\Core\Modules\Modules');
+    }
+}
+
 add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, array $args): array {
     static $mapping_site_kit_caps = false;
 
-    if ($mapping_site_kit_caps) {
+    if ($mapping_site_kit_caps || !meza_is_site_kit_plugin_available()) {
         return $caps;
     }
 
@@ -1652,7 +1669,7 @@ add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, arr
 add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, WP_User $user): array {
     static $bridging_site_kit_caps = false;
 
-    if ($bridging_site_kit_caps || !($user instanceof WP_User) || $user->ID <= 0) {
+    if ($bridging_site_kit_caps || !meza_is_site_kit_plugin_available() || !($user instanceof WP_User) || $user->ID <= 0) {
         return $allcaps;
     }
 
@@ -1694,7 +1711,7 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
 }, 20, 4);
 
 add_action('admin_init', function (): void {
-    if (!is_admin()) {
+    if (!is_admin() || !meza_is_site_kit_plugin_available()) {
         return;
     }
 
@@ -1789,6 +1806,12 @@ if (!function_exists('meza_has_site_kit_top_level_menu_item')) {
 if (!function_exists('meza_restore_site_kit_admin_menu')) {
     function meza_restore_site_kit_admin_menu(): void
     {
+        if (!meza_is_site_kit_plugin_available()) {
+            remove_menu_page('meza-web-analytics');
+            remove_menu_page('googlesitekit-dashboard');
+            return;
+        }
+
         $can_view_splash = current_user_can('googlesitekit_view_splash');
         $can_view_dashboard = current_user_can('googlesitekit_view_dashboard');
         $can_view_shared_dashboard = current_user_can('googlesitekit_view_shared_dashboard');
@@ -1827,7 +1850,7 @@ if (!function_exists('meza_restore_site_kit_admin_menu')) {
 add_action('admin_menu', 'meza_restore_site_kit_admin_menu', PHP_INT_MAX - 3);
 
 add_filter('parent_file', function ($parent_file) {
-    if (!is_admin() || current_user_can('manage_options')) {
+    if (!is_admin() || !meza_is_site_kit_plugin_available() || current_user_can('manage_options')) {
         return $parent_file;
     }
 
@@ -1840,7 +1863,7 @@ add_filter('parent_file', function ($parent_file) {
 }, PHP_INT_MAX);
 
 add_filter('submenu_file', function ($submenu_file) {
-    if (!is_admin() || current_user_can('manage_options')) {
+    if (!is_admin() || !meza_is_site_kit_plugin_available() || current_user_can('manage_options')) {
         return $submenu_file;
     }
 
@@ -1855,6 +1878,14 @@ add_filter('submenu_file', function ($submenu_file) {
 add_filter('option_page_capability_updraft-options-group', function (): string {
     return meza_backup_manager_capability();
 });
+
+add_filter('redirection_role', function ($role): string {
+    return meza_redirect_manager_capability();
+}, 20);
+
+add_filter('redirection_capability_check', function ($capability, $permission_name): string {
+    return meza_redirect_manager_capability();
+}, 20, 2);
 
 add_filter('acf/get_options_page', function ($page, $slug) {
     if ($slug === 'crm' && is_array($page)) {
@@ -1875,7 +1906,7 @@ if (!function_exists('meza_should_hide_yoast_admin_menu_for_user')) {
             return false;
         }
 
-        return !user_can($user, 'manage_options');
+        return !meza_user_has_any_role($user, ['administrator', meza_site_manager_role_key()]);
     }
 }
 
@@ -1967,6 +1998,7 @@ add_filter('wpseo_submenu_pages', function (array $submenu_pages): array {
 }, PHP_INT_MAX);
 
 add_action('admin_menu', function (): void {
+    remove_submenu_page('wpseo_dashboard', 'wpseo_dashboard');
     remove_submenu_page('wpseo_dashboard', 'wpseo_workouts');
     remove_submenu_page('wpseo_dashboard', 'wpseo_redirects');
     remove_submenu_page('wpseo_dashboard', 'wpseo_page_academy');
@@ -1995,11 +2027,11 @@ add_action('admin_init', function (): void {
         exit;
     }
 
-    if (!in_array($page, ['wpseo_workouts', 'wpseo_redirects'], true)) {
+    if (!in_array($page, ['wpseo_dashboard', 'wpseo_workouts', 'wpseo_redirects'], true)) {
         return;
     }
 
-    wp_safe_redirect(admin_url('admin.php?page=wpseo_dashboard'));
+    wp_safe_redirect(admin_url('admin.php?page=wpseo_page_settings#/site-basics'));
     exit;
 }, 1);
 

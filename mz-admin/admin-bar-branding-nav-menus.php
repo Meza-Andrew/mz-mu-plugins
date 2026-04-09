@@ -1006,44 +1006,59 @@ if (!function_exists('meza_output_admin_bar_toolbar_alignment_css')) {
     function meza_output_admin_bar_toolbar_alignment_css(): void
     {
         echo '<style id="meza-admin-bar-cache-icon-alignment">' .
+            '#wpadminbar #wp-admin-bar-wp-logo > .ab-item,' .
             '#wpadminbar #wp-admin-bar-site-name > .ab-item,' .
             '#wpadminbar #wp-admin-bar-new-content > .ab-item,' .
             '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item{' .
-            'display:flex;' .
-            'align-items:center;' .
+            'display:flex!important;' .
+            'align-items:center!important;' .
             'gap:6px;' .
+            'min-height:32px!important;' .
             '}' .
+            '#wpadminbar #wp-admin-bar-wp-logo > .ab-item .ab-icon,' .
             '#wpadminbar #wp-admin-bar-site-name > .ab-item:before,' .
+            '#wpadminbar #wp-admin-bar-new-content > .ab-item:before,' .
             '#wpadminbar #wp-admin-bar-new-content > .ab-item .ab-icon,' .
             '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-icon{' .
-            'display:inline-flex;' .
-            'align-items:center;' .
-            'justify-content:center;' .
-            'width:20px;' .
-            'min-width:20px;' .
-            'height:20px;' .
+            'display:inline-flex!important;' .
+            'float:none!important;' .
+            'align-items:center!important;' .
+            'justify-content:center!important;' .
+            'width:20px!important;' .
+            'min-width:20px!important;' .
+            'height:20px!important;' .
             'padding:0!important;' .
             'margin:0!important;' .
-            'line-height:20px;' .
-            'font-size:20px;' .
+            'line-height:20px!important;' .
+            'font-size:20px!important;' .
+            'vertical-align:middle!important;' .
             '}' .
-            '#wpadminbar #wp-admin-bar-site-name > .ab-item:before{' .
-            'top:0!important;' .
-            '}' .
+            '#wpadminbar #wp-admin-bar-wp-logo > .ab-item .ab-icon:before,' .
+            '#wpadminbar #wp-admin-bar-site-name > .ab-item:before,' .
+            '#wpadminbar #wp-admin-bar-new-content > .ab-item:before,' .
+            '#wpadminbar #wp-admin-bar-new-content > .ab-item .ab-icon:before,' .
             '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-icon:before{' .
-            'width:20px;' .
-            'height:20px;' .
-            'font-size:20px;' .
-            'line-height:20px;' .
+            'display:block!important;' .
+            'width:20px!important;' .
+            'height:20px!important;' .
+            'line-height:20px!important;' .
+            'font-size:20px!important;' .
+            'margin:0!important;' .
             'top:0!important;' .
             '}' .
+            '#wpadminbar #wp-admin-bar-new-content > .ab-item:before,' .
             '#wpadminbar #wp-admin-bar-new-content > .ab-item .ab-icon:before{' .
-            'top:0!important;' .
+            'position:relative!important;' .
+            'top:1px!important;' .
             '}' .
+            '#wpadminbar #wp-admin-bar-wp-logo > .ab-item .screen-reader-text{' .
+            'margin:0!important;' .
+            '}' .
+            '#wpadminbar #wp-admin-bar-wp-logo > .ab-item .ab-label,' .
             '#wpadminbar #wp-admin-bar-site-name > .ab-item .ab-label,' .
             '#wpadminbar #wp-admin-bar-new-content > .ab-item .ab-label,' .
             '#wpadminbar .meza-admin-bar-toolbar-action > .ab-item .ab-label{' .
-            'line-height:32px;' .
+            'line-height:32px!important;' .
             '}' .
             '</style>';
     }

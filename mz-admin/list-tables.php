@@ -398,7 +398,7 @@ add_filter('wp_mail_smtp_tasks_admin_hide_as_menu', function ($hide_as_menu) {
 }, 200);
 
 add_filter('pdfemb_tasks_admin_hide_as_menu', function ($hide_as_menu) {
-    if (current_user_can('manage_options')) {
+    if (current_user_can('manage_options') && !meza_is_site_manager_user(wp_get_current_user())) {
         return false;
     }
 
