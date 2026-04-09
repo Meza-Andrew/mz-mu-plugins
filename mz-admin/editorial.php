@@ -48,56 +48,79 @@ add_filter('wp_insert_attachment_data', function ($data, $postarr) {
 }, 10, 2);
 
 /** Dashboard: replace the default "At a Glance" list with counts for the post types editors actually manage. */
+if (!function_exists('meza_get_site_overview_dashboard_post_type_items')) {
+    function meza_get_site_overview_dashboard_post_type_items(): array
+    {
+        $items = [];
+        $post_types = get_post_types(['show_ui' => true], 'objects');
+
+        foreach ($post_types as $post_type) {
+            if (!($post_type instanceof WP_Post_Type)) {
+                continue;
+            }
+
+            $post_type_name = (string) ($post_type->name ?? '');
+            if ($post_type_name === '') {
+                continue;
+            }
+
+            if (
+                in_array($post_type_name, ['attachment', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request'], true)
+                || str_starts_with($post_type_name, 'wp_')
+                || (function_exists('meza_is_acf_admin_post_type') && meza_is_acf_admin_post_type($post_type_name))
+            ) {
+                continue;
+            }
+
+            if (!meza_post_type_is_visible_in_admin_menu($post_type_name)) {
+                continue;
+            }
+
+            if (empty($post_type->show_ui) || empty($post_type->cap->edit_posts) || !current_user_can($post_type->cap->edit_posts)) {
+                continue;
+            }
+
+            $published = meza_get_published_post_type_count($post_type_name);
+            if ($published < 1) {
+                continue;
+            }
+
+            $items[] = [
+                'post_type' => $post_type_name,
+                'count' => $published,
+                'label' => $published === 1 ? $post_type->labels->singular_name : $post_type->labels->name,
+                'singular_label' => (string) ($post_type->labels->singular_name ?? $post_type->labels->name ?? $post_type_name),
+                'url' => $post_type_name === 'post'
+                    ? admin_url('edit.php')
+                    : admin_url('edit.php?post_type=' . $post_type_name),
+                'icon' => meza_get_post_type_dashicon_class($post_type_name),
+            ];
+        }
+
+        return $items;
+    }
+}
+
 function meza_replace_glance_items()
 {
     $custom_items = [];
 
-    $post_types = get_post_types(['show_ui' => true], 'objects');
+    foreach (meza_get_site_overview_dashboard_post_type_items() as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
 
-    foreach ($post_types as $post_type) {
-        $post_type_name = (string) ($post_type->name ?? '');
+        $post_type_name = (string) ($item['post_type'] ?? '');
         if ($post_type_name === '') {
             continue;
         }
 
-        if (
-            in_array($post_type_name, ['attachment', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request'], true)
-            || str_starts_with($post_type_name, 'wp_')
-            || (function_exists('meza_is_acf_admin_post_type') && meza_is_acf_admin_post_type($post_type_name))
-        ) {
-            continue;
-        }
-
-        if (!meza_post_type_is_visible_in_admin_menu($post_type_name)) {
-            continue;
-        }
-
-        if (empty($post_type->show_ui) || empty($post_type->cap->edit_posts) || !current_user_can($post_type->cap->edit_posts)) {
-            continue;
-        }
-
-        if (!current_user_can($post_type->cap->edit_posts)) {
-            continue;
-        }
-
-        $published = meza_get_published_post_type_count($post_type_name);
-
-        if ($published === 0) {
-            continue;
-        }
-
-        $label = $published === 1 ? $post_type->labels->singular_name : $post_type->labels->name;
-        $url = $post_type_name === 'post'
-            ? admin_url('edit.php')
-            : admin_url('edit.php?post_type=' . $post_type_name);
-        $icon_class = meza_get_post_type_dashicon_class($post_type_name);
-
         $custom_items[] = [
             'name' => 'meza-' . $post_type_name,
-            'count' => $published,
-            'label' => $label,
-            'url' => $url,
-            'icon' => $icon_class,
+            'count' => (int) ($item['count'] ?? 0),
+            'label' => (string) ($item['label'] ?? ''),
+            'url' => (string) ($item['url'] ?? ''),
+            'icon' => (string) ($item['icon'] ?? 'dashicons-admin-post'),
         ];
     }
 
@@ -198,6 +221,10 @@ if (!function_exists('meza_admin_get_gravity_forms_dashboard_items')) {
             'label' => $form_count === 1 ? 'Form' : 'Forms',
             'url' => admin_url('admin.php?page=gf_edit_forms'),
             'icon' => meza_get_keyword_dashicon_for_top_level_menu_item('Forms', 'gf_edit_forms'),
+            'new_node_id' => 'new-gravityforms',
+            'new_label' => 'Form',
+            'new_url' => admin_url('admin.php?page=gf_new_form'),
+            'new_capability' => 'gravityforms_create_form',
         ]];
     }
 }
@@ -254,18 +281,34 @@ if (!function_exists('meza_admin_get_dashboard_provider_items')) {
                 $url = trim((string) ($item['url'] ?? ''));
                 $icon = trim((string) ($item['icon'] ?? ''));
                 $count = isset($item['count']) ? (int) $item['count'] : 0;
+                $new_node_id = sanitize_key((string) ($item['new_node_id'] ?? ''));
+                $new_label = trim((string) ($item['new_label'] ?? ''));
+                $new_url = trim((string) ($item['new_url'] ?? ''));
+                $new_capability = trim((string) ($item['new_capability'] ?? ''));
 
                 if ($name === '' || $label === '' || $url === '' || $icon === '' || $count < 1) {
                     continue;
                 }
 
-                $items[] = [
+                $normalized_item = [
                     'name' => $name,
                     'count' => $count,
                     'label' => $label,
                     'url' => $url,
                     'icon' => $icon,
                 ];
+
+                if ($new_node_id !== '' && $new_label !== '' && $new_url !== '') {
+                    $normalized_item['new_node_id'] = $new_node_id;
+                    $normalized_item['new_label'] = $new_label;
+                    $normalized_item['new_url'] = $new_url;
+
+                    if ($new_capability !== '') {
+                        $normalized_item['new_capability'] = $new_capability;
+                    }
+                }
+
+                $items[] = $normalized_item;
             }
         }
 

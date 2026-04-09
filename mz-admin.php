@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.329
+ * Version: 1.1.374
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1200,6 +1200,11 @@ if (!function_exists('meza_can_access_admin_bar_new_content_node')) {
             return current_user_can('upload_files');
         }
 
+        if ($node_id === 'new-user' || str_contains($href, 'user-new.php')) {
+            $user = wp_get_current_user();
+            return $user instanceof WP_User && in_array('administrator', (array) $user->roles, true);
+        }
+
         if (str_contains($href, 'post-new.php')) {
             $post_type = 'post';
 
@@ -2087,22 +2092,76 @@ add_action('admin_head', function (): void {
         #yoast-helpscout-beacon {
             display: none !important;
         }
+
+        #yoast-seo-settings .yst-feature-upsell--card,
+        #yoast-seo-settings .yst-autocomplete-field--disabled,
+        #yoast-seo-settings .yst-tag-field--disabled,
+        #yoast-seo-settings .yst-toggle-field:has([role="switch"][disabled]),
+        #yoast-seo-settings .yst-toggle-field:has([role="switch"][aria-disabled="true"]),
+        #yoast-seo-settings .yst-toggle-field:has([role="switch"][data-headlessui-state~="disabled"]),
+        #yoast-seo-settings .yst-toggle-field:has([data-headlessui-state~="disabled"]) {
+            display: none !important;
+        }
+
+        #yoast-seo-settings section.yst-grid:has(fieldset):not(:has(
+            fieldset .yst-validation-input:has(input:not([type="hidden"]):not([disabled]):not([readonly])),
+            fieldset .yst-validation-input:has(textarea:not([disabled]):not([readonly])),
+            fieldset .yst-validation-input:has(select:not([disabled])),
+            fieldset .yst-toggle-field:has([role="switch"]:not([disabled]):not([aria-disabled="true"]):not([data-headlessui-state~="disabled"])),
+            fieldset .yst-radio-group:has(input[type="radio"]:not([disabled])),
+            fieldset .yst-checkbox-group:has(input[type="checkbox"]:not([disabled])),
+            fieldset .yst-tag-field:not(.yst-tag-field--disabled),
+            fieldset .yst-autocomplete-field:not(.yst-autocomplete-field--disabled)
+        )),
+        #yoast-seo-settings .yst-mb-8:has(+ section.yst-grid:has(fieldset):not(:has(
+            fieldset .yst-validation-input:has(input:not([type="hidden"]):not([disabled]):not([readonly])),
+            fieldset .yst-validation-input:has(textarea:not([disabled]):not([readonly])),
+            fieldset .yst-validation-input:has(select:not([disabled])),
+            fieldset .yst-toggle-field:has([role="switch"]:not([disabled]):not([aria-disabled="true"]):not([data-headlessui-state~="disabled"])),
+            fieldset .yst-radio-group:has(input[type="radio"]:not([disabled])),
+            fieldset .yst-checkbox-group:has(input[type="checkbox"]:not([disabled])),
+            fieldset .yst-tag-field:not(.yst-tag-field--disabled),
+            fieldset .yst-autocomplete-field:not(.yst-autocomplete-field--disabled)
+        ))),
+        #yoast-seo-settings .yst-mb-8:has(+ hr + section.yst-grid:has(fieldset):not(:has(
+            fieldset .yst-validation-input:has(input:not([type="hidden"]):not([disabled]):not([readonly])),
+            fieldset .yst-validation-input:has(textarea:not([disabled]):not([readonly])),
+            fieldset .yst-validation-input:has(select:not([disabled])),
+            fieldset .yst-toggle-field:has([role="switch"]:not([disabled]):not([aria-disabled="true"]):not([data-headlessui-state~="disabled"])),
+            fieldset .yst-radio-group:has(input[type="radio"]:not([disabled])),
+            fieldset .yst-checkbox-group:has(input[type="checkbox"]:not([disabled])),
+            fieldset .yst-tag-field:not(.yst-tag-field--disabled),
+            fieldset .yst-autocomplete-field:not(.yst-autocomplete-field--disabled)
+        ))),
+        #yoast-seo-settings hr:has(+ section.yst-grid:has(fieldset):not(:has(
+            fieldset .yst-validation-input:has(input:not([type="hidden"]):not([disabled]):not([readonly])),
+            fieldset .yst-validation-input:has(textarea:not([disabled]):not([readonly])),
+            fieldset .yst-validation-input:has(select:not([disabled])),
+            fieldset .yst-toggle-field:has([role="switch"]:not([disabled]):not([aria-disabled="true"]):not([data-headlessui-state~="disabled"])),
+            fieldset .yst-radio-group:has(input[type="radio"]:not([disabled])),
+            fieldset .yst-checkbox-group:has(input[type="checkbox"]:not([disabled])),
+            fieldset .yst-tag-field:not(.yst-tag-field--disabled),
+            fieldset .yst-autocomplete-field:not(.yst-autocomplete-field--disabled)
+        ))) {
+            display: none !important;
+        }
     </style>
     <script id="meza-yoast-promo-cleanup-script">
         (() => {
+            const promoContainerSelectors = [
+                '.yoast_premium_upsell',
+                '.yoast-sidebar__product',
+                '.yoast-sidebar__section',
+                '.yst-max-w-4xl',
+                '.yst-p-6.yst-flex.yst-flex-col',
+                '.xl\\:yst-max-w-3xl'
+            ].join(', ');
             const removePromoNode = (node) => {
                 if (!(node instanceof HTMLElement)) {
                     return;
                 }
 
-                const container = node.closest([
-                    '.yst-max-w-4xl',
-                    '.yst-rounded-lg',
-                    '.yst-paper',
-                    '.yoast_premium_upsell',
-                    '.yoast-sidebar__product',
-                    '.yoast-sidebar__section'
-                ].join(', '));
+                const container = node.closest(promoContainerSelectors);
 
                 if (container instanceof HTMLElement) {
                     container.remove();
@@ -2115,6 +2174,7 @@ add_action('admin_head', function (): void {
             const cleanupYoastPromos = () => {
                 document.querySelectorAll('#yoast-helpscout-beacon').forEach((node) => node.remove());
                 document.querySelectorAll('.yoast_premium_upsell, #sidebar-container').forEach((node) => node.remove());
+                document.querySelectorAll('.yoast-sidebar__product, .yoast-sidebar__section').forEach((node) => node.remove());
 
                 document.querySelectorAll('[data-action="load-nfd-ctb"]').forEach(removePromoNode);
 
@@ -2126,14 +2186,17 @@ add_action('admin_head', function (): void {
                     removePromoNode(link);
                 });
             };
+            const cleanupYoastPromosNow = () => {
+                cleanupYoastPromos();
+            };
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', cleanupYoastPromos, { once: true });
+                document.addEventListener('DOMContentLoaded', cleanupYoastPromosNow, { once: true });
             } else {
-                cleanupYoastPromos();
+                cleanupYoastPromosNow();
             }
 
-            const observer = new MutationObserver(() => cleanupYoastPromos());
+            const observer = new MutationObserver(() => cleanupYoastPromosNow());
             observer.observe(document.documentElement, { childList: true, subtree: true });
         })();
     </script>

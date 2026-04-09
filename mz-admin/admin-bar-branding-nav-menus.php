@@ -157,6 +157,14 @@ function meza_should_keep_admin_bar_node($node): bool
         return false;
     }
 
+    if (
+        strtolower((string) ($node->parent ?? '')) === 'new-content'
+        && function_exists('meza_can_access_admin_bar_new_content_node')
+        && meza_can_access_admin_bar_new_content_node($node)
+    ) {
+        return true;
+    }
+
     return meza_is_default_admin_bar_node_id($node_id)
         || meza_is_admin_bar_query_monitor_node($node)
         || meza_is_admin_bar_clear_cache_node($node);
@@ -466,17 +474,163 @@ function meza_filter_admin_bar_new_content_menu($wp_admin_bar): void
 
     $all_children = [];
     $children = [];
+    $child_titles = [];
+    $child_hrefs = [];
     foreach ($nodes as $node) {
         if (!is_object($node) || (($node->parent ?? '') !== 'new-content')) continue;
         $all_children[] = $node;
         if (!meza_can_access_admin_bar_new_content_node($node)) continue;
         $children[] = $node;
+
+        $child_title = strtolower(trim(wp_strip_all_tags((string) ($node->title ?? ''))));
+        if ($child_title !== '') {
+            $child_titles[$child_title] = true;
+        }
+
+        $child_href = trim((string) ($node->href ?? ''));
+        if ($child_href !== '') {
+            $child_hrefs[$child_href] = true;
+        }
     }
 
     if (empty($all_children)) return;
 
+    $existing_child_ids = [];
+    foreach ($all_children as $child) {
+        $child_id = strtolower((string) ($child->id ?? ''));
+        if ($child_id !== '') {
+            $existing_child_ids[$child_id] = true;
+        }
+    }
+
+    if (function_exists('meza_get_site_overview_dashboard_post_type_items')) {
+        foreach (meza_get_site_overview_dashboard_post_type_items() as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $post_type = sanitize_key((string) ($item['post_type'] ?? ''));
+            if ($post_type === '' || $post_type === 'attachment') {
+                continue;
+            }
+
+            $post_type_object = get_post_type_object($post_type);
+            if (!($post_type_object instanceof WP_Post_Type)) {
+                continue;
+            }
+
+            $create_cap = (string) ($post_type_object->cap->create_posts ?? $post_type_object->cap->edit_posts ?? '');
+            if ($create_cap === '' || !current_user_can($create_cap)) {
+                continue;
+            }
+
+            $node_id = 'new-' . $post_type;
+            if (isset($existing_child_ids[$node_id])) {
+                continue;
+            }
+
+            $node = (object) [
+                'id' => $node_id,
+                'parent' => 'new-content',
+                'title' => (string) ($item['singular_label'] ?? $item['label'] ?? $post_type_object->labels->singular_name ?? $post_type),
+                'href' => $post_type === 'post'
+                    ? admin_url('post-new.php')
+                    : admin_url('post-new.php?post_type=' . $post_type),
+                'group' => false,
+                'meta' => [],
+            ];
+
+            if (!meza_can_access_admin_bar_new_content_node($node)) {
+                continue;
+            }
+
+            $children[] = $node;
+            $existing_child_ids[$node_id] = true;
+            $child_titles[strtolower(trim(wp_strip_all_tags((string) $node->title)))] = true;
+            $child_hrefs[(string) $node->href] = true;
+        }
+    }
+
+    if (function_exists('meza_admin_get_dashboard_provider_items')) {
+        foreach (meza_admin_get_dashboard_provider_items() as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $node_id = sanitize_key((string) ($item['new_node_id'] ?? ''));
+            $title = trim((string) ($item['new_label'] ?? ''));
+            $href = trim((string) ($item['new_url'] ?? ''));
+            $required_capability = trim((string) ($item['new_capability'] ?? ''));
+
+            if ($node_id === '' || $title === '' || $href === '' || isset($existing_child_ids[$node_id])) {
+                continue;
+            }
+
+            $normalized_title = strtolower(trim(wp_strip_all_tags($title)));
+            if (isset($child_titles[$normalized_title]) || isset($child_hrefs[$href])) {
+                continue;
+            }
+
+            if ($required_capability !== '' && !current_user_can($required_capability)) {
+                continue;
+            }
+
+            $node = (object) [
+                'id' => $node_id,
+                'parent' => 'new-content',
+                'title' => $title,
+                'href' => $href,
+                'group' => false,
+                'meta' => [],
+            ];
+
+            if (!meza_can_access_admin_bar_new_content_node($node)) {
+                continue;
+            }
+
+            $children[] = $node;
+            $existing_child_ids[$node_id] = true;
+            $child_titles[$normalized_title] = true;
+            $child_hrefs[$href] = true;
+        }
+    }
+
     foreach ($all_children as $child) {
         $wp_admin_bar->remove_node((string) $child->id);
+    }
+
+    if (count($children) >= 2) {
+        $deduped_children = [];
+        $seen_titles = [];
+        $seen_hrefs = [];
+
+        foreach ($children as $child) {
+            if (!is_object($child)) {
+                continue;
+            }
+
+            $normalized_title = strtolower(trim(wp_strip_all_tags((string) ($child->title ?? ''))));
+            $normalized_href = trim((string) ($child->href ?? ''));
+
+            if (
+                ($normalized_title !== '' && isset($seen_titles[$normalized_title]))
+                || ($normalized_href !== '' && isset($seen_hrefs[$normalized_href]))
+            ) {
+                continue;
+            }
+
+            if ($normalized_title !== '') {
+                $seen_titles[$normalized_title] = true;
+            }
+
+            if ($normalized_href !== '') {
+                $seen_hrefs[$normalized_href] = true;
+            }
+
+            $deduped_children[] = $child;
+        }
+
+        $children = $deduped_children;
     }
 
     if (count($children) >= 2) {

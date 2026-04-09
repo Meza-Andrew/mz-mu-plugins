@@ -216,6 +216,25 @@ function meza_remove_quick_edit_action(array $actions, $post = null): array
 add_filter('post_row_actions', 'meza_remove_quick_edit_action', 1000, 2);
 add_filter('page_row_actions', 'meza_remove_quick_edit_action', 1000, 2);
 
+add_filter('user_row_actions', function (array $actions, WP_User $user): array {
+    if (!function_exists('meza_is_site_manager_user') || !meza_is_site_manager_user(wp_get_current_user())) {
+        return $actions;
+    }
+
+    unset($actions['view']);
+
+    foreach ($actions as $key => $action) {
+        $normalized_key = strtolower(trim((string) $key));
+        $normalized_action = strtolower(trim(wp_strip_all_tags((string) $action)));
+
+        if ($normalized_key === 'view' || $normalized_action === 'view') {
+            unset($actions[$key]);
+        }
+    }
+
+    return $actions;
+}, 1000, 2);
+
 add_action('current_screen', function ($screen): void {
     if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') {
         return;
