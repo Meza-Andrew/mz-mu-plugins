@@ -315,7 +315,7 @@ function meza_customize_yoast_admin_menu(): void
 add_action('admin_menu', 'meza_customize_yoast_admin_menu', 20);
 
 add_action('admin_head', function (): void {
-    $settings_url = esc_url(admin_url('admin.php?page=wpseo_page_settings#/site-basics'));
+    $settings_url = esc_url(admin_url('admin.php?page=wpseo_page_settings#/site-representation'));
 ?>
     <script id="meza-yoast-top-level-settings-link">
         (() => {

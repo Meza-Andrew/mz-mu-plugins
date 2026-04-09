@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.374
+ * Version: 1.1.383
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -2077,7 +2077,7 @@ add_action('admin_init', function (): void {
         return;
     }
 
-    wp_safe_redirect(admin_url('admin.php?page=wpseo_page_settings#/site-basics'));
+    wp_safe_redirect(admin_url('admin.php?page=wpseo_page_settings#/site-representation'));
     exit;
 }, 1);
 
@@ -2085,6 +2085,42 @@ add_action('admin_head', function (): void {
     if (!meza_is_current_yoast_admin_page()) {
         return;
     }
+
+    $yoast_locked_section_markers = [
+        '.yst-feature-upsell--card [name="wpseo_titles.publishing_principles_id"]',
+        '.yst-feature-upsell--card [id="input-wpseo_titles-org-description"]',
+        '.yst-feature-upsell--card [id="input-wpseo_titles-org-vat-id"]',
+        '.yst-feature-upsell--card [id^="button-wpseo_titles-social-image-"]',
+        '.yst-feature-upsell--card [id^="input-wpseo_titles-social-title-"]',
+        '.yst-feature-upsell--card [id^="input-wpseo_titles-social-description-"]',
+        '.yst-toggle-field--disabled [name="wpseo_titles.display-metabox-pt-attachment"]',
+    ];
+    $yoast_locked_section_selectors = [];
+
+    foreach ($yoast_locked_section_markers as $marker) {
+        $yoast_locked_section_selectors[] = "#yoast-seo-settings section.yst-grid:has($marker)";
+        $yoast_locked_section_selectors[] = "#yoast-seo-settings .yst-mb-8:has(+ section.yst-grid:has($marker))";
+        $yoast_locked_section_selectors[] = "#yoast-seo-settings .yst-mb-8:has(+ hr + section.yst-grid:has($marker))";
+        $yoast_locked_section_selectors[] = "#yoast-seo-settings hr:has(+ section.yst-grid:has($marker))";
+        $yoast_locked_section_selectors[] = "#yoast-seo-settings hr.yst-my-8:has(+ section.yst-grid $marker)";
+        $yoast_locked_section_selectors[] = "#yoast-seo-settings hr.yst-my-8:has(+ .yst-mb-8 + section.yst-grid $marker)";
+        $yoast_locked_section_selectors[] = "#yoast-seo-settings hr.yst-my-8:has(+ .yst-mb-8 + hr + section.yst-grid $marker)";
+    }
+
+    $yoast_locked_section_rules = implode(
+        "\n\n        ",
+        array_map(
+            static fn(string $selector): string => $selector . " {\n            display: none !important;\n        }",
+            array_unique($yoast_locked_section_selectors)
+        )
+    );
+    $yoast_shadow_locked_section_rules = implode(
+        "\n\n                ",
+        array_map(
+            static fn(string $selector): string => str_replace('#yoast-seo-settings ', '', $selector) . " {\n                    display: none !important;\n                }",
+            array_unique($yoast_locked_section_selectors)
+        )
+    );
 ?>
     <style id="meza-yoast-promo-cleanup">
         .yoast_premium_upsell,
@@ -2103,51 +2139,31 @@ add_action('admin_head', function (): void {
             display: none !important;
         }
 
-        #yoast-seo-settings section.yst-grid:has(fieldset):not(:has(
-            fieldset .yst-validation-input:has(input:not([type="hidden"]):not([disabled]):not([readonly])),
-            fieldset .yst-validation-input:has(textarea:not([disabled]):not([readonly])),
-            fieldset .yst-validation-input:has(select:not([disabled])),
-            fieldset .yst-toggle-field:has([role="switch"]:not([disabled]):not([aria-disabled="true"]):not([data-headlessui-state~="disabled"])),
-            fieldset .yst-radio-group:has(input[type="radio"]:not([disabled])),
-            fieldset .yst-checkbox-group:has(input[type="checkbox"]:not([disabled])),
-            fieldset .yst-tag-field:not(.yst-tag-field--disabled),
-            fieldset .yst-autocomplete-field:not(.yst-autocomplete-field--disabled)
-        )),
-        #yoast-seo-settings .yst-mb-8:has(+ section.yst-grid:has(fieldset):not(:has(
-            fieldset .yst-validation-input:has(input:not([type="hidden"]):not([disabled]):not([readonly])),
-            fieldset .yst-validation-input:has(textarea:not([disabled]):not([readonly])),
-            fieldset .yst-validation-input:has(select:not([disabled])),
-            fieldset .yst-toggle-field:has([role="switch"]:not([disabled]):not([aria-disabled="true"]):not([data-headlessui-state~="disabled"])),
-            fieldset .yst-radio-group:has(input[type="radio"]:not([disabled])),
-            fieldset .yst-checkbox-group:has(input[type="checkbox"]:not([disabled])),
-            fieldset .yst-tag-field:not(.yst-tag-field--disabled),
-            fieldset .yst-autocomplete-field:not(.yst-autocomplete-field--disabled)
-        ))),
-        #yoast-seo-settings .yst-mb-8:has(+ hr + section.yst-grid:has(fieldset):not(:has(
-            fieldset .yst-validation-input:has(input:not([type="hidden"]):not([disabled]):not([readonly])),
-            fieldset .yst-validation-input:has(textarea:not([disabled]):not([readonly])),
-            fieldset .yst-validation-input:has(select:not([disabled])),
-            fieldset .yst-toggle-field:has([role="switch"]:not([disabled]):not([aria-disabled="true"]):not([data-headlessui-state~="disabled"])),
-            fieldset .yst-radio-group:has(input[type="radio"]:not([disabled])),
-            fieldset .yst-checkbox-group:has(input[type="checkbox"]:not([disabled])),
-            fieldset .yst-tag-field:not(.yst-tag-field--disabled),
-            fieldset .yst-autocomplete-field:not(.yst-autocomplete-field--disabled)
-        ))),
-        #yoast-seo-settings hr:has(+ section.yst-grid:has(fieldset):not(:has(
-            fieldset .yst-validation-input:has(input:not([type="hidden"]):not([disabled]):not([readonly])),
-            fieldset .yst-validation-input:has(textarea:not([disabled]):not([readonly])),
-            fieldset .yst-validation-input:has(select:not([disabled])),
-            fieldset .yst-toggle-field:has([role="switch"]:not([disabled]):not([aria-disabled="true"]):not([data-headlessui-state~="disabled"])),
-            fieldset .yst-radio-group:has(input[type="radio"]:not([disabled])),
-            fieldset .yst-checkbox-group:has(input[type="checkbox"]:not([disabled])),
-            fieldset .yst-tag-field:not(.yst-tag-field--disabled),
-            fieldset .yst-autocomplete-field:not(.yst-autocomplete-field--disabled)
-        ))) {
+        <?php echo $yoast_locked_section_rules; ?>
+
+        #yoast-seo-settings .yst-divide-y > div:has(a[href*="get-edd-integration"]) {
             display: none !important;
         }
     </style>
     <script id="meza-yoast-promo-cleanup-script">
         (() => {
+            const shadowCss = `
+                .yst-feature-upsell--card,
+                .yst-autocomplete-field--disabled,
+                .yst-tag-field--disabled,
+                .yst-toggle-field:has([role="switch"][disabled]),
+                .yst-toggle-field:has([role="switch"][aria-disabled="true"]),
+                .yst-toggle-field:has([role="switch"][data-headlessui-state~="disabled"]),
+                .yst-toggle-field:has([data-headlessui-state~="disabled"]) {
+                    display: none !important;
+                }
+
+                <?php echo $yoast_shadow_locked_section_rules; ?>
+
+                .yst-divide-y > div:has(a[href*="get-edd-integration"]) {
+                    display: none !important;
+                }
+            `;
             const promoContainerSelectors = [
                 '.yoast_premium_upsell',
                 '.yoast-sidebar__product',
@@ -2156,6 +2172,25 @@ add_action('admin_head', function (): void {
                 '.yst-p-6.yst-flex.yst-flex-col',
                 '.xl\\:yst-max-w-3xl'
             ].join(', ');
+            const getYoastShadowRoots = () => Array.from(document.querySelectorAll('body *'))
+                .filter((node) => node instanceof HTMLElement && node.shadowRoot instanceof ShadowRoot)
+                .map((node) => node.shadowRoot)
+                .filter((root) => root.querySelector('.yst-root'));
+            const ensureYoastShadowStyles = () => {
+                getYoastShadowRoots().forEach((root) => {
+                    let style = root.getElementById('meza-yoast-shadow-cleanup');
+
+                    if (!(style instanceof HTMLStyleElement)) {
+                        style = document.createElement('style');
+                        style.id = 'meza-yoast-shadow-cleanup';
+                        root.appendChild(style);
+                    }
+
+                    if (style.textContent !== shadowCss) {
+                        style.textContent = shadowCss;
+                    }
+                });
+            };
             const removePromoNode = (node) => {
                 if (!(node instanceof HTMLElement)) {
                     return;
@@ -2172,21 +2207,22 @@ add_action('admin_head', function (): void {
             };
 
             const cleanupYoastPromos = () => {
-                document.querySelectorAll('#yoast-helpscout-beacon').forEach((node) => node.remove());
-                document.querySelectorAll('.yoast_premium_upsell, #sidebar-container').forEach((node) => node.remove());
-                document.querySelectorAll('.yoast-sidebar__product, .yoast-sidebar__section').forEach((node) => node.remove());
+                [document, ...getYoastShadowRoots()].forEach((root) => {
+                    root.querySelectorAll('#yoast-helpscout-beacon').forEach((node) => node.remove());
+                    root.querySelectorAll('.yoast_premium_upsell, #sidebar-container').forEach((node) => node.remove());
+                    root.querySelectorAll('.yoast-sidebar__product, .yoast-sidebar__section').forEach((node) => node.remove());
+                    root.querySelectorAll('[data-action="load-nfd-ctb"]').forEach(removePromoNode);
+                    root.querySelectorAll('a[href*="yoa.st/3t6"]').forEach((link) => {
+                        if (!(link instanceof HTMLAnchorElement)) {
+                            return;
+                        }
 
-                document.querySelectorAll('[data-action="load-nfd-ctb"]').forEach(removePromoNode);
-
-                document.querySelectorAll('a[href*="yoa.st/3t6"]').forEach((link) => {
-                    if (!(link instanceof HTMLAnchorElement)) {
-                        return;
-                    }
-
-                    removePromoNode(link);
+                        removePromoNode(link);
+                    });
                 });
             };
             const cleanupYoastPromosNow = () => {
+                ensureYoastShadowStyles();
                 cleanupYoastPromos();
             };
 
