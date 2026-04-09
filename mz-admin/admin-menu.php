@@ -4262,6 +4262,13 @@ if (!function_exists('meza_admin_dom_element_or_descendant_matches_any_selector'
     }
 }
 
+if (!function_exists('meza_admin_dom_element_contains_main_wrap')) {
+    function meza_admin_dom_element_contains_main_wrap(DOMElement $element): bool
+    {
+        return meza_admin_dom_element_or_descendant_matches_any_selector($element, ['.wrap']);
+    }
+}
+
 if (!function_exists('meza_admin_dom_element_has_primary_admin_layout')) {
     function meza_admin_dom_element_has_primary_admin_layout(DOMElement $element): bool
     {
@@ -4405,7 +4412,7 @@ if (!function_exists('meza_sanitize_admin_chrome_html')) {
 
             foreach (meza_admin_dom_get_element_children($wpbody_content) as $child) {
                 if (!$seen_main_wrap) {
-                    if (meza_admin_dom_element_has_class($child, 'wrap')) {
+                    if (meza_admin_dom_element_contains_main_wrap($child)) {
                         $seen_main_wrap = true;
                         continue;
                     }
@@ -4834,6 +4841,11 @@ add_action('admin_head', function (): void {
                 return wpbodyContentPreWrapSelectors.some((selector) => element.matches(selector));
             };
 
+            const containsMainWrap = (element) => {
+                if (!(element instanceof Element)) return false;
+                return element.matches('.wrap') || !!element.querySelector('.wrap');
+            };
+
             const isCoreTemplateScriptId = (id) => {
                 const value = String(id || '').toLowerCase().trim();
                 if (!value) return false;
@@ -5073,7 +5085,7 @@ add_action('admin_head', function (): void {
                     if (!(child instanceof HTMLElement)) return;
 
                     if (!seenMainWrap) {
-                        if (child.classList.contains('wrap')) {
+                        if (containsMainWrap(child)) {
                             seenMainWrap = true;
                             return;
                         }
@@ -5105,7 +5117,7 @@ add_action('admin_head', function (): void {
                         return;
                     }
 
-                    if (child.classList.contains('wrap')) {
+                    if (containsMainWrap(child)) {
                         seenMainWrap = true;
                         return;
                     }

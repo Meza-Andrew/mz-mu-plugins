@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.313
+ * Version: 1.1.315
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -275,8 +275,13 @@ if (!function_exists('meza_should_disable_transient_autoload')) {
 }
 
 if (!function_exists('meza_force_transient_option_nonautoload')) {
-    function meza_force_transient_option_nonautoload(string $transient, $value = null, int $expiration = 0): void
+    function meza_force_transient_option_nonautoload($transient, $value = null, $expiration = 0): void
     {
+        if (!is_string($transient)) {
+            return;
+        }
+
+        $expiration = is_numeric($expiration) ? (int) $expiration : 0;
         if ($expiration > 0 || !meza_should_disable_transient_autoload($transient)) {
             return;
         }
