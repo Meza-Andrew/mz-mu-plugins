@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.328
+ * Version: 1.1.329
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1910,6 +1910,37 @@ if (!function_exists('meza_should_hide_yoast_admin_menu_for_user')) {
     }
 }
 
+if (!function_exists('meza_is_current_yoast_admin_page')) {
+    function meza_is_current_yoast_admin_page(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        if ($page !== '' && str_starts_with($page, 'wpseo')) {
+            return true;
+        }
+
+        if (!function_exists('get_current_screen')) {
+            return false;
+        }
+
+        $screen = get_current_screen();
+        if (!($screen instanceof WP_Screen)) {
+            return false;
+        }
+
+        $screen_id = strtolower((string) $screen->id);
+        $screen_base = strtolower((string) $screen->base);
+
+        return str_contains($screen_id, 'wpseo')
+            || str_contains($screen_id, 'wordpress-seo')
+            || str_contains($screen_base, 'wpseo')
+            || str_contains($screen_base, 'wordpress-seo');
+    }
+}
+
 if (!function_exists('meza_remove_yoast_admin_menu_entries')) {
     function meza_remove_yoast_admin_menu_entries(): void
     {
@@ -1997,6 +2028,16 @@ add_filter('wpseo_submenu_pages', function (array $submenu_pages): array {
     }));
 }, PHP_INT_MAX);
 
+add_filter('wpseo_helpscout_show_beacon', '__return_false', PHP_INT_MAX);
+
+add_action('admin_init', function (): void {
+    if (!meza_is_current_yoast_admin_page()) {
+        return;
+    }
+
+    remove_all_actions('wpseo_admin_promo_footer');
+}, 20);
+
 add_action('admin_menu', function (): void {
     remove_submenu_page('wpseo_dashboard', 'wpseo_dashboard');
     remove_submenu_page('wpseo_dashboard', 'wpseo_workouts');
@@ -2034,6 +2075,70 @@ add_action('admin_init', function (): void {
     wp_safe_redirect(admin_url('admin.php?page=wpseo_page_settings#/site-basics'));
     exit;
 }, 1);
+
+add_action('admin_head', function (): void {
+    if (!meza_is_current_yoast_admin_page()) {
+        return;
+    }
+?>
+    <style id="meza-yoast-promo-cleanup">
+        .yoast_premium_upsell,
+        #sidebar-container,
+        #yoast-helpscout-beacon {
+            display: none !important;
+        }
+    </style>
+    <script id="meza-yoast-promo-cleanup-script">
+        (() => {
+            const removePromoNode = (node) => {
+                if (!(node instanceof HTMLElement)) {
+                    return;
+                }
+
+                const container = node.closest([
+                    '.yst-max-w-4xl',
+                    '.yst-rounded-lg',
+                    '.yst-paper',
+                    '.yoast_premium_upsell',
+                    '.yoast-sidebar__product',
+                    '.yoast-sidebar__section'
+                ].join(', '));
+
+                if (container instanceof HTMLElement) {
+                    container.remove();
+                    return;
+                }
+
+                node.remove();
+            };
+
+            const cleanupYoastPromos = () => {
+                document.querySelectorAll('#yoast-helpscout-beacon').forEach((node) => node.remove());
+                document.querySelectorAll('.yoast_premium_upsell, #sidebar-container').forEach((node) => node.remove());
+
+                document.querySelectorAll('[data-action="load-nfd-ctb"]').forEach(removePromoNode);
+
+                document.querySelectorAll('a[href*="yoa.st/3t6"]').forEach((link) => {
+                    if (!(link instanceof HTMLAnchorElement)) {
+                        return;
+                    }
+
+                    removePromoNode(link);
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', cleanupYoastPromos, { once: true });
+            } else {
+                cleanupYoastPromos();
+            }
+
+            const observer = new MutationObserver(() => cleanupYoastPromos());
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+        })();
+    </script>
+<?php
+}, 1002);
 
 add_action('admin_menu', function (): void {
     meza_remove_yoast_admin_menu_entries();
