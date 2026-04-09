@@ -315,16 +315,43 @@ function meza_customize_yoast_admin_menu(): void
 add_action('admin_menu', 'meza_customize_yoast_admin_menu', 20);
 
 add_action('admin_head', function (): void {
-    $settings_url = esc_url(admin_url('admin.php?page=wpseo_page_settings#/site-representation'));
+    $is_administrator = meza_user_has_any_role(wp_get_current_user(), ['administrator']);
+    $settings_url = esc_url(admin_url('admin.php?page=wpseo_page_settings' . ($is_administrator ? '' : '#/site-representation')));
 ?>
     <script id="meza-yoast-top-level-settings-link">
         (() => {
-            const targetHref = <?php echo wp_json_encode($settings_url); ?>;
+            const fallbackHref = <?php echo wp_json_encode($settings_url); ?>;
+            const isAdministrator = <?php echo $is_administrator ? 'true' : 'false'; ?>;
+
+            const getSettingsHref = () => {
+                const submenuLinks = Array.from(document.querySelectorAll('#toplevel_page_wpseo_dashboard .wp-submenu a'));
+
+                for (const link of submenuLinks) {
+                    if (!(link instanceof HTMLAnchorElement)) {
+                        continue;
+                    }
+
+                    try {
+                        const url = new URL(link.href, window.location.origin);
+                        if (url.searchParams.get('page') === 'wpseo_page_settings') {
+                            return link.href;
+                        }
+                    } catch (error) {
+                    }
+                }
+
+                return fallbackHref;
+            };
 
             const retargetSeoMenu = () => {
+                const targetHref = getSettingsHref();
                 const topLevelLink = document.querySelector('#toplevel_page_wpseo_dashboard > a');
                 if (topLevelLink instanceof HTMLAnchorElement) {
                     topLevelLink.href = targetHref;
+                }
+
+                if (isAdministrator) {
+                    return;
                 }
 
                 document.querySelectorAll('#toplevel_page_wpseo_dashboard .wp-submenu a').forEach((link) => {
@@ -345,6 +372,10 @@ add_action('admin_head', function (): void {
             };
 
             const redirectBareYoastSettings = () => {
+                if (isAdministrator) {
+                    return;
+                }
+
                 try {
                     const currentUrl = new URL(window.location.href);
                     if (currentUrl.searchParams.get('page') !== 'wpseo_page_settings' || window.location.hash !== '') {
@@ -357,6 +388,7 @@ add_action('admin_head', function (): void {
             };
 
             const handleSeoMenuClick = (event) => {
+                const targetHref = getSettingsHref();
                 const link = event.target instanceof Element
                     ? event.target.closest('#toplevel_page_wpseo_dashboard > a')
                     : null;

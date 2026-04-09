@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.383
+ * Version: 1.1.386
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -2077,6 +2077,11 @@ add_action('admin_init', function (): void {
         return;
     }
 
+    if (meza_user_has_any_role($user, ['administrator'])) {
+        wp_safe_redirect(admin_url('admin.php?page=wpseo_page_settings'));
+        exit;
+    }
+
     wp_safe_redirect(admin_url('admin.php?page=wpseo_page_settings#/site-representation'));
     exit;
 }, 1);
@@ -2125,7 +2130,11 @@ add_action('admin_head', function (): void {
     <style id="meza-yoast-promo-cleanup">
         .yoast_premium_upsell,
         #sidebar-container,
-        #yoast-helpscout-beacon {
+        #yoast-helpscout-beacon,
+        #webinar-promo-notification,
+        .notice-yoast.yoast-general-page-notices,
+        .notice-yoast.yoast-webinar-dashboard,
+        #yst-settings-header-root:empty {
             display: none !important;
         }
 
@@ -2168,6 +2177,9 @@ add_action('admin_head', function (): void {
                 '.yoast_premium_upsell',
                 '.yoast-sidebar__product',
                 '.yoast-sidebar__section',
+                '.notice-yoast.yoast-general-page-notices',
+                '.notice-yoast.yoast-webinar-dashboard',
+                '#webinar-promo-notification',
                 '.yst-max-w-4xl',
                 '.yst-p-6.yst-flex.yst-flex-col',
                 '.xl\\:yst-max-w-3xl'
@@ -2211,6 +2223,7 @@ add_action('admin_head', function (): void {
                     root.querySelectorAll('#yoast-helpscout-beacon').forEach((node) => node.remove());
                     root.querySelectorAll('.yoast_premium_upsell, #sidebar-container').forEach((node) => node.remove());
                     root.querySelectorAll('.yoast-sidebar__product, .yoast-sidebar__section').forEach((node) => node.remove());
+                    root.querySelectorAll('#webinar-promo-notification, .notice-yoast.yoast-general-page-notices, .notice-yoast.yoast-webinar-dashboard').forEach((node) => node.remove());
                     root.querySelectorAll('[data-action="load-nfd-ctb"]').forEach(removePromoNode);
                     root.querySelectorAll('a[href*="yoa.st/3t6"]').forEach((link) => {
                         if (!(link instanceof HTMLAnchorElement)) {
@@ -2218,6 +2231,12 @@ add_action('admin_head', function (): void {
                         }
 
                         removePromoNode(link);
+                    });
+
+                    root.querySelectorAll('#yst-settings-header-root').forEach((node) => {
+                        if (node instanceof HTMLElement && node.childElementCount === 0 && node.textContent.trim() === '') {
+                            node.remove();
+                        }
                     });
                 });
             };
