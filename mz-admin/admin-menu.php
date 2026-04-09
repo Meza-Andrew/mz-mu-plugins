@@ -181,6 +181,25 @@ function meza_is_site_manager_user($user = null): bool
     return meza_user_has_any_role($user, [meza_site_manager_role_key()]);
 }
 
+function meza_is_aios_plugin_active(): bool
+{
+    return in_array(
+        'all-in-one-wp-security-and-firewall/wp-security.php',
+        apply_filters('active_plugins', get_option('active_plugins')),
+        true
+    );
+}
+
+function meza_is_aios_menu_slug(string $slug, string $label = ''): bool
+{
+    $slug = strtolower(trim($slug));
+    $label = strtolower(trim($label));
+
+    return str_contains($slug, 'aiowpsec')
+        || str_contains($slug, 'wp-security')
+        || $label === 'security';
+}
+
 function meza_is_site_manager_plugins_list_request(): bool
 {
     if (!meza_is_site_manager_user(wp_get_current_user()) || !is_admin()) {
@@ -495,8 +514,140 @@ function meza_should_grant_site_manager_utility_submenu_access(string $parent_sl
 
     $utility_label = meza_get_standardized_submenu_utility_label($item, $parent_slug);
 
-    return in_array($utility_label, ['Import', 'Export', 'Import/Export', 'Tools', 'Settings'], true);
+    return in_array($utility_label, ['Import', 'Export', 'Import/Export', 'Tools', 'Settings', 'Two Factor Authentication'], true);
 }
+
+function meza_render_site_manager_aios_two_factor_bridge(): void
+{
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        wp_die(esc_html__('Sorry, you are not allowed to access this page.'));
+    }
+
+    wp_safe_redirect(admin_url('admin.php?page=aiowpsec_two_factor_auth_user'));
+    exit;
+}
+
+function meza_force_site_manager_aios_menu_access(): void
+{
+    if (!meza_is_site_manager_user(wp_get_current_user()) || !meza_is_aios_plugin_active()) {
+        return;
+    }
+
+    global $menu, $submenu;
+
+    $aios_parent_slugs = [];
+
+    if (is_array($menu)) {
+        foreach ($menu as &$item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
+
+            if (strtolower($slug) === 'options-general.php') {
+                $item[1] = 'read';
+            }
+
+            if (!meza_is_aios_menu_slug($slug, $label)) {
+                continue;
+            }
+
+            $item[0] = 'Security';
+            $item[1] = 'read';
+            if (isset($item[3])) {
+                $item[3] = 'Security';
+            }
+            $item[6] = 'dashicons-shield';
+
+            $aios_parent_slugs[] = (string) $slug;
+        }
+        unset($item);
+    }
+
+    $aios_parent_slugs = array_values(array_unique(array_filter($aios_parent_slugs)));
+    $bridge_submenu_registered = false;
+
+    if (is_array($submenu)) {
+        foreach ($submenu as $parent_slug => &$items) {
+            if (!is_array($items)) {
+                continue;
+            }
+
+            $parent_slug = (string) $parent_slug;
+            $parent_is_aios = in_array($parent_slug, $aios_parent_slugs, true) || meza_is_aios_menu_slug($parent_slug);
+
+            foreach ($items as &$item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $slug = (string) ($item[2] ?? '');
+                $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
+                $utility_label = meza_get_standardized_submenu_utility_label($item, $parent_slug);
+
+                if (
+                    !$parent_is_aios
+                    && !meza_is_aios_menu_slug($slug, $label)
+                    && !in_array($utility_label, ['Settings', 'Two Factor Authentication'], true)
+                ) {
+                    continue;
+                }
+
+                $item[1] = 'read';
+
+                if ($utility_label === 'Two Factor Authentication' || str_contains(strtolower($slug), 'aiowpsec_two_factor_auth_user')) {
+                    $item[0] = 'Two Factor Authentication';
+                    if (isset($item[3])) {
+                        $item[3] = 'Two Factor Authentication';
+                    }
+                    $bridge_submenu_registered = true;
+                }
+            }
+            unset($item);
+        }
+        unset($items);
+    }
+
+    if (!empty($aios_parent_slugs)) {
+        $parent_slug = (string) $aios_parent_slugs[0];
+
+        if (!$bridge_submenu_registered) {
+            add_submenu_page(
+                $parent_slug,
+                'Two Factor Authentication',
+                'Two Factor Authentication',
+                'read',
+                'meza-aiowpsec-two-factor-authentication',
+                'meza_render_site_manager_aios_two_factor_bridge'
+            );
+        }
+
+        return;
+    }
+
+    add_menu_page(
+        'Security',
+        'Security',
+        'read',
+        'meza-aiowpsec-security',
+        'meza_render_site_manager_aios_two_factor_bridge',
+        'dashicons-shield',
+        81
+    );
+
+    add_submenu_page(
+        'meza-aiowpsec-security',
+        'Two Factor Authentication',
+        'Two Factor Authentication',
+        'read',
+        'meza-aiowpsec-security',
+        'meza_render_site_manager_aios_two_factor_bridge'
+    );
+}
+add_action('admin_menu', 'meza_force_site_manager_aios_menu_access', PHP_INT_MAX);
+add_action('admin_menu_editor-menu_replaced', 'meza_force_site_manager_aios_menu_access', PHP_INT_MAX);
 
 function meza_current_site_manager_request_matches_utility_submenu(): bool
 {
@@ -2086,6 +2237,9 @@ function meza_normalize_admin_plugin_menus(): void
             $item[0] = 'Security';
             if (isset($item[3])) $item[3] = 'Security';
             $item[6] = 'dashicons-shield';
+            if (meza_is_site_manager_user(wp_get_current_user())) {
+                $item[1] = 'read';
+            }
             continue;
         }
 
@@ -6286,6 +6440,7 @@ function meza_is_settings_utility_menu_item($item): bool
         || $label === 'mail';
     $is_security = str_contains($slug, 'aiowpsec')
         || str_contains($slug, 'wp-security')
+        || str_contains($slug, 'meza-aiowpsec-security')
         || $label === 'security';
     $is_backups = str_contains($slug, 'updraft')
         || in_array($label, ['backups', 'updraft', 'updraftplus'], true);
@@ -7079,6 +7234,34 @@ function meza_group_site_manager_appearance_and_fallback_menus(): void
 
             array_splice($menu, $i, 1);
             $fallback_start--;
+        }
+    }
+
+    $utility_start = null;
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item) || $is_separator($item) || !meza_is_settings_utility_menu_item($item)) {
+            continue;
+        }
+
+        $utility_start = (int) $index;
+        break;
+    }
+
+    if ($utility_start !== null && $utility_start > 0) {
+        $previous_item = $menu[$utility_start - 1] ?? null;
+        if (!$is_separator($previous_item)) {
+            array_splice($menu, $utility_start, 0, [[
+                '',
+                'read',
+                'separator-meza-site-manager-utility-group',
+                '',
+                'wp-menu-separator',
+            ]]);
+
+            if ($fallback_start !== null && $fallback_start >= $utility_start) {
+                $fallback_start++;
+            }
         }
     }
 

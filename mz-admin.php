@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.386
+ * Version: 1.1.392
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -901,15 +901,8 @@ if (!function_exists('meza_can_access_profile_two_factor')) {
             return false;
         }
 
-        if (in_array('administrator', (array) $user->roles, true)) {
-            return true;
-        }
-
-        return meza_user_has_any_role($user, [
-            'seo_manager',
-            meza_site_manager_role_key(),
-            'shop_manager',
-        ]);
+        // AIOS exposes per-user 2FA via the standard logged-in `read` capability.
+        return user_can($user, 'read');
     }
 }
 
