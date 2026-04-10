@@ -246,6 +246,15 @@ function meza_get_site_manager_aios_two_factor_url(): string
     ], admin_url('admin.php'));
 }
 
+function meza_is_aios_two_factor_user_request(): bool
+{
+    if (!is_admin()) {
+        return false;
+    }
+
+    return sanitize_key((string) ($_GET['page'] ?? '')) === 'aiowpsec_two_factor_auth_user';
+}
+
 function meza_is_aios_locked_users_request(): bool
 {
     if (!is_admin()) {
@@ -366,6 +375,33 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
 
     return $allcaps;
 }, 20, 4);
+
+add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $user): array {
+    if (
+        !($user instanceof WP_User)
+        || !meza_is_aios_plugin_active()
+        || !meza_can_access_profile_two_factor($user)
+        || !meza_is_aios_two_factor_user_request()
+    ) {
+        return $allcaps;
+    }
+
+    $requested_cap = strtolower((string) ($args[0] ?? ''));
+    if ($requested_cap !== '') {
+        $allcaps[$requested_cap] = true;
+    }
+
+    foreach ($caps as $cap) {
+        $cap = strtolower((string) $cap);
+        if ($cap !== '') {
+            $allcaps[$cap] = true;
+        }
+    }
+
+    $allcaps['read'] = true;
+
+    return $allcaps;
+}, 21, 4);
 
 add_action('admin_init', function (): void {
     if (!meza_is_site_manager_user(wp_get_current_user()) || !meza_is_aios_plugin_active()) {
