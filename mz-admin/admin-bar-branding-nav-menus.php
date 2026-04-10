@@ -90,6 +90,21 @@ function meza_is_admin_bar_clear_cache_node($node): bool
         || str_contains($href, 'wpaas_action=flush_cache');
 }
 
+function meza_is_admin_bar_wp_mail_smtp_node($node): bool
+{
+    if (!is_object($node)) return false;
+
+    $node_id = strtolower((string) ($node->id ?? ''));
+    $title = strtolower(trim(wp_strip_all_tags((string) ($node->title ?? ''))));
+    $href = strtolower((string) ($node->href ?? ''));
+    $meta_class = strtolower((string) ($node->meta->class ?? ''));
+
+    return str_contains($node_id, 'wp-mail-smtp')
+        || str_contains($title, 'wp mail smtp')
+        || str_contains($href, 'wp-mail-smtp')
+        || str_contains($meta_class, 'wp-mail-smtp');
+}
+
 function meza_is_default_admin_bar_node_id(string $node_id): bool
 {
     static $default_ids = [
@@ -154,6 +169,10 @@ function meza_should_keep_admin_bar_node($node): bool
 
     $node_id = strtolower((string) ($node->id ?? ''));
     if ($node_id === '') {
+        return false;
+    }
+
+    if (meza_is_admin_bar_wp_mail_smtp_node($node)) {
         return false;
     }
 
