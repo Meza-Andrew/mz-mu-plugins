@@ -212,7 +212,7 @@ function meza_get_site_manager_aios_security_menu_slug(): string
 
 function meza_get_site_manager_aios_two_factor_menu_slug(): string
 {
-    return 'admin.php?page=aiowpsec_two_factor_auth_user&meza_nav=security';
+    return 'aiowpsec_two_factor_auth_user';
 }
 
 function meza_get_aios_locked_users_menu_slug(): string
@@ -240,10 +240,7 @@ function meza_get_site_manager_aios_dashboard_url(): string
 
 function meza_get_site_manager_aios_two_factor_url(): string
 {
-    return add_query_arg([
-        'page' => 'aiowpsec_two_factor_auth_user',
-        'meza_nav' => 'security',
-    ], admin_url('admin.php'));
+    return admin_url('admin.php?page=aiowpsec_two_factor_auth_user');
 }
 
 function meza_is_aios_locked_users_request(): bool
@@ -382,12 +379,10 @@ add_action('admin_init', function (): void {
         return;
     }
 
-    if (meza_get_aios_navigation_context() === 'security') {
-        return;
+    if (meza_get_aios_navigation_context() !== '') {
+        wp_safe_redirect(meza_get_site_manager_aios_two_factor_url());
+        exit;
     }
-
-    wp_safe_redirect(meza_get_site_manager_aios_two_factor_url());
-    exit;
 }, 1);
 
 function meza_remove_native_aios_menu_for_site_managers(): void
@@ -820,14 +815,19 @@ function meza_should_grant_site_manager_utility_submenu_access(string $parent_sl
     return in_array($utility_label, ['Import', 'Export', 'Import/Export', 'Tools', 'Settings', 'Two Factor Authentication'], true);
 }
 
-function meza_render_site_manager_aios_two_factor_bridge(): void
+function meza_render_site_manager_aios_two_factor_page(): void
 {
     if (!meza_is_site_manager_user(wp_get_current_user())) {
         wp_die(esc_html__('Sorry, you are not allowed to access this page.'));
     }
 
-    wp_safe_redirect(admin_url('admin.php?page=aiowpsec_two_factor_auth_user'));
-    exit;
+    $two_factor = $GLOBALS['simba_two_factor_authentication'] ?? null;
+
+    if (!is_object($two_factor) || !method_exists($two_factor, 'show_dashboard_user_settings_page')) {
+        wp_die(esc_html__('Two Factor Authentication is not available right now.'));
+    }
+
+    $two_factor->show_dashboard_user_settings_page();
 }
 
 function meza_force_site_manager_aios_menu_access(): void
@@ -861,7 +861,7 @@ function meza_force_site_manager_aios_menu_access(): void
         'Two Factor Authentication',
         'read',
         meza_get_site_manager_aios_two_factor_menu_slug(),
-        ''
+        'meza_render_site_manager_aios_two_factor_page'
     );
 }
 add_action('admin_menu', 'meza_force_site_manager_aios_menu_access', PHP_INT_MAX);

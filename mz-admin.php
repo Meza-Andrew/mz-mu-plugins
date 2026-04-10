@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.404
+ * Version: 1.1.411
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -714,6 +714,35 @@ if (!function_exists('meza_sync_site_manager_role')) {
     }
 }
 add_action('init', 'meza_sync_site_manager_role', 20);
+
+if (!function_exists('meza_is_aios_user_two_factor_request')) {
+    function meza_is_aios_user_two_factor_request(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key(wp_unslash((string) $_GET['page'])) : '';
+
+        return $page === 'aiowpsec_two_factor_auth_user';
+    }
+}
+
+add_filter('aios_management_permission', function ($capability) {
+    if (!meza_is_aios_user_two_factor_request() || !meza_user_has_any_role(wp_get_current_user(), [meza_site_manager_role_key()])) {
+        return $capability;
+    }
+
+    return 'read';
+}, 20);
+
+add_filter('simba_tfa_management_capability', function ($capability) {
+    if (!meza_is_aios_user_two_factor_request() || !meza_user_has_any_role(wp_get_current_user(), [meza_site_manager_role_key()])) {
+        return $capability;
+    }
+
+    return 'read';
+}, 20);
 
 if (!function_exists('meza_get_post_type_capabilities')) {
     function meza_get_cached_post_type_object(string $post_type): ?WP_Post_Type
