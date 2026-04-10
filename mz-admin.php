@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.399
+ * Version: 1.1.400
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1672,7 +1672,20 @@ if (!function_exists('meza_can_access_site_kit_splash')) {
             $user = wp_get_current_user();
         }
 
-        return user_can($user, 'googlesitekit_view_splash');
+        return user_can($user, 'googlesitekit_view_splash')
+            || user_can($user, 'googlesitekit_authenticate')
+            || user_can($user, 'googlesitekit_setup')
+            || user_can($user, 'googlesitekit_manage_options');
+    }
+}
+
+if (!function_exists('meza_can_manage_site_kit')) {
+    function meza_can_manage_site_kit($user = null): bool
+    {
+        return meza_user_has_any_role($user, [
+            'administrator',
+            meza_site_manager_role_key(),
+        ]);
     }
 }
 
@@ -1683,6 +1696,11 @@ add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, arr
         return $caps;
     }
 
+    $management_caps = [
+        'googlesitekit_authenticate',
+        'googlesitekit_setup',
+        'googlesitekit_manage_options',
+    ];
     $dashboard_caps = [
         'googlesitekit_view_dashboard',
         'googlesitekit_view_authenticated_dashboard',
@@ -1693,6 +1711,10 @@ add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, arr
         'googlesitekit_view_wp_dashboard_widget',
         'googlesitekit_view_admin_bar_menu',
     ];
+
+    if (in_array($cap, $management_caps, true) && $user_id > 0 && meza_can_manage_site_kit($user_id)) {
+        return ['read'];
+    }
 
     if (!in_array($cap, array_merge($dashboard_caps, $widget_caps), true) || $user_id <= 0) {
         return $caps;
@@ -1730,6 +1752,20 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
     }
 
     $requested_cap = (string) ($args[0] ?? '');
+    $management_caps = [
+        'googlesitekit_authenticate',
+        'googlesitekit_setup',
+        'googlesitekit_manage_options',
+    ];
+
+    if (in_array($requested_cap, $management_caps, true) && meza_can_manage_site_kit($user)) {
+        foreach ($management_caps as $site_kit_cap) {
+            $allcaps[$site_kit_cap] = true;
+        }
+
+        return $allcaps;
+    }
+
     if (!in_array($requested_cap, [
         'googlesitekit_view_posts_insights',
         'googlesitekit_view_dashboard',

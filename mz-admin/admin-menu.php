@@ -200,6 +200,297 @@ function meza_is_aios_menu_slug(string $slug, string $label = ''): bool
         || $label === 'security';
 }
 
+function meza_can_access_aios_locked_users($user = null): bool
+{
+    return meza_user_has_any_role($user, ['administrator', meza_site_manager_role_key()]);
+}
+
+function meza_get_site_manager_aios_security_menu_slug(): string
+{
+    return 'admin.php?page=aiowpsec&tab=locked-ip&meza_nav=security';
+}
+
+function meza_get_site_manager_aios_two_factor_menu_slug(): string
+{
+    return 'admin.php?page=aiowpsec_two_factor_auth_user&meza_nav=security';
+}
+
+function meza_get_aios_locked_users_menu_slug(): string
+{
+    return 'admin.php?page=aiowpsec&tab=locked-ip&meza_nav=users';
+}
+
+function meza_get_aios_locked_users_url(): string
+{
+    return add_query_arg([
+        'page' => 'aiowpsec',
+        'tab' => 'locked-ip',
+        'meza_nav' => 'users',
+    ], admin_url('admin.php'));
+}
+
+function meza_get_site_manager_aios_dashboard_url(): string
+{
+    return add_query_arg([
+        'page' => 'aiowpsec',
+        'tab' => 'locked-ip',
+        'meza_nav' => 'security',
+    ], admin_url('admin.php'));
+}
+
+function meza_get_site_manager_aios_two_factor_url(): string
+{
+    return add_query_arg([
+        'page' => 'aiowpsec_two_factor_auth_user',
+        'meza_nav' => 'security',
+    ], admin_url('admin.php'));
+}
+
+function meza_is_aios_locked_users_request(): bool
+{
+    if (!is_admin()) {
+        return false;
+    }
+
+    $page = sanitize_key((string) ($_GET['page'] ?? ''));
+    $tab = sanitize_key((string) ($_GET['tab'] ?? ''));
+
+    return $page === meza_get_aios_locked_users_menu_slug()
+        || ($page === 'aiowpsec' && $tab === 'locked-ip');
+}
+
+function meza_get_aios_navigation_context(): string
+{
+    $context = sanitize_key((string) ($_GET['meza_nav'] ?? ''));
+
+    return in_array($context, ['users', 'security'], true) ? $context : '';
+}
+
+function meza_is_site_manager_aios_request(): bool
+{
+    if (!is_admin() || !meza_is_site_manager_user(wp_get_current_user())) {
+        return false;
+    }
+
+    $page = sanitize_key((string) ($_GET['page'] ?? ''));
+    if ($page === '') {
+        return false;
+    }
+
+    return in_array($page, [
+        'aiowpsec',
+        'aiowpsec_two_factor_auth_user',
+        meza_get_site_manager_aios_security_menu_slug(),
+        meza_get_site_manager_aios_two_factor_menu_slug(),
+        meza_get_aios_locked_users_menu_slug(),
+    ], true);
+}
+
+function meza_is_allowed_site_manager_aios_request(): bool
+{
+    if (!meza_is_site_manager_aios_request()) {
+        return false;
+    }
+
+    $page = sanitize_key((string) ($_GET['page'] ?? ''));
+
+    if (in_array($page, [
+        'aiowpsec_two_factor_auth_user',
+        meza_get_site_manager_aios_security_menu_slug(),
+        meza_get_site_manager_aios_two_factor_menu_slug(),
+    ], true)) {
+        return true;
+    }
+
+    return $page === 'aiowpsec'
+        && sanitize_key((string) ($_GET['tab'] ?? '')) === 'locked-ip'
+        && in_array(meza_get_aios_navigation_context(), ['security', 'users'], true);
+}
+
+function meza_should_skip_site_manager_utility_menu_bridging($user = null): bool
+{
+    return meza_is_site_manager_user($user) && meza_is_allowed_site_manager_aios_request();
+}
+
+function meza_register_aios_locked_users_users_submenu(): void
+{
+    if (!meza_is_aios_plugin_active() || !meza_can_access_aios_locked_users(wp_get_current_user())) {
+        return;
+    }
+
+    global $submenu;
+
+    $menu_slug = meza_get_aios_locked_users_menu_slug();
+    if (isset($submenu['users.php']) && is_array($submenu['users.php'])) {
+        foreach ($submenu['users.php'] as $item) {
+            if (is_array($item) && ((string) ($item[2] ?? '')) === $menu_slug) {
+                return;
+            }
+        }
+    }
+
+    add_users_page(
+        'Locked Users',
+        'Locked Users',
+        'list_users',
+        $menu_slug,
+        ''
+    );
+}
+add_action('admin_menu', 'meza_register_aios_locked_users_users_submenu', PHP_INT_MAX - 5);
+add_action('admin_menu_editor-menu_replaced', 'meza_register_aios_locked_users_users_submenu', PHP_INT_MAX - 5);
+
+add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, WP_User $user): array {
+    if (
+        !($user instanceof WP_User)
+        || !meza_is_site_manager_user($user)
+        || !meza_is_aios_plugin_active()
+        || !meza_is_allowed_site_manager_aios_request()
+    ) {
+        return $allcaps;
+    }
+
+    $allcaps['manage_options'] = true;
+
+    return $allcaps;
+}, 20, 4);
+
+add_action('admin_init', function (): void {
+    if (!meza_is_site_manager_user(wp_get_current_user()) || !meza_is_aios_plugin_active()) {
+        return;
+    }
+
+    $page = sanitize_key((string) ($_GET['page'] ?? ''));
+    if ($page === 'aiowpsec' && sanitize_key((string) ($_GET['tab'] ?? '')) !== 'locked-ip') {
+        wp_safe_redirect(meza_get_site_manager_aios_dashboard_url());
+        exit;
+    }
+
+    if ($page !== 'aiowpsec_two_factor_auth_user') {
+        return;
+    }
+
+    if (meza_get_aios_navigation_context() === 'security') {
+        return;
+    }
+
+    wp_safe_redirect(meza_get_site_manager_aios_two_factor_url());
+    exit;
+}, 1);
+
+function meza_remove_native_aios_menu_for_site_managers(): void
+{
+    if (!meza_is_site_manager_user(wp_get_current_user()) || !meza_is_aios_plugin_active()) {
+        return;
+    }
+
+    global $menu, $submenu;
+
+    if (is_array($menu)) {
+        foreach ($menu as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
+
+            if (meza_is_aios_menu_slug($slug, $label) && $slug !== meza_get_site_manager_aios_security_menu_slug()) {
+                unset($menu[$index]);
+            }
+        }
+
+        $menu = array_values($menu);
+    }
+
+    if (is_array($submenu)) {
+        foreach ($submenu as $parent_slug => &$items) {
+            $parent_slug = (string) $parent_slug;
+
+            if ($parent_slug === meza_get_site_manager_aios_security_menu_slug()) {
+                continue;
+            }
+
+            if (meza_is_aios_menu_slug($parent_slug)) {
+                unset($submenu[$parent_slug]);
+                continue;
+            }
+
+            if (!is_array($items)) {
+                continue;
+            }
+
+            foreach ($items as $index => $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $slug = (string) ($item[2] ?? '');
+                $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
+
+                if (
+                    meza_is_aios_menu_slug($slug, $label)
+                    && !($parent_slug === 'users.php' && $slug === meza_get_aios_locked_users_menu_slug())
+                ) {
+                    unset($items[$index]);
+                }
+            }
+
+            $items = array_values($items);
+        }
+        unset($items);
+
+        foreach ($submenu as $parent_slug => $items) {
+            if (is_array($items) && $items === []) {
+                unset($submenu[$parent_slug]);
+            }
+        }
+    }
+}
+add_action('admin_menu', 'meza_remove_native_aios_menu_for_site_managers', PHP_INT_MAX - 1);
+add_action('admin_menu_editor-menu_replaced', 'meza_remove_native_aios_menu_for_site_managers', PHP_INT_MAX - 1);
+
+add_filter('parent_file', function ($parent_file) {
+    if (
+        meza_is_aios_locked_users_request()
+        && meza_can_access_aios_locked_users(wp_get_current_user())
+        && meza_get_aios_navigation_context() === 'users'
+    ) {
+        return 'users.php';
+    }
+
+    if (!meza_is_site_manager_user(wp_get_current_user()) || !meza_is_allowed_site_manager_aios_request()) {
+        return $parent_file;
+    }
+
+    return meza_get_site_manager_aios_security_menu_slug();
+}, PHP_INT_MAX);
+
+add_filter('submenu_file', function ($submenu_file) {
+    if (
+        meza_is_aios_locked_users_request()
+        && meza_can_access_aios_locked_users(wp_get_current_user())
+        && meza_get_aios_navigation_context() === 'users'
+    ) {
+        return meza_get_aios_locked_users_menu_slug();
+    }
+
+    if (!meza_is_site_manager_user(wp_get_current_user()) || !meza_is_allowed_site_manager_aios_request()) {
+        return $submenu_file;
+    }
+
+    $page = sanitize_key((string) ($_GET['page'] ?? ''));
+
+    if (in_array($page, [
+        'aiowpsec_two_factor_auth_user',
+        meza_get_site_manager_aios_two_factor_menu_slug(),
+    ], true)) {
+        return meza_get_site_manager_aios_two_factor_menu_slug();
+    }
+
+    return meza_get_site_manager_aios_security_menu_slug();
+}, PHP_INT_MAX);
+
 function meza_is_site_manager_plugins_list_request(): bool
 {
     if (!meza_is_site_manager_user(wp_get_current_user()) || !is_admin()) {
@@ -533,125 +824,83 @@ function meza_force_site_manager_aios_menu_access(): void
         return;
     }
 
-    global $menu, $submenu;
-
-    $aios_parent_slugs = [];
-
-    if (is_array($menu)) {
-        foreach ($menu as &$item) {
-            if (!is_array($item)) {
-                continue;
-            }
-
-            $slug = (string) ($item[2] ?? '');
-            $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
-
-            if (strtolower($slug) === 'options-general.php') {
-                $item[1] = 'read';
-            }
-
-            if (!meza_is_aios_menu_slug($slug, $label)) {
-                continue;
-            }
-
-            $item[0] = 'Security';
-            $item[1] = 'read';
-            if (isset($item[3])) {
-                $item[3] = 'Security';
-            }
-            $item[6] = 'dashicons-shield';
-
-            $aios_parent_slugs[] = (string) $slug;
-        }
-        unset($item);
-    }
-
-    $aios_parent_slugs = array_values(array_unique(array_filter($aios_parent_slugs)));
-    $bridge_submenu_registered = false;
-
-    if (is_array($submenu)) {
-        foreach ($submenu as $parent_slug => &$items) {
-            if (!is_array($items)) {
-                continue;
-            }
-
-            $parent_slug = (string) $parent_slug;
-            $parent_is_aios = in_array($parent_slug, $aios_parent_slugs, true) || meza_is_aios_menu_slug($parent_slug);
-
-            foreach ($items as &$item) {
-                if (!is_array($item)) {
-                    continue;
-                }
-
-                $slug = (string) ($item[2] ?? '');
-                $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
-                $utility_label = meza_get_standardized_submenu_utility_label($item, $parent_slug);
-
-                if (
-                    !$parent_is_aios
-                    && !meza_is_aios_menu_slug($slug, $label)
-                    && !in_array($utility_label, ['Settings', 'Two Factor Authentication'], true)
-                ) {
-                    continue;
-                }
-
-                $item[1] = 'read';
-
-                if ($utility_label === 'Two Factor Authentication' || str_contains(strtolower($slug), 'aiowpsec_two_factor_auth_user')) {
-                    $item[0] = 'Two Factor Authentication';
-                    if (isset($item[3])) {
-                        $item[3] = 'Two Factor Authentication';
-                    }
-                    $bridge_submenu_registered = true;
-                }
-            }
-            unset($item);
-        }
-        unset($items);
-    }
-
-    if (!empty($aios_parent_slugs)) {
-        $parent_slug = (string) $aios_parent_slugs[0];
-
-        if (!$bridge_submenu_registered) {
-            add_submenu_page(
-                $parent_slug,
-                'Two Factor Authentication',
-                'Two Factor Authentication',
-                'read',
-                'meza-aiowpsec-two-factor-authentication',
-                'meza_render_site_manager_aios_two_factor_bridge'
-            );
-        }
-
-        return;
-    }
-
     add_menu_page(
         'Security',
         'Security',
         'read',
-        'meza-aiowpsec-security',
-        'meza_render_site_manager_aios_two_factor_bridge',
+        meza_get_site_manager_aios_security_menu_slug(),
+        '',
         'dashicons-shield',
         81
     );
 
     add_submenu_page(
-        'meza-aiowpsec-security',
+        meza_get_site_manager_aios_security_menu_slug(),
+        'Locked IP Addresses',
+        'Locked IP Addresses',
+        'read',
+        meza_get_site_manager_aios_security_menu_slug(),
+        ''
+    );
+
+    add_submenu_page(
+        meza_get_site_manager_aios_security_menu_slug(),
         'Two Factor Authentication',
         'Two Factor Authentication',
         'read',
-        'meza-aiowpsec-security',
-        'meza_render_site_manager_aios_two_factor_bridge'
+        meza_get_site_manager_aios_two_factor_menu_slug(),
+        ''
     );
 }
 add_action('admin_menu', 'meza_force_site_manager_aios_menu_access', PHP_INT_MAX);
 add_action('admin_menu_editor-menu_replaced', 'meza_force_site_manager_aios_menu_access', PHP_INT_MAX);
 
+add_action('admin_head', function (): void {
+    if (
+        !meza_is_site_manager_user(wp_get_current_user())
+        || !meza_is_aios_locked_users_request()
+    ) {
+        return;
+    }
+?>
+    <style id="meza-site-manager-aios-locked-ip-only">
+        .aiowps-site-lockout-nav-tab-wrapper a:not([href*="tab=locked-ip"]),
+        .nav-tab-wrapper a:not([href*="tab=locked-ip"]),
+        .wrap .nav-tab-wrapper a:not([href*="tab=locked-ip"]) {
+            display: none !important;
+        }
+    </style>
+    <script id="meza-site-manager-aios-locked-ip-labels">
+        (() => {
+            const updateHeading = () => {
+                const heading = document.querySelector('.wrap h1, .wrap h2');
+                if (heading instanceof HTMLElement && heading.textContent.trim() === 'Dashboard') {
+                    heading.textContent = 'Locked IP Addresses';
+                }
+
+                const securitySubmenuLink = document.querySelector('#toplevel_page_adminphp?page=aiowpsectablocked-ipmeza_navsecurity a, #toplevel_page_adminphp-page-aiowpsec-tab-locked-ip-meza_nav-security a');
+                if (securitySubmenuLink instanceof HTMLElement) {
+                    securitySubmenuLink.textContent = 'Locked IP Addresses';
+                }
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', updateHeading, { once: true });
+            } else {
+                updateHeading();
+            }
+        })();
+    </script>
+<?php
+}, PHP_INT_MAX);
+
 function meza_current_site_manager_request_matches_utility_submenu(): bool
 {
     if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return false;
+    }
+
+    if (meza_should_skip_site_manager_utility_menu_bridging(wp_get_current_user())) {
         return false;
     }
 
@@ -696,6 +945,10 @@ function meza_current_site_manager_request_matches_utility_submenu(): bool
 
 add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $user): array {
     if (!meza_is_site_manager_user($user)) {
+        return $allcaps;
+    }
+
+    if (meza_should_skip_site_manager_utility_menu_bridging($user)) {
         return $allcaps;
     }
 
@@ -2237,9 +2490,6 @@ function meza_normalize_admin_plugin_menus(): void
             $item[0] = 'Security';
             if (isset($item[3])) $item[3] = 'Security';
             $item[6] = 'dashicons-shield';
-            if (meza_is_site_manager_user(wp_get_current_user())) {
-                $item[1] = 'read';
-            }
             continue;
         }
 
@@ -8278,6 +8528,32 @@ function meza_finalize_tools_submenu_order(): void
     $submenu['tools.php'] = meza_sort_tools_submenu_items($submenu['tools.php']);
 }
 
+function meza_restore_locked_users_users_submenu_for_site_managers(): void
+{
+    if (!meza_can_access_aios_locked_users(wp_get_current_user())) {
+        return;
+    }
+
+    global $submenu;
+
+    if (!isset($submenu['users.php']) || !is_array($submenu['users.php'])) {
+        $submenu['users.php'] = [];
+    }
+
+    foreach ($submenu['users.php'] as $item) {
+        if (is_array($item) && ((string) ($item[2] ?? '')) === meza_get_aios_locked_users_menu_slug()) {
+            return;
+        }
+    }
+
+    $submenu['users.php'][] = [
+        'Locked Users',
+        'list_users',
+        meza_get_aios_locked_users_menu_slug(),
+        'Locked Users',
+    ];
+}
+
 function meza_apply_tail_admin_menu_mutations(): void
 {
     meza_move_site_health_tools_submenu_to_dashboard();
@@ -8288,6 +8564,7 @@ function meza_apply_tail_admin_menu_mutations(): void
     meza_simplify_content_menu_submenu_labels();
     meza_alphabetize_fallback_plugin_submenus();
     meza_finalize_tools_submenu_order();
+    meza_restore_locked_users_users_submenu_for_site_managers();
 }
 
 // Apply the late dashboard/tools/submenu cleanup as a single ordered pass.
