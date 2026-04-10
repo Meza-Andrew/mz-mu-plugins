@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.411
+ * Version: 1.1.413
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1888,7 +1888,7 @@ add_action('admin_init', function (): void {
     }
 
     $page = isset($_GET['page']) ? sanitize_key((string) $_GET['page']) : '';
-    if ($page === 'meza-web-analytics' && meza_can_manage_site_kit()) {
+    if (in_array($page, ['meza-web-analytics', 'mz-web-analytics'], true) && meza_can_manage_site_kit()) {
         wp_safe_redirect(admin_url('admin.php?page=googlesitekit-dashboard'));
         exit;
     }
@@ -1926,7 +1926,7 @@ if (!function_exists('meza_is_site_kit_admin_page')) {
             $page = sanitize_key((string) $page);
         }
 
-        if ($page === 'meza-web-analytics') {
+        if (in_array($page, ['meza-web-analytics', 'mz-web-analytics'], true)) {
             return true;
         }
 
@@ -1989,7 +1989,7 @@ if (!function_exists('meza_has_site_kit_top_level_menu_item')) {
 
             $slug = strtolower((string) ($item[2] ?? ''));
             $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
-            $is_site_kit = $slug === 'meza-web-analytics'
+            $is_site_kit = in_array($slug, ['meza-web-analytics', 'mz-web-analytics'], true)
                 || str_contains($slug, 'googlesitekit')
                 || str_contains($slug, 'google-site-kit')
                 || str_contains($slug, 'site-kit')
@@ -2017,6 +2017,7 @@ if (!function_exists('meza_restore_site_kit_admin_menu')) {
         }
 
         remove_menu_page('meza-web-analytics');
+        remove_menu_page('mz-web-analytics');
 
         if ($site_kit_available && ($use_custom_menu || !$has_dashboard_access)) {
             remove_menu_page('googlesitekit-dashboard');

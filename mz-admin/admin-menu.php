@@ -207,7 +207,7 @@ function meza_can_access_aios_locked_users($user = null): bool
 
 function meza_get_site_manager_aios_security_menu_slug(): string
 {
-    return 'admin.php?page=aiowpsec&tab=locked-ip&meza_nav=security';
+    return 'admin.php?page=aiowpsec&tab=locked-ip&mz_nav=security';
 }
 
 function meza_get_site_manager_aios_two_factor_menu_slug(): string
@@ -217,7 +217,7 @@ function meza_get_site_manager_aios_two_factor_menu_slug(): string
 
 function meza_get_aios_locked_users_menu_slug(): string
 {
-    return 'admin.php?page=aiowpsec&tab=locked-ip&meza_nav=users';
+    return 'admin.php?page=aiowpsec&tab=locked-ip&mz_nav=users';
 }
 
 function meza_get_aios_locked_users_url(): string
@@ -225,7 +225,7 @@ function meza_get_aios_locked_users_url(): string
     return add_query_arg([
         'page' => 'aiowpsec',
         'tab' => 'locked-ip',
-        'meza_nav' => 'users',
+        'mz_nav' => 'users',
     ], admin_url('admin.php'));
 }
 
@@ -234,7 +234,7 @@ function meza_get_site_manager_aios_dashboard_url(): string
     return add_query_arg([
         'page' => 'aiowpsec',
         'tab' => 'locked-ip',
-        'meza_nav' => 'security',
+        'mz_nav' => 'security',
     ], admin_url('admin.php'));
 }
 
@@ -258,7 +258,7 @@ function meza_is_aios_locked_users_request(): bool
 
 function meza_get_aios_navigation_context(): string
 {
-    $context = sanitize_key((string) ($_GET['meza_nav'] ?? ''));
+    $context = sanitize_key((string) ($_GET['mz_nav'] ?? $_GET['meza_nav'] ?? ''));
 
     return in_array($context, ['users', 'security'], true) ? $context : '';
 }
@@ -367,6 +367,25 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
 add_action('admin_init', function (): void {
     if (!meza_is_site_manager_user(wp_get_current_user()) || !meza_is_aios_plugin_active()) {
         return;
+    }
+
+    $legacy_navigation_context = sanitize_key((string) ($_GET['meza_nav'] ?? ''));
+    if ($legacy_navigation_context !== '' && !isset($_GET['mz_nav'])) {
+        $redirect_args = [];
+
+        foreach ($_GET as $key => $value) {
+            if (!is_scalar($value)) {
+                continue;
+            }
+
+            $redirect_args[(string) $key] = wp_unslash((string) $value);
+        }
+
+        unset($redirect_args['meza_nav']);
+        $redirect_args['mz_nav'] = $legacy_navigation_context;
+
+        wp_safe_redirect(add_query_arg($redirect_args, admin_url('admin.php')));
+        exit;
     }
 
     $page = sanitize_key((string) ($_GET['page'] ?? ''));
@@ -890,7 +909,7 @@ add_action('admin_head', function (): void {
                     heading.textContent = 'Locked IP Addresses';
                 }
 
-                const securitySubmenuLink = document.querySelector('#toplevel_page_adminphp?page=aiowpsectablocked-ipmeza_navsecurity a, #toplevel_page_adminphp-page-aiowpsec-tab-locked-ip-meza_nav-security a');
+                const securitySubmenuLink = document.querySelector('#toplevel_page_adminphp?page=aiowpsectablocked-ipmz_navsecurity a, #toplevel_page_adminphp-page-aiowpsec-tab-locked-ip-mz_nav-security a');
                 if (securitySubmenuLink instanceof HTMLElement) {
                     securitySubmenuLink.textContent = 'Locked IP Addresses';
                 }
@@ -3164,7 +3183,7 @@ function meza_is_woocommerce_analytics_embed(): bool
 function meza_is_store_analytics_wrapper_screen($screen = null): bool
 {
     $page = isset($_GET['page']) ? sanitize_key(wp_unslash((string) $_GET['page'])) : '';
-    if ($page === 'meza-woocommerce-analytics') {
+    if (in_array($page, ['meza-woocommerce-analytics', 'mz-woocommerce-analytics'], true)) {
         return true;
     }
 
@@ -3182,7 +3201,11 @@ function meza_is_store_analytics_wrapper_screen($screen = null): bool
     return str_starts_with($screen_id, 'woocommerce_page_meza-woocommerce-analytics')
         || str_starts_with($screen_base, 'woocommerce_page_meza-woocommerce-analytics')
         || str_starts_with($screen_id, 'admin_page_meza-woocommerce-analytics')
-        || str_starts_with($screen_base, 'admin_page_meza-woocommerce-analytics');
+        || str_starts_with($screen_base, 'admin_page_meza-woocommerce-analytics')
+        || str_starts_with($screen_id, 'woocommerce_page_mz-woocommerce-analytics')
+        || str_starts_with($screen_base, 'woocommerce_page_mz-woocommerce-analytics')
+        || str_starts_with($screen_id, 'admin_page_mz-woocommerce-analytics')
+        || str_starts_with($screen_base, 'admin_page_mz-woocommerce-analytics');
 }
 
 function meza_get_woocommerce_analytics_nav_items(): array
@@ -3341,7 +3364,7 @@ function meza_get_store_analytics_url(string $path = '/analytics/overview', arra
 {
     $query_args = array_merge(
         [
-            'page' => 'meza-woocommerce-analytics',
+            'page' => 'mz-woocommerce-analytics',
             'analytics_path' => meza_normalize_woocommerce_analytics_path($path),
         ],
         $args
@@ -3504,6 +3527,24 @@ add_action('admin_init', function (): void {
         return;
     }
 
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash((string) $_GET['page'])) : '';
+    if ($page === 'meza-woocommerce-analytics') {
+        $redirect_args = [
+            'page' => 'mz-woocommerce-analytics',
+        ];
+
+        if (isset($_GET['analytics_path'])) {
+            $redirect_args['analytics_path'] = meza_normalize_woocommerce_analytics_path((string) wp_unslash((string) $_GET['analytics_path']));
+        }
+
+        foreach (meza_get_store_analytics_forwarded_query_args() as $key => $value) {
+            $redirect_args[$key] = $value;
+        }
+
+        wp_safe_redirect(add_query_arg($redirect_args, admin_url('admin.php')));
+        exit;
+    }
+
     $wc_admin_path = meza_get_wc_admin_path();
     if ($wc_admin_path === '' || !str_starts_with($wc_admin_path, '/analytics/')) {
         return;
@@ -3523,7 +3564,7 @@ add_action('admin_menu', function (): void {
         'Analytics',
         'Analytics',
         'view_woocommerce_reports',
-        'meza-woocommerce-analytics',
+        'mz-woocommerce-analytics',
         'meza_render_store_analytics_page'
     );
 }, 1000);
@@ -3565,19 +3606,19 @@ add_action('admin_head', function (): void {
     }
 
     echo '<style id="meza-woocommerce-analytics-nav-css">' .
-        '.woocommerce_page_wc-admin #wpbody-content > .wrap.meza-woocommerce-analytics-nav-wrap:first-child,.woocommerce_page_meza-woocommerce-analytics #wpbody-content > .wrap.meza-woocommerce-analytics-nav-wrap:first-child{margin-top:0;}' .
-        '.woocommerce_page_meza-woocommerce-analytics #wpbody,.woocommerce_page_meza-woocommerce-analytics #wpbody-content{background:#f0f0f1!important;}' .
-        '.woocommerce_page_meza-woocommerce-analytics .wrap.meza-woocommerce-analytics-nav-wrap{margin:20px 20px 0 0;}' .
+        '.woocommerce_page_wc-admin #wpbody-content > .wrap.meza-woocommerce-analytics-nav-wrap:first-child,.woocommerce_page_meza-woocommerce-analytics #wpbody-content > .wrap.meza-woocommerce-analytics-nav-wrap:first-child,.woocommerce_page_mz-woocommerce-analytics #wpbody-content > .wrap.meza-woocommerce-analytics-nav-wrap:first-child{margin-top:0;}' .
+        '.woocommerce_page_meza-woocommerce-analytics #wpbody,.woocommerce_page_meza-woocommerce-analytics #wpbody-content,.woocommerce_page_mz-woocommerce-analytics #wpbody,.woocommerce_page_mz-woocommerce-analytics #wpbody-content{background:#f0f0f1!important;}' .
+        '.woocommerce_page_meza-woocommerce-analytics .wrap.meza-woocommerce-analytics-nav-wrap,.woocommerce_page_mz-woocommerce-analytics .wrap.meza-woocommerce-analytics-nav-wrap{margin:20px 20px 0 0;}' .
         '.meza-woocommerce-analytics-nav-wrap{margin:0;}' .
-        '.meza-woocommerce-analytics-nav-wrap .nav-tab-wrapper,.woocommerce_page_wc-admin .wrap h2.nav-tab-wrapper,.woocommerce_page_wc-admin h1.nav-tab-wrapper,.woocommerce_page_meza-woocommerce-analytics .wrap h2.nav-tab-wrapper,.woocommerce_page_meza-woocommerce-analytics h1.nav-tab-wrapper{padding-top:0;}' .
+        '.meza-woocommerce-analytics-nav-wrap .nav-tab-wrapper,.woocommerce_page_wc-admin .wrap h2.nav-tab-wrapper,.woocommerce_page_wc-admin h1.nav-tab-wrapper,.woocommerce_page_meza-woocommerce-analytics .wrap h2.nav-tab-wrapper,.woocommerce_page_meza-woocommerce-analytics h1.nav-tab-wrapper,.woocommerce_page_mz-woocommerce-analytics .wrap h2.nav-tab-wrapper,.woocommerce_page_mz-woocommerce-analytics h1.nav-tab-wrapper{padding-top:0;}' .
         '.meza-woocommerce-analytics-nav-wrap .nav-tab-wrapper{display:flex;align-items:flex-end;gap:0;margin:0;border-bottom:1px solid #c3c4c7;padding-left:8px;}' .
         '.meza-woocommerce-analytics-nav-wrap .nav-tab{margin:0 6px -1px 0;border:1px solid #c3c4c7;border-bottom-color:#c3c4c7;background:#dcdcde;color:#50575e;font-weight:600;font-size:14px;line-height:1.71428571;padding:5px 10px;text-transform:capitalize;}' .
         '.meza-woocommerce-analytics-nav-wrap .nav-tab:hover{background:#fff;color:#1d2327;}' .
         '.meza-woocommerce-analytics-nav-wrap .nav-tab-active{background:#f0f0f1;border-bottom-color:#f0f0f1;color:#1d2327;}' .
         '.meza-woocommerce-analytics-nav-wrap .nav-tab:focus{box-shadow:none;outline:2px solid #2271b1;outline-offset:-2px;}' .
-        '.woocommerce_page_meza-woocommerce-analytics #wpbody-content{padding-bottom:0;}' .
-        '.woocommerce_page_meza-woocommerce-analytics .meza-woocommerce-analytics-embed-shell{margin:-8px 0 0;background:transparent;border:0;box-shadow:none;}' .
-        '.woocommerce_page_meza-woocommerce-analytics .meza-woocommerce-analytics-iframe{display:block;width:100%;min-height:900px;border:0;background:transparent;}' .
+        '.woocommerce_page_meza-woocommerce-analytics #wpbody-content,.woocommerce_page_mz-woocommerce-analytics #wpbody-content{padding-bottom:0;}' .
+        '.woocommerce_page_meza-woocommerce-analytics .meza-woocommerce-analytics-embed-shell,.woocommerce_page_mz-woocommerce-analytics .meza-woocommerce-analytics-embed-shell{margin:-8px 0 0;background:transparent;border:0;box-shadow:none;}' .
+        '.woocommerce_page_meza-woocommerce-analytics .meza-woocommerce-analytics-iframe,.woocommerce_page_mz-woocommerce-analytics .meza-woocommerce-analytics-iframe{display:block;width:100%;min-height:900px;border:0;background:transparent;}' .
         '@media screen and (max-width:782px){' .
         '.meza-woocommerce-analytics-nav-wrap{margin:0;overflow-x:auto;}' .
         '.meza-woocommerce-analytics-nav-wrap .nav-tab-wrapper{flex-wrap:nowrap;width:max-content;min-width:100%;padding:0 0 0 8px;}' .
@@ -4073,6 +4114,8 @@ function meza_reorder_woocommerce_submenu_items(): void
             || $slug === 'admin.php?page=wc-admin&path=/analytics/overview'
             || $slug === 'meza-woocommerce-analytics'
             || $slug === 'admin.php?page=meza-woocommerce-analytics'
+            || $slug === 'mz-woocommerce-analytics'
+            || $slug === 'admin.php?page=mz-woocommerce-analytics'
             || str_contains($slug, '/analytics/overview');
         $is_status = $slug === 'wc-status'
             || $slug === 'admin.php?page=wc-status'
