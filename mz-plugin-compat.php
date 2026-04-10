@@ -54,6 +54,10 @@ if (!function_exists('mz_plugin_compat_resolve_source_patch_target')) {
             return rtrim(ABSPATH, '/\\') . '/' . $relative_file;
         }
 
+        if (str_starts_with($relative_file, 'wp-includes/') || str_starts_with($relative_file, 'wp-admin/')) {
+            return rtrim(ABSPATH, '/\\') . '/' . $relative_file;
+        }
+
         $plugin_dir = defined('WP_PLUGIN_DIR')
             ? rtrim((string) WP_PLUGIN_DIR, '/\\')
             : rtrim(ABSPATH, '/\\') . '/wp-content/plugins';
@@ -568,6 +572,64 @@ PHP;
 		}
 		return \get_term_link( $term, $term->taxonomy );
 	}
+PHP;
+
+                    return str_replace($search, $replace, $contents);
+                },
+            ],
+            'wordpress_core_sanitize_term_object_guard' => [
+                'file' => '/wp-includes/taxonomy.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, "if ( \$do_object && ! isset( \$term->term_id ) ) {\n\t\treturn \$term;\n\t}")) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+	$do_object = is_object( $term );
+
+	$term_id = $do_object ? $term->term_id : ( isset( $term['term_id'] ) ? $term['term_id'] : 0 );
+PHP;
+
+                    $replace = <<<'PHP'
+	$do_object = is_object( $term );
+
+	if ( $do_object && ! isset( $term->term_id ) ) {
+		return $term;
+	}
+
+	$term_id = $do_object ? $term->term_id : ( isset( $term['term_id'] ) ? $term['term_id'] : 0 );
+PHP;
+
+                    return str_replace($search, $replace, $contents);
+                },
+            ],
+            'wordpress_core_pad_term_counts_empty_guard' => [
+                'file' => '/wp-includes/taxonomy.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, "if ( empty( \$term_ids ) ) {\n\t\treturn;\n\t}")) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+	foreach ( (array) $terms as $key => $term ) {
+		$terms_by_id[ $term->term_id ]       = & $terms[ $key ];
+		$term_ids[ $term->term_taxonomy_id ] = $term->term_id;
+	}
+
+	// Get the object and term IDs and stick them in a lookup table.
+PHP;
+
+                    $replace = <<<'PHP'
+	foreach ( (array) $terms as $key => $term ) {
+		$terms_by_id[ $term->term_id ]       = & $terms[ $key ];
+		$term_ids[ $term->term_taxonomy_id ] = $term->term_id;
+	}
+
+	if ( empty( $term_ids ) ) {
+		return;
+	}
+
+	// Get the object and term IDs and stick them in a lookup table.
 PHP;
 
                     return str_replace($search, $replace, $contents);
