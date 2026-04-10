@@ -428,6 +428,30 @@ PHP;
                     return str_replace($search, $replace, $contents);
                 },
             ],
+            'yoast_current_page_count_queried_terms_guard' => [
+                'file' => '/wordpress-seo/src/helpers/current-page-helper.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, "! ( \$term instanceof \\WP_Term ) || empty( \$queried_terms[ \$term->taxonomy ]['terms'] )")) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+		$queried_terms = $wp_query->tax_query->queried_terms;
+		if ( $term === null || empty( $queried_terms[ $term->taxonomy ]['terms'] ) ) {
+			return 0;
+		}
+PHP;
+
+                    $replace = <<<'PHP'
+		$queried_terms = $wp_query->tax_query->queried_terms;
+		if ( ! ( $term instanceof \WP_Term ) || empty( $queried_terms[ $term->taxonomy ]['terms'] ) ) {
+			return 0;
+		}
+PHP;
+
+                    return str_replace($search, $replace, $contents);
+                },
+            ],
             'yoast_term_archive_presentation_guard' => [
                 'file' => '/wordpress-seo/src/presentations/indexable-term-archive-presentation.php',
                 'apply' => static function (string $contents): string {
@@ -454,6 +478,88 @@ PHP;
 		}
 
 		return \get_term( $queried_object->term_id, $queried_object->taxonomy );
+	}
+PHP;
+
+                    return str_replace($search, $replace, $contents);
+                },
+            ],
+            'yoast_crawl_cleanup_rss_term_guard' => [
+                'file' => '/wordpress-seo/src/integrations/front-end/crawl-cleanup-rss.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, '$url  = ( $term instanceof \WP_Term ) ? \get_term_link( $term, $term->taxonomy ) : \home_url();')) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+				$term = \get_queried_object();
+				$url  = \get_term_link( $term, $term->taxonomy );
+				if ( \is_wp_error( $url ) ) {
+PHP;
+
+                    $replace = <<<'PHP'
+				$term = \get_queried_object();
+				$url  = ( $term instanceof \WP_Term ) ? \get_term_link( $term, $term->taxonomy ) : \home_url();
+				if ( \is_wp_error( $url ) ) {
+PHP;
+
+                    return str_replace($search, $replace, $contents);
+                },
+            ],
+            'yoast_feed_improvements_term_guard' => [
+                'file' => '/wordpress-seo/src/integrations/front-end/feed-improvements.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, '$meta = $queried_object instanceof \WP_Term ? $this->meta->for_term( $queried_object->term_id ) : null;')) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+			case 'WP_Term':
+				$meta = $this->meta->for_term( $queried_object->term_id );
+				break;
+PHP;
+
+                    $replace = <<<'PHP'
+			case 'WP_Term':
+				$meta = $queried_object instanceof \WP_Term ? $this->meta->for_term( $queried_object->term_id ) : null;
+				break;
+PHP;
+
+                    return str_replace($search, $replace, $contents);
+                },
+            ],
+            'yoast_crawl_cleanup_helper_term_guard' => [
+                'file' => '/wordpress-seo/src/helpers/crawl-cleanup-helper.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, "if ( ! ( \$term instanceof \\WP_Term ) ) {\n\t\t\treturn \\home_url();\n\t\t}")) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+	public function taxonomy_url() {
+		global $wp_query;
+		$term = $wp_query->get_queried_object();
+
+		if ( \is_feed() ) {
+			return \get_term_feed_link( $term->term_id, $term->taxonomy );
+		}
+		return \get_term_link( $term, $term->taxonomy );
+	}
+PHP;
+
+                    $replace = <<<'PHP'
+	public function taxonomy_url() {
+		global $wp_query;
+		$term = $wp_query->get_queried_object();
+
+		if ( ! ( $term instanceof \WP_Term ) ) {
+			return \home_url();
+		}
+
+		if ( \is_feed() ) {
+			return \get_term_feed_link( $term->term_id, $term->taxonomy );
+		}
+		return \get_term_link( $term, $term->taxonomy );
 	}
 PHP;
 
