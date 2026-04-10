@@ -386,27 +386,44 @@ PHP;
             'yoast_indexable_hierarchy_term_guard' => [
                 'file' => '/wordpress-seo/src/builders/indexable-hierarchy-builder.php',
                 'apply' => static function (string $contents): string {
-                    if (str_contains($contents, "if ( ! ( \$term instanceof \\WP_Term ) ) {")) {
+                    if (str_contains($contents, 'if ( ! ( $term instanceof \WP_Term ) ) {')) {
                         return $contents;
                     }
 
-                    $updated = preg_replace(
-                        "/private function get_term_parents\\( \\$term \\) \\{\n\t\t/",
-                        "private function get_term_parents( \$term ) {\n\t\tif ( ! ( \$term instanceof \\\\WP_Term ) ) {\n\t\t\treturn [];\n\t\t}\n\n\t\t",
-                        $contents,
-                        1
-                    );
+                    $search = <<<'PHP'
+	private function get_term_parents( $term ) {
+		$tax     = $term->taxonomy;
+		$parents = [];
+PHP;
 
-                    if (!is_string($updated)) {
-                        return $contents;
-                    }
+                    $replace = <<<'PHP'
+	private function get_term_parents( $term ) {
+		if ( ! ( $term instanceof \WP_Term ) ) {
+			return [];
+		}
 
-                    $updated = preg_replace(
-                        "/\t\t\t\\$term      = \\\\get_term\\( \\$term->parent, \\$tax \\ );\n\t\t\t\\$parents\\[\\] = \\$term;/",
-                        "\t\t\t\$term      = \\\\get_term( \$term->parent, \$tax );\n\n\t\t\tif ( ! ( \$term instanceof \\\\WP_Term ) ) {\n\t\t\t\tbreak;\n\t\t\t}\n\n\t\t\t\$parents[] = \$term;",
-                        $updated,
-                        1
-                    );
+		$tax     = $term->taxonomy;
+		$parents = [];
+PHP;
+
+                    $updated = str_replace($search, $replace, $contents);
+
+                    $search = <<<'PHP'
+			$term      = \get_term( $term->parent, $tax );
+			$parents[] = $term;
+PHP;
+
+                    $replace = <<<'PHP'
+			$term      = \get_term( $term->parent, $tax );
+
+			if ( ! ( $term instanceof \WP_Term ) ) {
+				break;
+			}
+
+			$parents[] = $term;
+PHP;
+
+                    $updated = str_replace($search, $replace, $updated);
 
                     return is_string($updated) ? $updated : $contents;
                 },
