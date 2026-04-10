@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.26
+ * Version: 1.4.32
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -63,6 +63,8 @@ const MZ_PRUNE_EXCLUDED_PLUGINS = [
     'woocommerce/woocommerce.php',
 ];
 
+const MZ_PLUGINS_MANUAL_OVERRIDE_OPTION = 'mz_plugins_manual_overrides';
+
 /** Convert common config-style values like 1/true/yes/on into a real boolean. */
 function mz_plugins_truthy($value): bool
 {
@@ -77,6 +79,116 @@ function mz_plugins_should_rerun(): bool
 {
     if (defined('MZ_FORCE_RERUN')) return mz_plugins_truthy(MZ_FORCE_RERUN);
     return mz_plugins_truthy(get_option('mz_force_rerun', 0));
+}
+
+/** Production should honor explicit plugin deactivate/delete choices made in wp-admin. */
+function mz_plugins_support_manual_overrides(?string $env = null): bool
+{
+    $env = strtolower((string) ($env ?: (defined('WP_ENV') ? WP_ENV : 'production')));
+
+    return $env === 'production';
+}
+
+function mz_plugins_normalize_plugin_file(string $plugin_file): string
+{
+    $plugin_file = plugin_basename(trim($plugin_file));
+
+    return $plugin_file === '.' ? '' : $plugin_file;
+}
+
+function mz_plugins_get_manual_overrides(): array
+{
+    $stored = get_option(MZ_PLUGINS_MANUAL_OVERRIDE_OPTION, []);
+    $overrides = is_array($stored) ? $stored : [];
+    $normalized = [
+        'skip_install' => [],
+        'skip_activate' => [],
+    ];
+
+    foreach (array_keys($normalized) as $key) {
+        $values = isset($overrides[$key]) && is_array($overrides[$key]) ? $overrides[$key] : [];
+
+        foreach ($values as $plugin_file) {
+            $plugin_file = mz_plugins_normalize_plugin_file((string) $plugin_file);
+            if ($plugin_file === '') {
+                continue;
+            }
+
+            $normalized[$key][$plugin_file] = true;
+        }
+    }
+
+    return $normalized;
+}
+
+function mz_plugins_update_manual_overrides(array $overrides): void
+{
+    $normalized = [
+        'skip_install' => [],
+        'skip_activate' => [],
+    ];
+
+    foreach (array_keys($normalized) as $key) {
+        $values = isset($overrides[$key]) && is_array($overrides[$key]) ? array_keys($overrides[$key]) : [];
+        $values = array_values(array_unique(array_filter(array_map('strval', $values))));
+        sort($values, SORT_NATURAL | SORT_FLAG_CASE);
+        $normalized[$key] = $values;
+    }
+
+    update_option(MZ_PLUGINS_MANUAL_OVERRIDE_OPTION, $normalized, false);
+}
+
+function mz_plugins_is_catalog_managed_plugin(string $plugin_file): bool
+{
+    static $managed_plugins = null;
+
+    if ($managed_plugins === null) {
+        $managed_plugins = [];
+
+        foreach (mz_plugins_get_catalog() as $plugin) {
+            $file = mz_plugins_normalize_plugin_file((string) ($plugin['file'] ?? ''));
+            if ($file !== '') {
+                $managed_plugins[$file] = true;
+            }
+        }
+    }
+
+    $plugin_file = mz_plugins_normalize_plugin_file($plugin_file);
+
+    return $plugin_file !== '' && isset($managed_plugins[$plugin_file]);
+}
+
+function mz_plugins_set_manual_override(string $plugin_file, string $scope): void
+{
+    if (!in_array($scope, ['skip_install', 'skip_activate'], true)) {
+        return;
+    }
+
+    $plugin_file = mz_plugins_normalize_plugin_file($plugin_file);
+    if ($plugin_file === '' || !mz_plugins_is_catalog_managed_plugin($plugin_file)) {
+        return;
+    }
+
+    $overrides = mz_plugins_get_manual_overrides();
+    $overrides[$scope][$plugin_file] = true;
+
+    if ($scope === 'skip_install') {
+        $overrides['skip_activate'][$plugin_file] = true;
+    }
+
+    mz_plugins_update_manual_overrides($overrides);
+}
+
+function mz_plugins_clear_manual_override(string $plugin_file): void
+{
+    $plugin_file = mz_plugins_normalize_plugin_file($plugin_file);
+    if ($plugin_file === '') {
+        return;
+    }
+
+    $overrides = mz_plugins_get_manual_overrides();
+    unset($overrides['skip_install'][$plugin_file], $overrides['skip_activate'][$plugin_file]);
+    mz_plugins_update_manual_overrides($overrides);
 }
 
 if (!function_exists('mz_plugins_get_catalog')) {
@@ -115,6 +227,30 @@ if (!function_exists('mz_plugins_get_catalog')) {
         ];
     }
 }
+
+add_action('deactivated_plugin', function ($plugin): void {
+    if (!mz_plugins_support_manual_overrides()) {
+        return;
+    }
+
+    mz_plugins_set_manual_override((string) $plugin, 'skip_activate');
+}, 10, 2);
+
+add_action('deleted_plugin', function ($plugin, $deleted): void {
+    if (!$deleted || !mz_plugins_support_manual_overrides()) {
+        return;
+    }
+
+    mz_plugins_set_manual_override((string) $plugin, 'skip_install');
+}, 10, 2);
+
+add_action('activated_plugin', function ($plugin): void {
+    if (!mz_plugins_support_manual_overrides()) {
+        return;
+    }
+
+    mz_plugins_clear_manual_override((string) $plugin);
+}, 10, 2);
 
 if (!function_exists('mz_plugins_get_env_catalog')) {
     function mz_plugins_get_env_catalog(?string $env = null): array
@@ -417,6 +553,9 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
     }
 
     // Desired state
+    $manual_overrides = mz_plugins_support_manual_overrides($env)
+        ? mz_plugins_get_manual_overrides()
+        : ['skip_install' => [], 'skip_activate' => []];
     $should_install  = []; // plugins that must exist on disk for this env (active OR install-only)
     $should_activate = []; // plugins that must be active in this env
     $managed         = []; // all plugins that are managed by this catalog (across envs)
@@ -430,8 +569,13 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
 
         // Only “see/have” what’s for THIS env (plus any install-only for this env)
         if (in_array($env, $envs, true)) {
+            if (isset($manual_overrides['skip_install'][$file])) {
+                continue;
+            }
+
             $should_install[$file] = $p;
-            if ($activate) {
+
+            if ($activate && !isset($manual_overrides['skip_activate'][$file])) {
                 $should_activate[$file] = $p;
             }
         }
@@ -442,6 +586,7 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
         $env . '|' .
             wp_json_encode($should_install) . '|' .
             wp_json_encode($should_activate) . '|' .
+            wp_json_encode($manual_overrides) . '|' .
             (int)$network_wide . '|' .
             (int)$PRUNE
     );

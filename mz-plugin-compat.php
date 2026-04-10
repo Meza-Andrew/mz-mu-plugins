@@ -35,6 +35,26 @@ if (!function_exists('mz_plugin_compat_get_eol')) {
     }
 }
 
+if (!function_exists('mz_plugin_compat_resolve_source_patch_target')) {
+    function mz_plugin_compat_resolve_source_patch_target(string $relative_file): string
+    {
+        $relative_file = ltrim($relative_file, '/\\');
+        if ($relative_file === '') {
+            return '';
+        }
+
+        if (str_starts_with($relative_file, 'wp-content/')) {
+            return rtrim(ABSPATH, '/\\') . '/' . $relative_file;
+        }
+
+        $plugin_dir = defined('WP_PLUGIN_DIR')
+            ? rtrim((string) WP_PLUGIN_DIR, '/\\')
+            : rtrim(ABSPATH, '/\\') . '/wp-content/plugins';
+
+        return $plugin_dir . '/' . $relative_file;
+    }
+}
+
 if (!function_exists('mz_plugin_compat_get_source_patch_rules')) {
     function mz_plugin_compat_get_source_patch_rules(): array
     {
@@ -125,9 +145,146 @@ if (!function_exists('mz_plugin_compat_get_source_patch_rules')) {
             'divi_theme_metabox_post_id_guard' => [
                 'file' => '/wp-content/themes/Divi/functions.php',
                 'apply' => static function (string $contents): string {
+                    $replace = '$enabled = ( is_object( $post ) && isset( $post->ID ) ) ? et_builder_enabled_for_post( $post->ID ) : et_builder_enabled_for_post_type( $post_type );';
+                    if (str_contains($contents, $replace)) {
+                        return $contents;
+                    }
+
+                    $search = '$enabled = $post ? et_builder_enabled_for_post( $post->ID ) : et_builder_enabled_for_post_type( $post_type );';
+                    $updated = str_replace($search, $replace, $contents, $count);
+
+                    return $count > 0 ? $updated : $contents;
+                },
+            ],
+            'divi_builder_metabox_post_id_guard' => [
+                'file' => '/wp-content/themes/Divi/includes/builder/functions.php',
+                'apply' => static function (string $contents): string {
+                    $updated = $contents;
+
+                    $first_replace = 'if ( et_builder_bfb_enabled() && ( ! is_object( $post ) || ! isset( $post->ID ) || ! et_pb_is_pagebuilder_used( $post->ID ) ) ) {';
+                    if (!str_contains($updated, $first_replace)) {
+                        $updated = str_replace(
+                            'if ( et_builder_bfb_enabled() && ! et_pb_is_pagebuilder_used( $post->ID ) ) {',
+                            $first_replace,
+                            $updated
+                        );
+                    }
+
+                    $second_replace = 'if ( ! $add && is_object( $post ) && isset( $post->ID ) && et_builder_enabled_for_post( $post->ID ) ) {';
+                    if (!str_contains($updated, $second_replace)) {
+                        $updated = str_replace(
+                            'if ( ! $add && ! empty( $post ) && et_builder_enabled_for_post( $post->ID ) ) {',
+                            $second_replace,
+                            $updated
+                        );
+                    }
+
+                    return $updated;
+                },
+            ],
+            'divi_theme_builder_request_archive_guard' => [
+                'file' => '/wp-content/themes/Divi/includes/builder/frontend-builder/theme-builder/ThemeBuilderRequest.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, 'if ( $object instanceof WP_Term && isset( $object->taxonomy ) ) {')) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+		if ( is_category() || is_tag() || is_tax() ) {
+			return new self( self::TYPE_TERM, $object->taxonomy, $id );
+		}
+
+		if ( is_post_type_archive() ) {
+			return new self( self::TYPE_POST_TYPE_ARCHIVE, $object->name, $id );
+		}
+PHP;
+
+                    $replace = <<<'PHP'
+		if ( is_category() || is_tag() || is_tax() ) {
+			if ( $object instanceof WP_Term && isset( $object->taxonomy ) ) {
+				return new self( self::TYPE_TERM, $object->taxonomy, $id );
+			}
+
+			if ( $object instanceof WP_Post_Type && isset( $object->name ) ) {
+				return new self( self::TYPE_POST_TYPE_ARCHIVE, $object->name, $id );
+			}
+		}
+
+		if ( is_post_type_archive() ) {
+			$post_type = $object instanceof WP_Post_Type && isset( $object->name ) ? $object->name : get_query_var( 'post_type' );
+
+			if ( is_array( $post_type ) ) {
+				$post_type = reset( $post_type );
+			}
+
+			return new self( self::TYPE_POST_TYPE_ARCHIVE, (string) $post_type, $id );
+		}
+PHP;
+
+                    return str_replace($search, $replace, $contents);
+                },
+            ],
+            'divi_dynamic_assets_taxonomy_guard' => [
+                'file' => '/wp-content/themes/Divi/includes/builder/feature/dynamic-assets/class-dynamic-assets.php',
+                'apply' => static function (string $contents): string {
+                    if (
+                        str_contains($contents, '$queried_object   = get_queried_object();')
+                        && str_contains($contents, '$queried instanceof WP_Term ? sanitize_key( $queried->taxonomy ) : \'\'')
+                    ) {
+                        return $contents;
+                    }
+
+                    $updated = str_replace(
+                        "\t\tif ( \$this->is_taxonomy() ) {\n\t\t\t\$this->_object_id = intval( get_queried_object()->term_id );",
+                        "\t\tif ( \$this->is_taxonomy() ) {\n\t\t\t\$queried_object   = get_queried_object();\n\t\t\t\$this->_object_id = \$queried_object instanceof WP_Term ? intval( \$queried_object->term_id ) : -1;",
+                        $contents
+                    );
+
+                    $updated = str_replace(
+                        "\t\tif ( \$this->is_taxonomy() ) {\n\t\t\t\$queried     = get_queried_object();\n\t\t\t\$taxonomy    = sanitize_key( \$queried->taxonomy );\n\t\t\t\$folder_name = \"taxonomy/{\$taxonomy}/\" . \$this->_object_id;",
+                        "\t\tif ( \$this->is_taxonomy() ) {\n\t\t\t\$queried  = get_queried_object();\n\t\t\t\$taxonomy = \$queried instanceof WP_Term ? sanitize_key( \$queried->taxonomy ) : '';\n\n\t\t\tif ( '' === \$taxonomy ) {\n\t\t\t\treturn 'archive';\n\t\t\t}\n\n\t\t\t\$folder_name = \"taxonomy/{\$taxonomy}/\" . \$this->_object_id;",
+                        $updated
+                    );
+
+                    return $updated;
+                },
+            ],
+            'divi_postbased_term_id_guard' => [
+                'file' => '/wp-content/themes/Divi/includes/builder/module/type/PostBased.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, '$queried_object = get_queried_object();')) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+					if ( $is_category || $is_tag || $is_tax ) {
+						$term_ids[] = get_queried_object()->term_id;
+					}
+PHP;
+
+                    $replace = <<<'PHP'
+					if ( $is_category || $is_tag || $is_tax ) {
+						$queried_object = get_queried_object();
+
+						if ( $queried_object instanceof WP_Term ) {
+							$term_ids[] = (int) $queried_object->term_id;
+						}
+					}
+PHP;
+
+                    return str_replace($search, $replace, $contents);
+                },
+            ],
+            'toolset_content_template_taxonomy_guard' => [
+                'file' => '/wp-views/vendor/toolset/toolset-common/user-editors/medium/screen/content-template/frontend.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, '$term instanceof WP_Term')) {
+                        return $contents;
+                    }
+
                     $updated = preg_replace(
-                        '/\$enabled = \$post \? et_builder_enabled_for_post\( \$post->ID \) : et_builder_enabled_for_post_type\( \$post_type \ );/',
-                        '$enabled = ( is_object( $post ) && isset( $post->ID ) ) ? et_builder_enabled_for_post( $post->ID ) : et_builder_enabled_for_post_type( $post_type );',
+                        "/if\\( \\$term && array_key_exists\\( 'views_template_loop_' \\. \\$term->taxonomy, \\$wpv_options \\) \\) \\{/",
+                        "if (\n\t\t\t\t\t\$term instanceof WP_Term\n\t\t\t\t\t&& array_key_exists( 'views_template_loop_' . \$term->taxonomy, \$wpv_options )\n\t\t\t\t) {",
                         $contents,
                         1
                     );
@@ -135,28 +292,172 @@ if (!function_exists('mz_plugin_compat_get_source_patch_rules')) {
                     return is_string($updated) ? $updated : $contents;
                 },
             ],
-            'divi_builder_metabox_post_id_guard' => [
-                'file' => '/wp-content/themes/Divi/includes/builder/functions.php',
+            'toolset_archive_title_taxonomy_guard' => [
+                'file' => '/wp-views/embedded/inc/functions-core-embedded.php',
                 'apply' => static function (string $contents): string {
+                    if (str_contains($contents, '$queried_object = get_queried_object();')) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+    } elseif ( is_tax() ) {
+        $tax = get_taxonomy( get_queried_object()->taxonomy );
+        /* translators: 1: Taxonomy singular name, 2: Current taxonomy term */
+        $title = sprintf( __( '%1$s: %2$s' ), $tax->labels->singular_name, single_term_title( '', false ) );
+    } else {
+PHP;
+
+                    $replace = <<<'PHP'
+    } elseif ( is_tax() ) {
+        $queried_object = get_queried_object();
+        $tax = $queried_object instanceof WP_Term ? get_taxonomy( $queried_object->taxonomy ) : false;
+
+        if ( $tax && isset( $tax->labels->singular_name ) ) {
+            /* translators: 1: Taxonomy singular name, 2: Current taxonomy term */
+            $title = sprintf( __( '%1$s: %2$s' ), $tax->labels->singular_name, single_term_title( '', false ) );
+        } else {
+            $title = __( 'Archives' );
+        }
+    } else {
+PHP;
+
+                    return str_replace($search, $replace, $contents);
+                },
+            ],
+            'toolset_views_template_archive_term_guard' => [
+                'file' => '/wp-views/embedded/inc/views-templates/wpv-template.class.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, '$kind = $term instanceof WP_Term ? \'archive-\' . $term->taxonomy : \'archive\';')) {
+                        return $contents;
+                    }
+
+                    $updated = str_replace(
+                        "\t\t\t\t\t\$term = \$wp_query->get_queried_object();\n\t\t\t\t\t\$kind = 'archive-' . \$term->taxonomy;",
+                        "\t\t\t\t\t\$term = \$wp_query->get_queried_object();\n\t\t\t\t\t\$kind = \$term instanceof WP_Term ? 'archive-' . \$term->taxonomy : 'archive';",
+                        $contents
+                    );
+
+                    $updated = str_replace(
+                        "\t\t\t\t\t\$term = \$wp_query->get_queried_object();\n\t\t\t\t\t\$archive_loop = 'views_template_loop_' . \$term->taxonomy;",
+                        "\t\t\t\t\t\$term = \$wp_query->get_queried_object();\n\t\t\t\t\t\$archive_loop = \$term instanceof WP_Term ? 'views_template_loop_' . \$term->taxonomy : null;",
+                        $updated
+                    );
+
+                    $updated = str_replace(
+                        "\t\t\t\t\t\$term = \$wp_query->get_queried_object();\n\t\t\t\t\tif( \$term ) {",
+                        "\t\t\t\t\t\$term = \$wp_query->get_queried_object();\n\t\t\t\t\tif( \$term instanceof WP_Term ) {",
+                        $updated
+                    );
+
+                    return $updated;
+                },
+            ],
+            'toolset_parent_filter_term_guard' => [
+                'file' => '/wp-views/embedded/inc/filters/wpv-filter-parent-embedded.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, '$parent_id = $queried_object instanceof WP_Term ? $queried_object->term_id : $parent_id;')) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+						$queried_object = get_queried_object();
+						$parent_id = $queried_object->term_id;
+PHP;
+
+                    $replace = <<<'PHP'
+						$queried_object = get_queried_object();
+						$parent_id = $queried_object instanceof WP_Term ? $queried_object->term_id : $parent_id;
+PHP;
+
+                    return str_replace($search, $replace, $contents);
+                },
+            ],
+            'yoast_indexable_hierarchy_term_guard' => [
+                'file' => '/wordpress-seo/src/builders/indexable-hierarchy-builder.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, "if ( ! ( \$term instanceof \\WP_Term ) ) {")) {
+                        return $contents;
+                    }
+
                     $updated = preg_replace(
-                        '/if \( et_builder_bfb_enabled\(\) && ! et_pb_is_pagebuilder_used\( \$post->ID \) \) \{/',
-                        'if ( et_builder_bfb_enabled() && ( ! is_object( $post ) || ! isset( $post->ID ) || ! et_pb_is_pagebuilder_used( $post->ID ) ) ) {',
+                        "/private function get_term_parents\\( \\$term \\) \\{\n\t\t/",
+                        "private function get_term_parents( \$term ) {\n\t\tif ( ! ( \$term instanceof \\\\WP_Term ) ) {\n\t\t\treturn [];\n\t\t}\n\n\t\t",
                         $contents,
                         1
                     );
 
                     if (!is_string($updated)) {
-                        $updated = $contents;
+                        return $contents;
                     }
 
                     $updated = preg_replace(
-                        '/if \( ! \$add && ! empty\( \$post \) && et_builder_enabled_for_post\( \$post->ID \) \ ) \{/',
-                        'if ( ! $add && is_object( $post ) && isset( $post->ID ) && et_builder_enabled_for_post( $post->ID ) ) {',
+                        "/\t\t\t\\$term      = \\\\get_term\\( \\$term->parent, \\$tax \\ );\n\t\t\t\\$parents\\[\\] = \\$term;/",
+                        "\t\t\t\$term      = \\\\get_term( \$term->parent, \$tax );\n\n\t\t\tif ( ! ( \$term instanceof \\\\WP_Term ) ) {\n\t\t\t\tbreak;\n\t\t\t}\n\n\t\t\t\$parents[] = \$term;",
                         $updated,
                         1
                     );
 
                     return is_string($updated) ? $updated : $contents;
+                },
+            ],
+            'yoast_current_page_term_id_guard' => [
+                'file' => '/wordpress-seo/src/helpers/current-page-helper.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, '$queried_object instanceof \WP_Term')) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+		if ( $wp_query->is_tax() || $wp_query->is_tag() || $wp_query->is_category() ) {
+			$queried_object = $wp_query->get_queried_object();
+			if ( $queried_object && ! \is_wp_error( $queried_object ) ) {
+				return $queried_object->term_id;
+			}
+		}
+PHP;
+
+                    $replace = <<<'PHP'
+		if ( $wp_query->is_tax() || $wp_query->is_tag() || $wp_query->is_category() ) {
+			$queried_object = $wp_query->get_queried_object();
+			if ( $queried_object instanceof \WP_Term && ! \is_wp_error( $queried_object ) ) {
+				return $queried_object->term_id;
+			}
+		}
+PHP;
+
+                    return str_replace($search, $replace, $contents);
+                },
+            ],
+            'yoast_term_archive_presentation_guard' => [
+                'file' => '/wordpress-seo/src/presentations/indexable-term-archive-presentation.php',
+                'apply' => static function (string $contents): string {
+                    if (str_contains($contents, '$queried_object = \get_queried_object();')) {
+                        return $contents;
+                    }
+
+                    $search = <<<'PHP'
+	public function generate_source() {
+		if ( ! empty( $this->model->object_id ) || \get_queried_object() === null ) {
+			return \get_term( $this->model->object_id, $this->model->object_sub_type );
+		}
+
+		return \get_term( \get_queried_object()->term_id, \get_queried_object()->taxonomy );
+	}
+PHP;
+
+                    $replace = <<<'PHP'
+	public function generate_source() {
+		$queried_object = \get_queried_object();
+
+		if ( ! empty( $this->model->object_id ) || ! ( $queried_object instanceof \WP_Term ) ) {
+			return \get_term( $this->model->object_id, $this->model->object_sub_type );
+		}
+
+		return \get_term( $queried_object->term_id, $queried_object->taxonomy );
+	}
+PHP;
+
+                    return str_replace($search, $replace, $contents);
                 },
             ],
             'gravity_wiz_submit_access_dynamic_args' => [
@@ -258,10 +559,6 @@ if (!function_exists('mz_plugin_compat_get_source_patch_rules')) {
 if (!function_exists('mz_plugin_compat_apply_source_patches')) {
     function mz_plugin_compat_apply_source_patches(): void
     {
-        $plugin_dir = defined('WP_PLUGIN_DIR')
-            ? rtrim((string) WP_PLUGIN_DIR, '/\\')
-            : rtrim(ABSPATH, '/\\') . '/wp-content/plugins';
-
         foreach (mz_plugin_compat_get_source_patch_rules() as $rule) {
             if (!is_array($rule)) continue;
 
@@ -269,7 +566,7 @@ if (!function_exists('mz_plugin_compat_apply_source_patches')) {
             $apply = $rule['apply'] ?? null;
             if ($relative_file === '' || !is_callable($apply)) continue;
 
-            $target = $plugin_dir . '/' . ltrim($relative_file, '/\\');
+            $target = mz_plugin_compat_resolve_source_patch_target($relative_file);
             if (!is_file($target) || !is_readable($target) || !is_writable($target)) continue;
 
             $contents = file_get_contents($target);
