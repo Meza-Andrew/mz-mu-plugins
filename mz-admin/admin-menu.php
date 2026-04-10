@@ -350,6 +350,18 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
         return $allcaps;
     }
 
+    $requested_cap = strtolower((string) ($args[0] ?? ''));
+    if ($requested_cap !== '') {
+        $allcaps[$requested_cap] = true;
+    }
+
+    foreach ($caps as $cap) {
+        $cap = strtolower((string) $cap);
+        if ($cap !== '') {
+            $allcaps[$cap] = true;
+        }
+    }
+
     $allcaps['manage_options'] = true;
 
     return $allcaps;
