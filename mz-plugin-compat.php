@@ -21,6 +21,13 @@ if (!mz_plugin_compat_enabled()) {
     return;
 }
 
+// Popup Maker can cache its bundled frontend assets into uploads, but this site
+// is currently returning 404s for those generated files. Force the plugin back
+// to its built-in asset URLs so popup markup does not render inline unstyled.
+if (!defined('PUM_ASSET_CACHE')) {
+    define('PUM_ASSET_CACHE', false);
+}
+
 if (!function_exists('mz_plugin_compat_normalize_path')) {
     function mz_plugin_compat_normalize_path(string $path): string
     {

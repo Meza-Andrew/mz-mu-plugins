@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.35
+ * Version: 1.4.36
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
