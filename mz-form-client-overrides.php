@@ -90,3 +90,56 @@ add_filter('mzf_require_last_name', static function (bool $required, array $data
     }
     return $required;
 }, 20, 2);
+
+add_filter('mzf_slug_registry', static function (array $registry): array {
+    $registry['co-lender'] = [
+        'subject' => 'New co-lender inquiry [{{site_domain}}]',
+        'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
+        'layout' => ['FullName', 'Email', 'Phone', 'Experience', 'Comments'],
+    ];
+
+    return $registry;
+}, 20);
+
+add_filter('mzf_field_labels', static function (array $labels, array $data): array {
+    $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
+    if ($slug === 'co-lender') {
+        $labels['Experience'] = 'Co-Lended Before';
+        $labels['Comments'] = 'Comments';
+    }
+
+    return $labels;
+}, 20, 2);
+
+add_filter('mzf_admin_request_heading', static function (string $heading, array $data): string {
+    $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
+    if ($slug === 'co-lender') {
+        return 'Experience';
+    }
+
+    return $heading;
+}, 20, 2);
+
+add_filter('mzf_normalized_data', static function (array $data, array $src): array {
+    $slug = sanitize_key((string) ($data['FormSlug'] ?? $src['FormSlug'] ?? ''));
+    if ($slug !== 'co-lender') {
+        return $data;
+    }
+
+    $experience = trim((string) ($data['Experience'] ?? $src['Experience'] ?? ''));
+    $co_lender = trim((string) ($data['CoLender'] ?? $src['CoLender'] ?? ''));
+    if ($experience !== '') {
+        $experience_normalized = strtolower($experience);
+        if ($experience_normalized === 'yes' && $co_lender !== '') {
+            $data['Experience'] = 'Yes with ' . $co_lender;
+        } elseif ($experience_normalized === 'yes') {
+            $data['Experience'] = 'Yes';
+        } elseif ($experience_normalized === 'no') {
+            $data['Experience'] = 'No';
+        } else {
+            $data['Experience'] = $experience;
+        }
+    }
+
+    return $data;
+}, 20, 2);

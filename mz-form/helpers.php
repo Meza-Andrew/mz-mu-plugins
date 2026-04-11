@@ -1091,7 +1091,8 @@ if (!function_exists('mzf_render_admin_body')) {
             $body .= implode('', $contact_rows);
         }
         if (!empty($request_rows)) {
-            $body .= '<hr><h3 style="margin:1em 0 .5em 0;">Request Details</h3>';
+            $request_heading = (string) apply_filters('mzf_admin_request_heading', 'Request Details', $data, $context);
+            $body .= '<hr><h3 style="margin:1em 0 .5em 0;">' . esc_html($request_heading) . '</h3>';
             $body .= implode('', $request_rows);
         }
         if (!empty($marketing_rows)) {

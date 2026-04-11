@@ -627,6 +627,8 @@ if (!function_exists('mzf_default_fields')) {
             'SundayTimes',
             'FilesLink',
             'Comments',
+            'Experience',
+            'CoLender',
             'Consent',
             'Training',
             'Conduct',

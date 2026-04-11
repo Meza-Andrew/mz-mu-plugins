@@ -489,6 +489,7 @@ if (!function_exists('send_form_data')) :
         if (trim((string) ($data['LocationDisplay'] ?? '')) === '') {
             $data['LocationDisplay'] = trim((string) ($data['Location'] ?? $data['Place'] ?? $data['ReceivingAddressDisplay'] ?? $data['ReceivingAddress'] ?? ''));
         }
+        $data = (array) apply_filters('mzf_normalized_data', $data, $src);
         // Canonical comments key only.
         $comments = isset($data['Comments']) ? trim((string) $data['Comments']) : '';
         $data['Comments'] = $comments;
