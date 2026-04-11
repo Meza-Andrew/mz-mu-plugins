@@ -229,6 +229,14 @@ function meza_get_aios_locked_users_url(): string
     ], admin_url('admin.php'));
 }
 
+function meza_get_aios_dashboard_url(): string
+{
+    return add_query_arg([
+        'page' => 'aiowpsec',
+        'tab' => 'dashboard',
+    ], admin_url('admin.php'));
+}
+
 function meza_get_site_manager_aios_dashboard_url(): string
 {
     return add_query_arg([
@@ -241,6 +249,57 @@ function meza_get_site_manager_aios_dashboard_url(): string
 function meza_get_site_manager_aios_two_factor_url(): string
 {
     return admin_url('admin.php?page=aiowpsec_two_factor_auth_user');
+}
+
+function meza_is_current_aios_admin_page(): bool
+{
+    if (!is_admin()) {
+        return false;
+    }
+
+    $page = sanitize_key((string) ($_GET['page'] ?? ''));
+    if (in_array($page, ['aiowpsec', 'aiowpsec_two_factor_auth_user'], true)) {
+        return true;
+    }
+
+    if (!function_exists('get_current_screen')) {
+        return false;
+    }
+
+    $screen = get_current_screen();
+    if (!($screen instanceof WP_Screen)) {
+        return false;
+    }
+
+    $screen_id = strtolower((string) ($screen->id ?? ''));
+    $screen_base = strtolower((string) ($screen->base ?? ''));
+
+    return str_contains($screen_id, 'aiowpsec')
+        || str_contains($screen_id, 'wp-security')
+        || str_contains($screen_base, 'aiowpsec')
+        || str_contains($screen_base, 'wp-security');
+}
+
+function meza_is_aios_dashboard_request(): bool
+{
+    if (!is_admin()) {
+        return false;
+    }
+
+    $page = sanitize_key((string) ($_GET['page'] ?? ''));
+    $tab = sanitize_key((string) ($_GET['tab'] ?? ''));
+
+    return $page === 'aiowpsec' && in_array($tab, ['', 'dashboard'], true);
+}
+
+function meza_is_aios_premium_upgrade_request(): bool
+{
+    if (!is_admin()) {
+        return false;
+    }
+
+    return sanitize_key((string) ($_GET['page'] ?? '')) === 'aiowpsec'
+        && sanitize_key((string) ($_GET['tab'] ?? '')) === 'premium-upgrade';
 }
 
 function meza_is_aios_locked_users_request(): bool
@@ -308,6 +367,145 @@ function meza_should_skip_site_manager_utility_menu_bridging($user = null): bool
 {
     return meza_is_site_manager_user($user) && meza_is_allowed_site_manager_aios_request();
 }
+
+add_action('admin_init', function (): void {
+    if (
+        !meza_is_aios_plugin_active()
+        || !meza_is_aios_premium_upgrade_request()
+        || meza_is_site_manager_user(wp_get_current_user())
+    ) {
+        return;
+    }
+
+    wp_safe_redirect(meza_get_aios_dashboard_url());
+    exit;
+}, 0);
+
+add_action('admin_head', function (): void {
+    if (!meza_is_aios_plugin_active() || !meza_is_current_aios_admin_page()) {
+        return;
+    }
+
+    $is_aios_dashboard = meza_is_aios_dashboard_request();
+?>
+    <style id="meza-aios-admin-cleanup">
+        .wrap .nav-tab-wrapper a[href*="tab=premium-upgrade"] {
+            display: none !important;
+        }
+
+<?php if ($is_aios_dashboard) : ?>
+        @media screen and (min-width: 783px) {
+            #dashboard-widgets .postbox-container {
+                width: 100% !important;
+                max-width: 100% !important;
+                float: none !important;
+                margin-right: 0 !important;
+                min-width: 0 !important;
+            }
+
+            #dashboard-widgets #normal-sortables {
+                display: grid !important;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 16px;
+                align-items: start;
+            }
+
+            #dashboard-widgets #normal-sortables > .postbox {
+                margin: 0 !important;
+                min-width: 0 !important;
+                width: auto !important;
+                max-width: 100% !important;
+            }
+
+            #dashboard-widgets #normal-sortables > .postbox .inside {
+                overflow-x: hidden;
+            }
+
+            #dashboard-widgets #normal-sortables > #spread_the_word,
+            #dashboard-widgets #normal-sortables > #know_developers,
+            #dashboard-widgets #normal-sortables > #maintenance_mode_status {
+                display: none !important;
+            }
+
+            #dashboard-widgets #normal-sortables > #security_strength_meter {
+                order: 1;
+            }
+
+            #dashboard-widgets #normal-sortables > #security_points_breakdown {
+                order: 2;
+            }
+
+            #dashboard-widgets #normal-sortables > #critical_feature_status {
+                order: 3;
+            }
+
+            #dashboard-widgets #normal-sortables > #last_5_logins {
+                order: 4;
+            }
+
+            #dashboard-widgets #normal-sortables > #logged_in_users {
+                order: 5;
+            }
+
+            #dashboard-widgets #normal-sortables > #locked_ip_addresses {
+                order: 6;
+            }
+
+            #dashboard-widgets #normal-sortables canvas,
+            #dashboard-widgets #normal-sortables svg,
+            #dashboard-widgets #normal-sortables img {
+                max-width: 100% !important;
+                width: 100% !important;
+                height: auto !important;
+            }
+
+            #dashboard-widgets #normal-sortables #canvas-holder,
+            #dashboard-widgets #normal-sortables #canvas-holder > div,
+            #dashboard-widgets #normal-sortables [id$="_chart_div"],
+            #dashboard-widgets #normal-sortables [id$="_chart_div"] > div,
+            #dashboard-widgets #normal-sortables [id$="_chart_div"] > div > div {
+                width: 100% !important;
+                max-width: 100% !important;
+                min-width: 0 !important;
+            }
+
+            #dashboard-widgets #postbox-container-2,
+            #dashboard-widgets #postbox-container-3,
+            #dashboard-widgets #postbox-container-4 {
+                display: none !important;
+            }
+        }
+
+        @media screen and (min-width: 1440px) {
+            #dashboard-widgets #normal-sortables {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+<?php endif; ?>
+    </style>
+    <script id="meza-aios-admin-cleanup-script">
+        (() => {
+            const cleanupPremiumUpgradeTabs = () => {
+                document.querySelectorAll('.nav-tab-wrapper a[href*="tab=premium-upgrade"]').forEach((link) => {
+                    if (link instanceof HTMLElement) {
+                        link.remove();
+                    }
+                });
+            };
+
+            const cleanupAiosAdminUi = () => {
+                cleanupPremiumUpgradeTabs();
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', cleanupAiosAdminUi, { once: true });
+            } else {
+                cleanupAiosAdminUi();
+            }
+        })();
+    </script>
+<?php
+}, 1000);
 
 function meza_register_aios_locked_users_users_submenu(): void
 {
@@ -4656,6 +4854,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
     {
         if (!is_admin()) {
             return false;
+        }
+
+        if (function_exists('meza_is_current_aios_admin_page') && meza_is_current_aios_admin_page()) {
+            return true;
         }
 
         if (function_exists('get_current_screen')) {
