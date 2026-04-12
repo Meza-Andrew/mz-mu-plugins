@@ -1057,6 +1057,16 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             'branding' => ['Branding', 'manage_options', 'branding', 'Branding Settings'],
             'crm' => ['CRM Integration', 'manage_options', 'crm', 'CRM Integration Settings'],
         ];
+        $allowed_expected_item_slugs = array_keys($expected_items);
+
+        if (function_exists('meza_is_site_manager_user') && meza_is_site_manager_user(wp_get_current_user())) {
+            if (function_exists('meza_get_site_manager_allowed_settings_page_slugs')) {
+                $allowed_expected_item_slugs = array_values(array_intersect(
+                    $allowed_expected_item_slugs,
+                    array_map('sanitize_key', meza_get_site_manager_allowed_settings_page_slugs())
+                ));
+            }
+        }
 
         foreach ($submenu['options-general.php'] as $index => $item) {
             if (!is_array($item)) {
@@ -1103,15 +1113,15 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             unset($submenu['options-general.php'][$index]);
         }
 
-        if ($business_information_item === null) {
+        if ($business_information_item === null && in_array('business-information', $allowed_expected_item_slugs, true)) {
             $business_information_item = $expected_items['business-information'];
         }
 
-        if ($branding_item === null) {
+        if ($branding_item === null && in_array('branding', $allowed_expected_item_slugs, true)) {
             $branding_item = $expected_items['branding'];
         }
 
-        if ($crm_item === null) {
+        if ($crm_item === null && in_array('crm', $allowed_expected_item_slugs, true)) {
             $crm_item = $expected_items['crm'];
         }
 
