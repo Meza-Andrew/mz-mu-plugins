@@ -13,6 +13,17 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
     {
         $pages = [
             [
+                'page_title'      => 'Business Information',
+                'menu_title'      => 'Business Information',
+                'menu_slug'       => 'business-information',
+                'parent_slug'     => 'options-general.php',
+                'capability'      => 'manage_options',
+                'redirect'        => false,
+                'update_button'   => 'Update',
+                'updated_message' => 'Settings Updated',
+                'autoload'        => false,
+            ],
+            [
                 'page_title'      => 'Branding',
                 'menu_title'      => 'Branding',
                 'menu_slug'       => 'branding',
@@ -24,9 +35,9 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
                 'autoload'        => false,
             ],
             [
-                'page_title'      => 'Business Information',
-                'menu_title'      => 'Business Information',
-                'menu_slug'       => 'business-information',
+                'page_title'      => 'CRM Integration',
+                'menu_title'      => 'CRM Integration',
+                'menu_slug'       => 'crm',
                 'parent_slug'     => 'options-general.php',
                 'capability'      => 'manage_options',
                 'redirect'        => false,
@@ -201,6 +212,249 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         ];
     }
 
+    function meza_get_crm_integration_fields(): array
+    {
+        return [
+            [
+                'key' => 'field_69b5b54f29383',
+                'label' => 'Platform',
+                'name' => 'platform',
+                'aria-label' => '',
+                'type' => 'select',
+                'instructions' => '',
+                'required' => 1,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'choices' => [
+                    'Constant Contact' => 'Constant Contact',
+                    'Go High Level' => 'Go High Level',
+                    'MailChimp' => 'MailChimp',
+                    'Zeffy' => 'Zeffy',
+                ],
+                'default_value' => false,
+                'return_format' => 'value',
+                'multiple' => 0,
+                'allow_null' => 1,
+                'allow_in_bindings' => 0,
+                'ui' => 0,
+                'ajax' => 0,
+                'placeholder' => '',
+                'create_options' => 0,
+                'save_options' => 0,
+            ],
+            [
+                'key' => 'field_69b5b6c6fe884',
+                'label' => 'Constant Contact',
+                'name' => 'constant-contact',
+                'aria-label' => '',
+                'type' => 'group',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_69b5b54f29383',
+                            'operator' => '==',
+                            'value' => 'Constant Contact',
+                        ],
+                    ],
+                ],
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'layout' => 'row',
+                'sub_fields' => [
+                    [
+                        'key' => 'field_69b5b6c6fe885',
+                        'label' => 'Client ID',
+                        'name' => 'client_id',
+                        'aria-label' => '',
+                        'type' => 'password',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                    ],
+                    [
+                        'key' => 'field_69b5c69ed8589',
+                        'label' => 'Client Secret',
+                        'name' => 'client_secret',
+                        'aria-label' => '',
+                        'type' => 'password',
+                        'instructions' => '',
+                        'required' => 1,
+                        'conditional_logic' => [
+                            [
+                                [
+                                    'field' => 'field_69b5b6c6fe885',
+                                    'operator' => '!=empty',
+                                ],
+                            ],
+                        ],
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                    ],
+                    [
+                        'key' => 'field_69b5b6c6fe886',
+                        'label' => 'List ID',
+                        'name' => 'list',
+                        'aria-label' => '',
+                        'type' => 'text',
+                        'instructions' => '',
+                        'required' => 1,
+                        'conditional_logic' => [
+                            [
+                                [
+                                    'field' => 'field_69b5b6c6fe885',
+                                    'operator' => '!=empty',
+                                ],
+                                [
+                                    'field' => 'field_69b5c69ed8589',
+                                    'operator' => '!=empty',
+                                ],
+                            ],
+                        ],
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'maxlength' => '',
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                    ],
+                ],
+            ],
+            [
+                'key' => 'field_69b5d528ed70b',
+                'label' => 'Mailchimp',
+                'name' => 'mailchimp',
+                'aria-label' => '',
+                'type' => 'group',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_69b5b54f29383',
+                            'operator' => '==',
+                            'value' => 'MailChimp',
+                        ],
+                    ],
+                ],
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'layout' => 'row',
+                'sub_fields' => [
+                    [
+                        'key' => 'field_69b5d528ed70c',
+                        'label' => 'Client ID',
+                        'name' => 'client_id',
+                        'aria-label' => '',
+                        'type' => 'password',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                    ],
+                    [
+                        'key' => 'field_69b5d528ed70d',
+                        'label' => 'Client Secret',
+                        'name' => 'client_secret',
+                        'aria-label' => '',
+                        'type' => 'password',
+                        'instructions' => '',
+                        'required' => 1,
+                        'conditional_logic' => [
+                            [
+                                [
+                                    'field' => 'field_69b5d528ed70c',
+                                    'operator' => '!=empty',
+                                ],
+                            ],
+                        ],
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                    ],
+                    [
+                        'key' => 'field_69b5d528ed70e',
+                        'label' => 'List ID',
+                        'name' => 'list',
+                        'aria-label' => '',
+                        'type' => 'text',
+                        'instructions' => '',
+                        'required' => 1,
+                        'conditional_logic' => [
+                            [
+                                [
+                                    'field' => 'field_69b5d528ed70c',
+                                    'operator' => '!=empty',
+                                ],
+                                [
+                                    'field' => 'field_69b5d528ed70d',
+                                    'operator' => '!=empty',
+                                ],
+                            ],
+                        ],
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'maxlength' => '',
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                    ],
+                ],
+            ],
+        ];
+    }
+
     function meza_get_shared_project_acf_field_groups(): array
     {
         $groups = [
@@ -246,6 +500,30 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'style' => 'default',
                 'label_placement' => 'left',
                 'instruction_placement' => 'field',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
+                'key' => 'group_69b5b29b9d099',
+                'title' => 'CRM Integration',
+                'fields' => meza_get_crm_integration_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'crm',
+                        ],
+                    ],
+                ],
+                'menu_order' => 0,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'top',
+                'instruction_placement' => 'label',
                 'hide_on_screen' => '',
                 'active' => true,
                 'description' => '',
@@ -650,6 +928,14 @@ add_filter('acf/ui_options_page/registration_args', function (array $args, array
         return $args;
     }
 
+    if ($menu_slug === 'crm') {
+        $args['page_title'] = 'CRM Integration';
+        $args['menu_title'] = 'CRM Integration';
+        $args['capability'] = 'manage_options';
+
+        return $args;
+    }
+
     return $args;
 }, 20, 2);
 
@@ -671,6 +957,11 @@ add_filter('acf/get_options_page', function ($page, $slug) {
         $page['page_title'] = 'Business Information';
         $page['menu_title'] = 'Business Information';
         $page['menu_slug'] = 'business-information';
+        $page['capability'] = 'manage_options';
+    } elseif ($slug === 'crm') {
+        $page['page_title'] = 'CRM Integration';
+        $page['menu_title'] = 'CRM Integration';
+        $page['menu_slug'] = 'crm';
         $page['capability'] = 'manage_options';
     }
 
@@ -760,6 +1051,12 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
 
         $business_information_item = null;
         $branding_item = null;
+        $crm_item = null;
+        $expected_items = [
+            'business-information' => ['Business Information', 'manage_options', 'business-information', 'Business Information'],
+            'branding' => ['Branding', 'manage_options', 'branding', 'Branding'],
+            'crm' => ['CRM Integration', 'manage_options', 'crm', 'CRM Integration'],
+        ];
 
         foreach ($submenu['options-general.php'] as $index => $item) {
             if (!is_array($item)) {
@@ -780,6 +1077,18 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
                 continue;
             }
 
+            if (in_array($slug, ['crm', 'admin.php?page=crm', 'options-general.php?page=crm'], true)) {
+                $submenu['options-general.php'][$index][0] = 'CRM Integration';
+                $submenu['options-general.php'][$index][2] = 'crm';
+                if (isset($submenu['options-general.php'][$index][3])) {
+                    $submenu['options-general.php'][$index][3] = 'CRM Integration';
+                }
+
+                $crm_item = $submenu['options-general.php'][$index];
+                unset($submenu['options-general.php'][$index]);
+                continue;
+            }
+
             if (!in_array($slug, ['branding', 'admin.php?page=branding', 'options-general.php?page=branding'], true)) {
                 continue;
             }
@@ -794,8 +1103,16 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             unset($submenu['options-general.php'][$index]);
         }
 
-        if ($business_information_item === null && $branding_item === null) {
-            return;
+        if ($business_information_item === null) {
+            $business_information_item = $expected_items['business-information'];
+        }
+
+        if ($branding_item === null) {
+            $branding_item = $expected_items['branding'];
+        }
+
+        if ($crm_item === null) {
+            $crm_item = $expected_items['crm'];
         }
 
         $submenu['options-general.php'] = array_values($submenu['options-general.php']);
@@ -816,6 +1133,7 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
         $items_to_insert = array_values(array_filter([
             $business_information_item,
             $branding_item,
+            $crm_item,
         ], 'is_array'));
 
         if ($items_to_insert === []) {
@@ -828,6 +1146,8 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
 
 add_action('admin_menu', 'meza_normalize_branding_settings_submenu_item', PHP_INT_MAX - 1);
 add_action('admin_menu_editor-menu_replaced', 'meza_normalize_branding_settings_submenu_item', PHP_INT_MAX - 1);
+add_action('admin_menu', 'meza_normalize_branding_settings_submenu_item', PHP_INT_MAX);
+add_action('admin_menu_editor-menu_replaced', 'meza_normalize_branding_settings_submenu_item', PHP_INT_MAX);
 
 add_action('after_setup_theme', function (): void {
     if (function_exists('add_image_size')) {

@@ -236,6 +236,7 @@ function meza_get_site_manager_allowed_settings_page_slugs(): array
     $allowed_slugs = [
         'business-information',
         'branding',
+        'crm',
     ];
 
     if (function_exists('meza_get_shared_project_acf_options_page_slugs')) {
@@ -1882,7 +1883,6 @@ function meza_is_sqlite_object_cache_menu_item(string $slug, string $title): boo
 function meza_get_settings_submenu_priority_labels(): array
 {
     return [
-        'CRM Integration',
         'Page Cache',
         'Object Cache',
         'Image Performance',
@@ -1899,6 +1899,7 @@ function meza_reorder_settings_submenu_items(array $items): array
         'General',
         'Business Information',
         'Branding',
+        'CRM Integration',
     ];
     $plugin_labels = meza_get_settings_submenu_priority_labels();
     $core_anchor_labels = [
@@ -7222,6 +7223,7 @@ function meza_enforce_site_manager_settings_submenu(): void
     $allowed_settings_pages = [
         'business-information' => 'Business Information',
         'branding' => 'Branding',
+        'crm' => 'CRM Integration',
     ];
     $allowed_settings_pages = array_intersect_key($allowed_settings_pages, array_flip(meza_get_site_manager_allowed_settings_page_slugs()));
 
@@ -7239,6 +7241,8 @@ function meza_enforce_site_manager_settings_submenu(): void
         if (!isset($allowed_settings_pages[$slug])) {
             if ($label === 'branding') {
                 $slug = 'branding';
+            } elseif ($label === 'crm integration') {
+                $slug = 'crm';
             } elseif (in_array($label, ['business information', 'contact information'], true)) {
                 $slug = 'business-information';
             }

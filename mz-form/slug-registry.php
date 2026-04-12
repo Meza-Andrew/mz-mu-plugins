@@ -71,6 +71,11 @@ if (!function_exists('mzf_slug_registry')) {
                 'required' => $contact_required,
                 'layout' => $contact_layout,
             ],
+            'lead-gen' => [
+                'subject' => 'New lead from {{name_company}}',
+                'required' => ['FirstName', 'Email', 'PageId', 'FormSlug'],
+                'layout' => ['FullName', 'Email'],
+            ],
             'volunteer' => [
                 'subject' => 'New volunteer interest from {{name_company}}',
                 'required' => array_merge($contact_required, ['Date', 'Training', 'Conduct', 'Confidentiality', 'Applicant']),
