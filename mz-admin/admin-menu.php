@@ -236,7 +236,6 @@ function meza_get_site_manager_allowed_settings_page_slugs(): array
     $allowed_slugs = [
         'business-information',
         'branding',
-        'crm',
     ];
 
     if (function_exists('meza_get_shared_project_acf_options_page_slugs')) {
@@ -4880,6 +4879,21 @@ if (!function_exists('meza_is_whitelisted_admin_title_screen')) {
     }
 }
 
+if (!function_exists('meza_get_shared_settings_browser_title')) {
+    function meza_get_shared_settings_browser_title(string $page_slug = ''): string
+    {
+        $page_slug = sanitize_key($page_slug);
+
+        $title_map = [
+            'business-information' => 'Business Information Settings',
+            'branding' => 'Branding Settings',
+            'crm' => 'CRM Integration Settings',
+        ];
+
+        return $title_map[$page_slug] ?? '';
+    }
+}
+
 if (!function_exists('meza_ensure_admin_page_title_is_string')) {
     function meza_ensure_admin_page_title_is_string($screen = null): void
     {
@@ -4898,6 +4912,15 @@ if (!function_exists('meza_ensure_admin_page_title_is_string')) {
         }
 
         $fallback_title = '';
+        $page_slug = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+
+        if ($page_slug !== '') {
+            $shared_settings_title = meza_get_shared_settings_browser_title($page_slug);
+            if ($shared_settings_title !== '') {
+                $title = $shared_settings_title;
+                return;
+            }
+        }
 
         if ($screen instanceof WP_Screen) {
             $fallback_title = trim(wp_strip_all_tags((string) ($screen->title ?? '')));
@@ -4907,8 +4930,7 @@ if (!function_exists('meza_ensure_admin_page_title_is_string')) {
             }
         }
 
-        if ($fallback_title === '' && isset($_GET['page'])) {
-            $page_slug = sanitize_text_field((string) wp_unslash($_GET['page']));
+        if ($fallback_title === '' && $page_slug !== '') {
             $fallback_title = ucwords(str_replace(['-', '_'], ' ', $page_slug));
         }
 
@@ -4916,6 +4938,32 @@ if (!function_exists('meza_ensure_admin_page_title_is_string')) {
     }
 }
 add_action('current_screen', 'meza_ensure_admin_page_title_is_string', 1);
+
+add_filter('admin_title', function ($admin_title, $title): string {
+    if (!is_admin()) {
+        return $admin_title;
+    }
+
+    $page_slug = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    $shared_settings_title = meza_get_shared_settings_browser_title($page_slug);
+    if ($shared_settings_title === '') {
+        return $admin_title;
+    }
+
+    $normalized_title = sanitize_key(str_replace('_', '-', strtolower(trim(wp_strip_all_tags((string) $title)))));
+    $expected_fallback_title = sanitize_key('settings-page-' . $page_slug);
+
+    if ($normalized_title !== $expected_fallback_title && $normalized_title !== '') {
+        return $admin_title;
+    }
+
+    $site_name = get_bloginfo('name');
+    if ($site_name === '') {
+        return $shared_settings_title . ' - WordPress';
+    }
+
+    return sprintf('%1$s ‹ %2$s — WordPress', $shared_settings_title, $site_name);
+}, 20, 2);
 
 if (!function_exists('meza_should_lock_admin_footer')) {
     function meza_should_lock_admin_footer(): bool
@@ -7256,7 +7304,7 @@ function meza_enforce_site_manager_settings_submenu(): void
         $item[1] = 'read';
         $item[2] = meza_get_settings_admin_page_menu_slug($slug);
         if (isset($item[3])) {
-            $item[3] = $allowed_settings_pages[$slug];
+            $item[3] = $allowed_settings_pages[$slug] . ' Settings';
         }
 
         $filtered_items[] = $item;
@@ -7272,7 +7320,7 @@ function meza_enforce_site_manager_settings_submenu(): void
             $label,
             'read',
             meza_get_settings_admin_page_menu_slug($slug),
-            $label,
+            $label . ' Settings',
         ];
     }
 

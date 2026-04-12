@@ -13,7 +13,7 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
     {
         $pages = [
             [
-                'page_title'      => 'Business Information',
+                'page_title'      => 'Business Information Settings',
                 'menu_title'      => 'Business Information',
                 'menu_slug'       => 'business-information',
                 'parent_slug'     => 'options-general.php',
@@ -24,7 +24,7 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
                 'autoload'        => false,
             ],
             [
-                'page_title'      => 'Branding',
+                'page_title'      => 'Branding Settings',
                 'menu_title'      => 'Branding',
                 'menu_slug'       => 'branding',
                 'parent_slug'     => 'options-general.php',
@@ -35,7 +35,7 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
                 'autoload'        => false,
             ],
             [
-                'page_title'      => 'CRM Integration',
+                'page_title'      => 'CRM Integration Settings',
                 'menu_title'      => 'CRM Integration',
                 'menu_slug'       => 'crm',
                 'parent_slug'     => 'options-general.php',
@@ -915,21 +915,21 @@ add_filter('acf/ui_options_page/registration_args', function (array $args, array
     $menu_slug = (string) ($args['menu_slug'] ?? '');
 
     if ($menu_slug === 'branding') {
-        $args['page_title'] = 'Branding';
+        $args['page_title'] = 'Branding Settings';
         $args['menu_title'] = 'Branding';
 
         return $args;
     }
 
     if ($menu_slug === 'business-information') {
-        $args['page_title'] = 'Business Information';
+        $args['page_title'] = 'Business Information Settings';
         $args['menu_title'] = 'Business Information';
 
         return $args;
     }
 
     if ($menu_slug === 'crm') {
-        $args['page_title'] = 'CRM Integration';
+        $args['page_title'] = 'CRM Integration Settings';
         $args['menu_title'] = 'CRM Integration';
         $args['capability'] = 'manage_options';
 
@@ -951,15 +951,15 @@ add_filter('acf/get_options_page', function ($page, $slug) {
     }
 
     if ($slug === 'branding') {
-        $page['page_title'] = 'Branding';
+        $page['page_title'] = 'Branding Settings';
         $page['menu_title'] = 'Branding';
     } elseif ($slug === 'business-information') {
-        $page['page_title'] = 'Business Information';
+        $page['page_title'] = 'Business Information Settings';
         $page['menu_title'] = 'Business Information';
         $page['menu_slug'] = 'business-information';
         $page['capability'] = 'manage_options';
     } elseif ($slug === 'crm') {
-        $page['page_title'] = 'CRM Integration';
+        $page['page_title'] = 'CRM Integration Settings';
         $page['menu_title'] = 'CRM Integration';
         $page['menu_slug'] = 'crm';
         $page['capability'] = 'manage_options';
@@ -985,7 +985,7 @@ add_filter('acf/get_options_pages', function ($pages) {
 
         $page = $pages[$legacy_slug];
         $page['menu_slug'] = $current_slug;
-        $page['page_title'] = 'Business Information';
+        $page['page_title'] = 'Business Information Settings';
         $page['menu_title'] = 'Business Information';
         $page['capability'] = 'manage_options';
         $pages[$current_slug] = $page;
@@ -1053,9 +1053,9 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
         $branding_item = null;
         $crm_item = null;
         $expected_items = [
-            'business-information' => ['Business Information', 'manage_options', 'business-information', 'Business Information'],
-            'branding' => ['Branding', 'manage_options', 'branding', 'Branding'],
-            'crm' => ['CRM Integration', 'manage_options', 'crm', 'CRM Integration'],
+            'business-information' => ['Business Information', 'manage_options', 'business-information', 'Business Information Settings'],
+            'branding' => ['Branding', 'manage_options', 'branding', 'Branding Settings'],
+            'crm' => ['CRM Integration', 'manage_options', 'crm', 'CRM Integration Settings'],
         ];
 
         foreach ($submenu['options-general.php'] as $index => $item) {
@@ -1069,7 +1069,7 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
                 $submenu['options-general.php'][$index][0] = 'Business Information';
                 $submenu['options-general.php'][$index][2] = 'business-information';
                 if (isset($submenu['options-general.php'][$index][3])) {
-                    $submenu['options-general.php'][$index][3] = 'Business Information';
+                    $submenu['options-general.php'][$index][3] = 'Business Information Settings';
                 }
 
                 $business_information_item = $submenu['options-general.php'][$index];
@@ -1081,7 +1081,7 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
                 $submenu['options-general.php'][$index][0] = 'CRM Integration';
                 $submenu['options-general.php'][$index][2] = 'crm';
                 if (isset($submenu['options-general.php'][$index][3])) {
-                    $submenu['options-general.php'][$index][3] = 'CRM Integration';
+                    $submenu['options-general.php'][$index][3] = 'CRM Integration Settings';
                 }
 
                 $crm_item = $submenu['options-general.php'][$index];
@@ -1096,7 +1096,7 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             $submenu['options-general.php'][$index][0] = 'Branding';
             $submenu['options-general.php'][$index][2] = 'branding';
             if (isset($submenu['options-general.php'][$index][3])) {
-                $submenu['options-general.php'][$index][3] = 'Branding';
+                $submenu['options-general.php'][$index][3] = 'Branding Settings';
             }
 
             $branding_item = $submenu['options-general.php'][$index];
