@@ -1211,14 +1211,24 @@ add_action('admin_head-users.php', function (): void {
 
 add_action('admin_head-upload.php', function (): void {
     echo '<style id="meza-media-list-layout">'
+        . '.upload-php .wp-list-table .column-mz_id{width:65px;min-width:65px;max-width:65px;}'
+        . '.upload-php .wp-list-table .column-mz_converted{width:90px;min-width:90px;max-width:90px;text-align:center;}'
         . '.upload-php .wp-list-table .column-title{width:450px;min-width:450px;max-width:450px;}'
+        . '.upload-php .wp-list-table .column-alt_text{width:225px;min-width:225px;max-width:225px;}'
         . '.upload-php .wp-list-table .column-mime_type{width:125px;min-width:125px;max-width:125px;}'
         . '.upload-php .wp-list-table .column-dimensions{width:125px;min-width:125px;max-width:125px;}'
         . '.upload-php .wp-list-table .column-file_size{width:125px;min-width:125px;max-width:125px;}'
         . '.upload-php .wp-list-table .column-parent{width:224px;min-width:224px;max-width:224px;}'
         . '.upload-php .wp-list-table .column-mz_modified{width:225px;min-width:225px;max-width:225px;}'
         . '.upload-php .wp-list-table .column-mz_published{width:225px;min-width:225px;max-width:225px;}'
-        . '.upload-php .wp-list-table .column-download{width:125px;min-width:125px;max-width:125px;}'
+        . '.upload-php .wp-list-table td.column-mz_converted{text-align:center;vertical-align:top!important;padding-top:10px!important;}'
+        . '.upload-php .wp-list-table .meza-boolean-icon{display:inline-block;font-size:18px;line-height:1;font-weight:700;}'
+        . '.upload-php .wp-list-table .meza-boolean-icon-true{color:#2271b1;}'
+        . '.upload-php .wp-list-table .meza-boolean-icon-false{color:#b32d2e;}'
+        . '.upload-php .wp-list-table td.column-title{vertical-align:top!important;}'
+        . '.upload-php .wp-list-table td.column-title .media-icon{display:inline-flex!important;align-items:flex-start!important;justify-content:flex-start!important;width:100px!important;max-width:100%!important;max-height:100px!important;line-height:0!important;margin:0 12px 6px 0!important;vertical-align:top!important;float:left!important;overflow:visible!important;}'
+        . '.upload-php .wp-list-table td.column-title .media-icon img{display:block!important;width:auto!important;height:auto!important;max-width:100px!important;max-height:100px!important;object-fit:contain!important;margin:0!important;}'
+        . '.upload-php .wp-list-table td.column-title .row-title{display:block;}'
         . '</style>';
 }, 1000);
 

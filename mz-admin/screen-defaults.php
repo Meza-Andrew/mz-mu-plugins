@@ -1026,6 +1026,307 @@ add_action('admin_init', function () {
     remove_action('welcome_panel', 'wp_welcome_panel');
 });
 
+if (!function_exists('meza_get_screen_option_default_meta_like_patterns')) {
+    function meza_get_screen_option_default_meta_like_patterns(): array
+    {
+        return [
+            'manage%columnshidden',
+            'metaboxhidden_%',
+            'closedpostboxes_%',
+            'meta-box-order_%',
+            'screen_layout_%',
+            'edit_%_per_page',
+        ];
+    }
+}
+
+if (!function_exists('meza_get_screen_option_reset_meta_like_patterns')) {
+    function meza_get_screen_option_reset_meta_like_patterns(): array
+    {
+        return array_merge(
+            meza_get_screen_option_default_meta_like_patterns(),
+            [
+                'meza_%_initialized_%',
+                'meza_%_migrated_%',
+            ]
+        );
+    }
+}
+
+if (!function_exists('meza_normalize_screen_option_value')) {
+    function meza_normalize_screen_option_value($value)
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        return array_values(array_unique(array_map('strval', $value)));
+    }
+}
+
+if (!function_exists('meza_get_admin_screen_option_defaults')) {
+    function meza_get_admin_screen_option_defaults(): array
+    {
+        $defaults = get_option('meza_admin_screen_option_defaults', []);
+
+        return is_array($defaults) ? $defaults : [];
+    }
+}
+
+if (!function_exists('meza_get_admin_screen_option_default_value')) {
+    function meza_get_admin_screen_option_default_value(string $meta_key)
+    {
+        $meta_key = trim($meta_key);
+        if ($meta_key === '') {
+            return null;
+        }
+
+        $defaults = meza_get_admin_screen_option_defaults();
+
+        return array_key_exists($meta_key, $defaults)
+            ? meza_normalize_screen_option_value($defaults[$meta_key])
+            : null;
+    }
+}
+
+if (!function_exists('meza_register_admin_screen_option_default_filters')) {
+    function meza_register_admin_screen_option_default_filters(): void
+    {
+        static $registered = [];
+
+        foreach (array_keys(meza_get_admin_screen_option_defaults()) as $meta_key) {
+            $meta_key = trim((string) $meta_key);
+            if ($meta_key === '' || isset($registered[$meta_key])) {
+                continue;
+            }
+
+            add_filter('default_user_option_' . $meta_key, function ($default_value) use ($meta_key) {
+                $admin_default = meza_get_admin_screen_option_default_value($meta_key);
+
+                return $admin_default !== null ? $admin_default : $default_value;
+            }, 1000, 1);
+
+            add_filter('get_user_option_' . $meta_key, function ($value) use ($meta_key) {
+                if ($value !== false && $value !== null && $value !== '') {
+                    return $value;
+                }
+
+                $admin_default = meza_get_admin_screen_option_default_value($meta_key);
+
+                return $admin_default !== null ? $admin_default : $value;
+            }, 1000, 1);
+
+            $registered[$meta_key] = true;
+        }
+    }
+}
+
+if (!function_exists('meza_capture_admin_screen_option_defaults_for_screen')) {
+    function meza_capture_admin_screen_option_defaults_for_screen(WP_Screen $screen): void
+    {
+        if (!is_admin() || !current_user_can('manage_options')) {
+            return;
+        }
+
+        $user_id = get_current_user_id();
+        $screen_id = (string) ($screen->id ?? '');
+        if ($user_id <= 0 || $screen_id === '') {
+            return;
+        }
+
+        $defaults = meza_get_admin_screen_option_defaults();
+        $updated = $defaults;
+
+        $updated['manage' . $screen_id . 'columnshidden'] = meza_normalize_screen_option_value(get_hidden_columns($screen));
+
+        if (function_exists('get_hidden_meta_boxes')) {
+            $updated['metaboxhidden_' . $screen_id] = meza_normalize_screen_option_value(get_hidden_meta_boxes($screen));
+        }
+
+        foreach ([
+            'closedpostboxes_' . $screen_id,
+            'meta-box-order_' . $screen_id,
+            'screen_layout_' . $screen_id,
+        ] as $meta_key) {
+            $value = get_user_option($meta_key, $user_id);
+            if ($value === false || $value === null || $value === '') {
+                continue;
+            }
+
+            $updated[$meta_key] = meza_normalize_screen_option_value($value);
+        }
+
+        if (method_exists($screen, 'get_option')) {
+            $per_page_option = (string) $screen->get_option('per_page', 'option');
+            if ($per_page_option !== '') {
+                $per_page_value = get_user_option($per_page_option, $user_id);
+                if ($per_page_value !== false && $per_page_value !== null && $per_page_value !== '') {
+                    $updated[$per_page_option] = meza_normalize_screen_option_value($per_page_value);
+                }
+            }
+        }
+
+        if ($updated === $defaults) {
+            return;
+        }
+
+        update_option('meza_admin_screen_option_defaults', $updated, false);
+        meza_register_admin_screen_option_default_filters();
+    }
+}
+
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen)) {
+        return;
+    }
+
+    meza_capture_admin_screen_option_defaults_for_screen($screen);
+}, 999);
+
+meza_register_admin_screen_option_default_filters();
+
+if (!function_exists('meza_get_screen_options_reset_token')) {
+    function meza_get_screen_options_reset_token(): string
+    {
+        if (!defined('MZ_RESET_SCREEN_OPTIONS_FOR_CURRENT_USER')) {
+            return '';
+        }
+
+        $token = trim((string) constant('MZ_RESET_SCREEN_OPTIONS_FOR_CURRENT_USER'));
+
+        return $token !== '' ? $token : '';
+    }
+}
+
+if (!function_exists('meza_reset_screen_options_for_user')) {
+    function meza_reset_screen_options_for_user(int $user_id): void
+    {
+        global $wpdb;
+
+        if ($user_id <= 0 || !isset($wpdb->usermeta)) {
+            return;
+        }
+
+        $like_sql = [];
+        $like_values = [$user_id];
+
+        foreach (meza_get_screen_option_reset_meta_like_patterns() as $pattern) {
+            $like_sql[] = 'meta_key LIKE %s';
+            $like_values[] = $pattern;
+        }
+
+        $meta_keys = $wpdb->get_col($wpdb->prepare(
+            "
+            SELECT meta_key
+            FROM {$wpdb->usermeta}
+            WHERE user_id = %d
+              AND (" . implode(' OR ', $like_sql) . ')
+            ',
+            ...$like_values
+        ));
+
+        if (!is_array($meta_keys) || empty($meta_keys)) {
+            return;
+        }
+
+        foreach (array_values(array_unique(array_map('strval', $meta_keys))) as $meta_key) {
+            if ($meta_key === '') {
+                continue;
+            }
+
+            delete_user_meta($user_id, $meta_key);
+        }
+    }
+}
+
+if (!function_exists('meza_get_all_users_screen_options_reset_token')) {
+    function meza_get_all_users_screen_options_reset_token(): string
+    {
+        if (!defined('MZ_RESET_SCREEN_OPTIONS_FOR_ALL_USERS')) {
+            return '';
+        }
+
+        $token = trim((string) constant('MZ_RESET_SCREEN_OPTIONS_FOR_ALL_USERS'));
+
+        return $token !== '' ? $token : '';
+    }
+}
+
+if (!function_exists('meza_reset_screen_options_for_all_users')) {
+    function meza_reset_screen_options_for_all_users(): void
+    {
+        global $wpdb;
+
+        if (!isset($wpdb->usermeta)) {
+            return;
+        }
+
+        $like_sql = [];
+        $like_values = [];
+
+        foreach (meza_get_screen_option_reset_meta_like_patterns() as $pattern) {
+            $like_sql[] = 'meta_key LIKE %s';
+            $like_values[] = $pattern;
+        }
+
+        if ($like_sql === []) {
+            return;
+        }
+
+        $wpdb->query($wpdb->prepare(
+            "
+            DELETE FROM {$wpdb->usermeta}
+            WHERE " . implode(' OR ', $like_sql),
+            ...$like_values
+        ));
+    }
+}
+
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $token = meza_get_screen_options_reset_token();
+    if ($token === '') {
+        return;
+    }
+
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) {
+        return;
+    }
+
+    $applied_token_key = 'meza_screen_options_reset_token';
+    $applied_token = get_user_meta($user_id, $applied_token_key, true);
+    if (is_string($applied_token) && hash_equals($applied_token, $token)) {
+        return;
+    }
+
+    meza_reset_screen_options_for_user($user_id);
+    update_user_meta($user_id, $applied_token_key, $token);
+}, 1);
+
+add_action('admin_init', function (): void {
+    if (!is_admin() || !current_user_can('manage_options')) {
+        return;
+    }
+
+    $token = meza_get_all_users_screen_options_reset_token();
+    if ($token === '') {
+        return;
+    }
+
+    $applied_token_key = 'meza_screen_options_reset_all_users_token';
+    $applied_token = (string) get_option($applied_token_key, '');
+    if ($applied_token !== '' && hash_equals($applied_token, $token)) {
+        return;
+    }
+
+    meza_reset_screen_options_for_all_users();
+    update_option($applied_token_key, $token, false);
+}, 1);
+
 if (!function_exists('meza_get_post_admin_list_per_page')) {
     function meza_get_post_admin_list_per_page(): int
     {

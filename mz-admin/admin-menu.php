@@ -783,7 +783,7 @@ add_action('load-upload.php', function (): void {
         $query_args[(string) $key] = (string) wp_unslash($value);
     }
 
-    $query_args['mode'] = 'grid';
+    $query_args['mode'] = current_user_can('manage_options') ? 'list' : 'grid';
 
     wp_safe_redirect(add_query_arg($query_args, admin_url('upload.php')));
     exit;
@@ -811,7 +811,9 @@ add_action('admin_menu', function (): void {
             continue;
         }
 
-        $item[2] = 'upload.php?mode=grid';
+        $item[2] = current_user_can('manage_options')
+            ? 'upload.php?mode=list'
+            : 'upload.php?mode=grid';
         break;
     }
     unset($item);

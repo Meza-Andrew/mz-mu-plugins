@@ -95,7 +95,7 @@ add_action('admin_head-edit.php', function () {
     $post_type = (string) ($screen->post_type ?? '');
     $is_acp_layout = meza_post_type_uses_admin_columns_layout($post_type);
     $is_acf_screen = meza_is_acf_admin_post_type((string) ($screen->post_type ?? ''));
-    $current_columns = apply_filters("manage_{$post_type}_posts_columns", []);
+    $current_columns = function_exists('get_column_headers') ? get_column_headers($screen) : [];
     $taxonomy_width_selectors = meza_get_taxonomy_admin_column_width_selectors($post_type);
     $compact_date_width_selectors = meza_get_compact_date_admin_column_width_selectors($post_type);
     $taxonomy_column_labels = array_values(array_unique(array_filter(array_map(
@@ -127,6 +127,8 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-mz_summary{width:325px;}' .
             '.wp-list-table .column-mz_review_quote{width:325px;}' .
             '.wp-list-table .column-mz_review_citer{width:175px;}' .
+            '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;}' .
+            '.wp-list-table .column-acf-count{width:125px;}' .
             '.wp-list-table .column-mz_thumbnail{width:125px;min-width:125px;max-width:125px;}' .
             '.wp-list-table .column-title{width:225px;}' .
             '.wp-list-table .column-mz_modified,.wp-list-table .column-modified,.wp-list-table .column-mz_published,.wp-list-table .column-date{width:225px;}' .
@@ -166,6 +168,8 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
             '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
             '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
+            '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;max-width:225px;}' .
+            '.wp-list-table .column-acf-count{width:125px;max-width:125px;}' .
             '.wp-list-table .column-mz_thumbnail{width:125px;}' .
             '.wp-list-table .column-title{width:225px;}' .
             '.wp-list-table .column-mz_modified,.wp-list-table .column-modified,.wp-list-table .column-mz_published,.wp-list-table .column-date{width:225px;max-width:225px;}' .
@@ -219,6 +223,8 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
+        '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;max-width:225px;}' .
+        '.wp-list-table .column-acf-count{width:125px;max-width:125px;}' .
         '.wp-list-table .column-mz_thumbnail{width:125px;}' .
         '.wp-list-table td.column-mz_thumbnail{vertical-align:top!important;}' .
         '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap{display:inline-block!important;width:100px!important;max-width:100%!important;line-height:0!important;margin:0 0 6px!important;}' .
@@ -499,7 +505,7 @@ add_action('admin_head-edit.php', function (): void {
         return;
     }
 
-    $current_columns = apply_filters("manage_{$post_type}_posts_columns", []);
+    $current_columns = function_exists('get_column_headers') ? get_column_headers($screen) : [];
     $event_date_column_keys = is_array($current_columns) ? meza_get_event_date_admin_column_keys($current_columns) : ['start' => '', 'end' => ''];
 
     $column_map = [];

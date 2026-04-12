@@ -254,6 +254,15 @@ function meza_post_type_menu_order_admin_column_is_default_visible(string $post_
     $post_type = trim($post_type);
     if ($post_type === '') return false;
 
+    $seeded_columns = meza_get_seeded_admin_column_defaults_for_post_type($post_type);
+    if (
+        $seeded_columns !== []
+        && !array_key_exists('date', $seeded_columns)
+        && !array_key_exists('mz_published', $seeded_columns)
+    ) {
+        return true;
+    }
+
     if (in_array($post_type, meza_get_menu_order_admin_column_default_visible_post_types(), true)) {
         return true;
     }
@@ -1214,14 +1223,17 @@ function meza_apply_default_admin_column_order(array $columns, string $post_type
     return $ordered;
 }
 
-function meza_build_reordered_acp_column_collection($columns, string $post_type): ?AC\ColumnCollection
+function meza_build_reordered_acp_column_collection($columns, string $post_type = '', string $table_id = ''): ?AC\ColumnCollection
 {
     if (!class_exists('AC\\ColumnCollection') || !($columns instanceof AC\ColumnIterator)) {
         return null;
     }
 
     $post_type = trim($post_type);
-    if ($post_type === '') {
+    $table_id = trim($table_id);
+    $layout_key = meza_get_seeded_admin_column_layout_key($post_type, $table_id);
+
+    if ($post_type === '' && $layout_key === '') {
         return null;
     }
 
@@ -1246,9 +1258,12 @@ function meza_build_reordered_acp_column_collection($columns, string $post_type)
         return null;
     }
 
-    $desired = meza_normalize_admin_columns_managed_headings($labels, $post_type, false);
+    $desired = ($layout_key !== '')
+        ? meza_apply_seeded_admin_column_order($labels, $layout_key, true)
+        : meza_normalize_admin_columns_managed_headings($labels, $post_type, false);
     $ordered = new AC\ColumnCollection();
     $used = [];
+    $drop_unseeded_columns = ($layout_key !== '');
 
     foreach (array_keys($desired) as $id) {
         $id = (string) $id;
@@ -1260,12 +1275,14 @@ function meza_build_reordered_acp_column_collection($columns, string $post_type)
         $used[$id] = true;
     }
 
-    foreach ($column_map as $id => $column) {
-        if (isset($used[$id])) {
-            continue;
-        }
+    if (!$drop_unseeded_columns) {
+        foreach ($column_map as $id => $column) {
+            if (isset($used[$id])) {
+                continue;
+            }
 
-        $ordered->add($column);
+            $ordered->add($column);
+        }
     }
 
     return $ordered;
@@ -1293,13 +1310,388 @@ function meza_get_acp_column_collection_ids($columns): array
     return $ids;
 }
 
+function meza_get_seeded_acp_default_admin_columns(): array
+{
+    return [
+        '_ac_columns_default_acf-post-type' => [
+            'title' => ['label' => 'Title'],
+            'acf-taxonomies' => ['label' => 'Taxonomies'],
+            'acf-field-groups' => ['label' => 'Field Groups'],
+            'acf-count' => ['label' => 'Posts'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_acf-taxonomy' => [
+            'title' => ['label' => 'Title'],
+            'acf-post-types' => ['label' => 'Post Types'],
+            'acf-field-groups' => ['label' => 'Field Groups'],
+            'acf-count' => ['label' => 'Terms'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_acf-ui-options-page' => [
+            'title' => ['label' => 'Title'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_cta' => [
+            'mz_id' => ['label' => 'ID'],
+            'title' => ['label' => 'Headline (H2)'],
+            'mz_summary' => ['label' => 'Subhead'],
+            'mz_cta_link' => ['label' => 'Link (Primary)'],
+            'mz_cta_secondary_link' => ['label' => 'Link (Secondary)'],
+            'mz_modified' => ['label' => 'Modified'],
+            'date' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_faq' => [
+            'mz_id' => ['label' => 'ID'],
+            'title' => ['label' => 'Title'],
+            'mz_faq_count' => ['label' => 'Count'],
+            'mz_modified' => ['label' => 'Modified'],
+            'date' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_form' => [
+            'mz_id' => ['label' => 'ID'],
+            'title' => ['label' => 'Headline (H2)'],
+            'mz_slug' => ['label' => 'Slug'],
+            'mz_form_recipients' => ['label' => 'Recipients'],
+            'mz_modified' => ['label' => 'Modified'],
+            'date' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_organization' => [
+            'mz_id' => ['label' => 'ID'],
+            'mz_menu_order' => ['label' => '#'],
+            'mz_thumbnail' => ['label' => 'Logo'],
+            'title' => ['label' => 'Name'],
+            'mz_summary' => ['label' => 'Summary'],
+            'mz_organization_url' => ['label' => 'Link'],
+            'mz_modified' => ['label' => 'Modified'],
+            'date' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_page' => [
+            'mz_id' => ['label' => 'ID'],
+            'mz_menu_order' => ['label' => '#'],
+            'title' => ['label' => 'Title'],
+            'mz_summary' => ['label' => 'Summary'],
+            'mz_page_headline' => ['label' => 'Page Headline (H1)'],
+            'mz_page_cta' => ['label' => 'Page CTA'],
+            'mz_page_form' => ['label' => 'Page Form'],
+            'wpseo-title' => ['label' => 'Meta Title'],
+            'wpseo-metadesc' => ['label' => 'Meta Description'],
+            'mz_thumbnail' => ['label' => 'Share Image'],
+            'mz_share_title' => ['label' => 'Share Title'],
+            'mz_share_description' => ['label' => 'Share Description'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_post' => [
+            'mz_id' => ['label' => 'ID'],
+            'mz_menu_order' => ['label' => '#'],
+            'title' => ['label' => 'Title'],
+            'mz_summary' => ['label' => 'Summary'],
+            'mz_page_headline' => ['label' => 'Page Headline (H1)'],
+            'mz_page_cta' => ['label' => 'Page CTA'],
+            'mz_page_form' => ['label' => 'Page Form'],
+            'wpseo-title' => ['label' => 'Meta Title'],
+            'wpseo-metadesc' => ['label' => 'Meta Description'],
+            'mz_thumbnail' => ['label' => 'Share Image'],
+            'mz_share_title' => ['label' => 'Share Title'],
+            'mz_share_description' => ['label' => 'Share Description'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_profile' => [
+            'mz_id' => ['label' => 'ID'],
+            'mz_menu_order' => ['label' => '#'],
+            'mz_thumbnail' => ['label' => 'Photo'],
+            'title' => ['label' => 'Name'],
+            'mz_summary' => ['label' => 'Short Bio'],
+            'mz_profile_title' => ['label' => 'Title'],
+            'mz_profile_link' => ['label' => 'Link'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_project' => [
+            'mz_id' => ['label' => 'ID'],
+            'mz_menu_order' => ['label' => '#'],
+            'mz_thumbnail' => ['label' => 'Image'],
+            'title' => ['label' => 'Title'],
+            'mz_summary' => ['label' => 'Summary'],
+            'mz_modified' => ['label' => 'Modified'],
+        ],
+        '_ac_columns_default_resource' => [
+            'mz_id' => ['label' => 'ID'],
+            'mz_menu_order' => ['label' => '#'],
+            'title' => ['label' => 'Title'],
+            'mz_summary' => ['label' => 'Summary'],
+            'mz_page_headline' => ['label' => 'Page Headline (H1)'],
+            'mz_page_cta' => ['label' => 'Page CTA'],
+            'mz_page_form' => ['label' => 'Page Form'],
+            'wpseo-title' => ['label' => 'Meta Title'],
+            'wpseo-metadesc' => ['label' => 'Meta Description'],
+            'mz_thumbnail' => ['label' => 'Share Image'],
+            'mz_share_title' => ['label' => 'Share Title'],
+            'mz_share_description' => ['label' => 'Share Description'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_review' => [
+            'mz_id' => ['label' => 'ID'],
+            'mz_menu_order' => ['label' => '#'],
+            'title' => ['label' => 'Title'],
+            'mz_review_quote' => ['label' => 'Quote'],
+            'mz_review_citer' => ['label' => 'Citer'],
+            'mz_modified' => ['label' => 'Modified'],
+        ],
+        '_ac_columns_default_wp_block' => [
+            'mz_id' => ['label' => 'ID'],
+            'title' => ['label' => 'Title'],
+            'taxonomy-wp_pattern_category' => ['label' => 'Pattern Categories'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_wp-comments' => [
+            'author' => ['label' => 'Author'],
+            'comment_id' => ['label' => 'ID'],
+            'comment' => ['label' => 'Comment'],
+            'response' => ['label' => 'In response to'],
+            'date' => ['label' => 'Submitted on'],
+        ],
+        '_ac_columns_default_wp-media' => [
+            'mz_id' => ['label' => 'ID'],
+            'title' => ['label' => 'File'],
+            'parent' => ['label' => 'Uploaded to'],
+            'alt_text' => ['label' => 'Alt Text'],
+            'file_size' => ['label' => 'Size'],
+            'mime_type' => ['label' => 'Type'],
+            'dimensions' => ['label' => 'Dimensions'],
+            'mz_converted' => ['label' => 'Converted'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_wp-users' => [
+            'username' => ['label' => 'Username'],
+            'name' => ['label' => 'Name'],
+            'email' => ['label' => 'Email'],
+            'role' => ['label' => 'Role'],
+            'website' => ['label' => 'Website'],
+            'last_login' => ['label' => 'Last Login'],
+        ],
+    ];
+}
+
+function meza_get_seeded_admin_column_defaults_for_list_key(string $list_key): array
+{
+    $list_key = trim($list_key);
+    if ($list_key === '') {
+        return [];
+    }
+
+    $option_name = '_ac_columns_default_' . $list_key;
+    $defaults = meza_get_seeded_acp_default_admin_columns();
+
+    return isset($defaults[$option_name]) && is_array($defaults[$option_name])
+        ? $defaults[$option_name]
+        : [];
+}
+
+function meza_get_seeded_admin_column_defaults_for_post_type(string $post_type): array
+{
+    return meza_get_seeded_admin_column_defaults_for_list_key($post_type);
+}
+
+function meza_get_seeded_admin_column_alias_candidates(string $key): array
+{
+    $key = trim($key);
+    if ($key === '') {
+        return [];
+    }
+
+    $aliases = [
+        'date' => ['date', 'mz_published'],
+        'mz_published' => ['mz_published', 'date'],
+        'website' => ['website', 'mz_website'],
+        'mz_website' => ['mz_website', 'website'],
+        'last_login' => ['last_login', 'mz_last_login'],
+        'mz_last_login' => ['mz_last_login', 'last_login'],
+        'comment_id' => ['comment_id', 'mz_id'],
+    ];
+
+    return array_values(array_unique(array_filter(array_map('strval', $aliases[$key] ?? [$key]))));
+}
+
+function meza_get_seeded_admin_column_label_candidates(string $seeded_key, string $seeded_label): array
+{
+    $candidates = [];
+    $seeded_key = trim($seeded_key);
+    $seeded_label = trim($seeded_label);
+
+    if ($seeded_label !== '') {
+        $candidates[] = $seeded_label;
+    }
+
+    $label_aliases = [
+        'date' => ['Published', 'Date'],
+        'mz_published' => ['Published', 'Date'],
+        'mz_modified' => ['Modified'],
+        'mz_faq_count' => ['Count'],
+        'mime_type' => ['Type'],
+        'file_size' => ['Size'],
+        'comment_id' => ['ID'],
+        'mz_id' => ['ID'],
+    ];
+
+    foreach ($label_aliases[$seeded_key] ?? [] as $candidate) {
+        $candidate = trim((string) $candidate);
+        if ($candidate !== '') {
+            $candidates[] = $candidate;
+        }
+    }
+
+    return array_values(array_unique(array_filter(array_map('strval', $candidates))));
+}
+
+function meza_find_matching_seeded_admin_column_key(array $columns, string $seeded_key, string $seeded_label = '', array $used = []): string
+{
+    foreach (meza_get_seeded_admin_column_alias_candidates($seeded_key) as $candidate_key) {
+        if ($candidate_key !== '' && array_key_exists($candidate_key, $columns) && !isset($used[$candidate_key])) {
+            return $candidate_key;
+        }
+    }
+
+    $label_candidates = array_fill_keys(array_map('meza_normalize_admin_column_token', meza_get_seeded_admin_column_label_candidates($seeded_key, $seeded_label)), true);
+
+    if ($label_candidates !== []) {
+        foreach ($columns as $candidate_key => $candidate_label) {
+            $candidate_key = (string) $candidate_key;
+            if ($candidate_key === '' || isset($used[$candidate_key])) {
+                continue;
+            }
+
+            if (isset($label_candidates[meza_normalize_admin_column_token((string) $candidate_label)])) {
+                return $candidate_key;
+            }
+        }
+    }
+
+    return '';
+}
+
+function meza_apply_seeded_admin_column_order(array $columns, string $list_key, bool $drop_unseeded_columns = false): array
+{
+    if (!is_array($columns)) {
+        return [];
+    }
+
+    $seeded_columns = meza_get_seeded_admin_column_defaults_for_list_key($list_key);
+    if ($seeded_columns === []) {
+        return $columns;
+    }
+
+    $ordered = [];
+    $used = [];
+
+    if (array_key_exists('cb', $columns)) {
+        $ordered['cb'] = $columns['cb'];
+        $used['cb'] = true;
+    }
+
+    foreach ($seeded_columns as $seeded_key => $seeded_column) {
+        $match = meza_find_matching_seeded_admin_column_key(
+            $columns,
+            (string) $seeded_key,
+            (string) ($seeded_column['label'] ?? ''),
+            $used
+        );
+        if ($match === '' || isset($used[$match])) {
+            continue;
+        }
+
+        $ordered[$match] = $columns[$match];
+        $used[$match] = true;
+    }
+
+    if ($drop_unseeded_columns) {
+        return $ordered;
+    }
+
+    foreach ($columns as $key => $label) {
+        $key = (string) $key;
+        if ($key === '' || isset($used[$key])) {
+            continue;
+        }
+
+        $ordered[$key] = $label;
+    }
+
+    return $ordered;
+}
+
+function meza_get_seeded_admin_column_layout_key(string $post_type = '', string $table_id = ''): string
+{
+    $table_id = trim($table_id);
+    if ($table_id !== '' && meza_get_seeded_admin_column_defaults_for_list_key($table_id) !== []) {
+        return $table_id;
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type !== '' && meza_get_seeded_admin_column_defaults_for_post_type($post_type) !== []) {
+        return $post_type;
+    }
+
+    return '';
+}
+
+function meza_get_default_visible_taxonomy_admin_column_keys(string $post_type): array
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return [];
+    }
+
+    $seeded_columns = meza_get_seeded_admin_column_defaults_for_post_type($post_type);
+    if ($seeded_columns === []) {
+        return meza_get_taxonomy_admin_column_keys_for_post_type($post_type);
+    }
+
+    $visible_keys = [];
+
+    foreach (array_keys($seeded_columns) as $seeded_key) {
+        foreach (meza_get_seeded_admin_column_alias_candidates((string) $seeded_key) as $candidate_key) {
+            if (meza_get_admin_column_taxonomy_name($candidate_key, $post_type) === '') {
+                continue;
+            }
+
+            $visible_keys[] = $candidate_key;
+        }
+    }
+
+    return array_values(array_unique(array_filter(array_map('strval', $visible_keys))));
+}
+
+function meza_sync_seeded_acp_default_admin_columns(): void
+{
+    $target_version = '1.1.249';
+    if ((string) get_option('meza_acp_seeded_default_admin_columns_migration') === $target_version) {
+        return;
+    }
+
+    foreach (meza_get_seeded_acp_default_admin_columns() as $option_name => $columns) {
+        update_option($option_name, $columns, false);
+    }
+
+    update_option('meza_acp_seeded_default_admin_columns_migration', $target_version, false);
+}
+
+add_action('admin_init', 'meza_sync_seeded_acp_default_admin_columns', 999);
+
 function meza_run_acp_default_admin_column_order_migration(): void
 {
     if (!class_exists('AC\\Registry') || !class_exists('AC\\ListScreenRepository\\Storage')) {
         return;
     }
 
-    $target_version = '1.1.247';
+    $target_version = '1.1.250';
     if ((string) get_option('meza_acp_default_admin_column_order_migration') === $target_version) {
         return;
     }
@@ -1310,17 +1702,24 @@ function meza_run_acp_default_admin_column_order_migration(): void
     }
 
     foreach ($storage->find_all() as $list_screen) {
-        if (!is_object($list_screen) || !method_exists($list_screen, 'get_post_type') || !method_exists($list_screen, 'get_columns')) {
+        if (!is_object($list_screen) || !method_exists($list_screen, 'get_columns')) {
             continue;
         }
 
-        $post_type = trim((string) $list_screen->get_post_type());
-        if ($post_type === '') {
+        $post_type = method_exists($list_screen, 'get_post_type')
+            ? trim((string) $list_screen->get_post_type())
+            : '';
+        $table_id = method_exists($list_screen, 'get_table_id')
+            ? trim((string) $list_screen->get_table_id())
+            : '';
+        $layout_key = meza_get_seeded_admin_column_layout_key($post_type, $table_id);
+
+        if ($post_type === '' && $layout_key === '') {
             continue;
         }
 
         $existing_columns = $list_screen->get_columns();
-        $reordered_columns = meza_build_reordered_acp_column_collection($existing_columns, $post_type);
+        $reordered_columns = meza_build_reordered_acp_column_collection($existing_columns, $post_type, $table_id);
         if (!($reordered_columns instanceof AC\ColumnCollection)) {
             continue;
         }
@@ -2172,6 +2571,372 @@ add_filter('manage_users_sortable_columns', function (array $columns): array {
     return $columns;
 }, 1000);
 
+function meza_customize_media_admin_columns(array $columns): array
+{
+    $columns = is_array($columns) ? $columns : [];
+    unset($columns['comments'], $columns['author'], $columns['date'], $columns['download']);
+
+    $columns['mz_id'] = __('ID');
+    $columns['mz_converted'] = __('Converted');
+
+    if (isset($columns['title'])) {
+        $columns['title'] = __('File');
+    }
+
+    if (isset($columns['parent'])) {
+        $columns['parent'] = __('Uploaded to');
+    }
+
+    $columns['alt_text'] = __('Alt Text');
+    $columns['file_size'] = __('Size');
+    $columns['mime_type'] = __('Type');
+    $columns['dimensions'] = __('Dimensions');
+    $columns['mz_modified'] = __('Modified');
+    $columns['mz_published'] = __('Published');
+
+    return meza_apply_seeded_admin_column_order($columns, 'wp-media', true);
+}
+
+function meza_get_media_admin_column_file_size(int $attachment_id): int
+{
+    if ($attachment_id <= 0) {
+        return 0;
+    }
+
+    $metadata = wp_get_attachment_metadata($attachment_id);
+    if (is_array($metadata) && !empty($metadata['filesize'])) {
+        return max(0, (int) $metadata['filesize']);
+    }
+
+    $path = get_attached_file($attachment_id);
+    if (!is_string($path) || $path === '' || !file_exists($path)) {
+        return 0;
+    }
+
+    $size = filesize($path);
+    return is_int($size) ? max(0, $size) : 0;
+}
+
+function meza_sync_media_admin_column_file_size_meta(int $attachment_id): void
+{
+    if ($attachment_id <= 0 || get_post_type($attachment_id) !== 'attachment') {
+        return;
+    }
+
+    $size = meza_get_media_admin_column_file_size($attachment_id);
+    if ($size > 0) {
+        update_post_meta($attachment_id, '_meza_attachment_filesize', $size);
+        return;
+    }
+
+    delete_post_meta($attachment_id, '_meza_attachment_filesize');
+}
+
+function meza_get_media_admin_column_file_size_kb(int $attachment_id): int
+{
+    $size = meza_get_media_admin_column_file_size($attachment_id);
+    if ($size <= 0) {
+        return 0;
+    }
+
+    return (int) max(1, (int) ceil($size / 1024));
+}
+
+function meza_media_attachment_has_converted_asset(int $attachment_id): bool
+{
+    if ($attachment_id <= 0) {
+        return false;
+    }
+
+    $path = get_attached_file($attachment_id);
+    if (!is_string($path) || $path === '') {
+        return false;
+    }
+
+    $mime_type = (string) get_post_mime_type($attachment_id);
+    if (!str_starts_with($mime_type, 'image/')) {
+        return false;
+    }
+
+    if (
+        class_exists('\\WebpConverter\\Conversion\\OutputPathGenerator')
+        && class_exists('\\WebpConverter\\Conversion\\Format\\FormatFactory')
+        && class_exists('\\WebpConverter\\Repository\\TokenRepository')
+        && class_exists('\\WebpConverter\\Conversion\\LargerFilesOperator')
+        && class_exists('\\WebpConverter\\Conversion\\CrashedFilesOperator')
+    ) {
+        $format_factory = new \WebpConverter\Conversion\Format\FormatFactory(
+            new \WebpConverter\Repository\TokenRepository()
+        );
+        $output_generator = new \WebpConverter\Conversion\OutputPathGenerator($format_factory);
+        $deleted_extension = \WebpConverter\Conversion\LargerFilesOperator::DELETED_FILE_EXTENSION;
+        $crashed_extension = \WebpConverter\Conversion\CrashedFilesOperator::CRASHED_FILE_EXTENSION;
+
+        foreach (['webp', 'avif'] as $extension) {
+            $output_path = $output_generator->get_path($path, false, $extension);
+            if (!is_string($output_path) || $output_path === '') {
+                continue;
+            }
+
+            if (
+                file_exists($output_path)
+                || file_exists($output_path . '.' . $deleted_extension)
+                || file_exists($output_path . '.' . $crashed_extension)
+            ) {
+                return true;
+            }
+        }
+    }
+
+    $pathinfo = pathinfo($path);
+    $dirname = (string) ($pathinfo['dirname'] ?? '');
+    $filename = (string) ($pathinfo['filename'] ?? '');
+    if ($dirname === '' || $filename === '') {
+        return false;
+    }
+
+    $candidates = [
+        $dirname . '/' . $filename . '.webp',
+        $dirname . '/' . $filename . '.avif',
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (is_string($candidate) && $candidate !== '' && file_exists($candidate)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function meza_render_media_admin_column(string $column_name, int $post_id): void
+{
+    if ($post_id <= 0) {
+        echo '&mdash;';
+        return;
+    }
+
+    if ($column_name === 'mz_id') {
+        echo (int) $post_id;
+        return;
+    }
+
+    if ($column_name === 'mz_converted') {
+        echo meza_media_attachment_has_converted_asset($post_id)
+            ? '<span class="meza-boolean-icon meza-boolean-icon-true" aria-label="' . esc_attr__('True') . '">&#10003;</span>'
+            : '<span class="meza-boolean-icon meza-boolean-icon-false" aria-label="' . esc_attr__('False') . '">&#10005;</span>';
+        return;
+    }
+
+    if ($column_name === 'mime_type') {
+        $mime_type = trim((string) get_post_mime_type($post_id));
+        if ($mime_type === '') {
+            echo '&mdash;';
+            return;
+        }
+
+        $url = add_query_arg([
+            'mode' => isset($_GET['mode']) ? (string) wp_unslash($_GET['mode']) : 'list',
+            'post_mime_type' => $mime_type,
+        ], admin_url('upload.php'));
+
+        echo '<a href="' . esc_url($url) . '">' . esc_html($mime_type) . '</a>';
+        return;
+    }
+
+    if ($column_name === 'dimensions') {
+        $metadata = wp_get_attachment_metadata($post_id);
+        $width = is_array($metadata) ? (int) ($metadata['width'] ?? 0) : 0;
+        $height = is_array($metadata) ? (int) ($metadata['height'] ?? 0) : 0;
+
+        if ($width > 0 && $height > 0) {
+            echo esc_html(sprintf(__('%1$d x %2$d'), $width, $height));
+            return;
+        }
+
+        echo '&mdash;';
+        return;
+    }
+
+    if ($column_name === 'file_size') {
+        $size = meza_get_media_admin_column_file_size($post_id);
+        if ($size > 0) {
+            update_post_meta($post_id, '_meza_attachment_filesize', $size);
+        }
+        $size_kb = meza_get_media_admin_column_file_size_kb($post_id);
+        echo $size_kb > 0 ? esc_html(sprintf(__('%d KB'), $size_kb)) : '&mdash;';
+        return;
+    }
+
+    if ($column_name === 'alt_text') {
+        $alt_text = trim((string) get_post_meta($post_id, '_wp_attachment_image_alt', true));
+        echo $alt_text !== '' ? esc_html($alt_text) : '&mdash;';
+        return;
+    }
+
+    if ($column_name === 'mz_modified') {
+        $attachment = get_post($post_id);
+        if (!($attachment instanceof WP_Post)) {
+            echo '&mdash;';
+            return;
+        }
+
+        $modified_timestamp = get_post_modified_time('U', false, $attachment, true);
+        if (!$modified_timestamp) {
+            echo '&mdash;';
+            return;
+        }
+
+        $modified_by_id = (int) get_post_meta($post_id, '_edit_last', true);
+        if ($modified_by_id <= 0) {
+            $modified_by_id = (int) $attachment->post_author;
+        }
+        $modified_by_name = meza_get_user_first_name_by_id($modified_by_id);
+        $modified_by_email = meza_get_user_email_by_id($modified_by_id);
+
+        $header = esc_html__('Last Modified');
+        if ($modified_by_name !== '') {
+            $header .= ' ' . esc_html__('by') . ' ';
+            if ($modified_by_email !== '') {
+                $header .= '<a href="' . esc_url('mailto:' . $modified_by_email) . '">' . esc_html($modified_by_name) . '</a>';
+            } else {
+                $header .= esc_html($modified_by_name);
+            }
+        }
+
+        $date = wp_date(get_option('date_format'), $modified_timestamp);
+        $time = meza_compact_meridiem(wp_date(get_option('time_format'), $modified_timestamp));
+        $line = sprintf(__('%1$s at %2$s'), $date, $time);
+        echo $header . '<br>' . esc_html($line);
+        return;
+    }
+
+    if ($column_name === 'mz_published') {
+        $attachment = get_post($post_id);
+        if (!($attachment instanceof WP_Post)) {
+            echo '&mdash;';
+            return;
+        }
+
+        $published_timestamp = get_post_time('U', false, $attachment, true);
+        if (!$published_timestamp) {
+            echo '&mdash;';
+            return;
+        }
+
+        $published_by_name = meza_get_user_first_name_by_id((int) $attachment->post_author);
+        $published_by_email = meza_get_user_email_by_id((int) $attachment->post_author);
+        $header = esc_html__('Published');
+        if ($published_by_name !== '') {
+            $header .= ' ' . esc_html__('by') . ' ';
+            if ($published_by_email !== '') {
+                $header .= '<a href="' . esc_url('mailto:' . $published_by_email) . '">' . esc_html($published_by_name) . '</a>';
+            } else {
+                $header .= esc_html($published_by_name);
+            }
+        }
+
+        $date = wp_date(get_option('date_format'), $published_timestamp);
+        $time = meza_compact_meridiem(wp_date(get_option('time_format'), $published_timestamp));
+        $line = sprintf(__('%1$s at %2$s'), $date, $time);
+        echo $header . '<br>' . esc_html($line);
+    }
+}
+
+add_filter('manage_upload_columns', 'meza_customize_media_admin_columns', 1000);
+add_action('manage_media_custom_column', 'meza_render_media_admin_column', 100, 2);
+add_filter('manage_upload_sortable_columns', function (array $columns): array {
+    $columns['mz_id'] = ['mz_id', true];
+    $columns['file_size'] = ['file_size', true];
+    $columns['mime_type'] = ['mime_type', false];
+    $columns['mz_modified'] = ['mz_modified', true, '', '', 'desc'];
+    $columns['mz_published'] = ['mz_published', true];
+
+    return $columns;
+}, 1000);
+
+add_action('add_attachment', 'meza_sync_media_admin_column_file_size_meta', 100);
+add_action('edit_attachment', 'meza_sync_media_admin_column_file_size_meta', 100);
+add_filter('wp_generate_attachment_metadata', function ($metadata, $attachment_id) {
+    meza_sync_media_admin_column_file_size_meta((int) $attachment_id);
+    return $metadata;
+}, 1000, 2);
+
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'upload') {
+        return;
+    }
+
+    if ((isset($_GET['orderby']) && $_GET['orderby'] !== '') || (isset($_REQUEST['orderby']) && $_REQUEST['orderby'] !== '')) {
+        return;
+    }
+
+    $_GET['orderby'] = 'mz_modified';
+    $_REQUEST['orderby'] = 'mz_modified';
+    $_GET['order'] = 'desc';
+    $_REQUEST['order'] = 'desc';
+}, 1);
+
+add_action('pre_get_posts', function (WP_Query $q): void {
+    global $pagenow;
+
+    if (!is_admin() || !$q->is_main_query() || $pagenow !== 'upload.php') {
+        return;
+    }
+
+    $orderby = (string) $q->get('orderby');
+    $order = strtoupper((string) $q->get('order'));
+    $order = in_array($order, ['ASC', 'DESC'], true) ? $order : 'DESC';
+    $requested_mime_type = isset($_GET['post_mime_type']) ? sanitize_text_field((string) wp_unslash($_GET['post_mime_type'])) : '';
+
+    if ($requested_mime_type !== '') {
+        $q->set('post_mime_type', $requested_mime_type);
+    }
+
+    if ($orderby === '' || $orderby === 'mz_modified') {
+        $q->set('orderby', 'modified');
+        $q->set('order', 'DESC');
+        return;
+    }
+
+    if ($orderby === 'mz_id') {
+        $q->set('orderby', 'ID');
+        $q->set('order', $order);
+        return;
+    }
+
+    if ($orderby === 'mz_published') {
+        $q->set('orderby', 'date');
+        $q->set('order', $order);
+        return;
+    }
+
+    if ($orderby === 'file_size') {
+        $q->set('meta_key', '_meza_attachment_filesize');
+        $q->set('orderby', 'meta_value_num');
+        $q->set('order', $order);
+        return;
+    }
+}, 15);
+
+add_filter('posts_clauses', function (array $clauses, WP_Query $q): array {
+    global $pagenow, $wpdb;
+
+    if (!is_admin() || !$q->is_main_query() || $pagenow !== 'upload.php') {
+        return $clauses;
+    }
+
+    if ((string) $q->get('orderby') !== 'mime_type') {
+        return $clauses;
+    }
+
+    $order = strtoupper((string) $q->get('order'));
+    $order = in_array($order, ['ASC', 'DESC'], true) ? $order : 'ASC';
+    $clauses['orderby'] = "{$wpdb->posts}.post_mime_type {$order}, {$wpdb->posts}.ID DESC";
+
+    return $clauses;
+}, 20, 2);
+
 add_action('current_screen', function ($screen): void {
     if (!($screen instanceof WP_Screen) || $screen->id !== 'users') {
         return;
@@ -2950,8 +3715,16 @@ function meza_normalize_admin_columns_managed_headings(array $columns, string $p
     $columns = meza_ensure_share_text_admin_columns($columns, $post_type);
     $columns = meza_ensure_modified_published_admin_columns($columns);
 
+    $has_seeded_layout = meza_get_seeded_admin_column_defaults_for_post_type($post_type) !== [];
+
     if ($preserve_existing_order) {
-        return $columns;
+        return $has_seeded_layout
+            ? meza_apply_seeded_admin_column_order($columns, $post_type, true)
+            : $columns;
+    }
+
+    if ($has_seeded_layout) {
+        return meza_apply_seeded_admin_column_order($columns, $post_type, true);
     }
 
     return meza_apply_default_admin_column_order(
@@ -3092,6 +3865,10 @@ function meza_normalize_datetime_columns(array $columns): array
 
     $updated = meza_ensure_share_text_admin_columns($updated, $post_type);
     $updated = meza_ensure_modified_published_admin_columns($updated);
+
+    if (meza_get_seeded_admin_column_defaults_for_post_type($post_type) !== []) {
+        return meza_apply_seeded_admin_column_order($updated, $post_type, true);
+    }
 
     return meza_apply_default_admin_column_order(
         meza_move_taxonomy_columns_before_meta_columns(
@@ -3695,7 +4472,7 @@ add_filter('default_hidden_columns', function ($hidden, $screen) {
 
     $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
 
-    return array_values(array_diff($hidden, meza_get_taxonomy_admin_column_keys_for_post_type($post_type)));
+    return array_values(array_diff($hidden, meza_get_default_visible_taxonomy_admin_column_keys($post_type)));
 }, 1200, 2);
 
 add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
@@ -3708,7 +4485,7 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
 
     $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
 
-    return array_values(array_diff($hidden, meza_get_taxonomy_admin_column_keys_for_post_type($post_type)));
+    return array_values(array_diff($hidden, meza_get_default_visible_taxonomy_admin_column_keys($post_type)));
 }, 1200, 3);
 
 add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
