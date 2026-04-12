@@ -4879,6 +4879,43 @@ if (!function_exists('meza_is_whitelisted_admin_title_screen')) {
     }
 }
 
+if (!function_exists('meza_ensure_admin_page_title_is_string')) {
+    function meza_ensure_admin_page_title_is_string($screen = null): void
+    {
+        if (!is_admin()) {
+            return;
+        }
+
+        global $title;
+
+        if (is_string($title) && $title !== '') {
+            return;
+        }
+
+        if (!($screen instanceof WP_Screen) && function_exists('get_current_screen')) {
+            $screen = get_current_screen();
+        }
+
+        $fallback_title = '';
+
+        if ($screen instanceof WP_Screen) {
+            $fallback_title = trim(wp_strip_all_tags((string) ($screen->title ?? '')));
+
+            if ($fallback_title === '') {
+                $fallback_title = trim(wp_strip_all_tags((string) ($screen->id ?? '')));
+            }
+        }
+
+        if ($fallback_title === '' && isset($_GET['page'])) {
+            $page_slug = sanitize_text_field((string) wp_unslash($_GET['page']));
+            $fallback_title = ucwords(str_replace(['-', '_'], ' ', $page_slug));
+        }
+
+        $title = ($fallback_title !== '') ? $fallback_title : 'Admin';
+    }
+}
+add_action('current_screen', 'meza_ensure_admin_page_title_is_string', 1);
+
 if (!function_exists('meza_should_lock_admin_footer')) {
     function meza_should_lock_admin_footer(): bool
     {

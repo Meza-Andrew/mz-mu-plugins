@@ -849,6 +849,7 @@ function meza_render_logo_settings_field(string $field_name, int $logo_id, strin
     $button_label = ($logo_id > 0)
         ? __('Change logo', 'mz-mu-plugins')
         : __('Select logo', 'mz-mu-plugins');
+    $description = is_string($description) ? $description : '';
     ?>
     <div
         class="meza-custom-logo-setting"
