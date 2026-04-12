@@ -13,8 +13,8 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
     {
         $pages = [
             [
-                'page_title'      => 'Business Information',
-                'menu_title'      => 'Business Information',
+                'page_title'      => 'Branding',
+                'menu_title'      => 'Branding',
                 'menu_slug'       => 'business-info',
                 'parent_slug'     => 'options-general.php',
                 'capability'      => 'manage_options',
@@ -85,7 +85,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             ],
             [
                 'key' => 'field_meza_business_tagline',
-                'label' => 'Tagline',
+                'label' => 'Site Tagline',
                 'name' => 'wp_tagline',
                 'aria-label' => '',
                 'type' => 'text',
@@ -190,7 +190,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         $groups = [
             [
                 'key' => 'group_meza_business_branding',
-                'title' => 'Branding',
+                'title' => 'Visuals and Identity',
                 'fields' => meza_get_business_information_branding_fields(),
                 'location' => [
                     [
@@ -214,7 +214,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             ],
             [
                 'key' => 'group_68b3145739719',
-                'title' => 'Business Information',
+                'title' => 'Mission, Vision, and Values',
                 'fields' => [
                     [
                         'key' => 'field_69c172d3bb939',
@@ -361,8 +361,8 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'menu_order' => 10,
                 'position' => 'normal',
                 'style' => 'default',
-                'label_placement' => 'top',
-                'instruction_placement' => 'label',
+                'label_placement' => 'left',
+                'instruction_placement' => 'field',
                 'hide_on_screen' => '',
                 'active' => true,
                 'description' => '',
@@ -593,6 +593,69 @@ if (!function_exists('meza_is_business_information_options_screen')) {
     }
 }
 
+add_filter('acf/ui_options_page/registration_args', function (array $args, array $post): array {
+    if (($args['menu_slug'] ?? '') !== 'business-info') {
+        return $args;
+    }
+
+    $args['page_title'] = 'Branding';
+    $args['menu_title'] = 'Branding';
+
+    return $args;
+}, 20, 2);
+
+if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
+    function meza_normalize_branding_settings_submenu_item(): void
+    {
+        global $submenu;
+
+        if (!isset($submenu['options-general.php']) || !is_array($submenu['options-general.php'])) {
+            return;
+        }
+
+        $branding_item = null;
+
+        foreach ($submenu['options-general.php'] as $index => $item) {
+            if (!is_array($item) || ((string) ($item[2] ?? '')) !== 'business-info') {
+                continue;
+            }
+
+            $submenu['options-general.php'][$index][0] = 'Branding';
+            if (isset($submenu['options-general.php'][$index][3])) {
+                $submenu['options-general.php'][$index][3] = 'Branding';
+            }
+
+            $branding_item = $submenu['options-general.php'][$index];
+            unset($submenu['options-general.php'][$index]);
+            break;
+        }
+
+        if ($branding_item === null) {
+            return;
+        }
+
+        $submenu['options-general.php'] = array_values($submenu['options-general.php']);
+
+        $insert_index = 1;
+        foreach ($submenu['options-general.php'] as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            if ($slug === 'options-writing.php') {
+                $insert_index = $index;
+                break;
+            }
+        }
+
+        array_splice($submenu['options-general.php'], $insert_index, 0, [$branding_item]);
+    }
+}
+
+add_action('admin_menu', 'meza_normalize_branding_settings_submenu_item', PHP_INT_MAX - 1);
+add_action('admin_menu_editor-menu_replaced', 'meza_normalize_branding_settings_submenu_item', PHP_INT_MAX - 1);
+
 add_action('after_setup_theme', function (): void {
     if (function_exists('add_image_size')) {
         add_image_size('meza_branding_preview', 250, 50, false);
@@ -639,6 +702,42 @@ add_action('admin_head', function (): void {
             min-width: 0;
             min-height: 0;
         }
+
+        #acf-group_meza_business_branding .acf-field[data-name="wp_site_icon"] .acf-image-uploader,
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-field[data-name="wp_site_icon"] .acf-image-uploader {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        #acf-group_meza_business_branding .meza-site-icon-dark-preview,
+        .acf-postbox[data-key="group_meza_business_branding"] .meza-site-icon-dark-preview {
+            display: none;
+            padding: 10px;
+            box-sizing: border-box;
+            background: #1d2327;
+        }
+
+        #acf-group_meza_business_branding .meza-site-icon-dark-preview.is-visible,
+        .acf-postbox[data-key="group_meza_business_branding"] .meza-site-icon-dark-preview.is-visible {
+            display: block;
+        }
+
+        #acf-group_meza_business_branding .meza-site-icon-dark-preview img,
+        .acf-postbox[data-key="group_meza_business_branding"] .meza-site-icon-dark-preview img {
+            display: block;
+            width: auto;
+            height: auto;
+            max-width: 100%;
+            max-height: 50px;
+            background: transparent;
+        }
+
+        #acf-group_meza_business_branding .acf-field[data-name="wp_site_icon"] .acf-image-uploader .hide-if-value,
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-field[data-name="wp_site_icon"] .acf-image-uploader .hide-if-value {
+            flex-basis: 100%;
+        }
     </style>
     <script id="meza-business-branding-label-notes">
         (() => {
@@ -669,10 +768,120 @@ add_action('admin_head', function (): void {
                 });
             };
 
+            const syncSiteIconDarkPreview = (uploader) => {
+                if (!(uploader instanceof HTMLElement)) {
+                    return;
+                }
+
+                let preview = uploader.querySelector(':scope > .meza-site-icon-dark-preview');
+                if (!(preview instanceof HTMLElement)) {
+                    preview = document.createElement('div');
+                    preview.className = 'meza-site-icon-dark-preview';
+                    preview.innerHTML = '<img alt="" />';
+                    const hideIfValue = uploader.querySelector(':scope > .hide-if-value');
+                    if (hideIfValue instanceof HTMLElement) {
+                        uploader.insertBefore(preview, hideIfValue);
+                    } else {
+                        uploader.appendChild(preview);
+                    }
+                }
+
+                const previewImage = preview.querySelector('img');
+                const sourceImage = uploader.querySelector(':scope > .show-if-value.image-wrap img');
+                const hasValue = uploader.classList.contains('has-value')
+                    && sourceImage instanceof HTMLImageElement
+                    && sourceImage.getAttribute('src');
+
+                if (!(previewImage instanceof HTMLImageElement) || !hasValue) {
+                    preview.classList.remove('is-visible');
+                    if (previewImage instanceof HTMLImageElement) {
+                        previewImage.removeAttribute('src');
+                        previewImage.removeAttribute('alt');
+                    }
+                    return;
+                }
+
+                previewImage.src = sourceImage.getAttribute('src') || '';
+                previewImage.alt = sourceImage.getAttribute('alt') || '';
+                preview.classList.add('is-visible');
+            };
+
+            const bindSiteIconSourceObserver = (uploader) => {
+                if (!(uploader instanceof HTMLElement)) {
+                    return;
+                }
+
+                if (uploader.mezaSiteIconSourceObserver instanceof MutationObserver) {
+                    uploader.mezaSiteIconSourceObserver.disconnect();
+                }
+
+                const sourceImage = uploader.querySelector(':scope > .show-if-value.image-wrap img');
+                if (!(sourceImage instanceof HTMLImageElement)) {
+                    uploader.mezaSiteIconSourceObserver = null;
+                    return;
+                }
+
+                const sourceObserver = new MutationObserver(() => {
+                    syncSiteIconDarkPreview(uploader);
+                });
+
+                sourceObserver.observe(sourceImage, {
+                    attributes: true,
+                    attributeFilter: ['src', 'alt'],
+                });
+
+                uploader.mezaSiteIconSourceObserver = sourceObserver;
+            };
+
+            const setupSiteIconDarkPreview = () => {
+                const uploaders = document.querySelectorAll(
+                    '#acf-group_meza_business_branding .acf-field[data-name="wp_site_icon"] .acf-image-uploader, .acf-postbox[data-key="group_meza_business_branding"] .acf-field[data-name="wp_site_icon"] .acf-image-uploader'
+                );
+
+                uploaders.forEach((uploader) => {
+                    if (!(uploader instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    syncSiteIconDarkPreview(uploader);
+                    bindSiteIconSourceObserver(uploader);
+
+                    if (uploader.dataset.mezaSiteIconPreviewReady === '1') {
+                        return;
+                    }
+
+                    const classObserver = new MutationObserver(() => {
+                        syncSiteIconDarkPreview(uploader);
+                        bindSiteIconSourceObserver(uploader);
+                    });
+
+                    classObserver.observe(uploader, {
+                        attributes: true,
+                        attributeFilter: ['class'],
+                    });
+
+                    const treeObserver = new MutationObserver(() => {
+                        syncSiteIconDarkPreview(uploader);
+                        bindSiteIconSourceObserver(uploader);
+                    });
+
+                    treeObserver.observe(uploader, {
+                        childList: true,
+                        subtree: true,
+                    });
+
+                    uploader.dataset.mezaSiteIconPreviewReady = '1';
+                });
+            };
+
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', moveDescriptions, { once: true });
+                document.addEventListener('DOMContentLoaded', () => {
+                    moveDescriptions();
+                    setupSiteIconDarkPreview();
+                }, { once: true });
             } else {
                 moveDescriptions();
+                setupSiteIconDarkPreview();
             }
         })();
     </script>
