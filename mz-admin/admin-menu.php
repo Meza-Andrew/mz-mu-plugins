@@ -4755,6 +4755,40 @@ if (!function_exists('meza_should_lock_admin_title_chrome')) {
 }
 
 if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
+    function meza_is_current_acf_admin_or_options_screen(?WP_Screen $screen = null): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        if (!($screen instanceof WP_Screen) && function_exists('get_current_screen')) {
+            $screen = get_current_screen();
+        }
+
+        if (function_exists('acf_is_acf_admin_screen') && acf_is_acf_admin_screen()) {
+            return true;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        if ($page === '') {
+            return false;
+        }
+
+        if (str_starts_with($page, 'acf-') || $page === 'acf_options_preview') {
+            return true;
+        }
+
+        if (function_exists('acf_get_options_page') && acf_get_options_page($page)) {
+            return true;
+        }
+
+        if (function_exists('meza_get_shared_project_acf_options_page_slugs')) {
+            return in_array($page, meza_get_shared_project_acf_options_page_slugs(), true);
+        }
+
+        return in_array($page, ['business-info', 'organization-info'], true);
+    }
+
     function meza_is_dynamic_plugin_admin_screen(?WP_Screen $screen = null): bool
     {
         $page = isset($_GET['page']) ? strtolower(trim(sanitize_text_field(wp_unslash((string) $_GET['page'])))) : '';
@@ -4793,6 +4827,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
 
     function meza_is_preferred_plugin_admin_screen(?WP_Screen $screen = null): bool
     {
+        if (meza_is_current_acf_admin_or_options_screen($screen)) {
+            return true;
+        }
+
         $signatures = [];
 
         if (function_exists('mz_plugins_get_env_plugin_signatures')) {
