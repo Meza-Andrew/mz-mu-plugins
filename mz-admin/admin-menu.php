@@ -203,6 +203,34 @@ function meza_can_access_aios_locked_users($user = null): bool
         && meza_user_has_any_role($user, ['administrator', meza_site_manager_role_key()]);
 }
 
+function meza_get_settings_admin_page_slug(string $menu_slug): string
+{
+    $menu_slug = trim($menu_slug);
+    if ($menu_slug === '') {
+        return '';
+    }
+
+    if (str_starts_with($menu_slug, 'admin.php?page=')) {
+        return sanitize_key((string) wp_unslash((string) $_GET['page'] ?? substr($menu_slug, strlen('admin.php?page='))));
+    }
+
+    if (str_contains($menu_slug, 'page=')) {
+        $query = (string) parse_url($menu_slug, PHP_URL_QUERY);
+        if ($query !== '') {
+            parse_str($query, $args);
+            return sanitize_key((string) ($args['page'] ?? ''));
+        }
+    }
+
+    return sanitize_key($menu_slug);
+}
+
+function meza_get_settings_admin_page_menu_slug(string $page_slug): string
+{
+    $page_slug = sanitize_key($page_slug);
+    return $page_slug;
+}
+
 function meza_get_site_manager_allowed_settings_page_slugs(): array
 {
     $allowed_slugs = [
@@ -223,7 +251,7 @@ function meza_get_site_manager_allowed_settings_page_slugs(): array
 
 function meza_is_site_manager_allowed_settings_submenu_item(array $item): bool
 {
-    $slug = sanitize_key((string) ($item[2] ?? ''));
+    $slug = meza_get_settings_admin_page_slug((string) ($item[2] ?? ''));
     $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
 
     return in_array($slug, meza_get_site_manager_allowed_settings_page_slugs(), true)
@@ -1270,12 +1298,12 @@ add_action('admin_init', function (): void {
     $page = strtolower(trim(isset($_GET['page']) ? (string) wp_unslash($_GET['page']) : ''));
 
     if (
-        $pagenow === 'options-general.php'
+        $pagenow === 'admin.php'
         && $page !== ''
         && function_exists('meza_get_shared_project_acf_options_page_slugs')
         && in_array($page, meza_get_shared_project_acf_options_page_slugs(), true)
     ) {
-        wp_safe_redirect(admin_url('admin.php?page=' . $page));
+        wp_safe_redirect(admin_url('options-general.php?page=' . $page));
         exit;
     }
 
@@ -1288,7 +1316,7 @@ add_action('admin_init', function (): void {
 
         if ($page === '' || !in_array($page, $allowed_settings_pages, true)) {
             $target_page = $allowed_settings_pages[0] ?? '';
-            wp_safe_redirect($target_page !== '' ? admin_url('admin.php?page=' . $target_page) : admin_url());
+            wp_safe_redirect($target_page !== '' ? admin_url('options-general.php?page=' . $target_page) : admin_url());
             exit;
         }
     }
@@ -7168,7 +7196,7 @@ function meza_enforce_site_manager_settings_submenu(): void
             continue;
         }
 
-        $slug = sanitize_key((string) ($item[2] ?? ''));
+        $slug = meza_get_settings_admin_page_slug((string) ($item[2] ?? ''));
         $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
 
         if (!isset($allowed_settings_pages[$slug])) {
@@ -7185,7 +7213,7 @@ function meza_enforce_site_manager_settings_submenu(): void
 
         $item[0] = $allowed_settings_pages[$slug];
         $item[1] = 'read';
-        $item[2] = $slug;
+        $item[2] = meza_get_settings_admin_page_menu_slug($slug);
         if (isset($item[3])) {
             $item[3] = $allowed_settings_pages[$slug];
         }
@@ -7202,7 +7230,7 @@ function meza_enforce_site_manager_settings_submenu(): void
         $filtered_items[] = [
             $label,
             'read',
-            $slug,
+            meza_get_settings_admin_page_menu_slug($slug),
             $label,
         ];
     }
