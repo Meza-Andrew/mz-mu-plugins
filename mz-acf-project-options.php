@@ -24,8 +24,8 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
                 'autoload'        => false,
             ],
             [
-                'page_title'      => 'Contact Information',
-                'menu_title'      => 'Contact Information',
+                'page_title'      => 'Business Information',
+                'menu_title'      => 'Business Information',
                 'menu_slug'       => 'organization-info',
                 'parent_slug'     => 'options-general.php',
                 'capability'      => 'manage_options',
@@ -59,17 +59,17 @@ if (!function_exists('meza_get_shared_project_acf_options_page_slugs')) {
 }
 
 if (!function_exists('meza_get_shared_project_acf_field_groups')) {
-    function meza_get_business_information_branding_fields(): array
+    function meza_get_business_information_general_fields(): array
     {
         return [
             [
                 'key' => 'field_meza_business_site_title',
-                'label' => 'Site Title',
+                'label' => 'Name',
                 'name' => 'wp_site_title',
                 'aria-label' => '',
                 'type' => 'text',
-                'instructions' => 'Displayed in browser tabs, admin screens, and fallback branding.',
-                'required' => 0,
+                'instructions' => 'Updates the WordPress site name used in browser tabs, admin screens, and fallback branding.',
+                'required' => 1,
                 'conditional_logic' => 0,
                 'wrapper' => [
                     'width' => '',
@@ -85,11 +85,11 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             ],
             [
                 'key' => 'field_meza_business_tagline',
-                'label' => 'Site Tagline',
+                'label' => 'Tagline',
                 'name' => 'wp_tagline',
                 'aria-label' => '',
                 'type' => 'text',
-                'instructions' => 'A short description of the site used in WordPress metadata and select templates.',
+                'instructions' => 'Updates the WordPress site tagline used in metadata and select templates.',
                 'required' => 0,
                 'conditional_logic' => 0,
                 'wrapper' => [
@@ -104,6 +104,12 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'prepend' => '',
                 'append' => '',
             ],
+        ];
+    }
+
+    function meza_get_business_information_branding_fields(): array
+    {
+        return [
             [
                 'key' => 'field_meza_business_site_logo',
                 'label' => 'Site Logo',
@@ -188,6 +194,30 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
     function meza_get_shared_project_acf_field_groups(): array
     {
         $groups = [
+            [
+                'key' => 'group_meza_business_information_general',
+                'title' => 'General',
+                'fields' => meza_get_business_information_general_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'organization-info',
+                        ],
+                    ],
+                ],
+                'menu_order' => 0,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'left',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
             [
                 'key' => 'group_meza_business_branding',
                 'title' => 'Visuals and Identity',
@@ -445,11 +475,11 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         ],
                     ],
                 ],
-                'menu_order' => 0,
+                'menu_order' => 10,
                 'position' => 'normal',
                 'style' => 'default',
-                'label_placement' => 'top',
-                'instruction_placement' => 'label',
+                'label_placement' => 'left',
+                'instruction_placement' => 'field',
                 'hide_on_screen' => '',
                 'active' => true,
                 'description' => '',
@@ -594,14 +624,39 @@ if (!function_exists('meza_is_business_information_options_screen')) {
 }
 
 add_filter('acf/ui_options_page/registration_args', function (array $args, array $post): array {
-    if (($args['menu_slug'] ?? '') !== 'business-info') {
+    $menu_slug = (string) ($args['menu_slug'] ?? '');
+
+    if ($menu_slug === 'business-info') {
+        $args['page_title'] = 'Branding';
+        $args['menu_title'] = 'Branding';
+
         return $args;
     }
 
-    $args['page_title'] = 'Branding';
-    $args['menu_title'] = 'Branding';
+    if ($menu_slug === 'organization-info') {
+        $args['page_title'] = 'Business Information';
+        $args['menu_title'] = 'Business Information';
+
+        return $args;
+    }
 
     return $args;
+}, 20, 2);
+
+add_filter('acf/get_options_page', function ($page, $slug) {
+    if (!is_array($page)) {
+        return $page;
+    }
+
+    if ($slug === 'business-info') {
+        $page['page_title'] = 'Branding';
+        $page['menu_title'] = 'Branding';
+    } elseif ($slug === 'organization-info') {
+        $page['page_title'] = 'Business Information';
+        $page['menu_title'] = 'Business Information';
+    }
+
+    return $page;
 }, 20, 2);
 
 if (!function_exists('meza_normalize_branding_settings_submenu_item')) {

@@ -183,11 +183,8 @@ function meza_is_site_manager_user($user = null): bool
 
 function meza_is_aios_plugin_active(): bool
 {
-    return in_array(
-        'all-in-one-wp-security-and-firewall/wp-security.php',
-        apply_filters('active_plugins', get_option('active_plugins')),
-        true
-    );
+    return function_exists('meza_is_plugin_basename_active')
+        && meza_is_plugin_basename_active('all-in-one-wp-security-and-firewall/wp-security.php');
 }
 
 function meza_is_aios_menu_slug(string $slug, string $label = ''): bool
@@ -202,7 +199,35 @@ function meza_is_aios_menu_slug(string $slug, string $label = ''): bool
 
 function meza_can_access_aios_locked_users($user = null): bool
 {
-    return meza_user_has_any_role($user, ['administrator', meza_site_manager_role_key()]);
+    return meza_is_aios_plugin_active()
+        && meza_user_has_any_role($user, ['administrator', meza_site_manager_role_key()]);
+}
+
+function meza_get_site_manager_allowed_settings_page_slugs(): array
+{
+    $allowed_slugs = [
+        'business-info',
+        'organization-info',
+    ];
+
+    if (function_exists('meza_get_shared_project_acf_options_page_slugs')) {
+        $shared_page_slugs = array_map('sanitize_key', meza_get_shared_project_acf_options_page_slugs());
+        $shared_allowed_slugs = array_values(array_intersect($allowed_slugs, $shared_page_slugs));
+        if ($shared_allowed_slugs !== []) {
+            return $shared_allowed_slugs;
+        }
+    }
+
+    return $allowed_slugs;
+}
+
+function meza_is_site_manager_allowed_settings_submenu_item(array $item): bool
+{
+    $slug = sanitize_key((string) ($item[2] ?? ''));
+    $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+    return in_array($slug, meza_get_site_manager_allowed_settings_page_slugs(), true)
+        || in_array($label, ['branding', 'business information', 'contact information'], true);
 }
 
 function meza_get_site_manager_aios_security_menu_slug(): string
@@ -969,8 +994,16 @@ function meza_site_manager_is_utility_admin_request(): bool
         return true;
     }
 
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page !== '' && in_array($page, meza_get_site_manager_allowed_settings_page_slugs(), true)) {
+        return true;
+    }
+
+    if (meza_current_site_manager_request_matches_utility_submenu()) {
+        return true;
+    }
+
     $request_values = [
-        isset($_GET['page']) ? (string) wp_unslash($_GET['page']) : '',
         isset($_GET['tab']) ? (string) wp_unslash($_GET['tab']) : '',
         isset($_GET['post_type']) ? (string) wp_unslash($_GET['post_type']) : '',
         isset($_GET['taxonomy']) ? (string) wp_unslash($_GET['taxonomy']) : '',
@@ -984,8 +1017,8 @@ function meza_site_manager_is_utility_admin_request(): bool
         }
 
         if (
-            preg_match('/\b(import|export|tools?|settings?|status)\b/i', $value) === 1
-            || preg_match('/(^|[_-])(import|export|tools?|settings?|status)([_-]|$)/i', $value) === 1
+            preg_match('/\b(import|export|tools?)\b/i', $value) === 1
+            || preg_match('/(^|[_-])(import|export|tools?)([_-]|$)/i', $value) === 1
         ) {
             return true;
         }
@@ -997,6 +1030,10 @@ function meza_site_manager_is_utility_admin_request(): bool
 function meza_is_restricted_settings_tools_submenu_item(string $parent_slug, array $item): bool
 {
     $parent_slug = strtolower($parent_slug);
+
+    if ($parent_slug === 'options-general.php' && meza_is_site_manager_user(wp_get_current_user())) {
+        return !meza_is_site_manager_allowed_settings_submenu_item($item);
+    }
 
     if (meza_is_default_wordpress_submenu_item($parent_slug, $item)) {
         return false;
@@ -1015,6 +1052,10 @@ function meza_should_grant_site_manager_utility_submenu_access(string $parent_sl
 {
     if (!meza_is_site_manager_user(wp_get_current_user())) {
         return false;
+    }
+
+    if (strtolower($parent_slug) === 'options-general.php') {
+        return meza_is_site_manager_allowed_settings_submenu_item($item);
     }
 
     if (meza_is_admin_only_media_performance_item($parent_slug, $item)) {
@@ -1230,6 +1271,39 @@ add_action('admin_init', function (): void {
     global $pagenow;
 
     $pagenow = strtolower((string) $pagenow);
+    $page = strtolower(trim(isset($_GET['page']) ? (string) wp_unslash($_GET['page']) : ''));
+
+    if ($pagenow === 'options-general.php') {
+        $allowed_settings_pages = meza_get_site_manager_allowed_settings_page_slugs();
+
+        if ($page === '' || !in_array($page, $allowed_settings_pages, true)) {
+            $target_page = $allowed_settings_pages[0] ?? '';
+            wp_safe_redirect($target_page !== '' ? admin_url('options-general.php?page=' . $target_page) : admin_url());
+            exit;
+        }
+    }
+
+    $current_post_type = meza_get_current_admin_post_type();
+    if (
+        $page !== ''
+        && str_contains($page, 'wp-mail-smtp')
+    ) {
+        wp_safe_redirect(admin_url());
+        exit;
+    }
+
+    if (
+        ($page !== '' && (str_starts_with($page, 'acf-') || $page === 'acf_options_preview'))
+        || (
+            $current_post_type !== ''
+            && function_exists('meza_is_acf_admin_post_type')
+            && meza_is_acf_admin_post_type($current_post_type)
+        )
+    ) {
+        wp_safe_redirect(admin_url());
+        exit;
+    }
+
     if (in_array($pagenow, ['plugin-install.php', 'plugin-editor.php', 'update.php'], true)) {
         wp_safe_redirect(admin_url('plugins.php'));
         exit;
@@ -1243,7 +1317,6 @@ add_action('admin_init', function (): void {
         }
     }
 
-    $page = strtolower(trim(isset($_GET['page']) ? (string) wp_unslash($_GET['page']) : ''));
     if ($page === 'action-scheduler') {
         wp_safe_redirect(admin_url('tools.php'));
         exit;
@@ -1771,8 +1844,10 @@ function meza_is_sqlite_object_cache_menu_item(string $slug, string $title): boo
 function meza_get_settings_submenu_priority_labels(): array
 {
     return [
-        'Contact Information',
+        'General',
+        'Business Information',
         'Branding',
+        'Writing',
         'CRM Integration',
         'Page Cache',
         'Object Cache',
@@ -1789,31 +1864,14 @@ function meza_reorder_settings_submenu_items(array $items): array
     $ordered_labels = meza_get_settings_submenu_priority_labels();
     $ordered_items = [];
     $matched_indexes = [];
-    $privacy_index = null;
-    $writing_index = null;
-    $branding_item = null;
 
     foreach ($items as $index => $item) {
         if (!is_array($item)) continue;
 
         $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
 
-        if (strcasecmp($label, 'Privacy') === 0 && $privacy_index === null) {
-            $privacy_index = (int) $index;
-        }
-
-        if (strcasecmp($label, 'Writing') === 0 && $writing_index === null) {
-            $writing_index = (int) $index;
-        }
-
         $label_match_index = array_search($label, $ordered_labels, true);
         if ($label_match_index === false) continue;
-
-        if ($label === 'Branding') {
-            $branding_item = $item;
-            $matched_indexes[] = (int) $index;
-            continue;
-        }
 
         $ordered_items[$label_match_index] = $item;
         $matched_indexes[] = (int) $index;
@@ -1826,26 +1884,12 @@ function meza_reorder_settings_submenu_items(array $items): array
     rsort($matched_indexes, SORT_NUMERIC);
     foreach ($matched_indexes as $matched_index) {
         array_splice($items, $matched_index, 1);
-        if ($privacy_index !== null && $matched_index < $privacy_index) {
-            $privacy_index--;
-        }
-        if ($writing_index !== null && $matched_index < $writing_index) {
-            $writing_index--;
-        }
-    }
-
-    if ($branding_item !== null) {
-        $branding_insert_index = $writing_index ?? 1;
-        array_splice($items, $branding_insert_index, 0, [$branding_item]);
-        if ($privacy_index !== null && $branding_insert_index <= $privacy_index) {
-            $privacy_index++;
-        }
     }
 
     ksort($ordered_items);
 
-    if ($privacy_index !== null && $ordered_items !== []) {
-        array_splice($items, $privacy_index + 1, 0, array_values($ordered_items));
+    if ($ordered_items !== []) {
+        array_splice($items, 0, 0, array_values($ordered_items));
     }
 
     return $items;
@@ -4932,6 +4976,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
                 $screen_id = strtolower((string) ($screen->id ?? ''));
                 $screen_base = strtolower((string) ($screen->base ?? ''));
 
+                if (in_array($screen_id, ['dashboard'], true) || in_array($screen_base, ['dashboard'], true)) {
+                    return true;
+                }
+
                 if (in_array($screen_id, ['upload', 'media', 'media-new'], true) || in_array($screen_base, ['upload', 'media'], true)) {
                     return true;
                 }
@@ -4972,6 +5020,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         $php_self = isset($_SERVER['PHP_SELF']) ? basename((string) $_SERVER['PHP_SELF']) : '';
 
         if ($php_self === 'themes.php') {
+            return true;
+        }
+
+        if ($php_self === 'index.php') {
             return true;
         }
 
@@ -7021,6 +7073,169 @@ function meza_is_settings_utility_menu_item($item): bool
     return $is_acf || $is_mail || $is_security || $is_backups;
 }
 
+function meza_remove_site_manager_restricted_top_level_menus(): void
+{
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $menu, $submenu;
+
+    if (is_array($menu)) {
+        $menu = array_values(array_filter($menu, static function ($item): bool {
+            if (!is_array($item)) {
+                return true;
+            }
+
+            $slug = strtolower((string) ($item[2] ?? ''));
+            $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+            $is_acf = $slug === 'edit.php?post_type=acf-field-group' || $label === 'acf';
+            $is_mail = str_contains($slug, 'wp-mail-smtp') || $label === 'mail';
+
+            return !$is_acf && !$is_mail;
+        }));
+    }
+
+    if (!is_array($submenu)) {
+        return;
+    }
+
+    unset($submenu['edit.php?post_type=acf-field-group'], $submenu['wp-mail-smtp']);
+}
+
+function meza_enforce_site_manager_settings_submenu(): void
+{
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $submenu;
+
+    if (!isset($submenu['options-general.php']) || !is_array($submenu['options-general.php'])) {
+        $submenu['options-general.php'] = [];
+    }
+
+    $allowed_settings_pages = [
+        'business-info' => 'Branding',
+        'organization-info' => 'Business Information',
+    ];
+    $allowed_settings_pages = array_intersect_key($allowed_settings_pages, array_flip(meza_get_site_manager_allowed_settings_page_slugs()));
+
+    $filtered_items = [];
+    $seen_slugs = [];
+
+    foreach ((array) $submenu['options-general.php'] as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $slug = sanitize_key((string) ($item[2] ?? ''));
+        $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+        if (!isset($allowed_settings_pages[$slug])) {
+            if ($label === 'branding') {
+                $slug = 'business-info';
+            } elseif (in_array($label, ['business information', 'contact information'], true)) {
+                $slug = 'organization-info';
+            }
+        }
+
+        if (!isset($allowed_settings_pages[$slug])) {
+            continue;
+        }
+
+        $item[0] = $allowed_settings_pages[$slug];
+        $item[1] = 'read';
+        $item[2] = $slug;
+        if (isset($item[3])) {
+            $item[3] = $allowed_settings_pages[$slug];
+        }
+
+        $filtered_items[] = $item;
+        $seen_slugs[$slug] = true;
+    }
+
+    foreach ($allowed_settings_pages as $slug => $label) {
+        if (isset($seen_slugs[$slug])) {
+            continue;
+        }
+
+        $filtered_items[] = [
+            $label,
+            'read',
+            $slug,
+            $label,
+        ];
+    }
+
+    $submenu['options-general.php'] = meza_reorder_settings_submenu_items(array_values($filtered_items));
+}
+
+function meza_reorder_site_manager_admin_preferences_group(): void
+{
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $menu;
+
+    if (!is_array($menu) || $menu === []) {
+        return;
+    }
+
+    $target_order = [
+        'themes.php',
+        'plugins.php',
+        'users.php',
+        'tools.php',
+        'options-general.php',
+    ];
+
+    $group_items = [];
+    $group_indexes = [];
+    $insert_index = null;
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $slug = (string) ($item[2] ?? '');
+        if (!in_array($slug, $target_order, true)) {
+            continue;
+        }
+
+        if ($insert_index === null) {
+            $insert_index = (int) $index;
+        }
+
+        $group_items[$slug] = $item;
+        $group_indexes[] = (int) $index;
+    }
+
+    if ($group_items === [] || $insert_index === null) {
+        return;
+    }
+
+    rsort($group_indexes, SORT_NUMERIC);
+    foreach ($group_indexes as $index) {
+        array_splice($menu, $index, 1);
+    }
+
+    $ordered_items = [];
+    foreach ($target_order as $slug) {
+        if (isset($group_items[$slug])) {
+            $ordered_items[] = $group_items[$slug];
+        }
+    }
+
+    if ($ordered_items === []) {
+        return;
+    }
+
+    array_splice($menu, $insert_index, 0, $ordered_items);
+}
+
 function meza_group_post_settings_utilities(): void
 {
     global $menu;
@@ -7739,7 +7954,8 @@ function meza_group_site_manager_appearance_and_fallback_menus(): void
         $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
 
         return in_array($slug, ['themes.php', 'plugins.php', 'users.php', 'tools.php'], true)
-            || in_array($label, ['appearance', 'plugins', 'users', 'tools'], true);
+            || $slug === 'options-general.php'
+            || in_array($label, ['appearance', 'plugins', 'users', 'tools', 'settings'], true);
     };
 
     $is_fallback_group_item = static function ($item): bool {
@@ -8165,6 +8381,7 @@ function meza_apply_late_admin_menu_mutations(): void
 {
     meza_restore_site_kit_admin_menu();
     meza_normalize_admin_plugin_menus();
+    meza_remove_site_manager_restricted_top_level_menus();
     meza_rebuild_content_menu_group();
     meza_reorder_dashboard_utility_items();
     meza_remove_yoast_admin_menu_entries();
@@ -8184,6 +8401,8 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_prune_empty_top_level_admin_menu_groups();
     meza_restore_settings_utility_group_separator();
     meza_restore_default_fallback_group_separator();
+    meza_enforce_site_manager_settings_submenu();
+    meza_reorder_site_manager_admin_preferences_group();
     meza_group_site_manager_appearance_and_fallback_menus();
     meza_cleanup_menu_separators();
 }
