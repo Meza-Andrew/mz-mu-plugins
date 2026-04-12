@@ -1772,7 +1772,7 @@ function meza_get_settings_submenu_priority_labels(): array
 {
     return [
         'Contact Information',
-        'Business Information',
+        'Branding',
         'CRM Integration',
         'Page Cache',
         'Object Cache',
@@ -1790,6 +1790,8 @@ function meza_reorder_settings_submenu_items(array $items): array
     $ordered_items = [];
     $matched_indexes = [];
     $privacy_index = null;
+    $writing_index = null;
+    $branding_item = null;
 
     foreach ($items as $index => $item) {
         if (!is_array($item)) continue;
@@ -1800,27 +1802,51 @@ function meza_reorder_settings_submenu_items(array $items): array
             $privacy_index = (int) $index;
         }
 
+        if (strcasecmp($label, 'Writing') === 0 && $writing_index === null) {
+            $writing_index = (int) $index;
+        }
+
         $label_match_index = array_search($label, $ordered_labels, true);
         if ($label_match_index === false) continue;
+
+        if ($label === 'Branding') {
+            $branding_item = $item;
+            $matched_indexes[] = (int) $index;
+            continue;
+        }
 
         $ordered_items[$label_match_index] = $item;
         $matched_indexes[] = (int) $index;
     }
 
-    if ($privacy_index === null || empty($matched_indexes)) {
+    if (empty($matched_indexes)) {
         return $items;
     }
 
     rsort($matched_indexes, SORT_NUMERIC);
     foreach ($matched_indexes as $matched_index) {
         array_splice($items, $matched_index, 1);
-        if ($matched_index < $privacy_index) {
+        if ($privacy_index !== null && $matched_index < $privacy_index) {
             $privacy_index--;
+        }
+        if ($writing_index !== null && $matched_index < $writing_index) {
+            $writing_index--;
+        }
+    }
+
+    if ($branding_item !== null) {
+        $branding_insert_index = $writing_index ?? 1;
+        array_splice($items, $branding_insert_index, 0, [$branding_item]);
+        if ($privacy_index !== null && $branding_insert_index <= $privacy_index) {
+            $privacy_index++;
         }
     }
 
     ksort($ordered_items);
-    array_splice($items, $privacy_index + 1, 0, array_values($ordered_items));
+
+    if ($privacy_index !== null && $ordered_items !== []) {
+        array_splice($items, $privacy_index + 1, 0, array_values($ordered_items));
+    }
 
     return $items;
 }
