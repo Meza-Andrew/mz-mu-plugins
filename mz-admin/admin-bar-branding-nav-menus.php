@@ -918,231 +918,21 @@ function meza_render_alternative_logo_settings_field(): void
     );
 }
 
-add_action('admin_init', function (): void {
-    register_setting('general', 'meza_custom_logo_id', [
-        'type' => 'integer',
-        'sanitize_callback' => 'meza_sanitize_custom_logo_id',
-        'default' => 0,
-    ]);
-
-    add_settings_field(
-        'meza_custom_logo_id',
-        __('Site Logo', 'mz-mu-plugins'),
-        'meza_render_custom_logo_settings_field',
-        'general'
-    );
-
-    register_setting('general', 'meza_alternative_logo_id', [
-        'type' => 'integer',
-        'sanitize_callback' => 'meza_sanitize_alternative_logo_id',
-        'default' => 0,
-    ]);
-
-    add_settings_field(
-        'meza_alternative_logo_id',
-        __('Site Logo (Alternative)', 'mz-mu-plugins'),
-        'meza_render_alternative_logo_settings_field',
-        'general'
-    );
-});
-
 add_action('admin_enqueue_scripts', function (string $hook_suffix): void {
     if ($hook_suffix !== 'options-general.php') {
         return;
     }
 
-    wp_enqueue_media();
     wp_add_inline_script('jquery', <<<JS
 jQuery(function ($) {
-    const siteLogoField = $('#meza_custom_logo_id').closest('[data-meza-logo-field]');
-    const altLogoField = $('#meza_alternative_logo_id').closest('[data-meza-logo-field]');
-    const siteLogoRow = siteLogoField.closest('tr');
-    const altLogoRow = altLogoField.closest('tr');
-    const taglineRow = $('#blogdescription').closest('tr');
-    const siteIconRow = $('#site_icon').closest('tr');
-    if (siteLogoRow.length && taglineRow.length) {
-        siteLogoRow.insertAfter(taglineRow);
-    }
-    if (altLogoRow.length) {
-        if (siteIconRow.length) {
-            altLogoRow.insertBefore(siteIconRow);
-        } else if (siteLogoRow.length) {
-            altLogoRow.insertAfter(siteLogoRow);
+    ['#blogname', '#blogdescription', '#site_icon_hidden_field'].forEach(function (selector) {
+        const row = $(selector).closest('tr');
+        if (row.length) {
+            row.hide();
         }
-    }
-
-    const siteIconChooseButton = $('#choose-from-library-button');
-    const siteIconRemoveButton = $('#js-remove-site-icon');
-    const normalizeSiteIconButtons = function () {
-        if (siteIconChooseButton.length) {
-            siteIconChooseButton
-                .removeClass('button-hero button-secondary')
-                .addClass('button');
-            siteIconChooseButton.attr('data-alt-classes', 'button');
-            siteIconChooseButton.attr('data-update-text', 'Change icon');
-            siteIconChooseButton.attr('data-choose-text', 'Choose a Site Icon');
-            siteIconChooseButton.text(siteIconChooseButton.attr('data-state') === '1' ? 'Change icon' : 'Choose a Site Icon');
-        }
-
-        if (siteIconRemoveButton.length) {
-            siteIconRemoveButton
-                .removeClass('button-secondary reset')
-                .addClass('button-link-delete');
-            siteIconRemoveButton.text('Remove icon');
-        }
-    };
-    normalizeSiteIconButtons();
-
-    $('[data-meza-logo-field]').each(function () {
-        const field = $(this);
-        const input = field.find('[data-meza-logo-input]');
-        const previewWrap = field.find('[data-meza-logo-preview-wrap]');
-        const preview = field.find('[data-meza-logo-preview]');
-        const selectButton = field.find('[data-meza-logo-select]');
-        const removeButton = field.find('[data-meza-logo-remove]');
-        const emptyLabel = field.data('mezaLogoEmptyLabel') || 'Select logo';
-        const filledLabel = field.data('mezaLogoFilledLabel') || 'Replace logo';
-        const frameTitle = field.data('mezaLogoFrameTitle') || 'Select logo';
-        const buttonText = field.data('mezaLogoButtonText') || 'Use this logo';
-
-        const setLogo = function (attachment) {
-            const attachmentId = parseInt(attachment.id, 10) || 0;
-            const previewUrl =
-                (attachment.sizes && attachment.sizes.medium && attachment.sizes.medium.url) ||
-                attachment.url ||
-                '';
-
-            input.val(attachmentId);
-            preview.attr('src', previewUrl);
-            previewWrap.addClass('is-visible');
-            selectButton.text(filledLabel);
-            removeButton.prop('disabled', false);
-        };
-
-        const clearLogo = function () {
-            input.val('0');
-            preview.attr('src', '');
-            previewWrap.removeClass('is-visible');
-            selectButton.text(emptyLabel);
-            removeButton.prop('disabled', true);
-        };
-
-        let frame;
-
-        selectButton.on('click', function (event) {
-            event.preventDefault();
-
-            if (frame) {
-                frame.open();
-                return;
-            }
-
-            frame = wp.media({
-                title: frameTitle,
-                library: { type: 'image' },
-                button: { text: buttonText },
-                multiple: false
-            });
-
-            frame.on('select', function () {
-                const attachment = frame.state().get('selection').first().toJSON();
-                setLogo(attachment);
-            });
-
-            frame.open();
-        });
-
-        removeButton.on('click', function (event) {
-            event.preventDefault();
-            clearLogo();
-        });
     });
 });
 JS, 'after');
-    wp_add_inline_style('common', <<<CSS
-.meza-custom-logo-setting__preview{
-    display:none;
-    width:100%;
-    max-width:320px;
-    padding:16px;
-    margin:0 0 12px;
-    border:1px solid #dcdcde;
-    border-radius:8px;
-    background:#fff;
-    box-sizing:border-box;
-}
-.meza-custom-logo-setting__preview--dark{
-    background:#000;
-    border-color:#000;
-}
-.meza-custom-logo-setting__preview.is-visible{
-    display:block;
-}
-.meza-custom-logo-setting__preview img{
-    display:block;
-    width:auto;
-    max-width:100%;
-    max-height:120px;
-    height:auto;
-}
-.meza-custom-logo-setting__actions{
-    display:flex;
-    gap:12px;
-    align-items:center;
-    margin:0;
-}
-.meza-custom-logo-setting__description{
-    margin:8px 0 0;
-}
-.meza-custom-logo-setting__actions .button-link-delete,
-.site-icon-action-buttons .button-link-delete{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-height:30px;
-    margin:0;
-    padding:0 12px;
-    border:1px solid #d63638;
-    border-radius:3px;
-    background:#fff;
-    color:#d63638;
-    line-height:2.15384615;
-    text-decoration:none;
-    cursor:pointer;
-}
-.meza-custom-logo-setting__actions .button-link-delete:hover,
-.meza-custom-logo-setting__actions .button-link-delete:focus,
-.site-icon-action-buttons .button-link-delete:hover,
-.site-icon-action-buttons .button-link-delete:focus{
-    border-color:#d63638;
-    background:#fcf0f1;
-    color:#d63638;
-}
-.meza-custom-logo-setting__actions .button-link-delete[disabled],
-.site-icon-action-buttons .button-link-delete[disabled]{
-    border-color:#dcdcde;
-    background:#f6f7f7;
-    color:#a7aaad;
-    cursor:default;
-}
-.site-icon-action-buttons{
-    display:flex;
-    gap:12px;
-    align-items:center;
-    flex-wrap:wrap;
-}
-.site-icon-action-buttons #choose-from-library-button{
-    min-height:30px;
-    margin:0;
-    padding:0 12px;
-    line-height:2.15384615;
-}
-.site-icon-action-buttons #js-remove-site-icon{
-    min-height:30px;
-    margin:0;
-    line-height:2.15384615;
-}
-CSS);
 });
 
 // Use theme custom logo on wp-login.php.
@@ -1417,6 +1207,29 @@ add_action('admin_head-users.php', function (): void {
         })();
     </script>
     <?php
+}, 1000);
+
+add_action('admin_head-upload.php', function (): void {
+    echo '<style id="meza-media-list-layout">'
+        . '.upload-php .wp-list-table .column-title{width:450px;min-width:450px;max-width:450px;}'
+        . '.upload-php .wp-list-table .column-mime_type{width:125px;min-width:125px;max-width:125px;}'
+        . '.upload-php .wp-list-table .column-dimensions{width:125px;min-width:125px;max-width:125px;}'
+        . '.upload-php .wp-list-table .column-file_size{width:125px;min-width:125px;max-width:125px;}'
+        . '.upload-php .wp-list-table .column-parent{width:224px;min-width:224px;max-width:224px;}'
+        . '.upload-php .wp-list-table .column-mz_modified{width:225px;min-width:225px;max-width:225px;}'
+        . '.upload-php .wp-list-table .column-mz_published{width:225px;min-width:225px;max-width:225px;}'
+        . '.upload-php .wp-list-table .column-download{width:125px;min-width:125px;max-width:125px;}'
+        . '</style>';
+}, 1000);
+
+add_action('admin_head-edit-comments.php', function (): void {
+    echo '<style id="meza-comments-list-layout">'
+        . '.edit-comments-php .wp-list-table .column-author{width:220px;min-width:220px;max-width:220px;}'
+        . '.edit-comments-php .wp-list-table .column-comment_id{width:65px;min-width:65px;max-width:65px;}'
+        . '.edit-comments-php .wp-list-table .column-comment{width:325px;min-width:325px;max-width:325px;}'
+        . '.edit-comments-php .wp-list-table .column-response{width:225px;min-width:225px;max-width:225px;}'
+        . '.edit-comments-php .wp-list-table .column-date{width:225px;min-width:225px;max-width:225px;}'
+        . '</style>';
 }, 1000);
 
 // Menus screen: show all remaining Add Menu Items panels by default for first-load users.

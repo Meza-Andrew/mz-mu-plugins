@@ -59,9 +59,159 @@ if (!function_exists('meza_get_shared_project_acf_options_page_slugs')) {
 }
 
 if (!function_exists('meza_get_shared_project_acf_field_groups')) {
+    function meza_get_business_information_branding_fields(): array
+    {
+        return [
+            [
+                'key' => 'field_meza_business_site_title',
+                'label' => 'Site Title',
+                'name' => 'wp_site_title',
+                'aria-label' => '',
+                'type' => 'text',
+                'instructions' => 'Displayed in browser tabs, admin screens, and fallback branding.',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'default_value' => '',
+                'maxlength' => '',
+                'allow_in_bindings' => 0,
+                'placeholder' => '',
+                'prepend' => '',
+                'append' => '',
+            ],
+            [
+                'key' => 'field_meza_business_tagline',
+                'label' => 'Tagline',
+                'name' => 'wp_tagline',
+                'aria-label' => '',
+                'type' => 'text',
+                'instructions' => 'A short description of the site used in WordPress metadata and select templates.',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'default_value' => '',
+                'maxlength' => '',
+                'allow_in_bindings' => 0,
+                'placeholder' => '',
+                'prepend' => '',
+                'append' => '',
+            ],
+            [
+                'key' => 'field_meza_business_site_logo',
+                'label' => 'Site Logo',
+                'name' => 'wp_site_logo',
+                'aria-label' => '',
+                'type' => 'image',
+                'instructions' => 'Appears in the header, login screen, and email templates. Upload a transparent version when possible.',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'return_format' => 'id',
+                'library' => 'all',
+                'preview_size' => 'meza_branding_preview',
+                'min_width' => '',
+                'min_height' => '',
+                'min_size' => '',
+                'max_width' => '',
+                'max_height' => '',
+                'max_size' => '',
+                'mime_types' => '',
+                'allow_in_bindings' => 0,
+            ],
+            [
+                'key' => 'field_meza_business_site_logo_alt',
+                'label' => 'Site Logo (Alternative)',
+                'name' => 'wp_site_logo_alternative',
+                'aria-label' => '',
+                'type' => 'image',
+                'instructions' => 'Appears in the footer and other dark sections. Upload a transparent version when possible.',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'return_format' => 'id',
+                'library' => 'all',
+                'preview_size' => 'meza_branding_preview',
+                'min_width' => '',
+                'min_height' => '',
+                'min_size' => '',
+                'max_width' => '',
+                'max_height' => '',
+                'max_size' => '',
+                'mime_types' => '',
+                'allow_in_bindings' => 0,
+            ],
+            [
+                'key' => 'field_meza_business_site_icon',
+                'label' => 'Site Icon',
+                'name' => 'wp_site_icon',
+                'aria-label' => '',
+                'type' => 'image',
+                'instructions' => 'Used in browser tabs, bookmark bars, and mobile apps. Upload a square image that is at least 512 by 512 pixels.',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'return_format' => 'id',
+                'library' => 'all',
+                'preview_size' => 'meza_branding_preview',
+                'min_width' => '',
+                'min_height' => '',
+                'min_size' => '',
+                'max_width' => '',
+                'max_height' => '',
+                'max_size' => '',
+                'mime_types' => '',
+                'allow_in_bindings' => 0,
+            ],
+        ];
+    }
+
     function meza_get_shared_project_acf_field_groups(): array
     {
         $groups = [
+            [
+                'key' => 'group_meza_business_branding',
+                'title' => 'Branding',
+                'fields' => meza_get_business_information_branding_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'business-info',
+                        ],
+                    ],
+                ],
+                'menu_order' => 0,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'left',
+                'instruction_placement' => 'field',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
             [
                 'key' => 'group_68b3145739719',
                 'title' => 'Business Information',
@@ -208,7 +358,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         ],
                     ],
                 ],
-                'menu_order' => 0,
+                'menu_order' => 10,
                 'position' => 'normal',
                 'style' => 'default',
                 'label_placement' => 'top',
@@ -313,6 +463,221 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         return is_array($groups) ? array_values($groups) : [];
     }
 }
+
+if (!function_exists('meza_get_business_information_branding_field_map')) {
+    function meza_get_business_information_branding_field_map(): array
+    {
+        return [
+            'wp_site_title' => [
+                'load' => static function (): string {
+                    return (string) get_option('blogname', '');
+                },
+                'update' => static function ($value): string {
+                    $sanitized_value = sanitize_text_field((string) $value);
+                    update_option('blogname', $sanitized_value);
+                    return $sanitized_value;
+                },
+            ],
+            'wp_tagline' => [
+                'load' => static function (): string {
+                    return (string) get_option('blogdescription', '');
+                },
+                'update' => static function ($value): string {
+                    $sanitized_value = sanitize_text_field((string) $value);
+                    update_option('blogdescription', $sanitized_value);
+                    return $sanitized_value;
+                },
+            ],
+            'wp_site_logo' => [
+                'load' => static function (): int {
+                    if (function_exists('meza_get_custom_logo_id')) {
+                        return (int) meza_get_custom_logo_id();
+                    }
+
+                    return (int) get_theme_mod('custom_logo');
+                },
+                'update' => static function ($value): int {
+                    $logo_id = function_exists('meza_sanitize_custom_logo_id')
+                        ? (int) meza_sanitize_custom_logo_id($value)
+                        : absint($value);
+
+                    update_option('meza_custom_logo_id', $logo_id);
+                    return $logo_id;
+                },
+            ],
+            'wp_site_logo_alternative' => [
+                'load' => static function (): int {
+                    if (function_exists('meza_get_alternative_logo_id')) {
+                        return (int) meza_get_alternative_logo_id();
+                    }
+
+                    return (int) get_option('meza_alternative_logo_id', 0);
+                },
+                'update' => static function ($value): int {
+                    $logo_id = function_exists('meza_sanitize_alternative_logo_id')
+                        ? (int) meza_sanitize_alternative_logo_id($value)
+                        : absint($value);
+
+                    update_option('meza_alternative_logo_id', $logo_id);
+                    return $logo_id;
+                },
+            ],
+            'wp_site_icon' => [
+                'load' => static function (): int {
+                    return (int) get_option('site_icon', 0);
+                },
+                'validate' => static function ($valid, $value) {
+                    if ($valid !== true) {
+                        return $valid;
+                    }
+
+                    $attachment_id = absint($value);
+                    if ($attachment_id <= 0) {
+                        return $valid;
+                    }
+
+                    $attachment = get_post($attachment_id);
+                    if (!($attachment instanceof WP_Post) || $attachment->post_type !== 'attachment') {
+                        return __('Select a valid media library image for the Site Icon.', 'mz-mu-plugins');
+                    }
+
+                    $metadata = wp_get_attachment_metadata($attachment_id);
+                    $width = (int) ($metadata['width'] ?? 0);
+                    $height = (int) ($metadata['height'] ?? 0);
+
+                    if ($width < 512 || $height < 512) {
+                        return __('Select a Site Icon image that is at least 512 by 512 pixels.', 'mz-mu-plugins');
+                    }
+
+                    return $valid;
+                },
+                'update' => static function ($value): int {
+                    $site_icon_id = absint($value);
+                    update_option('site_icon', $site_icon_id);
+                    return $site_icon_id;
+                },
+            ],
+        ];
+    }
+}
+
+foreach (meza_get_business_information_branding_field_map() as $field_name => $callbacks) {
+    if (isset($callbacks['load']) && is_callable($callbacks['load'])) {
+        add_filter("acf/load_value/name={$field_name}", static function ($value, $post_id, $field) use ($callbacks) {
+            return call_user_func($callbacks['load']);
+        }, 20, 3);
+    }
+
+    if (isset($callbacks['validate']) && is_callable($callbacks['validate'])) {
+        add_filter("acf/validate_value/name={$field_name}", static function ($valid, $value, $field, $input) use ($callbacks) {
+            return call_user_func($callbacks['validate'], $valid, $value);
+        }, 20, 4);
+    }
+
+    if (isset($callbacks['update']) && is_callable($callbacks['update'])) {
+        add_filter("acf/update_value/name={$field_name}", static function ($value, $post_id, $field) use ($callbacks) {
+            return call_user_func($callbacks['update'], $value);
+        }, 20, 3);
+    }
+}
+
+if (!function_exists('meza_is_business_information_options_screen')) {
+    function meza_is_business_information_options_screen(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        return $page === 'business-info';
+    }
+}
+
+add_action('after_setup_theme', function (): void {
+    if (function_exists('add_image_size')) {
+        add_image_size('meza_branding_preview', 250, 50, false);
+    }
+}, 20);
+
+add_action('admin_head', function (): void {
+    if (!meza_is_business_information_options_screen()) {
+        return;
+    }
+    ?>
+    <style id="meza-business-branding-preview-fix">
+        #acf-group_meza_business_branding .acf-image-uploader .image-wrap,
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-image-uploader .image-wrap {
+            padding: 10px;
+            box-sizing: border-box;
+            background: #f0f0f1;
+        }
+
+        #acf-group_meza_business_branding .acf-field[data-name="wp_site_logo_alternative"] .acf-image-uploader .image-wrap,
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-field[data-name="wp_site_logo_alternative"] .acf-image-uploader .image-wrap {
+            background: #1d2327;
+        }
+
+        #acf-group_meza_business_branding .acf-field[data-name="wp_site_logo_alternative"] .acf-image-uploader .image-wrap img,
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-field[data-name="wp_site_logo_alternative"] .acf-image-uploader .image-wrap img {
+            background: transparent;
+        }
+
+        #acf-group_meza_business_branding .acf-label p,
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-label p {
+            display: block;
+            margin-top: 6px;
+            color: #646970;
+        }
+
+        #acf-group_meza_business_branding .acf-input > p.description,
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-input > p.description {
+            display: none;
+        }
+
+        #acf-group_meza_business_branding .acf-image-uploader .image-wrap img[src$=".svg"],
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-image-uploader .image-wrap img[src$=".svg"] {
+            min-width: 0;
+            min-height: 0;
+        }
+    </style>
+    <script id="meza-business-branding-label-notes">
+        (() => {
+            const moveDescriptions = () => {
+                const fields = document.querySelectorAll(
+                    '#acf-group_meza_business_branding .acf-field, .acf-postbox[data-key="group_meza_business_branding"] .acf-field'
+                );
+
+                fields.forEach((field) => {
+                    if (!(field instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const label = field.querySelector(':scope > .acf-label');
+                    const inputDescription = field.querySelector(':scope > .acf-input > p.description');
+
+                    if (!(label instanceof HTMLElement) || !(inputDescription instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    let labelDescription = label.querySelector(':scope > p');
+                    if (!(labelDescription instanceof HTMLElement)) {
+                        labelDescription = document.createElement('p');
+                        label.appendChild(labelDescription);
+                    }
+
+                    labelDescription.textContent = inputDescription.textContent ?? '';
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', moveDescriptions, { once: true });
+            } else {
+                moveDescriptions();
+            }
+        })();
+    </script>
+    <?php
+});
 
 add_action('acf/init', function (): void {
     if (!function_exists('acf_add_options_page') || !function_exists('acf_add_local_field_group')) {
