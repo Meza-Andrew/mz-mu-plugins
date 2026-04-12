@@ -181,12 +181,26 @@ function meza_get_menu_order_admin_column_default_visible_post_types(): array
         'faq',
         'location',
         'office',
+        'organizer',
         'organization',
+        'partner',
         'profile',
         'product',
         'service',
         'sign',
+        'sponsor',
         'team-member',
+        'venue',
+    ];
+}
+
+function meza_get_menu_order_admin_column_default_visible_post_type_fragments(): array
+{
+    return [
+        'organizer',
+        'venue',
+        'partner',
+        'sponsor',
     ];
 }
 
@@ -237,7 +251,20 @@ function meza_post_type_supports_menu_order_admin_column(string $post_type): boo
 
 function meza_post_type_menu_order_admin_column_is_default_visible(string $post_type): bool
 {
-    return in_array(trim($post_type), meza_get_menu_order_admin_column_default_visible_post_types(), true);
+    $post_type = trim($post_type);
+    if ($post_type === '') return false;
+
+    if (in_array($post_type, meza_get_menu_order_admin_column_default_visible_post_types(), true)) {
+        return true;
+    }
+
+    foreach (meza_get_menu_order_admin_column_default_visible_post_type_fragments() as $fragment) {
+        if ($fragment !== '' && str_contains($post_type, $fragment)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function meza_post_type_organization_link_admin_column_is_default_visible(string $post_type): bool
