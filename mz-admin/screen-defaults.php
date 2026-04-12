@@ -172,10 +172,10 @@ function meza_dashboard_allowed_widget_ids(array $widgets): array
         'column3' => [],
     ];
 
+    if (isset($widgets['dashboard_right_now'])) $ids['column1'][] = 'dashboard_right_now';
+
     $site_kit_widget_id = meza_dashboard_find_site_kit_widget_id($widgets);
     if ($site_kit_widget_id !== '') $ids['column1'][] = $site_kit_widget_id;
-
-    if (isset($widgets['dashboard_right_now'])) $ids['column2'][] = 'dashboard_right_now';
 
     $woocommerce_widget_id = meza_dashboard_find_woocommerce_status_widget_id($widgets);
     if ($woocommerce_widget_id !== '') $ids['column2'][] = $woocommerce_widget_id;
@@ -193,6 +193,54 @@ function meza_dashboard_allowed_widget_ids(array $widgets): array
     }
 
     return $ids;
+}
+
+function meza_dashboard_flatten_allowed_widget_ids(array $allowed): array
+{
+    return array_values(array_unique(array_merge(
+        $allowed['column1'] ?? [],
+        $allowed['column2'] ?? [],
+        $allowed['column3'] ?? []
+    )));
+}
+
+function meza_dashboard_forced_order(array $allowed): array
+{
+    return [
+        'normal' => implode(',', array_values($allowed['column1'] ?? [])),
+        'side' => implode(',', array_values($allowed['column2'] ?? [])),
+        'column3' => implode(',', array_values($allowed['column3'] ?? [])),
+        'column4' => '',
+    ];
+}
+
+function meza_dashboard_remove_disallowed_widgets_from_registry(array $allowed_lookup): void
+{
+    global $wp_meta_boxes;
+
+    if (!isset($wp_meta_boxes['dashboard']) || !is_array($wp_meta_boxes['dashboard'])) {
+        return;
+    }
+
+    foreach ($wp_meta_boxes['dashboard'] as $context => $priorities) {
+        if (!is_array($priorities)) {
+            continue;
+        }
+
+        foreach ($priorities as $priority => $widgets) {
+            if (!is_array($widgets)) {
+                continue;
+            }
+
+            foreach (array_keys($widgets) as $widget_id) {
+                if (isset($allowed_lookup[$widget_id])) {
+                    continue;
+                }
+
+                unset($wp_meta_boxes['dashboard'][$context][$priority][$widget_id]);
+            }
+        }
+    }
 }
 
 // Force a 4-column dashboard layout while keeping column 4 empty.
@@ -247,50 +295,69 @@ add_action('admin_head-index.php', function () {
 
 // Restrict dashboard widgets and place the allowed ones in requested columns.
 add_action('wp_dashboard_setup', function () {
-    global $wp_meta_boxes;
-    if (!is_array($wp_meta_boxes) || !isset($wp_meta_boxes['dashboard'])) return;
-
     $widgets = meza_dashboard_collect_widgets();
+    if ($widgets === []) {
+        return;
+    }
+
+    meza_dashboard_normalize_widget_titles();
+
     $allowed = meza_dashboard_allowed_widget_ids($widgets);
-    $allowed_ids = array_values(array_unique(array_merge($allowed['column1'], $allowed['column2'], $allowed['column3'])));
+    $allowed_ids = meza_dashboard_flatten_allowed_widget_ids($allowed);
+    $allowed_lookup = array_fill_keys($allowed_ids, true);
 
-    // Remove all widgets first.
-    foreach (array_keys($widgets) as $widget_id) {
-        remove_meta_box((string) $widget_id, 'dashboard', 'normal');
-        remove_meta_box((string) $widget_id, 'dashboard', 'side');
-        remove_meta_box((string) $widget_id, 'dashboard', 'column3');
-        remove_meta_box((string) $widget_id, 'dashboard', 'column4');
-    }
+    meza_dashboard_remove_disallowed_widgets_from_registry($allowed_lookup);
 
-    // Rebuild dashboard with only the allowed widgets in deterministic order.
-    $wp_meta_boxes['dashboard'] = [
-        'normal' => ['core' => [], 'high' => [], 'default' => [], 'low' => []],
-        'side' => ['core' => [], 'high' => [], 'default' => [], 'low' => []],
-        'column3' => ['core' => [], 'high' => [], 'default' => [], 'low' => []],
-        'column4' => ['core' => [], 'high' => [], 'default' => [], 'low' => []],
-    ];
-
-    foreach ($allowed['column1'] as $widget_id) {
-        $wp_meta_boxes['dashboard']['normal']['core'][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, (array) $widgets[$widget_id]['widget']);
-    }
-    foreach ($allowed['column2'] as $widget_id) {
-        $wp_meta_boxes['dashboard']['side']['core'][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, (array) $widgets[$widget_id]['widget']);
-    }
-    foreach ($allowed['column3'] as $widget_id) {
-        $wp_meta_boxes['dashboard']['column3']['core'][$widget_id] = meza_dashboard_widget_with_custom_title((string) $widget_id, (array) $widgets[$widget_id]['widget']);
-    }
-
-    // Keep Screen Options aligned with the enforced set.
     $hidden_ids = array_values(array_diff(array_keys($widgets), $allowed_ids));
     $GLOBALS['meza_dashboard_hidden_ids'] = $hidden_ids;
+    $GLOBALS['meza_dashboard_allowed_ids'] = $allowed_ids;
+    $GLOBALS['meza_dashboard_forced_order'] = meza_dashboard_forced_order($allowed);
+
+    $user_id = get_current_user_id();
+    if ($user_id > 0) {
+        $migration_key = 'meza_dashboard_widget_layout_initialized_v1';
+        if (!get_user_meta($user_id, $migration_key, true)) {
+            update_user_option($user_id, 'metaboxhidden_dashboard', $hidden_ids, false);
+            update_user_option($user_id, 'closedpostboxes_dashboard', [], false);
+            update_user_option($user_id, 'meta-box-order_dashboard', $GLOBALS['meza_dashboard_forced_order'], false);
+            update_user_option($user_id, 'screen_layout_dashboard', 4, false);
+            update_user_meta($user_id, $migration_key, 1);
+        }
+    }
 }, 1000);
 
 add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
     if (!($screen instanceof WP_Screen) || $screen->id !== 'dashboard') return $hidden;
     $forced_hidden = $GLOBALS['meza_dashboard_hidden_ids'] ?? [];
     if (!is_array($forced_hidden)) $forced_hidden = [];
-    return array_values(array_unique(array_merge((array) $hidden, $forced_hidden)));
+    $allowed_ids = $GLOBALS['meza_dashboard_allowed_ids'] ?? [];
+    if (!is_array($allowed_ids)) $allowed_ids = [];
+
+    return array_values(array_unique(array_merge(array_diff((array) $hidden, $allowed_ids), $forced_hidden)));
 }, 100, 2);
+
+add_filter('hidden_meta_boxes', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'dashboard') return $hidden;
+    $forced_hidden = $GLOBALS['meza_dashboard_hidden_ids'] ?? [];
+    if (!is_array($forced_hidden)) $forced_hidden = [];
+    $allowed_ids = $GLOBALS['meza_dashboard_allowed_ids'] ?? [];
+    if (!is_array($allowed_ids)) $allowed_ids = [];
+
+    return array_values(array_unique(array_merge(array_diff((array) $hidden, $allowed_ids), $forced_hidden)));
+}, 100, 2);
+
+add_filter('get_user_option_meta-box-order_dashboard', function ($value) {
+    $forced_order = $GLOBALS['meza_dashboard_forced_order'] ?? [];
+    if (!is_array($forced_order) || $forced_order === []) {
+        return $value;
+    }
+
+    if (!is_array($value)) {
+        $value = [];
+    }
+
+    return array_merge($value, $forced_order);
+}, 100);
 
 // Ensure Screen Options checkbox labels use the same custom widget titles.
 add_action('in_admin_header', function () {

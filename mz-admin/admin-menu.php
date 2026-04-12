@@ -206,8 +206,8 @@ function meza_can_access_aios_locked_users($user = null): bool
 function meza_get_site_manager_allowed_settings_page_slugs(): array
 {
     $allowed_slugs = [
-        'business-info',
-        'organization-info',
+        'business-information',
+        'branding',
     ];
 
     if (function_exists('meza_get_shared_project_acf_options_page_slugs')) {
@@ -1264,21 +1264,31 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $
 }, 5, 4);
 
 add_action('admin_init', function (): void {
-    if (!meza_is_site_manager_user(wp_get_current_user())) {
-        return;
-    }
-
     global $pagenow;
 
     $pagenow = strtolower((string) $pagenow);
     $page = strtolower(trim(isset($_GET['page']) ? (string) wp_unslash($_GET['page']) : ''));
+
+    if (
+        $pagenow === 'options-general.php'
+        && $page !== ''
+        && function_exists('meza_get_shared_project_acf_options_page_slugs')
+        && in_array($page, meza_get_shared_project_acf_options_page_slugs(), true)
+    ) {
+        wp_safe_redirect(admin_url('admin.php?page=' . $page));
+        exit;
+    }
+
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return;
+    }
 
     if ($pagenow === 'options-general.php') {
         $allowed_settings_pages = meza_get_site_manager_allowed_settings_page_slugs();
 
         if ($page === '' || !in_array($page, $allowed_settings_pages, true)) {
             $target_page = $allowed_settings_pages[0] ?? '';
-            wp_safe_redirect($target_page !== '' ? admin_url('options-general.php?page=' . $target_page) : admin_url());
+            wp_safe_redirect($target_page !== '' ? admin_url('admin.php?page=' . $target_page) : admin_url());
             exit;
         }
     }
@@ -4887,7 +4897,7 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
             return in_array($page, meza_get_shared_project_acf_options_page_slugs(), true);
         }
 
-        return in_array($page, ['business-info', 'organization-info'], true);
+        return in_array($page, ['branding', 'business-information'], true);
     }
 
     function meza_is_dynamic_plugin_admin_screen(?WP_Screen $screen = null): bool
@@ -7145,8 +7155,8 @@ function meza_enforce_site_manager_settings_submenu(): void
     }
 
     $allowed_settings_pages = [
-        'business-info' => 'Branding',
-        'organization-info' => 'Business Information',
+        'business-information' => 'Business Information',
+        'branding' => 'Branding',
     ];
     $allowed_settings_pages = array_intersect_key($allowed_settings_pages, array_flip(meza_get_site_manager_allowed_settings_page_slugs()));
 
@@ -7163,9 +7173,9 @@ function meza_enforce_site_manager_settings_submenu(): void
 
         if (!isset($allowed_settings_pages[$slug])) {
             if ($label === 'branding') {
-                $slug = 'business-info';
+                $slug = 'branding';
             } elseif (in_array($label, ['business information', 'contact information'], true)) {
-                $slug = 'organization-info';
+                $slug = 'business-information';
             }
         }
 

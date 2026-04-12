@@ -15,7 +15,7 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
             [
                 'page_title'      => 'Branding',
                 'menu_title'      => 'Branding',
-                'menu_slug'       => 'business-info',
+                'menu_slug'       => 'branding',
                 'parent_slug'     => 'options-general.php',
                 'capability'      => 'manage_options',
                 'redirect'        => false,
@@ -26,7 +26,7 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
             [
                 'page_title'      => 'Business Information',
                 'menu_title'      => 'Business Information',
-                'menu_slug'       => 'organization-info',
+                'menu_slug'       => 'business-information',
                 'parent_slug'     => 'options-general.php',
                 'capability'      => 'manage_options',
                 'redirect'        => false,
@@ -203,7 +203,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         [
                             'param' => 'options_page',
                             'operator' => '==',
-                            'value' => 'organization-info',
+                            'value' => 'business-information',
                         ],
                     ],
                 ],
@@ -227,7 +227,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         [
                             'param' => 'options_page',
                             'operator' => '==',
-                            'value' => 'business-info',
+                            'value' => 'branding',
                         ],
                     ],
                 ],
@@ -384,7 +384,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         [
                             'param' => 'options_page',
                             'operator' => '==',
-                            'value' => 'business-info',
+                            'value' => 'branding',
                         ],
                     ],
                 ],
@@ -471,7 +471,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         [
                             'param' => 'options_page',
                             'operator' => '==',
-                            'value' => 'organization-info',
+                            'value' => 'business-information',
                         ],
                     ],
                 ],
@@ -619,21 +619,21 @@ if (!function_exists('meza_is_business_information_options_screen')) {
         }
 
         $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
-        return $page === 'business-info';
+        return $page === 'branding';
     }
 }
 
 add_filter('acf/ui_options_page/registration_args', function (array $args, array $post): array {
     $menu_slug = (string) ($args['menu_slug'] ?? '');
 
-    if ($menu_slug === 'business-info') {
+    if ($menu_slug === 'branding') {
         $args['page_title'] = 'Branding';
         $args['menu_title'] = 'Branding';
 
         return $args;
     }
 
-    if ($menu_slug === 'organization-info') {
+    if ($menu_slug === 'business-information') {
         $args['page_title'] = 'Business Information';
         $args['menu_title'] = 'Business Information';
 
@@ -648,16 +648,42 @@ add_filter('acf/get_options_page', function ($page, $slug) {
         return $page;
     }
 
-    if ($slug === 'business-info') {
+    if ($slug === 'branding') {
         $page['page_title'] = 'Branding';
         $page['menu_title'] = 'Branding';
-    } elseif ($slug === 'organization-info') {
+    } elseif ($slug === 'business-information') {
         $page['page_title'] = 'Business Information';
         $page['menu_title'] = 'Business Information';
     }
 
     return $page;
 }, 20, 2);
+
+add_filter('parent_file', function ($parent_file) {
+    if (!is_admin()) {
+        return $parent_file;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page === '' || !in_array($page, meza_get_shared_project_acf_options_page_slugs(), true)) {
+        return $parent_file;
+    }
+
+    return 'options-general.php';
+}, 20);
+
+add_filter('submenu_file', function ($submenu_file) {
+    if (!is_admin()) {
+        return $submenu_file;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page === '' || !in_array($page, meza_get_shared_project_acf_options_page_slugs(), true)) {
+        return $submenu_file;
+    }
+
+    return $page;
+}, 20);
 
 if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
     function meza_normalize_branding_settings_submenu_item(): void
@@ -671,7 +697,7 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
         $branding_item = null;
 
         foreach ($submenu['options-general.php'] as $index => $item) {
-            if (!is_array($item) || ((string) ($item[2] ?? '')) !== 'business-info') {
+            if (!is_array($item) || ((string) ($item[2] ?? '')) !== 'branding') {
                 continue;
             }
 
