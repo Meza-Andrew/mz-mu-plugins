@@ -7202,7 +7202,7 @@ function meza_enforce_site_manager_settings_submenu(): void
 
 function meza_reorder_site_manager_admin_preferences_group(): void
 {
-    if (!meza_is_site_manager_user(wp_get_current_user())) {
+    if (!meza_can_view_settings_tools_submenu_items(wp_get_current_user())) {
         return;
     }
 
@@ -7953,7 +7953,7 @@ add_action('admin_menu', 'meza_cleanup_menu_separators', PHP_INT_MAX);
 
 function meza_group_site_manager_appearance_and_fallback_menus(): void
 {
-    if (!meza_is_site_manager_user(wp_get_current_user())) {
+    if (!meza_can_view_settings_tools_submenu_items(wp_get_current_user())) {
         return;
     }
 
