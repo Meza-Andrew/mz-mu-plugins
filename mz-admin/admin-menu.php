@@ -1844,10 +1844,6 @@ function meza_is_sqlite_object_cache_menu_item(string $slug, string $title): boo
 function meza_get_settings_submenu_priority_labels(): array
 {
     return [
-        'General',
-        'Business Information',
-        'Branding',
-        'Writing',
         'CRM Integration',
         'Page Cache',
         'Object Cache',
@@ -1861,38 +1857,71 @@ function meza_get_settings_submenu_priority_labels(): array
 
 function meza_reorder_settings_submenu_items(array $items): array
 {
-    $ordered_labels = meza_get_settings_submenu_priority_labels();
-    $ordered_items = [];
-    $matched_indexes = [];
+    $top_labels = [
+        'General',
+        'Business Information',
+        'Branding',
+    ];
+    $plugin_labels = meza_get_settings_submenu_priority_labels();
+    $core_anchor_labels = [
+        'Writing',
+        'Reading',
+        'Discussion',
+        'Media',
+        'Permalinks',
+        'Privacy',
+    ];
+
+    $top_items = [];
+    $plugin_items = [];
+    $remaining_items = [];
 
     foreach ($items as $index => $item) {
-        if (!is_array($item)) continue;
+        if (!is_array($item)) {
+            $remaining_items[] = $item;
+            continue;
+        }
 
         $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
+        $top_match_index = array_search($label, $top_labels, true);
+        if ($top_match_index !== false) {
+            $top_items[$top_match_index] = $item;
+            continue;
+        }
 
-        $label_match_index = array_search($label, $ordered_labels, true);
-        if ($label_match_index === false) continue;
+        $plugin_match_index = array_search($label, $plugin_labels, true);
+        if ($plugin_match_index !== false) {
+            $plugin_items[$plugin_match_index] = $item;
+            continue;
+        }
 
-        $ordered_items[$label_match_index] = $item;
-        $matched_indexes[] = (int) $index;
+        $remaining_items[] = $item;
     }
 
-    if (empty($matched_indexes)) {
-        return $items;
+    ksort($top_items);
+    ksort($plugin_items);
+
+    $rebuilt_items = array_merge(array_values($top_items), $remaining_items);
+
+    if ($plugin_items === []) {
+        return $rebuilt_items;
     }
 
-    rsort($matched_indexes, SORT_NUMERIC);
-    foreach ($matched_indexes as $matched_index) {
-        array_splice($items, $matched_index, 1);
+    $insert_index = count($rebuilt_items);
+    foreach ($rebuilt_items as $index => $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $label = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
+        if (in_array($label, $core_anchor_labels, true)) {
+            $insert_index = (int) $index + 1;
+        }
     }
 
-    ksort($ordered_items);
+    array_splice($rebuilt_items, $insert_index, 0, array_values($plugin_items));
 
-    if ($ordered_items !== []) {
-        array_splice($items, 0, 0, array_values($ordered_items));
-    }
-
-    return $items;
+    return array_values($rebuilt_items);
 }
 
 function meza_reorder_standardized_submenu_utility_items(array $items, string $parent_slug = ''): array

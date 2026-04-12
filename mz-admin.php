@@ -82,6 +82,28 @@ if (!function_exists('meza_store_sync_signature')) {
     }
 }
 
+if (!function_exists('meza_is_plugin_basename_active')) {
+    function meza_is_plugin_basename_active(string $plugin_basename): bool
+    {
+        $plugin_basename = trim($plugin_basename);
+        if ($plugin_basename === '') {
+            return false;
+        }
+
+        $active_plugins = apply_filters('active_plugins', get_option('active_plugins'));
+        if (is_array($active_plugins) && in_array($plugin_basename, $active_plugins, true)) {
+            return true;
+        }
+
+        if (!is_multisite()) {
+            return false;
+        }
+
+        $sitewide_plugins = get_site_option('active_sitewide_plugins');
+        return is_array($sitewide_plugins) && array_key_exists($plugin_basename, $sitewide_plugins);
+    }
+}
+
 if (!function_exists('meza_set_option_autoload')) {
     function meza_set_option_autoload(string $option_name, bool $autoload): bool
     {
@@ -1675,9 +1697,7 @@ add_action('init', 'meza_sync_site_kit_dashboard_sharing', 25);
 if (!function_exists('meza_is_site_kit_plugin_available')) {
     function meza_is_site_kit_plugin_available(): bool
     {
-        return file_exists(WP_PLUGIN_DIR . '/google-site-kit/google-site-kit.php')
-            || class_exists('\Google\Site_Kit\Core\Util\Google_Icon')
-            || class_exists('\Google\Site_Kit\Core\Modules\Modules');
+        return meza_is_plugin_basename_active('google-site-kit/google-site-kit.php');
     }
 }
 
@@ -1887,7 +1907,18 @@ add_action('admin_init', function (): void {
         return;
     }
 
+    $site_kit_available = meza_is_site_kit_plugin_available();
     $page = isset($_GET['page']) ? sanitize_key((string) $_GET['page']) : '';
+    if (in_array($page, ['meza-web-analytics', 'mz-web-analytics'], true) && !$site_kit_available) {
+        wp_safe_redirect(admin_url());
+        exit;
+    }
+
+    if (str_starts_with($page, 'googlesitekit-') && !$site_kit_available) {
+        wp_safe_redirect(admin_url());
+        exit;
+    }
+
     if (in_array($page, ['meza-web-analytics', 'mz-web-analytics'], true) && meza_can_manage_site_kit()) {
         wp_safe_redirect(admin_url('admin.php?page=googlesitekit-dashboard'));
         exit;
@@ -2018,6 +2049,11 @@ if (!function_exists('meza_restore_site_kit_admin_menu')) {
 
         remove_menu_page('meza-web-analytics');
         remove_menu_page('mz-web-analytics');
+
+        if (!$site_kit_available) {
+            remove_menu_page('googlesitekit-dashboard');
+            return;
+        }
 
         if ($site_kit_available && ($use_custom_menu || !$has_dashboard_access)) {
             remove_menu_page('googlesitekit-dashboard');
