@@ -311,7 +311,7 @@ function meza_is_current_aios_admin_page(): bool
     }
 
     $page = sanitize_key((string) ($_GET['page'] ?? ''));
-    if (in_array($page, ['aiowpsec', 'aiowpsec_two_factor_auth_user'], true)) {
+    if (in_array($page, ['aiowpsec', 'aiowpsec_settings', 'aiowpsec_two_factor_auth_user'], true)) {
         return true;
     }
 
@@ -821,7 +821,14 @@ function meza_is_native_plugin_admin_shell_page(): bool
         return false;
     }
 
-    if (in_array($page, ['webpc_optimization_page', 'action-scheduler'], true)) {
+    if (in_array($page, [
+        'webpc_optimization_page',
+        'webpc_admin_page',
+        'action-scheduler',
+        'hicpo-settings',
+        'organization-events-settings',
+        'aiowpsec_settings',
+    ], true)) {
         return true;
     }
 
@@ -4882,6 +4889,144 @@ if (!function_exists('meza_get_shared_settings_browser_title')) {
     }
 }
 
+if (!function_exists('meza_admin_request_matches_menu_slug')) {
+    function meza_admin_request_matches_menu_slug(string $menu_slug): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        $menu_slug = trim($menu_slug);
+        if ($menu_slug === '') {
+            return false;
+        }
+
+        $normalized_menu_slug = strtolower($menu_slug);
+        $candidates = array_map('strtolower', meza_get_current_admin_menu_slug_candidates());
+        if (in_array($normalized_menu_slug, $candidates, true)) {
+            return true;
+        }
+
+        global $pagenow;
+
+        $current_admin_file = strtolower(trim((string) ($pagenow ?? '')));
+        $current_args = [];
+        foreach ($_GET as $key => $value) {
+            if (!is_scalar($value)) {
+                continue;
+            }
+
+            $current_args[sanitize_key((string) $key)] = (string) wp_unslash($value);
+        }
+
+        $slug_admin_file = '';
+        $slug_args = [];
+
+        if (str_contains($menu_slug, '?')) {
+            $slug_admin_file = strtolower(trim((string) parse_url($menu_slug, PHP_URL_PATH)));
+            $slug_query = (string) parse_url($menu_slug, PHP_URL_QUERY);
+            if ($slug_query !== '') {
+                parse_str(html_entity_decode($slug_query), $slug_args);
+            }
+        } elseif (str_contains($menu_slug, '.php')) {
+            $slug_admin_file = strtolower($menu_slug);
+        } elseif (str_contains($menu_slug, '=')) {
+            $slug_query = $menu_slug;
+
+            if (!str_starts_with($slug_query, 'page=')) {
+                [$slug_head, $slug_rest] = array_pad(explode('&', $slug_query, 2), 2, '');
+                if ($slug_head !== '' && !str_contains($slug_head, '=')) {
+                    $slug_query = 'page=' . $slug_head;
+                    if ($slug_rest !== '') {
+                        $slug_query .= '&' . $slug_rest;
+                    }
+                }
+            }
+
+            parse_str(html_entity_decode($slug_query), $slug_args);
+        } else {
+            return sanitize_key($menu_slug) === sanitize_key((string) ($current_args['page'] ?? ''));
+        }
+
+        if ($slug_admin_file !== '' && $current_admin_file !== '' && $slug_admin_file !== $current_admin_file) {
+            return false;
+        }
+
+        foreach ($slug_args as $key => $value) {
+            $normalized_key = sanitize_key((string) $key);
+            $normalized_value = is_scalar($value) ? (string) $value : '';
+            if (($current_args[$normalized_key] ?? null) !== $normalized_value) {
+                return false;
+            }
+        }
+
+        return $slug_args !== [];
+    }
+}
+
+if (!function_exists('meza_get_current_admin_menu_page_title')) {
+    function meza_get_current_admin_menu_page_title(): string
+    {
+        global $menu, $submenu;
+
+        if (is_array($submenu)) {
+            foreach ($submenu as $items) {
+                if (!is_array($items)) {
+                    continue;
+                }
+
+                foreach ($items as $item) {
+                    if (!is_array($item) || !meza_admin_request_matches_menu_slug((string) ($item[2] ?? ''))) {
+                        continue;
+                    }
+
+                    $submenu_title = trim(wp_strip_all_tags((string) ($item[3] ?? '')));
+                    if ($submenu_title !== '') {
+                        return $submenu_title;
+                    }
+
+                    $menu_title = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
+                    if ($menu_title !== '') {
+                        return $menu_title;
+                    }
+                }
+            }
+        }
+
+        if (is_array($menu)) {
+            foreach ($menu as $item) {
+                if (!is_array($item) || !meza_admin_request_matches_menu_slug((string) ($item[2] ?? ''))) {
+                    continue;
+                }
+
+                $page_title = trim(wp_strip_all_tags((string) ($item[3] ?? '')));
+                if ($page_title !== '') {
+                    return $page_title;
+                }
+
+                $menu_title = trim(wp_strip_all_tags((string) ($item[0] ?? '')));
+                if ($menu_title !== '') {
+                    return $menu_title;
+                }
+            }
+        }
+
+        $page_slug = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        if ($page_slug !== '') {
+            $moved_map = meza_get_collapsed_settings_menu_map();
+            $map_entry = $moved_map[$page_slug] ?? $moved_map['admin.php?page=' . $page_slug] ?? null;
+            if (is_array($map_entry)) {
+                $label = trim(wp_strip_all_tags((string) ($map_entry['label'] ?? '')));
+                if ($label !== '') {
+                    return $label;
+                }
+            }
+        }
+
+        return '';
+    }
+}
+
 if (!function_exists('meza_ensure_admin_page_title_is_string')) {
     function meza_ensure_admin_page_title_is_string($screen = null): void
     {
@@ -4908,6 +5053,20 @@ if (!function_exists('meza_ensure_admin_page_title_is_string')) {
                 $title = $shared_settings_title;
                 return;
             }
+        }
+
+        if (function_exists('get_admin_page_title')) {
+            $resolved_title = trim(wp_strip_all_tags((string) get_admin_page_title()));
+            if ($resolved_title !== '') {
+                $title = $resolved_title;
+                return;
+            }
+        }
+
+        $resolved_menu_title = meza_get_current_admin_menu_page_title();
+        if ($resolved_menu_title !== '') {
+            $title = $resolved_menu_title;
+            return;
         }
 
         if ($screen instanceof WP_Screen) {

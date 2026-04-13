@@ -281,6 +281,11 @@ function meza_post_type_organization_link_admin_column_is_default_visible(string
     return trim($post_type) === 'organization';
 }
 
+function meza_post_type_is_profile_like(string $post_type): bool
+{
+    return in_array(trim($post_type), ['profile', 'team-member'], true);
+}
+
 if (!function_exists('meza_admin_post_type_preserves_custom_admin_column_order')) {
     function meza_admin_post_type_preserves_custom_admin_column_order(string $post_type): bool
     {
@@ -455,7 +460,7 @@ function meza_get_post_type_thumbnail_admin_column_label(string $post_type): str
 {
     $post_type = trim($post_type);
 
-    if ($post_type === 'profile') {
+    if (meza_post_type_is_profile_like($post_type)) {
         return __('Photo');
     }
 
@@ -474,13 +479,17 @@ function meza_post_type_uses_share_image_admin_column(string $post_type): bool
 {
     $post_type = trim($post_type);
     if ($post_type === '') return false;
-    if ($post_type === 'profile' || meza_post_type_is_organization_like($post_type)) return false;
+    if (meza_post_type_is_profile_like($post_type) || meza_post_type_is_organization_like($post_type)) return false;
 
     return ($post_type === 'post' || $post_type === 'page' || meza_post_type_has_permalink($post_type));
 }
 
 function meza_get_post_type_summary_admin_column_label(string $post_type): string
 {
+    if (meza_post_type_is_profile_like($post_type)) {
+        return __('Short Bio');
+    }
+
     return in_array(trim($post_type), ['cta', 'form'], true) ? __('Subhead') : __('Summary');
 }
 
@@ -1200,9 +1209,14 @@ function meza_apply_default_admin_column_order(array $columns, string $post_type
         $append_first_match(['mz_thumbnail', $thumbnail_label]);
     }
 
-    $append_first_match(['title', 'name', 'headline (h2)']);
+    if (meza_post_type_is_profile_like($post_type)) {
+        $append_first_match(['mz_summary', 'summary']);
+        $append_first_match(['title', 'name', 'headline (h2)']);
+    } else {
+        $append_first_match(['title', 'name', 'headline (h2)']);
+        $append_first_match(['mz_summary', 'summary']);
+    }
     $append_first_match(['mz_profile_title']);
-    $append_first_match(['mz_summary', 'summary']);
     $append_first_match(['mz_profile_link', 'mz_organization_url', 'mz_page_link', 'link']);
     $append_taxonomy_columns();
     $append_first_match(['mz_page_headline', 'page headline (h1)']);
@@ -1341,14 +1355,14 @@ function meza_get_seeded_acp_default_admin_columns(): array
             'mz_cta_link' => ['label' => 'Link (Primary)'],
             'mz_cta_secondary_link' => ['label' => 'Link (Secondary)'],
             'mz_modified' => ['label' => 'Modified'],
-            'date' => ['label' => 'Published'],
+            'mz_published' => ['label' => 'Published'],
         ],
         '_ac_columns_default_faq' => [
             'mz_id' => ['label' => 'ID'],
             'title' => ['label' => 'Title'],
             'mz_faq_count' => ['label' => 'Count'],
             'mz_modified' => ['label' => 'Modified'],
-            'date' => ['label' => 'Published'],
+            'mz_published' => ['label' => 'Published'],
         ],
         '_ac_columns_default_form' => [
             'mz_id' => ['label' => 'ID'],
@@ -1356,7 +1370,7 @@ function meza_get_seeded_acp_default_admin_columns(): array
             'mz_slug' => ['label' => 'Slug'],
             'mz_form_recipients' => ['label' => 'Recipients'],
             'mz_modified' => ['label' => 'Modified'],
-            'date' => ['label' => 'Published'],
+            'mz_published' => ['label' => 'Published'],
         ],
         '_ac_columns_default_organization' => [
             'mz_id' => ['label' => 'ID'],
@@ -1366,7 +1380,7 @@ function meza_get_seeded_acp_default_admin_columns(): array
             'mz_summary' => ['label' => 'Summary'],
             'mz_organization_url' => ['label' => 'Link'],
             'mz_modified' => ['label' => 'Modified'],
-            'date' => ['label' => 'Published'],
+            'mz_published' => ['label' => 'Published'],
         ],
         '_ac_columns_default_page' => [
             'mz_id' => ['label' => 'ID'],
@@ -1408,6 +1422,42 @@ function meza_get_seeded_acp_default_admin_columns(): array
             'mz_summary' => ['label' => 'Short Bio'],
             'mz_profile_title' => ['label' => 'Title'],
             'mz_profile_link' => ['label' => 'Link'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_service' => [
+            'mz_id' => ['label' => 'ID'],
+            'mz_menu_order' => ['label' => '#'],
+            'mz_thumbnail' => ['label' => 'Image'],
+            'title' => ['label' => 'Title'],
+            'mz_summary' => ['label' => 'Summary'],
+            'link' => ['label' => 'Link'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_team-member' => [
+            'mz_id' => ['label' => 'ID'],
+            'mz_menu_order' => ['label' => '#'],
+            'mz_thumbnail' => ['label' => 'Photo'],
+            'title' => ['label' => 'Name'],
+            'mz_summary' => ['label' => 'Short Bio'],
+            'mz_profile_title' => ['label' => 'Title'],
+            'mz_profile_link' => ['label' => 'Link'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_event' => [
+            'mz_id' => ['label' => 'ID'],
+            'title' => ['label' => 'Title'],
+            'mz_summary' => ['label' => 'Summary'],
+            'mz_page_headline' => ['label' => 'Page Headline (H1)'],
+            'mz_page_cta' => ['label' => 'Page CTA'],
+            'mz_page_form' => ['label' => 'Page Form'],
+            'wpseo-title' => ['label' => 'Meta Title'],
+            'wpseo-metadesc' => ['label' => 'Meta Description'],
+            'mz_thumbnail' => ['label' => 'Share Image'],
+            'mz_share_title' => ['label' => 'Share Title'],
+            'mz_share_description' => ['label' => 'Share Description'],
             'mz_modified' => ['label' => 'Modified'],
             'mz_published' => ['label' => 'Published'],
         ],
@@ -1508,8 +1558,8 @@ function meza_get_seeded_admin_column_alias_candidates(string $key): array
     }
 
     $aliases = [
-        'date' => ['date', 'mz_published'],
-        'mz_published' => ['mz_published', 'date'],
+        'date' => ['date', 'column-date'],
+        'mz_published' => ['mz_published'],
         'website' => ['website', 'mz_website'],
         'mz_website' => ['mz_website', 'website'],
         'last_login' => ['last_login', 'mz_last_login'],
@@ -1671,7 +1721,7 @@ function meza_get_default_visible_taxonomy_admin_column_keys(string $post_type):
 
 function meza_sync_seeded_acp_default_admin_columns(): void
 {
-    $target_version = '1.1.249';
+    $target_version = '1.1.253';
     if ((string) get_option('meza_acp_seeded_default_admin_columns_migration') === $target_version) {
         return;
     }
@@ -1691,7 +1741,7 @@ function meza_run_acp_default_admin_column_order_migration(): void
         return;
     }
 
-    $target_version = '1.1.250';
+    $target_version = '1.1.252';
     if ((string) get_option('meza_acp_default_admin_column_order_migration') === $target_version) {
         return;
     }
@@ -3289,6 +3339,25 @@ function meza_ensure_modified_published_admin_columns(array $columns): array
         $columns = [];
     }
 
+    $replace_column_key = static function (array $items, string $from, string $to, string $label) : array {
+        if ($from === '' || $to === '' || !array_key_exists($from, $items)) {
+            return $items;
+        }
+
+        $updated = [];
+
+        foreach ($items as $key => $value) {
+            if ((string) $key === $from) {
+                $updated[$to] = $label;
+                continue;
+            }
+
+            $updated[$key] = $value;
+        }
+
+        return $updated;
+    };
+
     $anchors = [
         'mz_share_description',
         'mz_share_title',
@@ -3318,7 +3387,7 @@ function meza_ensure_modified_published_admin_columns(array $columns): array
     } elseif (array_key_exists('mz_published', $columns)) {
         $columns['mz_published'] = __('Published');
     } elseif (array_key_exists('date', $columns)) {
-        $columns['date'] = __('Published');
+        $columns = $replace_column_key($columns, 'date', 'mz_published', __('Published'));
     }
 
     return $columns;
@@ -3387,8 +3456,8 @@ function meza_ensure_standard_admin_columns(array $columns, string $post_type): 
     $show_cta_secondary_link_column = ($post_type === 'cta');
     $show_form_recipients_column = ($post_type === 'form');
     $show_organization_url_column = meza_post_type_is_organization_like($post_type);
-    $show_profile_title_column = ($post_type === 'profile');
-    $show_profile_link_column = ($post_type === 'profile');
+    $show_profile_title_column = meza_post_type_is_profile_like($post_type);
+    $show_profile_link_column = meza_post_type_is_profile_like($post_type);
     $show_faq_count_column = ($post_type === 'faq');
     $show_form_slug_column = ($post_type === 'form');
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
@@ -3600,8 +3669,8 @@ function meza_normalize_admin_columns_managed_headings(array $columns, string $p
     $show_cta_secondary_link_column = ($post_type === 'cta');
     $show_form_recipients_column = ($post_type === 'form');
     $show_organization_url_column = meza_post_type_is_organization_like($post_type);
-    $show_profile_title_column = ($post_type === 'profile');
-    $show_profile_link_column = ($post_type === 'profile');
+    $show_profile_title_column = meza_post_type_is_profile_like($post_type);
+    $show_profile_link_column = meza_post_type_is_profile_like($post_type);
     $show_faq_count_column = ($post_type === 'faq');
     $show_form_slug_column = ($post_type === 'form');
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
@@ -3609,7 +3678,7 @@ function meza_normalize_admin_columns_managed_headings(array $columns, string $p
     $show_yoast_share_columns = meza_post_type_shows_share_text_admin_columns($post_type);
     $thumbnail_column_label = meza_get_post_type_thumbnail_admin_column_label($post_type);
     $title_column_label = (
-        ($post_type === 'profile' || meza_post_type_is_organization_like($post_type))
+        (meza_post_type_is_profile_like($post_type) || meza_post_type_is_organization_like($post_type))
         ? __('Name')
         : (in_array($post_type, ['cta', 'form'], true) ? __('Headline (H2)') : null)
     );
@@ -3775,8 +3844,8 @@ function meza_normalize_datetime_columns(array $columns): array
     $show_cta_secondary_link_column = ($post_type === 'cta');
     $show_form_recipients_column = ($post_type === 'form');
     $show_organization_url_column = meza_post_type_is_organization_like($post_type);
-    $show_profile_title_column = ($post_type === 'profile');
-    $show_profile_link_column = ($post_type === 'profile');
+    $show_profile_title_column = meza_post_type_is_profile_like($post_type);
+    $show_profile_link_column = meza_post_type_is_profile_like($post_type);
     $show_faq_count_column = ($post_type === 'faq');
     $show_form_slug_column = ($post_type === 'form');
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
@@ -3785,7 +3854,7 @@ function meza_normalize_datetime_columns(array $columns): array
     $show_yoast_share_columns = meza_post_type_shows_share_text_admin_columns($post_type);
     $thumbnail_column_label = meza_get_post_type_thumbnail_admin_column_label($post_type);
     $title_column_label = (
-        ($post_type === 'profile' || meza_post_type_is_organization_like($post_type))
+        (meza_post_type_is_profile_like($post_type) || meza_post_type_is_organization_like($post_type))
         ? __('Name')
         : (in_array($post_type, ['cta', 'form'], true) ? __('Headline (H2)') : null)
     );
@@ -4747,7 +4816,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         return;
     }
     if ($column === 'mz_organization_url') {
-        $url = meza_get_post_link_field_url((int) $post_id, ['url']);
+        $url = meza_get_post_link_field_url((int) $post_id, ['link', 'url']);
 
         if ($url === '') {
             echo '&mdash;';
@@ -5741,6 +5810,10 @@ function meza_get_page_type_dashicon_class(string $label): string
     if (str_contains($normalized, 'privacy')) return 'dashicons-privacy';
     if (str_contains($normalized, 'cookie')) return 'dashicons-hidden';
     if (str_contains($normalized, 'about')) return 'dashicons-id';
+    if (str_contains($normalized, 'event')) return 'dashicons-calendar-alt';
+    if (str_contains($normalized, 'service')) return 'dashicons-hammer';
+    if (str_contains($normalized, 'team')) return 'dashicons-groups';
+    if (str_contains($normalized, 'partner')) return 'dashicons-admin-multisite';
     if (str_contains($normalized, 'basic page')) return 'dashicons-welcome-write-blog';
     if (str_contains($normalized, 'form')) return 'dashicons-feedback';
     if (str_contains($normalized, 'style')) return 'dashicons-art';
