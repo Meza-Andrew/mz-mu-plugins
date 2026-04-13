@@ -125,6 +125,52 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'prepend' => '',
                 'append' => '',
             ],
+            [
+                'key' => 'field_meza_business_location',
+                'label' => 'Location',
+                'name' => 'location',
+                'aria-label' => '',
+                'type' => 'text',
+                'instructions' => '',
+                'required' => 1,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'default_value' => '',
+                'maxlength' => '',
+                'allow_in_bindings' => 0,
+                'placeholder' => '',
+                'prepend' => '',
+                'append' => '',
+            ],
+            [
+                'key' => 'field_meza_business_type',
+                'label' => 'Type',
+                'name' => 'type',
+                'aria-label' => '',
+                'type' => 'radio',
+                'instructions' => '',
+                'required' => 1,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'choices' => [
+                    'business' => 'Business',
+                    'nonprofit' => 'Nonprofit',
+                ],
+                'default_value' => 'business',
+                'return_format' => 'value',
+                'allow_null' => 0,
+                'other_choice' => 0,
+                'save_other_choice' => 0,
+                'layout' => 'horizontal',
+            ],
         ];
     }
 
@@ -737,10 +783,44 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'label' => 'Address',
                         'name' => 'address',
                         'aria-label' => '',
-                        'type' => 'textarea',
-                        'instructions' => '',
+                        'type' => 'google_map',
+                        'instructions' => 'Choose this option if visitors can come to a real street address.',
                         'required' => 1,
-                        'conditional_logic' => 0,
+                        'conditional_logic' => [
+                            [
+                                [
+                                    'field' => 'field_meza_business_mailing_address',
+                                    'operator' => '==empty',
+                                ],
+                            ],
+                        ],
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'allow_in_bindings' => 0,
+                        'center_lat' => '38.3032',
+                        'center_lng' => '-77.4605',
+                        'zoom' => '',
+                        'height' => '',
+                    ],
+                    [
+                        'key' => 'field_meza_business_mailing_address',
+                        'label' => 'Address',
+                        'name' => 'address_text',
+                        'aria-label' => '',
+                        'type' => 'textarea',
+                        'instructions' => 'Use this instead for a mailing-only address, such as a PO box or any address that should not appear as a map pin.',
+                        'required' => 1,
+                        'conditional_logic' => [
+                            [
+                                [
+                                    'field' => 'field_69b5a2b623bc0',
+                                    'operator' => '==empty',
+                                ],
+                            ],
+                        ],
                         'wrapper' => [
                             'width' => '',
                             'class' => '',
@@ -767,7 +847,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'position' => 'normal',
                 'style' => 'default',
                 'label_placement' => 'left',
-                'instruction_placement' => 'field',
+                'instruction_placement' => 'label',
                 'hide_on_screen' => '',
                 'active' => true,
                 'description' => '',
@@ -878,6 +958,92 @@ if (!function_exists('meza_get_business_information_branding_field_map')) {
         ];
     }
 }
+
+if (!function_exists('meza_normalize_acf_textarea_option_value')) {
+    function meza_normalize_acf_textarea_option_value($value): string
+    {
+        if (!is_array($value)) {
+            return (string) $value;
+        }
+
+        $preferred_keys = [
+            'address',
+            'formatted_address',
+            'place_name',
+            'street_name',
+            'street_number',
+            'city',
+            'state',
+            'state_short',
+            'post_code',
+            'country',
+            'country_short',
+        ];
+
+        foreach (['address', 'formatted_address'] as $key) {
+            if (isset($value[$key]) && !is_array($value[$key])) {
+                $formatted = trim((string) $value[$key]);
+                if ($formatted !== '') {
+                    return $formatted;
+                }
+            }
+        }
+
+        $parts = [];
+
+        $append_scalar = static function ($candidate) use (&$parts): void {
+            if (is_array($candidate)) {
+                return;
+            }
+
+            $candidate = trim((string) $candidate);
+            if ($candidate !== '') {
+                $parts[$candidate] = true;
+            }
+        };
+
+        foreach ($preferred_keys as $key) {
+            if (array_key_exists($key, $value)) {
+                $append_scalar($value[$key]);
+            }
+        }
+
+        array_walk_recursive($value, static function ($candidate) use (&$parts): void {
+            $candidate = trim((string) $candidate);
+            if ($candidate !== '') {
+                $parts[$candidate] = true;
+            }
+        });
+
+        return implode("\n", array_keys($parts));
+    }
+}
+
+add_filter('acf/load_value', static function ($value, $post_id, $field) {
+    if (($field['type'] ?? '') !== 'textarea' || !is_array($value)) {
+        return $value;
+    }
+
+    $normalized_post_id = is_scalar($post_id) ? (string) $post_id : '';
+    if ($normalized_post_id !== '' && !in_array($normalized_post_id, ['option', 'options'], true) && !str_starts_with($normalized_post_id, 'options_')) {
+        return $value;
+    }
+
+    return meza_normalize_acf_textarea_option_value($value);
+}, 5, 3);
+
+add_filter('acf/update_value', static function ($value, $post_id, $field) {
+    if (($field['type'] ?? '') !== 'textarea' || !is_array($value)) {
+        return $value;
+    }
+
+    $normalized_post_id = is_scalar($post_id) ? (string) $post_id : '';
+    if ($normalized_post_id !== '' && !in_array($normalized_post_id, ['option', 'options'], true) && !str_starts_with($normalized_post_id, 'options_')) {
+        return $value;
+    }
+
+    return meza_normalize_acf_textarea_option_value($value);
+}, 5, 3);
 
 foreach (meza_get_business_information_branding_field_map() as $field_name => $callbacks) {
     if (isset($callbacks['load']) && is_callable($callbacks['load'])) {
