@@ -2341,9 +2341,24 @@ function meza_extract_admin_column_emails($value): array
     })));
 }
 
-function meza_get_admin_email_column_html($value): string
+function meza_get_admin_email_column_html($value, array $args = []): string
 {
     $emails = meza_extract_admin_column_emails($value);
+
+    if ($emails === []) {
+        $fallback_email = sanitize_email((string) ($args['fallback_email'] ?? ''));
+        if ($fallback_email !== '' && is_email($fallback_email)) {
+            $fallback_label = trim((string) ($args['fallback_label'] ?? ''));
+            $fallback_html = '<a href="' . esc_url('mailto:' . $fallback_email) . '">' . esc_html($fallback_email) . '</a>';
+
+            if ($fallback_label !== '') {
+                $fallback_html .= '<br><span>(' . esc_html($fallback_label) . ')</span>';
+            }
+
+            return $fallback_html;
+        }
+    }
+
     if ($emails === []) {
         return '&mdash;';
     }
@@ -4621,7 +4636,10 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             $recipients = mzf_parse_recipients(get_post_meta((int) $post_id, 'email_recipients', true));
         }
 
-        echo meza_get_admin_email_column_html($recipients);
+        echo meza_get_admin_email_column_html($recipients, [
+            'fallback_email' => function_exists('get_field') ? (string) get_field('email', 'option') : '',
+            'fallback_label' => 'site email',
+        ]);
         return;
     }
     if ($column === 'mz_product_type') {
