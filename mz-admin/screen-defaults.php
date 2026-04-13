@@ -259,6 +259,12 @@ add_action('admin_head-index.php', function () {
     if (!($screen instanceof WP_Screen) || $screen->id !== 'dashboard') return;
 
     echo '<style id="meza-dashboard-responsive-columns">' .
+        '#ws_php_error_log .inside{' .
+        'padding-bottom:0!important;' .
+        '}' .
+        '#ws_php_error_log .elm-upgrade-to-pro-footer{' .
+        'display:none!important;' .
+        '}' .
         '#screen-options-wrap .columns-prefs{' .
         'display:none!important;' .
         '}' .
