@@ -30,6 +30,19 @@ if (!function_exists('mzf_user_can_manage_submissions')) {
     }
 }
 
+if (!function_exists('mzf_is_submissions_admin_page')) {
+    function mzf_is_submissions_admin_page(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+
+        return in_array($page, [MZF_SUBMISSIONS_PAGE_SLUG, MZF_SUBMISSIONS_PAGE_LEGACY_SLUG], true);
+    }
+}
+
 add_action('admin_menu', function () {
     add_submenu_page(
         'edit.php?post_type=form',
@@ -66,8 +79,37 @@ add_action('admin_init', function (): void {
 });
 
 add_action('admin_enqueue_scripts', function (): void {
-    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
-    if (!in_array($page, [MZF_SUBMISSIONS_PAGE_SLUG, MZF_SUBMISSIONS_PAGE_LEGACY_SLUG], true)) return;
+    if (!mzf_is_submissions_admin_page()) return;
+
+    if (!function_exists('wp_scripts') || !function_exists('wp_default_scripts')) {
+        require_once ABSPATH . WPINC . '/script-loader.php';
+    }
+
+    if (!function_exists('wp_styles') || !function_exists('wp_default_styles')) {
+        require_once ABSPATH . WPINC . '/script-loader.php';
+    }
+
+    $wp_scripts = wp_scripts();
+    if ($wp_scripts instanceof WP_Scripts && !isset($wp_scripts->registered['jquery'])) {
+        wp_default_scripts($wp_scripts);
+    }
+
+    $wp_styles = wp_styles();
+    if ($wp_styles instanceof WP_Styles && !isset($wp_styles->registered['common'])) {
+        wp_default_styles($wp_styles);
+    }
+
+    foreach (['dashicons', 'common', 'forms', 'admin-menu', 'list-tables', 'edit', 'buttons'] as $style_handle) {
+        if (wp_style_is($style_handle, 'registered')) {
+            wp_enqueue_style($style_handle);
+        }
+    }
+
+    foreach (['jquery', 'jquery-core', 'jquery-migrate', 'common', 'wp-hooks', 'wp-dom-ready', 'wp-a11y', 'wp-i18n', 'heartbeat', 'wp-auth-check', 'wp-lists', 'postbox'] as $script_handle) {
+        if (wp_script_is($script_handle, 'registered')) {
+            wp_enqueue_script($script_handle);
+        }
+    }
 
     $css_path = __DIR__ . '/assets/admin-shared.css';
     $css_url = '';
@@ -80,6 +122,30 @@ add_action('admin_enqueue_scripts', function (): void {
     $css_ver = file_exists($css_path) ? (string) filemtime($css_path) : null;
     wp_enqueue_style('mzf-admin-shared', $css_url, [], $css_ver);
 });
+
+add_filter('admin_body_class', function (string $classes): string {
+    if (!mzf_is_submissions_admin_page()) {
+        return $classes;
+    }
+
+    return trim($classes . ' edit-php post-type-form');
+});
+
+add_action('admin_head', function (): void {
+    if (!mzf_is_submissions_admin_page()) {
+        return;
+    }
+
+    mzf_render_submission_log_inline_styles();
+}, 20);
+
+add_action('admin_footer', function (): void {
+    if (!mzf_is_submissions_admin_page()) {
+        return;
+    }
+
+    mzf_render_submission_log_inline_script();
+}, 20);
 
 if (!function_exists('mzf_render_submission_log_inline_styles')) {
     function mzf_render_submission_log_inline_styles(): void
@@ -176,6 +242,13 @@ $sticky_css = <<<CSS
 CSS;
 
         echo "<style id='mzf-admin-shared-inline'>\n" . $css . "\n" . $sticky_css . "\n</style>";
+    }
+}
+
+if (!function_exists('mzf_render_submission_log_inline_script')) {
+    function mzf_render_submission_log_inline_script(): void
+    {
+        echo "<script id='mzf-submissions-inline-script'>(function(){var wrap=document.querySelector('.mzf-submissions-table-wrap');if(wrap){wrap.scrollLeft=0;}var toggles=document.querySelectorAll('.mzf-select-all');if(!toggles.length)return;var rows=document.querySelectorAll('.mzf-select-row');var sync=function(checked){for(var i=0;i<toggles.length;i++){toggles[i].checked=checked;}};for(var i=0;i<toggles.length;i++){toggles[i].addEventListener('change',function(){for(var j=0;j<rows.length;j++){rows[j].checked=this.checked;}sync(this.checked);});}for(var k=0;k<rows.length;k++){rows[k].addEventListener('change',function(){var checked=rows.length>0;for(var m=0;m<rows.length;m++){if(!rows[m].checked){checked=false;break;}}sync(checked);});}})();</script>";
     }
 }
 
@@ -951,7 +1024,6 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         );
 
         echo '<div class="wrap">';
-        mzf_render_submission_log_inline_styles();
         echo '<h1>Form Submission Log</h1>';
         $view_labels = [
             'all' => 'All',
@@ -1476,8 +1548,6 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         echo '</tbody><tfoot><tr>' . $table_footer_cells . '</tr></tfoot></table>';
         echo '</div>';
         echo '</form>';
-        echo '<script>(function(){var wrap=document.querySelector(".mzf-submissions-table-wrap");if(wrap){wrap.scrollLeft=0;}var toggles=document.querySelectorAll(".mzf-select-all");if(!toggles.length)return;var rows=document.querySelectorAll(".mzf-select-row");var sync=function(checked){for(var i=0;i<toggles.length;i++){toggles[i].checked=checked;}};for(var i=0;i<toggles.length;i++){toggles[i].addEventListener("change",function(){for(var j=0;j<rows.length;j++){rows[j].checked=this.checked;}sync(this.checked);});}for(var k=0;k<rows.length;k++){rows[k].addEventListener("change",function(){var checked=rows.length>0;for(var m=0;m<rows.length;m++){if(!rows[m].checked){checked=false;break;}}sync(checked);});}})();</script>';
-
         if ((int) $query->max_num_pages > 1) {
             $pagination_args = $state_args;
             unset($pagination_args['paged']);

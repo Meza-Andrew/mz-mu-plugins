@@ -172,15 +172,15 @@ function meza_dashboard_allowed_widget_ids(array $widgets): array
         'column3' => [],
     ];
 
-    if (isset($widgets['dashboard_right_now'])) $ids['column1'][] = 'dashboard_right_now';
-
     $site_kit_widget_id = meza_dashboard_find_site_kit_widget_id($widgets);
     if ($site_kit_widget_id !== '') $ids['column1'][] = $site_kit_widget_id;
 
-    $woocommerce_widget_id = meza_dashboard_find_woocommerce_status_widget_id($widgets);
-    if ($woocommerce_widget_id !== '') $ids['column2'][] = $woocommerce_widget_id;
+    if (isset($widgets['dashboard_right_now'])) $ids['column2'][] = 'dashboard_right_now';
 
     if (isset($widgets['dashboard_site_health'])) $ids['column2'][] = 'dashboard_site_health';
+
+    $woocommerce_widget_id = meza_dashboard_find_woocommerce_status_widget_id($widgets);
+    if ($woocommerce_widget_id !== '') $ids['column2'][] = $woocommerce_widget_id;
 
     $php_error_log_widget_id = meza_dashboard_find_php_error_log_widget_id($widgets);
     if ($php_error_log_widget_id !== '') $ids['column3'][] = $php_error_log_widget_id;
@@ -212,6 +212,30 @@ function meza_dashboard_forced_order(array $allowed): array
         'column3' => implode(',', array_values($allowed['column3'] ?? [])),
         'column4' => '',
     ];
+}
+
+function meza_dashboard_legacy_forced_order(array $widgets): array
+{
+    $legacy = [
+        'column1' => [],
+        'column2' => [],
+        'column3' => [],
+    ];
+
+    if (isset($widgets['dashboard_right_now'])) $legacy['column1'][] = 'dashboard_right_now';
+
+    $site_kit_widget_id = meza_dashboard_find_site_kit_widget_id($widgets);
+    if ($site_kit_widget_id !== '') $legacy['column1'][] = $site_kit_widget_id;
+
+    $woocommerce_widget_id = meza_dashboard_find_woocommerce_status_widget_id($widgets);
+    if ($woocommerce_widget_id !== '') $legacy['column2'][] = $woocommerce_widget_id;
+
+    if (isset($widgets['dashboard_site_health'])) $legacy['column2'][] = 'dashboard_site_health';
+
+    $php_error_log_widget_id = meza_dashboard_find_php_error_log_widget_id($widgets);
+    if ($php_error_log_widget_id !== '') $legacy['column3'][] = $php_error_log_widget_id;
+
+    return meza_dashboard_forced_order($legacy);
 }
 
 function meza_dashboard_remove_disallowed_widgets_from_registry(array $allowed_lookup): void
@@ -318,6 +342,7 @@ add_action('wp_dashboard_setup', function () {
     $GLOBALS['meza_dashboard_hidden_ids'] = $hidden_ids;
     $GLOBALS['meza_dashboard_allowed_ids'] = $allowed_ids;
     $GLOBALS['meza_dashboard_forced_order'] = meza_dashboard_forced_order($allowed);
+    $GLOBALS['meza_dashboard_legacy_forced_order'] = meza_dashboard_legacy_forced_order($widgets);
 
     $user_id = get_current_user_id();
     if ($user_id > 0) {
@@ -328,6 +353,38 @@ add_action('wp_dashboard_setup', function () {
             update_user_option($user_id, 'meta-box-order_dashboard', $GLOBALS['meza_dashboard_forced_order'], false);
             update_user_option($user_id, 'screen_layout_dashboard', 4, false);
             update_user_meta($user_id, $migration_key, 1);
+        }
+
+        $migration_key_v2 = 'meza_dashboard_widget_layout_initialized_v2';
+        if (!get_user_meta($user_id, $migration_key_v2, true)) {
+            $saved_order = get_user_option('meta-box-order_dashboard', $user_id);
+            $saved_order = meza_normalize_metabox_order_contexts($saved_order);
+            $legacy_order = $GLOBALS['meza_dashboard_legacy_forced_order'] ?? [];
+            $current_order = $GLOBALS['meza_dashboard_forced_order'] ?? [];
+
+            if (is_array($legacy_order) && is_array($current_order) && $saved_order === $legacy_order) {
+                update_user_option($user_id, 'meta-box-order_dashboard', $current_order, false);
+            }
+
+            update_user_meta($user_id, $migration_key_v2, 1);
+        }
+
+        $migration_key_v3 = 'meza_dashboard_widget_layout_initialized_v3';
+        if (!get_user_meta($user_id, $migration_key_v3, true)) {
+            $raw_saved_order = get_user_option('meta-box-order_dashboard', $user_id);
+            $saved_order = meza_normalize_metabox_order_contexts($raw_saved_order);
+            $legacy_order = $GLOBALS['meza_dashboard_legacy_forced_order'] ?? [];
+            $current_order = $GLOBALS['meza_dashboard_forced_order'] ?? [];
+
+            if ($saved_order !== [] && $raw_saved_order !== $saved_order) {
+                update_user_option($user_id, 'meta-box-order_dashboard', $saved_order, false);
+            }
+
+            if (is_array($legacy_order) && is_array($current_order) && $saved_order === $legacy_order) {
+                update_user_option($user_id, 'meta-box-order_dashboard', $current_order, false);
+            }
+
+            update_user_meta($user_id, $migration_key_v3, 1);
         }
     }
 }, 1000);
@@ -358,8 +415,11 @@ add_filter('get_user_option_meta-box-order_dashboard', function ($value) {
         return $value;
     }
 
-    if (!is_array($value)) {
-        $value = [];
+    $value = meza_normalize_metabox_order_contexts($value);
+    foreach ($value as $boxes) {
+        if (is_string($boxes) && trim($boxes) !== '') {
+            return $value;
+        }
     }
 
     return array_merge($value, $forced_order);
@@ -873,7 +933,35 @@ function meza_get_side_metabox_priority_ids(string $post_type): array
 function meza_normalize_metabox_order_contexts($order_value): array
 {
     if (is_array($order_value)) {
-        return $order_value;
+        $contexts = [];
+        $legacy_context_map = [
+            0 => 'normal',
+            1 => 'side',
+            2 => 'column3',
+            3 => 'column4',
+        ];
+
+        foreach ($order_value as $context_key => $boxes) {
+            if (is_int($context_key) || ctype_digit((string) $context_key)) {
+                $context_key = $legacy_context_map[(int) $context_key] ?? '';
+            } else {
+                $context_key = sanitize_key((string) $context_key);
+            }
+
+            if ($context_key === '') {
+                continue;
+            }
+
+            if (is_array($boxes)) {
+                $boxes = implode(',', array_values(array_filter(array_map('sanitize_key', $boxes), static function ($id) {
+                    return $id !== '';
+                })));
+            }
+
+            $contexts[(string) $context_key] = (string) $boxes;
+        }
+
+        return $contexts;
     }
 
     $contexts = [];
@@ -1032,13 +1120,9 @@ add_action('edit_form_after_editor', function ($post): void {
     do_meta_boxes(get_current_screen(), 'meza_after_editor', $post);
 }, 20);
 
-function meza_form_metabox_order_with_slug_first($order_value): string
+function meza_form_metabox_order_with_slug_first($order_value): array
 {
-    $order = is_string($order_value) ? $order_value : '';
-    $contexts = [];
-    if ($order !== '') {
-        parse_str($order, $contexts);
-    }
+    $contexts = meza_normalize_metabox_order_contexts($order_value);
 
     $normal_items = [];
     if (isset($contexts['normal'])) {
@@ -1078,10 +1162,10 @@ function meza_form_metabox_order_with_slug_first($order_value): string
         })));
         if (empty($box_ids)) continue;
 
-        $pairs[] = $context_key . '=' . implode(',', $box_ids);
+        $pairs[$context_key] = implode(',', $box_ids);
     }
 
-    return implode('&', $pairs);
+    return $pairs;
 }
 
 // Form edit screen defaults: place Slug directly under Title (before ACF field groups).
