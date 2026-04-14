@@ -13,6 +13,15 @@ if (!defined('MAILCHIMP_CLIENT_SECRET')) {
 if (!defined('MAILCHIMP_REDIRECT_URI')) {
     define('MAILCHIMP_REDIRECT_URI', home_url('/mc-oauth-callback/'));
 }
+if (!defined('MZ_MC_SUBMISSION_BACKFILL_OPTION')) {
+    define('MZ_MC_SUBMISSION_BACKFILL_OPTION', 'mz_mc_submission_backfill');
+}
+if (!defined('MZ_MC_SUBMISSION_BACKFILL_NOTICE_TRANSIENT')) {
+    define('MZ_MC_SUBMISSION_BACKFILL_NOTICE_TRANSIENT', 'mz_mc_submission_backfill_notice');
+}
+if (!defined('MZ_MC_SUBMISSION_BACKFILL_HOOK')) {
+    define('MZ_MC_SUBMISSION_BACKFILL_HOOK', 'mz_mc_submission_backfill_batch');
+}
 
 if (!function_exists('mz_mc_get_client_id')) {
     function mz_mc_get_client_id(): string
@@ -857,6 +866,9 @@ if (!function_exists('mz_mc_process_oauth_callback')) {
             'obtained_at' => time(),
         ];
         update_option('mz_mc_oauth', $oauth, false);
+        if (function_exists('mz_mc_queue_submission_backfill')) {
+            mz_mc_queue_submission_backfill('oauth_connect');
+        }
 
         wp_safe_redirect(add_query_arg('mc_connected', '1', admin_url('options-general.php?page=crm')));
         exit;
@@ -872,6 +884,359 @@ add_action('template_redirect', function () {
         mz_mc_process_oauth_callback();
         exit;
     }
+});
+
+if (!function_exists('mz_mc_set_submission_backfill_notice')) {
+    function mz_mc_set_submission_backfill_notice(string $message, string $type = 'info'): void
+    {
+        $type = sanitize_key($type);
+        if (!in_array($type, ['success', 'info', 'warning', 'error'], true)) {
+            $type = 'info';
+        }
+
+        set_transient(MZ_MC_SUBMISSION_BACKFILL_NOTICE_TRANSIENT, [
+            'message' => sanitize_text_field($message),
+            'type' => $type,
+        ], HOUR_IN_SECONDS);
+    }
+}
+
+if (!function_exists('mz_mc_get_submission_backfill_state')) {
+    function mz_mc_get_submission_backfill_state(): array
+    {
+        $state = get_option(MZ_MC_SUBMISSION_BACKFILL_OPTION);
+        return is_array($state) ? $state : [];
+    }
+}
+
+if (!function_exists('mz_mc_is_crm_options_save_request')) {
+    function mz_mc_is_crm_options_save_request($post_id): bool
+    {
+        if (!in_array((string) $post_id, ['options', 'option'], true)) {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        return $page === 'crm';
+    }
+}
+
+if (!function_exists('mz_mc_submission_has_live_link')) {
+    function mz_mc_submission_has_live_link(int $submission_id): bool
+    {
+        $marketing_sync = get_post_meta($submission_id, '_mzf_marketing_sync', true);
+        if (!is_array($marketing_sync)) {
+            return false;
+        }
+
+        $provider = strtolower(trim((string) ($marketing_sync['provider'] ?? '')));
+        $sync_ok = !empty($marketing_sync['ok']);
+        $contact_url = trim((string) ($marketing_sync['contact_url'] ?? ''));
+        $dry_run = !empty($marketing_sync['dry_run']);
+
+        if ($provider !== 'mailchimp' || !$sync_ok) {
+            return false;
+        }
+
+        return ($contact_url !== '' || $dry_run);
+    }
+}
+
+if (!function_exists('mz_mc_submission_should_backfill')) {
+    function mz_mc_submission_should_backfill(int $submission_id): bool
+    {
+        if ($submission_id <= 0 || get_post_type($submission_id) !== 'mzf_submission') {
+            return false;
+        }
+
+        if (function_exists('mzf_submission_has_crm_entry') && !mzf_submission_has_crm_entry($submission_id)) {
+            return false;
+        }
+
+        $email = function_exists('mzf_submission_text_value')
+            ? mzf_submission_text_value($submission_id, ['Email'], '_mzf_email')
+            : trim((string) get_post_meta($submission_id, '_mzf_email', true));
+        if (!is_email($email)) {
+            return false;
+        }
+
+        $status_group = sanitize_key((string) get_post_meta($submission_id, '_mzf_delivery_status_group', true));
+        if ($status_group === '') {
+            $raw_status = sanitize_key((string) get_post_meta($submission_id, '_mzf_delivery_status', true));
+            if (function_exists('mzf_submission_status_group')) {
+                $status_group = mzf_submission_status_group($raw_status);
+            }
+        }
+        if (in_array($status_group, ['spam_detected', 'failure_validation'], true)) {
+            return false;
+        }
+
+        if (mz_mc_submission_has_live_link($submission_id)) {
+            return false;
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('mz_mc_build_submission_payload')) {
+    function mz_mc_build_submission_payload(int $submission_id): array
+    {
+        $text_value = static function (array $keys, string $meta_key = '') use ($submission_id): string {
+            if (function_exists('mzf_submission_text_value')) {
+                return mzf_submission_text_value($submission_id, $keys, $meta_key);
+            }
+
+            if ($meta_key !== '') {
+                return trim((string) get_post_meta($submission_id, $meta_key, true));
+            }
+
+            return '';
+        };
+
+        $int_value = static function (array $keys, string $meta_key = '') use ($submission_id): int {
+            if (function_exists('mzf_submission_int_value')) {
+                return mzf_submission_int_value($submission_id, $keys, $meta_key);
+            }
+
+            if ($meta_key !== '') {
+                return (int) get_post_meta($submission_id, $meta_key, true);
+            }
+
+            return 0;
+        };
+
+        $form_slug = sanitize_key($text_value(['FormSlug'], '_mzf_form_slug'));
+        $page_id = $int_value(['PageId'], '_mzf_page_id');
+        $zip = function_exists('mzf_submission_zip_code')
+            ? mzf_submission_zip_code($submission_id)
+            : '';
+        $lead_tags = [];
+
+        if ($page_id > 0) {
+            $page_slug = sanitize_title((string) get_post_field('post_name', $page_id));
+            if ($page_slug !== '') {
+                $lead_tags[] = 'website_page_' . $page_slug;
+            }
+        }
+
+        if ($form_slug !== '') {
+            $lead_tags[] = 'website_form_' . sanitize_title($form_slug);
+        }
+
+        return [
+            'Email' => $text_value(['Email'], '_mzf_email'),
+            'FirstName' => $text_value(['FirstName', 'ContactFirstName'], '_mzf_first_name'),
+            'LastName' => $text_value(['LastName', 'ContactLastName'], '_mzf_last_name'),
+            'Phone' => $text_value(['Phone', 'WorkPhone', 'phone'], '_mzf_phone'),
+            'Company' => $text_value(['Company']),
+            'Zip' => $zip,
+            'PageId' => $page_id,
+            'FormSlug' => $form_slug,
+            'NewsletterSignup' => 'Yes',
+            'LeadTags' => array_values(array_unique(array_filter($lead_tags))),
+        ];
+    }
+}
+
+if (!function_exists('mz_mc_store_submission_sync_result')) {
+    function mz_mc_store_submission_sync_result(int $submission_id, array $marketing_sync): void
+    {
+        $normalized_sync = function_exists('mzf_log_normalize_value')
+            ? mzf_log_normalize_value($marketing_sync)
+            : $marketing_sync;
+
+        update_post_meta($submission_id, '_mzf_marketing_sync', $normalized_sync);
+        update_post_meta($submission_id, '_mzf_crm_platform', 'mailchimp');
+        update_post_meta($submission_id, '_mzf_crm_platform_label', 'Mailchimp');
+        update_post_meta($submission_id, '_mzf_newsletter_opt_in', '1');
+    }
+}
+
+if (!function_exists('mz_mc_backfill_submission')) {
+    function mz_mc_backfill_submission(int $submission_id): array
+    {
+        if (!mz_mc_submission_should_backfill($submission_id)) {
+            return ['status' => 'skipped'];
+        }
+
+        $payload = mz_mc_build_submission_payload($submission_id);
+        $result = mz_mc_upsert_contact($payload);
+        if (is_wp_error($result)) {
+            $sync_result = [
+                'ok' => false,
+                'provider' => 'mailchimp',
+                'label' => 'Mailchimp',
+                'error' => $result->get_error_message(),
+            ];
+            mz_mc_store_submission_sync_result($submission_id, $sync_result);
+            return [
+                'status' => 'failed',
+                'message' => $result->get_error_message(),
+            ];
+        }
+
+        $sync_result = is_array($result)
+            ? $result
+            : ['ok' => true, 'provider' => 'mailchimp', 'label' => 'Mailchimp'];
+        mz_mc_store_submission_sync_result($submission_id, $sync_result);
+
+        return ['status' => 'synced'];
+    }
+}
+
+if (!function_exists('mz_mc_collect_submission_backfill_ids')) {
+    function mz_mc_collect_submission_backfill_ids(): array
+    {
+        $query = new WP_Query([
+            'post_type' => 'mzf_submission',
+            'post_status' => ['private', 'publish', 'draft', 'pending', 'future'],
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'orderby' => 'date',
+            'order' => 'ASC',
+            'no_found_rows' => true,
+        ]);
+
+        $ids = [];
+        foreach ((array) $query->posts as $submission_id) {
+            $submission_id = (int) $submission_id;
+            if ($submission_id > 0 && mz_mc_submission_should_backfill($submission_id)) {
+                $ids[] = $submission_id;
+            }
+        }
+
+        return $ids;
+    }
+}
+
+if (!function_exists('mz_mc_schedule_submission_backfill_event')) {
+    function mz_mc_schedule_submission_backfill_event(): void
+    {
+        if (!wp_next_scheduled(MZ_MC_SUBMISSION_BACKFILL_HOOK)) {
+            wp_schedule_single_event(time() + 5, MZ_MC_SUBMISSION_BACKFILL_HOOK);
+        }
+    }
+}
+
+if (!function_exists('mz_mc_queue_submission_backfill')) {
+    function mz_mc_queue_submission_backfill(string $trigger = 'manual'): array
+    {
+        if (!mz_mc_is_platform_selected() || !mz_mc_is_configured()) {
+            return ['queued' => false, 'count' => 0];
+        }
+
+        $pending_ids = mz_mc_collect_submission_backfill_ids();
+        if (empty($pending_ids)) {
+            delete_option(MZ_MC_SUBMISSION_BACKFILL_OPTION);
+            mz_mc_set_submission_backfill_notice('Mailchimp submission backfill is already up to date.', 'success');
+            return ['queued' => false, 'count' => 0];
+        }
+
+        update_option(MZ_MC_SUBMISSION_BACKFILL_OPTION, [
+            'provider' => 'mailchimp',
+            'trigger' => sanitize_key($trigger),
+            'pending_ids' => array_values($pending_ids),
+            'total' => count($pending_ids),
+            'success_count' => 0,
+            'failure_count' => 0,
+            'skipped_count' => 0,
+            'updated_at' => time(),
+        ], false);
+
+        mz_mc_schedule_submission_backfill_event();
+        mz_mc_set_submission_backfill_notice(
+            sprintf('Mailchimp submission backfill queued for %d entr%s.', count($pending_ids), count($pending_ids) === 1 ? 'y' : 'ies'),
+            'info'
+        );
+
+        return ['queued' => true, 'count' => count($pending_ids)];
+    }
+}
+
+if (!function_exists('mz_mc_process_submission_backfill_batch')) {
+    function mz_mc_process_submission_backfill_batch(): void
+    {
+        $state = mz_mc_get_submission_backfill_state();
+        if (empty($state)) {
+            return;
+        }
+
+        if (!mz_mc_is_platform_selected() || !mz_mc_is_configured()) {
+            delete_option(MZ_MC_SUBMISSION_BACKFILL_OPTION);
+            mz_mc_set_submission_backfill_notice('Mailchimp submission backfill stopped because Mailchimp is no longer connected.', 'warning');
+            return;
+        }
+
+        $pending_ids = array_values(array_filter(array_map('absint', (array) ($state['pending_ids'] ?? []))));
+        if (empty($pending_ids)) {
+            delete_option(MZ_MC_SUBMISSION_BACKFILL_OPTION);
+            return;
+        }
+
+        $success_count = (int) ($state['success_count'] ?? 0);
+        $failure_count = (int) ($state['failure_count'] ?? 0);
+        $skipped_count = (int) ($state['skipped_count'] ?? 0);
+        $batch_ids = array_splice($pending_ids, 0, 20);
+
+        foreach ($batch_ids as $submission_id) {
+            $result = mz_mc_backfill_submission((int) $submission_id);
+            $status = (string) ($result['status'] ?? '');
+            if ($status === 'synced') {
+                $success_count++;
+            } elseif ($status === 'failed') {
+                $failure_count++;
+            } else {
+                $skipped_count++;
+            }
+        }
+
+        if (!empty($pending_ids)) {
+            $state['pending_ids'] = $pending_ids;
+            $state['success_count'] = $success_count;
+            $state['failure_count'] = $failure_count;
+            $state['skipped_count'] = $skipped_count;
+            $state['updated_at'] = time();
+            update_option(MZ_MC_SUBMISSION_BACKFILL_OPTION, $state, false);
+            mz_mc_schedule_submission_backfill_event();
+            return;
+        }
+
+        delete_option(MZ_MC_SUBMISSION_BACKFILL_OPTION);
+        mz_mc_set_submission_backfill_notice(
+            sprintf(
+                'Mailchimp submission backfill completed. %d synced, %d skipped, %d failed.',
+                $success_count,
+                $skipped_count,
+                $failure_count
+            ),
+            $failure_count > 0 ? 'warning' : 'success'
+        );
+    }
+}
+
+add_action(MZ_MC_SUBMISSION_BACKFILL_HOOK, 'mz_mc_process_submission_backfill_batch');
+
+add_action('admin_notices', function () {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    if (!isset($_GET['page']) || $_GET['page'] !== 'crm') {
+        return;
+    }
+
+    $notice = get_transient(MZ_MC_SUBMISSION_BACKFILL_NOTICE_TRANSIENT);
+    if (!is_array($notice) || empty($notice['message'])) {
+        return;
+    }
+
+    delete_transient(MZ_MC_SUBMISSION_BACKFILL_NOTICE_TRANSIENT);
+    $type = sanitize_key((string) ($notice['type'] ?? 'info'));
+    if (!in_array($type, ['success', 'info', 'warning', 'error'], true)) {
+        $type = 'info';
+    }
+
+    echo '<div class="notice notice-' . esc_attr($type) . '"><p>' . esc_html((string) $notice['message']) . '</p></div>';
 });
 
 add_action('admin_notices', function () {
@@ -944,6 +1309,19 @@ if (!function_exists('mz_mc_maybe_disconnect_when_platform_changes')) {
 }
 
 add_action('acf/save_post', 'mz_mc_maybe_disconnect_when_platform_changes', 30);
+
+if (!function_exists('mz_mc_maybe_queue_submission_backfill_on_crm_save')) {
+    function mz_mc_maybe_queue_submission_backfill_on_crm_save($post_id): void
+    {
+        if (!mz_mc_is_crm_options_save_request($post_id)) {
+            return;
+        }
+
+        mz_mc_queue_submission_backfill('crm_settings_save');
+    }
+}
+
+add_action('acf/save_post', 'mz_mc_maybe_queue_submission_backfill_on_crm_save', 40);
 
 add_action('init', function () {
     if (!isset($_GET['mc_test']) || $_GET['mc_test'] !== '1') {
