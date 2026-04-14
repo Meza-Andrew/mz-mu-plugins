@@ -87,6 +87,35 @@ add_action('current_screen', function ($screen) {
     add_filter("manage_{$post_type}_posts_columns", 'meza_strip_acf_key_description_columns', 9999);
 });
 
+function meza_render_admin_list_table_scroll_styles(): void
+{
+    echo '<style id="meza-admin-list-table-scroll">' .
+        '.meza-admin-table-scroll{display:block;width:100%;max-width:100%;max-height:calc(100vh - 260px);overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid #c3c4c7;box-sizing:border-box;background:#fff;}' .
+        '.meza-admin-table-scroll table.wp-list-table{min-width:max-content;border-collapse:separate;border-spacing:0;border:none!important;box-shadow:none!important;table-layout:auto!important;}' .
+        '.meza-admin-table-scroll table.wp-list-table thead,.meza-admin-table-scroll table.wp-list-table tfoot{position:relative;z-index:4;}' .
+        '.meza-admin-table-scroll table.wp-list-table thead th,.meza-admin-table-scroll table.wp-list-table thead td{position:sticky;top:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 -1px 0 #ccd0d4;background-clip:padding-box;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' .
+        '.meza-admin-table-scroll table.wp-list-table thead th a,.meza-admin-table-scroll table.wp-list-table thead td a,.meza-admin-table-scroll table.wp-list-table tfoot th a,.meza-admin-table-scroll table.wp-list-table tfoot td a{display:inline-flex;align-items:center;gap:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;}' .
+        '.meza-admin-table-scroll table.wp-list-table thead th .sorting-indicators,.meza-admin-table-scroll table.wp-list-table thead td .sorting-indicators,.meza-admin-table-scroll table.wp-list-table tfoot th .sorting-indicators,.meza-admin-table-scroll table.wp-list-table tfoot td .sorting-indicators{flex:0 0 auto;}' .
+        '.meza-admin-table-scroll table.wp-list-table tfoot th,.meza-admin-table-scroll table.wp-list-table tfoot td{position:sticky;bottom:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 1px 0 #ccd0d4;background-clip:padding-box;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' .
+        '.meza-admin-table-scroll table.wp-list-table tbody td{position:relative;z-index:1;background-clip:padding-box;}' .
+        '</style>';
+}
+
+function meza_render_admin_list_table_scroll_wrap_script(): void
+{
+    echo '<script id="meza-admin-table-scroll-wrap">' .
+        '(function(){' .
+        'var table=document.querySelector("#posts-filter table.wp-list-table, .wrap table.wp-list-table");' .
+        'if(!table)return;' .
+        'if(table.parentElement&&table.parentElement.classList.contains("meza-admin-table-scroll"))return;' .
+        'var wrapper=document.createElement("div");' .
+        'wrapper.className="meza-admin-table-scroll";' .
+        'table.parentNode.insertBefore(wrapper,table);' .
+        'wrapper.appendChild(table);' .
+        '})();' .
+        '</script>';
+}
+
 // Set consistent admin list column widths.
 add_action('admin_head-edit.php', function () {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
@@ -112,6 +141,23 @@ add_action('admin_head-edit.php', function () {
         is_array($current_columns) ? $current_columns : [],
         ['modified', 'published', 'date']
     );
+    $runtime_link_column_keys = is_array($current_columns) ? meza_get_link_admin_column_keys($current_columns) : [];
+    $runtime_link_cell_selectors = [];
+
+    foreach ($runtime_link_column_keys as $column_key) {
+        $column_key = trim((string) $column_key);
+        if ($column_key === '') {
+            continue;
+        }
+
+        $runtime_link_cell_selectors[] = '.wp-list-table td.column-' . $column_key;
+    }
+
+    $runtime_link_cell_selectors = array_values(array_unique($runtime_link_cell_selectors));
+    $runtime_link_anchor_selectors = array_values(array_unique(array_map(
+        static fn(string $selector): string => $selector . ' a',
+        $runtime_link_cell_selectors
+    )));
     $column_width_css = $is_acp_layout
         ? '.wp-list-table .column-mz_id{width:65px;}' .
             '.wp-list-table .column-mz_menu_order{width:65px;}' .
@@ -196,15 +242,9 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:175px;max-width:175px;}' .
             '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:175px;max-width:175px;}';
 
+    meza_render_admin_list_table_scroll_styles();
+
     echo '<style id="meza-admin-list-column-widths">' .
-        '.meza-admin-table-scroll{display:block;width:100%;max-width:100%;max-height:calc(100vh - 260px);overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid #c3c4c7;box-sizing:border-box;background:#fff;}' .
-        '.meza-admin-table-scroll table.wp-list-table{min-width:max-content;border-collapse:separate;border-spacing:0;border:none!important;box-shadow:none!important;table-layout:auto!important;}' .
-        '.meza-admin-table-scroll table.wp-list-table thead,.meza-admin-table-scroll table.wp-list-table tfoot{position:relative;z-index:4;}' .
-        '.meza-admin-table-scroll table.wp-list-table thead th,.meza-admin-table-scroll table.wp-list-table thead td{position:sticky;top:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 -1px 0 #ccd0d4;background-clip:padding-box;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' .
-        '.meza-admin-table-scroll table.wp-list-table thead th a,.meza-admin-table-scroll table.wp-list-table thead td a,.meza-admin-table-scroll table.wp-list-table tfoot th a,.meza-admin-table-scroll table.wp-list-table tfoot td a{display:inline-flex;align-items:center;gap:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;}' .
-        '.meza-admin-table-scroll table.wp-list-table thead th .sorting-indicators,.meza-admin-table-scroll table.wp-list-table thead td .sorting-indicators,.meza-admin-table-scroll table.wp-list-table tfoot th .sorting-indicators,.meza-admin-table-scroll table.wp-list-table tfoot td .sorting-indicators{flex:0 0 auto;}' .
-        '.meza-admin-table-scroll table.wp-list-table tfoot th,.meza-admin-table-scroll table.wp-list-table tfoot td{position:sticky;bottom:0;z-index:5;background:#fff;border-top:none!important;border-bottom:none!important;box-shadow:inset 0 1px 0 #ccd0d4;background-clip:padding-box;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' .
-        '.meza-admin-table-scroll table.wp-list-table tbody td{position:relative;z-index:1;background-clip:padding-box;}' .
         '.wp-list-table thead th.sorted,.wp-list-table tfoot th.sorted{background:#eef4ff;color:#0a4b78;box-shadow:inset 0 -1px 0 #b8d3ea;}' .
         '.wp-list-table th.sorted a,.wp-list-table th.sorted a:focus,.wp-list-table th.sorted a:visited{color:#0a4b78;}' .
         '.wp-list-table th.sorted .sorting-indicators{opacity:1;}' .
@@ -238,6 +278,12 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table .column-title .meza-title-template .meza-title-template-text{display:inline-flex;align-items:center;gap:4px;color:#646970;font-weight:500;overflow-wrap:anywhere;word-break:break-word;}' .
         '.wp-list-table .column-title .meza-title-template .meza-page-type-label{display:inline-flex;align-items:flex-start;gap:4px;vertical-align:top;}' .
         '.wp-list-table .column-title .meza-title-template .meza-page-type-label-text{line-height:1.3;}' .
+        ($runtime_link_cell_selectors !== []
+            ? implode(',', $runtime_link_cell_selectors) . '{white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;line-height:1.4;vertical-align:top!important;}'
+            : '') .
+        ($runtime_link_anchor_selectors !== []
+            ? implode(',', $runtime_link_anchor_selectors) . '{display:inline-block;max-width:100%;white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;}'
+            : '') .
         '.wp-list-table .column-title .meza-title-template .dashicons{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:14px;width:14px;height:14px;line-height:14px;position:relative;}' .
         '.wp-list-table .column-title .meza-title-permalink a{color:#646970;text-decoration:none;overflow-wrap:anywhere;word-break:break-word;}' .
         '.wp-list-table .column-title .meza-title-permalink a:hover{color:#2271b1;text-decoration:underline;}' .
@@ -889,15 +935,16 @@ add_action('admin_footer-edit.php', function () {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
     if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
 
-    echo '<script id="meza-admin-table-scroll-wrap">' .
-        '(function(){' .
-        'var table=document.querySelector("#posts-filter table.wp-list-table, .wrap table.wp-list-table");' .
-        'if(!table)return;' .
-        'if(table.parentElement&&table.parentElement.classList.contains("meza-admin-table-scroll"))return;' .
-        'var wrapper=document.createElement("div");' .
-        'wrapper.className="meza-admin-table-scroll";' .
-        'table.parentNode.insertBefore(wrapper,table);' .
-        'wrapper.appendChild(table);' .
-        '})();' .
-        '</script>';
+    meza_render_admin_list_table_scroll_wrap_script();
 });
+
+add_action('admin_head-upload.php', function (): void {
+    meza_render_admin_list_table_scroll_styles();
+}, 1000);
+
+add_action('admin_footer-upload.php', function (): void {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'upload') return;
+
+    meza_render_admin_list_table_scroll_wrap_script();
+}, 1000);
