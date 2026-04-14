@@ -919,6 +919,9 @@ if (!function_exists('mzf_submission_added_to_crm_data')) {
         if ($crm_label === '' && function_exists('mzf_crm_platform_label')) {
             $crm_label = mzf_crm_platform_label($crm_platform);
         }
+        if ($crm_label === '') {
+            $crm_label = 'Zeffy';
+        }
 
         if (is_array($marketing_sync)) {
             $sync_ok = mzf_submission_meta_truthy((string) ($marketing_sync['ok'] ?? ''));

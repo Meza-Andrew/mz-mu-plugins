@@ -85,9 +85,7 @@
    overrides generic wp-list-table colors for a specific user color scheme. */
 .mzf-submissions-table-wrap .mzf-submissions-table,
 .mzf-submissions-table-wrap .mzf-submissions-table th,
-.mzf-submissions-table-wrap .mzf-submissions-table td,
-.mzf-submissions-table-wrap .mzf-submissions-table td *,
-.mzf-submissions-table-wrap .mzf-submissions-table th * {
+.mzf-submissions-table-wrap .mzf-submissions-table td {
     color: #1d2327 !important;
     text-shadow: none;
 }
