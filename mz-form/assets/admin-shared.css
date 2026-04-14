@@ -24,6 +24,31 @@
 
 .mzf-table-toolbar .mzf-actions-right {
     justify-content: flex-end;
+    margin-left: auto;
+}
+
+.mzf-table-toolbar .mzf-actions-right .mzf-tablenav-pages {
+    margin: 0;
+}
+
+.mzf-tablenav-pages {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mzf-tablenav-pages .pagination-links {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mzf-tablenav-pages .paging-input {
+    margin: 0 8px;
+}
+
+.mzf-tablenav-pages .paging-separator {
+    margin: 0 4px;
 }
 
 .mzf-submissions-table {

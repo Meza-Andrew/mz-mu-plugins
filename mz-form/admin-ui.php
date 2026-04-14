@@ -11,6 +11,12 @@ if (!defined('MZF_SUBMISSIONS_PAGE_SLUG')) {
 if (!defined('MZF_SUBMISSIONS_PAGE_LEGACY_SLUG')) {
     define('MZF_SUBMISSIONS_PAGE_LEGACY_SLUG', 'mzf-submissions');
 }
+if (!defined('MZF_SUBMISSIONS_PER_PAGE_OPTION')) {
+    define('MZF_SUBMISSIONS_PER_PAGE_OPTION', 'mzf_submissions_per_page');
+}
+if (!defined('MZF_SUBMISSIONS_PER_PAGE_DEFAULT')) {
+    define('MZF_SUBMISSIONS_PER_PAGE_DEFAULT', 20);
+}
 
 if (!function_exists('mzf_manage_submissions_capability')) {
     function mzf_manage_submissions_capability(): string
@@ -44,7 +50,7 @@ if (!function_exists('mzf_is_submissions_admin_page')) {
 }
 
 add_action('admin_menu', function () {
-    add_submenu_page(
+    $hook_suffix = add_submenu_page(
         'edit.php?post_type=form',
         'Form Submission Log',
         'Submissions',
@@ -52,7 +58,30 @@ add_action('admin_menu', function () {
         MZF_SUBMISSIONS_PAGE_SLUG,
         'mzf_render_submission_log_admin_page'
     );
+
+    if ($hook_suffix) {
+        add_action('load-' . $hook_suffix, static function (): void {
+            add_screen_option('per_page', [
+                'label' => 'Number of items per page:',
+                'default' => MZF_SUBMISSIONS_PER_PAGE_DEFAULT,
+                'option' => MZF_SUBMISSIONS_PER_PAGE_OPTION,
+            ]);
+        });
+    }
 });
+
+add_filter('set-screen-option', static function ($status, string $option, $value) {
+    if ($option !== MZF_SUBMISSIONS_PER_PAGE_OPTION) {
+        return $status;
+    }
+
+    $value = (int) $value;
+    if ($value < 1) {
+        $value = MZF_SUBMISSIONS_PER_PAGE_DEFAULT;
+    }
+
+    return min(200, $value);
+}, 10, 3);
 
 add_action('admin_init', function (): void {
     if (!is_admin()) {
@@ -256,6 +285,72 @@ if (!function_exists('mzf_bool_to_label')) {
     function mzf_bool_to_label(string $value): string
     {
         return ($value === '1') ? 'Yes' : 'No';
+    }
+}
+
+if (!function_exists('mzf_submission_log_per_page')) {
+    function mzf_submission_log_per_page(): int
+    {
+        $per_page = (int) get_user_option(MZF_SUBMISSIONS_PER_PAGE_OPTION);
+        if ($per_page < 1) {
+            $per_page = MZF_SUBMISSIONS_PER_PAGE_DEFAULT;
+        }
+
+        return min(200, $per_page);
+    }
+}
+
+if (!function_exists('mzf_render_submission_log_pagination')) {
+    function mzf_render_submission_log_pagination(WP_Query $query, int $paged, string $base_admin_url, array $state_args, bool $with_container = true, string $position_class = 'bottom'): void
+    {
+        $total_pages = (int) $query->max_num_pages;
+        $total_items = (int) $query->found_posts;
+        if ($total_pages <= 1) {
+            return;
+        }
+
+        $pagination_args = $state_args;
+        unset($pagination_args['paged']);
+
+        $current_page = max(1, $paged);
+        $base = add_query_arg(array_merge($pagination_args, ['paged' => '%#%']), $base_admin_url);
+        $first_url = add_query_arg($pagination_args, $base_admin_url);
+        $prev_url = add_query_arg(array_merge($pagination_args, ['paged' => max(1, $current_page - 1)]), $base_admin_url);
+        $next_url = add_query_arg(array_merge($pagination_args, ['paged' => min($total_pages, $current_page + 1)]), $base_admin_url);
+        $last_url = add_query_arg(array_merge($pagination_args, ['paged' => $total_pages]), $base_admin_url);
+
+        if ($with_container) {
+            echo '<div class="tablenav ' . esc_attr($position_class) . '">';
+        }
+        echo '<div class="tablenav-pages mzf-tablenav-pages mzf-tablenav-pages-' . esc_attr($position_class) . '">';
+        echo '<span class="displaying-num">' . esc_html(sprintf(_n('%s item', '%s items', $total_items), number_format_i18n($total_items))) . '</span>';
+        echo '<span class="pagination-links">';
+
+        if ($current_page > 1) {
+            echo '<a class="first-page button" href="' . esc_url($first_url) . '"><span class="screen-reader-text">First page</span><span aria-hidden="true">&laquo;</span></a>';
+            echo '<a class="prev-page button" href="' . esc_url($prev_url) . '"><span class="screen-reader-text">Previous page</span><span aria-hidden="true">&lsaquo;</span></a>';
+        } else {
+            echo '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">&laquo;</span>';
+            echo '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">&lsaquo;</span>';
+        }
+
+        echo '<span class="paging-input">';
+        echo '<span class="tablenav-paging-text">' . esc_html(number_format_i18n($current_page)) . ' <span class="paging-separator">of</span> <span class="total-pages">' . esc_html(number_format_i18n($total_pages)) . '</span></span>';
+        echo '</span>';
+
+        if ($current_page < $total_pages) {
+            echo '<a class="next-page button" href="' . esc_url($next_url) . '"><span class="screen-reader-text">Next page</span><span aria-hidden="true">&rsaquo;</span></a>';
+            echo '<a class="last-page button" href="' . esc_url($last_url) . '"><span class="screen-reader-text">Last page</span><span aria-hidden="true">&raquo;</span></a>';
+        } else {
+            echo '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">&rsaquo;</span>';
+            echo '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">&raquo;</span>';
+        }
+
+        echo '</span>';
+        echo '</div>';
+        if ($with_container) {
+            echo '</div>';
+        }
     }
 }
 
@@ -918,6 +1013,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             $filter_status = mzf_submission_status_group($filter_status);
         }
         $paged = isset($_GET['paged']) ? max(1, absint($_GET['paged'])) : 1;
+        $per_page = mzf_submission_log_per_page();
 
         $state_args = [
             'sort' => $sort,
@@ -1136,7 +1232,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         $query_args = [
             'post_type' => 'mzf_submission',
             'post_status' => ($view === 'deleted') ? 'trash' : $active_statuses,
-            'posts_per_page' => 50,
+            'posts_per_page' => $per_page,
             'paged' => $paged,
             'no_found_rows' => false,
         ];
@@ -1228,7 +1324,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             }
 
             $total_matching = count($matching_ids);
-            $paged_matching_ids = array_slice($matching_ids, max(0, ($paged - 1) * 50), 50);
+            $paged_matching_ids = array_slice($matching_ids, max(0, ($paged - 1) * $per_page), $per_page);
 
             $query = new WP_Query([
                 'post_type' => 'mzf_submission',
@@ -1239,7 +1335,7 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
                 'no_found_rows' => true,
             ]);
             $query->found_posts = $total_matching;
-            $query->max_num_pages = ($total_matching > 0) ? (int) ceil($total_matching / 50) : 0;
+            $query->max_num_pages = ($total_matching > 0) ? (int) ceil($total_matching / $per_page) : 0;
         } else {
             $query = new WP_Query($query_args);
         }
@@ -1300,8 +1396,6 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         }
         echo '</select> ';
         echo '<button type="submit" class="button action">Apply</button>';
-        echo '</div>';
-        echo '<div class="alignright actions mzf-actions-right">';
         if ($is_filtered) {
             $clear_filters_url = $build_admin_url([], ['filter_page_id', 'filter_form_post_id', 'filter_form_slug', 'filter_admin', 'filter_status', 'paged']);
             echo '<span class="mzf-filter-wrap">';
@@ -1319,6 +1413,9 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
             echo '<a class="button button-secondary" href="' . esc_url($clear_all_url) . '" onclick="return confirm(\'Are you sure you want to move all submissions except saved submissions to the Trash?\');">' . esc_html($clear_all_label) . '</a> ';
         }
         echo '<a class="button button-primary" href="' . esc_url($export_url) . '">Export All to CSV</a>';
+        echo '</div>';
+        echo '<div class="alignright actions mzf-actions-right">';
+        mzf_render_submission_log_pagination($query, $paged, $base_admin_url, $state_args, false, 'top');
         echo '</div></div>';
         $table_header_cells = ''
             . '<th scope="col" class="manage-column column-cb check-column"><label class="screen-reader-text" for="mzf-select-all-1">Select all submissions</label><input type="checkbox" id="mzf-select-all-1" class="mzf-select-all" aria-label="Select all submissions"></th>'
@@ -1543,19 +1640,8 @@ if (!function_exists('mzf_render_submission_log_admin_page')) {
         }
         echo '</tbody><tfoot><tr>' . $table_footer_cells . '</tr></tfoot></table>';
         echo '</div>';
+        mzf_render_submission_log_pagination($query, $paged, $base_admin_url, $state_args, true, 'bottom');
         echo '</form>';
-        if ((int) $query->max_num_pages > 1) {
-            $pagination_args = $state_args;
-            unset($pagination_args['paged']);
-            echo '<div class="tablenav"><div class="tablenav-pages" style="margin-top:12px;">';
-            echo paginate_links([
-                'base' => add_query_arg(array_merge($pagination_args, ['paged' => '%#%']), $base_admin_url),
-                'format' => '',
-                'current' => $paged,
-                'total' => (int) $query->max_num_pages,
-            ]);
-            echo '</div></div>';
-        }
 
         echo '</div>';
     }
