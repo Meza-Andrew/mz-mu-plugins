@@ -7769,6 +7769,23 @@ add_filter('ac/column/value', function ($value, $id, $column) {
     return $date_html !== '' ? $date_html : $value;
 }, 115, 3);
 
+add_filter('ac/column/render', function ($value, $context, $id) {
+    $id = (int) $id;
+    if ($id <= 0 || !meza_admin_column_should_render_event_date($context, $id, $value)) {
+        return $value;
+    }
+
+    $start_raw = meza_get_event_admin_column_datetime_value($id, 'start');
+    if ($start_raw === '') {
+        return $value;
+    }
+
+    $end_raw = meza_get_event_admin_column_datetime_value($id, 'end');
+    $date_html = meza_get_event_admin_datetime_range_html($start_raw, $end_raw);
+
+    return $date_html !== '' ? $date_html : $value;
+}, 115, 5);
+
 // Admin Columns plugin renderer: render date-like custom fields when ACP
 // exposes a standalone Date column backed by ACF/meta instead of post_date.
 add_filter('ac/column/value', function ($value, $id, $column) {
@@ -7784,6 +7801,20 @@ add_filter('ac/column/value', function ($value, $id, $column) {
 
     return esc_html($display_value);
 }, 116, 3);
+
+add_filter('ac/column/render', function ($value, $context, $id) {
+    $id = (int) $id;
+    if ($id <= 0 || !meza_admin_column_should_render_generic_date($context, $id)) {
+        return $value;
+    }
+
+    $display_value = meza_get_post_admin_date_display_value($id, meza_get_admin_column_identifiers($context));
+    if ($display_value === '') {
+        return $value;
+    }
+
+    return esc_html($display_value);
+}, 116, 5);
 
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
