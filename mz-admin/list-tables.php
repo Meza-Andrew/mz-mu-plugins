@@ -154,6 +154,14 @@ function meza_get_review_admin_column_date_timestamp(int $post_id): int
     $raw_value = meza_get_review_admin_column_date_raw_value($post_id);
     if ($raw_value === '') return 0;
 
+    return meza_get_admin_date_timestamp_from_raw_value($raw_value);
+}
+
+function meza_get_admin_date_timestamp_from_raw_value(string $raw_value): int
+{
+    $raw_value = trim($raw_value);
+    if ($raw_value === '') return 0;
+
     if (preg_match('/^\d{8}$/', $raw_value)) {
         $year = (int) substr($raw_value, 0, 4);
         $month = (int) substr($raw_value, 4, 2);
@@ -168,6 +176,248 @@ function meza_get_review_admin_column_date_timestamp(int $post_id): int
 
     $timestamp = strtotime($raw_value);
     return $timestamp !== false ? (int) $timestamp : 0;
+}
+
+function meza_admin_column_identifier_supports_date_value(string $identifier): bool
+{
+    $normalized = meza_normalize_admin_link_column_identifier($identifier);
+    if ($normalized === '') {
+        return false;
+    }
+
+    if (in_array($normalized, ['modified', 'last modified', 'published'], true)) {
+        return false;
+    }
+
+    return str_contains($normalized, 'date');
+}
+
+function meza_get_admin_date_identifier_flags(array $identifiers): array
+{
+    $normalized = array_map('meza_normalize_admin_link_column_identifier', array_values(array_filter(array_map('strval', $identifiers))));
+    $haystack = ' ' . implode(' ', $normalized) . ' ';
+
+    $wants_end = str_contains($haystack, ' end ')
+        || str_contains($haystack, ' expiration ')
+        || str_contains($haystack, ' expiry ')
+        || str_contains($haystack, ' expires ');
+    $wants_start = !$wants_end && (str_contains($haystack, ' start ') || str_contains($haystack, ' begins ') || str_contains($haystack, ' from '));
+
+    return [
+        'start' => $wants_start,
+        'end' => $wants_end,
+    ];
+}
+
+function meza_get_admin_date_candidate_meta_keys(array $identifiers): array
+{
+    $candidates = [];
+    $flags = meza_get_admin_date_identifier_flags($identifiers);
+
+    foreach ($identifiers as $identifier) {
+        $identifier = trim((string) $identifier);
+        if ($identifier === '' || str_starts_with($identifier, '_')) {
+            continue;
+        }
+
+        if (!meza_admin_column_identifier_supports_date_value($identifier)) {
+            continue;
+        }
+
+        $candidates[] = $identifier;
+
+        $normalized = meza_normalize_admin_link_column_identifier($identifier);
+        if ($normalized !== '') {
+            $candidates[] = str_replace(' ', '_', $normalized);
+            $candidates[] = str_replace(' ', '', $normalized);
+        }
+    }
+
+    if ($flags['end']) {
+        $candidates = array_merge($candidates, [
+            'date_end',
+            'end_date',
+            'end_datetime',
+            'expiration_date',
+            'expiry_date',
+            'expires_on',
+            'expires_at',
+        ]);
+    } elseif ($flags['start']) {
+        $candidates = array_merge($candidates, [
+            'date_start',
+            'start_date',
+            'start_datetime',
+            'date',
+        ]);
+    } else {
+        $candidates = array_merge($candidates, [
+            'date',
+            'date_start',
+            'start_date',
+            'start_datetime',
+            'event_date',
+            'promo_date',
+            'review_date',
+            'date_end',
+            'end_date',
+            'end_datetime',
+            'expiration_date',
+            'expiry_date',
+            'expires_on',
+            'expires_at',
+        ]);
+    }
+
+    return array_values(array_unique(array_filter(array_map(
+        static function ($key): string {
+            $key = trim((string) $key);
+            return str_starts_with($key, '_') ? '' : $key;
+        },
+        $candidates
+    ))));
+}
+
+function meza_get_post_admin_date_raw_value_from_meta_keys(int $post_id, array $meta_keys): string
+{
+    $post_id = (int) $post_id;
+    if ($post_id <= 0) {
+        return '';
+    }
+
+    foreach ($meta_keys as $meta_key) {
+        $meta_key = trim((string) $meta_key);
+        if ($meta_key === '') {
+            continue;
+        }
+
+        if (function_exists('get_field')) {
+            $acf_value = get_field($meta_key, $post_id);
+            if (is_string($acf_value) && trim($acf_value) !== '') {
+                return trim($acf_value);
+            }
+        }
+
+        $meta_value = get_post_meta($post_id, $meta_key, true);
+        if (is_string($meta_value) && trim($meta_value) !== '') {
+            return trim($meta_value);
+        }
+    }
+
+    return '';
+}
+
+function meza_resolve_admin_date_meta_keys_for_post(int $post_id, array $identifiers): array
+{
+    $post_id = (int) $post_id;
+    if ($post_id <= 0) {
+        return [];
+    }
+
+    $meta = get_post_meta($post_id);
+    $meta_keys = is_array($meta) ? array_keys($meta) : [];
+    $candidate_keys = meza_get_admin_date_candidate_meta_keys($identifiers);
+    $resolved = [];
+
+    foreach ($candidate_keys as $candidate_key) {
+        if (in_array($candidate_key, $meta_keys, true)) {
+            $resolved[] = $candidate_key;
+        }
+    }
+
+    if ($resolved !== []) {
+        return array_values(array_unique(array_filter(array_map('strval', $resolved))));
+    }
+
+    $flags = meza_get_admin_date_identifier_flags($identifiers);
+    foreach ($meta_keys as $meta_key) {
+        $meta_key = trim((string) $meta_key);
+        if ($meta_key === '' || str_starts_with($meta_key, '_') || !str_contains(strtolower($meta_key), 'date')) {
+            continue;
+        }
+
+        $normalized = meza_normalize_admin_link_column_identifier($meta_key);
+        if ($flags['end'] && !str_contains($normalized, 'end') && !str_contains($normalized, 'expir') && !str_contains($normalized, 'expires')) {
+            continue;
+        }
+
+        if ($flags['start'] && !str_contains($normalized, 'start')) {
+            continue;
+        }
+
+        $resolved[] = $meta_key;
+    }
+
+    return array_values(array_unique(array_filter(array_map('strval', $resolved))));
+}
+
+function meza_resolve_admin_date_sort_meta_key(string $post_type, array $identifiers): string
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '') {
+        return '';
+    }
+
+    $sample_posts = get_posts([
+        'post_type' => $post_type,
+        'post_status' => ['publish', 'future', 'draft', 'pending', 'private'],
+        'posts_per_page' => 1,
+        'fields' => 'ids',
+        'orderby' => 'date',
+        'order' => 'DESC',
+        'suppress_filters' => true,
+    ]);
+
+    $sample_post_id = (int) ($sample_posts[0] ?? 0);
+    if ($sample_post_id <= 0) {
+        return '';
+    }
+
+    $resolved_keys = meza_resolve_admin_date_meta_keys_for_post($sample_post_id, $identifiers);
+    return (string) ($resolved_keys[0] ?? '');
+}
+
+function meza_get_post_admin_date_display_value(int $post_id, array $identifiers): string
+{
+    $resolved_keys = meza_resolve_admin_date_meta_keys_for_post($post_id, $identifiers);
+    $flags = meza_get_admin_date_identifier_flags($identifiers);
+    $format = (string) (get_option('date_format') ?: 'F j, Y');
+
+    $start_timestamp = meza_get_admin_date_timestamp_from_raw_value(meza_get_post_admin_date_raw_value_from_meta_keys($post_id, array_values(array_unique(array_merge(
+        array_intersect($resolved_keys, ['date_start', 'start_date', 'start_datetime']),
+        ['date_start', 'start_date', 'start_datetime']
+    )))));
+    $end_timestamp = meza_get_admin_date_timestamp_from_raw_value(meza_get_post_admin_date_raw_value_from_meta_keys($post_id, array_values(array_unique(array_merge(
+        array_intersect($resolved_keys, ['date_end', 'end_date', 'end_datetime', 'expiration_date', 'expiry_date', 'expires_on', 'expires_at']),
+        ['date_end', 'end_date', 'end_datetime', 'expiration_date', 'expiry_date', 'expires_on', 'expires_at']
+    )))));
+
+    if ($flags['end'] && $end_timestamp > 0) {
+        return wp_date($format, $end_timestamp);
+    }
+
+    if ($flags['start'] && $start_timestamp > 0) {
+        return wp_date($format, $start_timestamp);
+    }
+
+    if (!$flags['start'] && !$flags['end'] && $start_timestamp > 0) {
+        if ($end_timestamp > 0 && $end_timestamp !== $start_timestamp) {
+            return wp_date($format, $start_timestamp) . ' - ' . wp_date($format, $end_timestamp);
+        }
+
+        return wp_date($format, $start_timestamp);
+    }
+
+    $primary_timestamp = meza_get_admin_date_timestamp_from_raw_value(meza_get_post_admin_date_raw_value_from_meta_keys($post_id, $resolved_keys));
+    if ($primary_timestamp > 0) {
+        return wp_date($format, $primary_timestamp);
+    }
+
+    if ($end_timestamp > 0) {
+        return wp_date($format, $end_timestamp);
+    }
+
+    return '';
 }
 
 function meza_post_has_internal_pages(WP_Post $post): bool
@@ -870,6 +1120,31 @@ function meza_get_review_date_admin_column_runtime_keys(array $columns): array
     }
 
     $keys = meza_get_admin_column_keys_matching_tokens($columns, ['date', 'review date']);
+
+    return array_values(array_unique(array_filter(array_map('strval', $keys))));
+}
+
+function meza_get_generic_date_admin_column_runtime_keys(array $columns): array
+{
+    if (!is_array($columns) || $columns === []) {
+        return [];
+    }
+
+    $keys = [];
+
+    foreach ($columns as $key => $label) {
+        $key = trim((string) $key);
+        if ($key === '' || in_array($key, ['mz_modified', 'modified', 'mz_published', 'published'], true)) {
+            continue;
+        }
+
+        if (
+            meza_admin_column_identifier_supports_date_value($key)
+            || meza_admin_column_identifier_supports_date_value((string) $label)
+        ) {
+            $keys[] = $key;
+        }
+    }
 
     return array_values(array_unique(array_filter(array_map('strval', $keys))));
 }
@@ -3273,6 +3548,21 @@ function meza_admin_column_should_render_review_date($column, int $id, $value): 
     return false;
 }
 
+function meza_admin_column_should_render_generic_date($column, int $id): bool
+{
+    if ($id <= 0 || meza_is_event_post_type(get_post_type($id))) {
+        return false;
+    }
+
+    foreach (meza_get_admin_column_identifiers($column) as $identifier) {
+        if (meza_admin_column_identifier_supports_date_value((string) $identifier)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function meza_extract_admin_column_emails($value): array
 {
     if (is_array($value)) {
@@ -5577,8 +5867,8 @@ add_filter('default_hidden_columns', function ($hidden, $screen) {
     if (meza_is_event_post_type($post_type)) {
         $visible_keys = array_merge($visible_keys, meza_get_event_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
     }
-    if (in_array($post_type, ['review', 'reviews'], true)) {
-        $visible_keys = array_merge($visible_keys, meza_get_review_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
+    if (!meza_is_event_post_type($post_type)) {
+        $visible_keys = array_merge($visible_keys, meza_get_generic_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
     }
 
     return array_values(array_diff($hidden, array_values(array_unique(array_filter(array_map('strval', $visible_keys))))));
@@ -5597,8 +5887,8 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     if (meza_is_event_post_type($post_type)) {
         $visible_keys = array_merge($visible_keys, meza_get_event_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
     }
-    if (in_array($post_type, ['review', 'reviews'], true)) {
-        $visible_keys = array_merge($visible_keys, meza_get_review_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
+    if (!meza_is_event_post_type($post_type)) {
+        $visible_keys = array_merge($visible_keys, meza_get_generic_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
     }
 
     return array_values(array_diff($hidden, array_values(array_unique(array_filter(array_map('strval', $visible_keys))))));
@@ -5651,9 +5941,9 @@ function meza_register_datetime_sortable_columns(array $cols): array
         }
     }
 
-    if (($screen instanceof WP_Screen) && in_array($post_type, ['review', 'reviews'], true)) {
-        foreach (meza_get_review_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)) as $column_key) {
-            $cols[(string) $column_key] = ['date', true];
+    if (($screen instanceof WP_Screen) && !meza_is_event_post_type($post_type)) {
+        foreach (meza_get_generic_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)) as $column_key) {
+            $cols[(string) $column_key] = [(string) $column_key, true];
         }
     }
 
@@ -5974,7 +6264,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
 
         $thumb_id = (int) get_post_thumbnail_id((int) $post_id);
         $thumb_attrs = [
-            'style' => 'width:100px;height:auto;max-width:100px;display:block;margin:0;',
+            'style' => 'width:auto;height:auto;max-width:100%;display:block;margin:0;',
             'loading' => 'lazy',
             'decoding' => 'async',
         ];
@@ -6497,31 +6787,32 @@ add_filter('woocommerce_products_admin_list_table_filters', function ($filters) 
     return $filters;
 }, 1000);
 
-// Keep explicit event start-date sorting. Global default ordering is set below.
+// Keep explicit custom-field date sorting for ACP date columns.
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
     if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php') return;
 
     $post_type = sanitize_key((string) $q->get('post_type'));
-    if (!in_array($post_type, ['review', 'reviews'], true)) return;
+    if ($post_type === '' || meza_is_event_post_type($post_type)) return;
 
     $orderby = (string) $q->get('orderby');
-    $review_date_sort_keys = ['date', 'mz_published'];
-
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-    if ($screen instanceof WP_Screen) {
-        $review_date_sort_keys = array_merge(
-            $review_date_sort_keys,
-            meza_get_review_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen))
-        );
-    }
+    if (!($screen instanceof WP_Screen)) return;
 
-    if (!in_array($orderby, array_values(array_unique(array_filter(array_map('strval', $review_date_sort_keys)))), true)) return;
+    $headers = meza_get_current_screen_column_headers_map($screen);
+    $runtime_date_keys = meza_get_generic_date_admin_column_runtime_keys($headers);
+    if (!in_array($orderby, $runtime_date_keys, true)) return;
+
+    $meta_key = meza_resolve_admin_date_sort_meta_key($post_type, [
+        $orderby,
+        (string) ($headers[$orderby] ?? ''),
+    ]);
+    if ($meta_key === '') return;
 
     $order = strtoupper((string) $q->get('order'));
     $order = in_array($order, ['ASC', 'DESC'], true) ? $order : 'DESC';
 
-    $q->set('meta_key', 'date');
+    $q->set('meta_key', $meta_key);
     $q->set('meta_type', 'NUMERIC');
     $q->set('orderby', [
         'meta_value_num' => $order,
@@ -7478,20 +7769,20 @@ add_filter('ac/column/value', function ($value, $id, $column) {
     return $date_html !== '' ? $date_html : $value;
 }, 115, 3);
 
-// Admin Columns plugin renderer: render review ACF date fields when the
-// active Reviews list uses a standalone Date column instead of Published.
+// Admin Columns plugin renderer: render date-like custom fields when ACP
+// exposes a standalone Date column backed by ACF/meta instead of post_date.
 add_filter('ac/column/value', function ($value, $id, $column) {
     $id = (int) $id;
-    if ($id <= 0 || !meza_admin_column_should_render_review_date($column, $id, $value)) {
+    if ($id <= 0 || !meza_admin_column_should_render_generic_date($column, $id)) {
         return $value;
     }
 
-    $review_date_timestamp = meza_get_review_admin_column_date_timestamp($id);
-    if ($review_date_timestamp <= 0) {
+    $display_value = meza_get_post_admin_date_display_value($id, meza_get_admin_column_identifiers($column));
+    if ($display_value === '') {
         return $value;
     }
 
-    return esc_html(wp_date(get_option('date_format'), $review_date_timestamp));
+    return esc_html($display_value);
 }, 116, 3);
 
 add_action('pre_get_posts', function (WP_Query $q) {

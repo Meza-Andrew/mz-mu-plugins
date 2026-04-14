@@ -173,6 +173,7 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-mz_summary{width:325px;}' .
             '.wp-list-table .column-mz_review_quote{width:325px;}' .
             '.wp-list-table .column-mz_review_citer{width:175px;}' .
+            '.wp-list-table .column-mz_review_link{width:200px;}' .
             '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;}' .
             '.wp-list-table .column-acf-count{width:125px;}' .
             '.wp-list-table .column-mz_thumbnail{width:125px;min-width:125px;max-width:125px;}' .
@@ -214,6 +215,7 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
             '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
             '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
+            '.wp-list-table .column-mz_review_link{width:200px;max-width:200px;}' .
             '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;max-width:225px;}' .
             '.wp-list-table .column-acf-count{width:125px;max-width:125px;}' .
             '.wp-list-table .column-mz_thumbnail{width:125px;}' .
@@ -263,13 +265,15 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
+        '.wp-list-table .column-mz_review_link{width:200px;max-width:200px;}' .
         '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;max-width:225px;}' .
         '.wp-list-table .column-acf-count{width:125px;max-width:125px;}' .
         '.wp-list-table .column-mz_thumbnail{width:125px;}' .
         '.wp-list-table td.column-mz_thumbnail{vertical-align:top!important;}' .
-        '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap{display:inline-block!important;width:100px!important;max-width:100%!important;line-height:0!important;margin:0 0 6px!important;}' .
-        '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap>a{display:inline-block!important;width:100%!important;line-height:0!important;}' .
-        '.wp-list-table td.column-mz_thumbnail img{width:100px!important;height:auto!important;max-width:100px!important;display:block!important;margin:0!important;}' .
+        '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap{display:inline-block!important;max-width:100%!important;line-height:0!important;margin:0 0 6px!important;}' .
+        '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap>a{display:inline-block!important;max-width:100%!important;line-height:0!important;}' .
+        '.wp-list-table td.column-mz_thumbnail img{width:auto!important;height:auto!important;max-width:100%!important;display:block!important;margin:0!important;}' .
+        '.wp-list-table td[class*="column-"]>img,.wp-list-table td[class*="column-"]>a>img,.wp-list-table td[class*="column-"] .acp-image img,.wp-list-table td[class*="column-"] .ac-column__image img{width:auto!important;height:auto!important;max-width:100%!important;display:block!important;}' .
         '.wp-list-table .column-mz_thumbnail .row-actions{font-size:11px;line-height:1.1;}' .
         '.wp-list-table .column-title{width:225px;}' .
         '.wp-list-table .column-title .meza-title-template,.wp-list-table .column-title .meza-title-permalink{font-size:12px;line-height:1.4;}' .
@@ -303,9 +307,9 @@ add_action('admin_head-edit.php', function () {
                 : '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px;min-width:48px;max-width:48px;text-align:center;}' .
                     '.wp-list-table th.column-mz_thumbnail,.wp-list-table td.column-mz_thumbnail{width:78px;min-width:78px;max-width:78px;}') .
             '.wp-list-table td.column-mz_thumbnail{vertical-align:top!important;}' .
-            '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap{display:inline-block!important;width:78px!important;max-width:100%!important;line-height:0!important;margin:0 0 6px!important;}' .
-            '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap>a{display:inline-block!important;width:100%!important;line-height:0!important;}' .
-            '.wp-list-table td.column-mz_thumbnail img{display:block!important;width:78px!important;height:auto!important;max-width:78px!important;margin:0!important;}' .
+            '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap{display:inline-block!important;max-width:100%!important;line-height:0!important;margin:0 0 6px!important;}' .
+            '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap>a{display:inline-block!important;max-width:100%!important;line-height:0!important;}' .
+            '.wp-list-table td.column-mz_thumbnail img{display:block!important;width:auto!important;height:auto!important;max-width:100%!important;margin:0!important;}' .
             ($is_acp_layout
                 ? '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px;}' .
                     '.wp-list-table th.column-price,.wp-list-table td.column-price{width:90px;white-space:nowrap;}' .
@@ -873,6 +877,117 @@ add_action('admin_head-edit.php', function (): void {
             } else {
                 sync();
             }
+        })();
+    </script>
+<?php
+});
+
+add_action('admin_head-edit.php', function (): void {
+?>
+    <script id="meza-admin-image-column-containment">
+        (() => {
+            const WIDTH_RULE_PATTERN = /column-([a-z0-9_-]+)[^{}]*\{\s*width:\s*([^!;}{]+)!important;/gi;
+            const IMAGE_SELECTOR = 'img';
+            const WRAPPER_SELECTOR = '.mz-thumb-wrap, .acp-image, .ac-column__image, a, span, div';
+
+            const normalizeWidth = (value) => {
+                const width = String(value || '').trim();
+                return width && width !== 'auto' ? width : '';
+            };
+
+            const getConfiguredColumnWidths = () => {
+                const widths = new Map();
+
+                document.querySelectorAll('style[id^="ac-column-size-"]').forEach((styleNode) => {
+                    const css = String(styleNode.textContent || '');
+                    let match;
+
+                    while ((match = WIDTH_RULE_PATTERN.exec(css)) !== null) {
+                        const columnId = String(match[1] || '').trim();
+                        const width = normalizeWidth(match[2] || '');
+
+                        if (!columnId || !width || widths.has(columnId)) {
+                            continue;
+                        }
+
+                        widths.set(columnId, width);
+                    }
+                });
+
+                return widths;
+            };
+
+            const constrainImageCell = (cell, width) => {
+                if (!(cell instanceof HTMLElement) || !width) return;
+
+                const images = cell.querySelectorAll(IMAGE_SELECTOR);
+                if (!images.length) return;
+
+                cell.style.width = width;
+                cell.style.minWidth = width;
+                cell.style.maxWidth = width;
+                cell.style.overflow = 'hidden';
+                cell.style.boxSizing = 'border-box';
+
+                cell.querySelectorAll(WRAPPER_SELECTOR).forEach((wrapper) => {
+                    if (!(wrapper instanceof HTMLElement) || !wrapper.querySelector(IMAGE_SELECTOR)) {
+                        return;
+                    }
+
+                    wrapper.style.display = 'block';
+                    wrapper.style.width = '100%';
+                    wrapper.style.maxWidth = '100%';
+                    wrapper.style.overflow = 'hidden';
+                    wrapper.style.boxSizing = 'border-box';
+                });
+
+                images.forEach((image) => {
+                    if (!(image instanceof HTMLElement)) return;
+
+                    image.style.display = 'block';
+                    image.style.width = 'auto';
+                    image.style.height = 'auto';
+                    image.style.maxWidth = '100%';
+                    image.style.objectFit = 'contain';
+                    image.removeAttribute('width');
+                    image.removeAttribute('height');
+                });
+            };
+
+            const syncTable = (table, widths) => {
+                if (!(table instanceof HTMLTableElement) || !(widths instanceof Map) || widths.size === 0) {
+                    return;
+                }
+
+                widths.forEach((width, columnId) => {
+                    table.querySelectorAll(`th.column-${columnId}, td.column-${columnId}`).forEach((cell) => {
+                        constrainImageCell(cell, width);
+                    });
+                });
+            };
+
+            const sync = () => {
+                const widths = getConfiguredColumnWidths();
+                if (widths.size === 0) return;
+
+                document.querySelectorAll('table.wp-list-table').forEach((table) => {
+                    syncTable(table, widths);
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', sync, { once: true });
+            } else {
+                sync();
+            }
+
+            window.addEventListener('resize', sync, { passive: true });
+
+            const observer = new MutationObserver(sync);
+            observer.observe(document.documentElement, {
+                childList: true,
+                subtree: true,
+            });
         })();
     </script>
 <?php
