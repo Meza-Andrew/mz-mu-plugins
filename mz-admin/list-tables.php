@@ -133,6 +133,43 @@ function meza_compact_meridiem(string $time): string
     return preg_replace('/\s+([ap])\.?m\.?$/i', '$1m', trim($time)) ?? trim($time);
 }
 
+function meza_get_review_admin_column_date_raw_value(int $post_id): string
+{
+    $post_id = (int) $post_id;
+    if ($post_id <= 0) return '';
+
+    if (function_exists('get_field')) {
+        $acf_date = get_field('date', $post_id);
+        if (is_string($acf_date) && trim($acf_date) !== '') {
+            return trim($acf_date);
+        }
+    }
+
+    $meta_date = get_post_meta($post_id, 'date', true);
+    return is_string($meta_date) ? trim($meta_date) : '';
+}
+
+function meza_get_review_admin_column_date_timestamp(int $post_id): int
+{
+    $raw_value = meza_get_review_admin_column_date_raw_value($post_id);
+    if ($raw_value === '') return 0;
+
+    if (preg_match('/^\d{8}$/', $raw_value)) {
+        $year = (int) substr($raw_value, 0, 4);
+        $month = (int) substr($raw_value, 4, 2);
+        $day = (int) substr($raw_value, 6, 2);
+
+        if (checkdate($month, $day, $year)) {
+            $timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone(wp_timezone_string() ?: 'UTC');
+            $datetime = new DateTimeImmutable(sprintf('%04d-%02d-%02d 00:00:00', $year, $month, $day), $timezone);
+            return $datetime->getTimestamp();
+        }
+    }
+
+    $timestamp = strtotime($raw_value);
+    return $timestamp !== false ? (int) $timestamp : 0;
+}
+
 function meza_post_has_internal_pages(WP_Post $post): bool
 {
     $content = (string) ($post->post_content ?? '');
@@ -5848,6 +5885,15 @@ function meza_render_posts_list_column(string $column, int $post_id): void
 
     if ($column !== 'mz_published') return;
 
+    if (in_array((string) $post->post_type, ['review', 'reviews'], true)) {
+        $review_date_timestamp = meza_get_review_admin_column_date_timestamp((int) $post_id);
+        if ($review_date_timestamp > 0) {
+            $date = wp_date(get_option('date_format'), $review_date_timestamp);
+            echo esc_html__('Date') . '<br>' . esc_html($date);
+            return;
+        }
+    }
+
     $published_timestamp = get_post_time('U', false, $post, true);
     if (!$published_timestamp) {
         echo '&mdash;';
@@ -6127,6 +6173,29 @@ add_filter('woocommerce_products_admin_list_table_filters', function ($filters) 
 }, 1000);
 
 // Keep explicit event start-date sorting. Global default ordering is set below.
+add_action('pre_get_posts', function (WP_Query $q) {
+    global $pagenow;
+    if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php') return;
+
+    $post_type = sanitize_key((string) $q->get('post_type'));
+    if (!in_array($post_type, ['review', 'reviews'], true)) return;
+
+    $orderby = (string) $q->get('orderby');
+    if (!in_array($orderby, ['date', 'mz_published'], true)) return;
+
+    $order = strtoupper((string) $q->get('order'));
+    $order = in_array($order, ['ASC', 'DESC'], true) ? $order : 'DESC';
+
+    $q->set('meta_key', 'date');
+    $q->set('meta_type', 'NUMERIC');
+    $q->set('orderby', [
+        'meta_value_num' => $order,
+        'date' => 'DESC',
+        'ID' => 'DESC',
+    ]);
+    $q->set('order', $order);
+}, 14);
+
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
     if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php') return;
