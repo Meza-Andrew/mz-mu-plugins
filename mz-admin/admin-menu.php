@@ -972,43 +972,20 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $
 }, 100, 4);
 
 add_action('admin_head', function (): void {
-    $is_administrator = meza_user_has_any_role(wp_get_current_user(), ['administrator']);
-    $settings_url = esc_url(admin_url('admin.php?page=wpseo_page_settings' . ($is_administrator ? '' : '#/site-representation')));
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    $site_representation_url = esc_url(admin_url('admin.php?page=wpseo_page_settings#/site-representation'));
 ?>
-    <script id="meza-yoast-top-level-settings-link">
+    <script id="meza-yoast-settings-submenu-link">
         (() => {
-            const fallbackHref = <?php echo wp_json_encode($settings_url); ?>;
-            const isAdministrator = <?php echo $is_administrator ? 'true' : 'false'; ?>;
+            const targetHref = <?php echo wp_json_encode($site_representation_url); ?>;
 
-            const getSettingsHref = () => {
-                const submenuLinks = Array.from(document.querySelectorAll('#toplevel_page_wpseo_dashboard .wp-submenu a'));
-
-                for (const link of submenuLinks) {
-                    if (!(link instanceof HTMLAnchorElement)) {
-                        continue;
-                    }
-
-                    try {
-                        const url = new URL(link.href, window.location.origin);
-                        if (url.searchParams.get('page') === 'wpseo_page_settings') {
-                            return link.href;
-                        }
-                    } catch (error) {
-                    }
-                }
-
-                return fallbackHref;
-            };
-
-            const retargetSeoMenu = () => {
-                const targetHref = getSettingsHref();
+            const updateSettingsLink = () => {
                 const topLevelLink = document.querySelector('#toplevel_page_wpseo_dashboard > a');
                 if (topLevelLink instanceof HTMLAnchorElement) {
                     topLevelLink.href = targetHref;
-                }
-
-                if (isAdministrator) {
-                    return;
                 }
 
                 document.querySelectorAll('#toplevel_page_wpseo_dashboard .wp-submenu a').forEach((link) => {
@@ -1028,48 +1005,11 @@ add_action('admin_head', function (): void {
                 });
             };
 
-            const redirectBareYoastSettings = () => {
-                if (isAdministrator) {
-                    return;
-                }
-
-                try {
-                    const currentUrl = new URL(window.location.href);
-                    if (currentUrl.searchParams.get('page') !== 'wpseo_page_settings' || window.location.hash !== '') {
-                        return;
-                    }
-
-                    const targetHref = getSettingsHref();
-                    window.location.replace(targetHref);
-                } catch (error) {
-                }
-            };
-
-            const handleSeoMenuClick = (event) => {
-                const targetHref = getSettingsHref();
-                const link = event.target instanceof Element
-                    ? event.target.closest('#toplevel_page_wpseo_dashboard > a')
-                    : null;
-
-                if (!(link instanceof HTMLAnchorElement)) {
-                    return;
-                }
-
-                event.preventDefault();
-                window.location.href = targetHref;
-            };
-
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', () => {
-                    retargetSeoMenu();
-                    redirectBareYoastSettings();
-                }, { once: true });
+                document.addEventListener('DOMContentLoaded', updateSettingsLink, { once: true });
             } else {
-                retargetSeoMenu();
-                redirectBareYoastSettings();
+                updateSettingsLink();
             }
-
-            document.addEventListener('click', handleSeoMenuClick, true);
         })();
     </script>
 <?php
