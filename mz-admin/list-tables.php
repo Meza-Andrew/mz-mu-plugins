@@ -1482,6 +1482,7 @@ function meza_get_seeded_acp_default_admin_columns(): array
             'mz_menu_order' => ['label' => '#'],
             'title' => ['label' => 'Title'],
             'mz_summary' => ['label' => 'Summary'],
+            'categories' => ['label' => 'Categories'],
             'mz_page_headline' => ['label' => 'Page Headline (H1)'],
             'mz_page_cta' => ['label' => 'Page CTA'],
             'mz_page_form' => ['label' => 'Page Form'],
@@ -1792,11 +1793,16 @@ function meza_get_default_visible_taxonomy_admin_column_keys(string $post_type):
 
     foreach (array_keys($seeded_columns) as $seeded_key) {
         foreach (meza_get_seeded_admin_column_alias_candidates((string) $seeded_key) as $candidate_key) {
-            if (meza_get_admin_column_taxonomy_name($candidate_key, $post_type) === '') {
+            $taxonomy_name = meza_get_admin_column_taxonomy_name($candidate_key, $post_type);
+            if ($taxonomy_name === '') {
                 continue;
             }
 
             $visible_keys[] = $candidate_key;
+            $visible_keys = array_merge(
+                $visible_keys,
+                meza_get_taxonomy_admin_column_preferred_keys($post_type, $taxonomy_name)
+            );
         }
     }
 
