@@ -327,6 +327,11 @@ function meza_post_type_organization_link_admin_column_is_default_visible(string
     return trim($post_type) === 'organization';
 }
 
+function meza_review_link_admin_column_is_default_visible(string $post_type): bool
+{
+    return false;
+}
+
 function meza_post_type_is_profile_like(string $post_type): bool
 {
     return in_array(trim($post_type), ['profile', 'team-member'], true);
@@ -414,7 +419,7 @@ function meza_page_marketing_admin_columns_are_default_visible(string $post_type
         return false;
     }
 
-    return trim($post_type) === 'page';
+    return in_array(trim($post_type), ['page', 'service'], true);
 }
 
 function meza_post_type_uses_native_admin_columns(string $post_type): bool
@@ -854,6 +859,17 @@ function meza_get_event_date_admin_column_runtime_keys(array $columns): array
     foreach (meza_get_admin_column_keys_matching_tokens($columns, ['date', 'start-date', 'start_date', 'start date']) as $key) {
         $keys[] = $key;
     }
+
+    return array_values(array_unique(array_filter(array_map('strval', $keys))));
+}
+
+function meza_get_review_date_admin_column_runtime_keys(array $columns): array
+{
+    if (!is_array($columns) || $columns === []) {
+        return [];
+    }
+
+    $keys = meza_get_admin_column_keys_matching_tokens($columns, ['date', 'review date']);
 
     return array_values(array_unique(array_filter(array_map('strval', $keys))));
 }
@@ -1567,10 +1583,16 @@ function meza_get_seeded_acp_default_admin_columns(): array
         '_ac_columns_default_service' => [
             'mz_id' => ['label' => 'ID'],
             'mz_menu_order' => ['label' => '#'],
-            'mz_thumbnail' => ['label' => 'Image'],
             'title' => ['label' => 'Title'],
             'mz_summary' => ['label' => 'Summary'],
-            'link' => ['label' => 'Link'],
+            'mz_page_headline' => ['label' => 'Page Headline (H1)'],
+            'mz_page_cta' => ['label' => 'Page CTA'],
+            'mz_page_form' => ['label' => 'Page Form'],
+            'wpseo-title' => ['label' => 'Meta Title'],
+            'wpseo-metadesc' => ['label' => 'Meta Description'],
+            'mz_thumbnail' => ['label' => 'Share Image'],
+            'mz_share_title' => ['label' => 'Share Title'],
+            'mz_share_description' => ['label' => 'Share Description'],
             'mz_modified' => ['label' => 'Modified'],
             'mz_published' => ['label' => 'Published'],
         ],
@@ -1629,8 +1651,10 @@ function meza_get_seeded_acp_default_admin_columns(): array
             'mz_id' => ['label' => 'ID'],
             'mz_menu_order' => ['label' => '#'],
             'title' => ['label' => 'Title'],
+            'date' => ['label' => 'Date'],
             'mz_review_quote' => ['label' => 'Quote'],
             'mz_review_citer' => ['label' => 'Citer'],
+            'mz_review_link' => ['label' => 'Link'],
             'mz_modified' => ['label' => 'Modified'],
             'mz_published' => ['label' => 'Published'],
         ],
@@ -1638,8 +1662,10 @@ function meza_get_seeded_acp_default_admin_columns(): array
             'mz_id' => ['label' => 'ID'],
             'mz_menu_order' => ['label' => '#'],
             'title' => ['label' => 'Title'],
+            'date' => ['label' => 'Date'],
             'mz_review_quote' => ['label' => 'Quote'],
             'mz_review_citer' => ['label' => 'Citer'],
+            'mz_review_link' => ['label' => 'Link'],
             'mz_modified' => ['label' => 'Modified'],
             'mz_published' => ['label' => 'Published'],
         ],
@@ -1907,7 +1933,7 @@ function meza_get_default_visible_taxonomy_admin_column_keys(string $post_type):
 
 function meza_sync_seeded_acp_default_admin_columns(): void
 {
-    $target_version = '1.1.256';
+    $target_version = '1.1.260';
     if ((string) get_option('meza_acp_seeded_default_admin_columns_migration') === $target_version) {
         return;
     }
@@ -1932,7 +1958,7 @@ function meza_media_acp_layout_matches_legacy_stub($columns): bool
     ], true);
 }
 
-function meza_build_seeded_media_acp_column_collection(): ?AC\ColumnCollection
+function meza_build_seeded_acp_column_collection(string $list_key): ?AC\ColumnCollection
 {
     if (
         !class_exists('AC\\ColumnCollection')
@@ -1946,7 +1972,12 @@ function meza_build_seeded_media_acp_column_collection(): ?AC\ColumnCollection
         return null;
     }
 
-    $seeded_columns = meza_get_seeded_admin_column_defaults_for_list_key('wp-media');
+    $list_key = trim($list_key);
+    if ($list_key === '') {
+        return null;
+    }
+
+    $seeded_columns = meza_get_seeded_admin_column_defaults_for_list_key($list_key);
     if ($seeded_columns === []) {
         return null;
     }
@@ -1979,6 +2010,11 @@ function meza_build_seeded_media_acp_column_collection(): ?AC\ColumnCollection
     }
 
     return $columns->count() > 0 ? $columns : null;
+}
+
+function meza_build_seeded_media_acp_column_collection(): ?AC\ColumnCollection
+{
+    return meza_build_seeded_acp_column_collection('wp-media');
 }
 
 function meza_repair_media_acp_list_screen(): void
@@ -2024,6 +2060,171 @@ function meza_repair_media_acp_list_screen(): void
 }
 
 add_action('admin_init', 'meza_repair_media_acp_list_screen', 1001);
+
+function meza_service_acp_layout_matches_legacy_stub($columns): bool
+{
+    $types = meza_get_acp_column_collection_types($columns);
+    sort($types);
+
+    return in_array($types, [
+        ['link', 'mz_id', 'mz_menu_order', 'mz_modified', 'mz_published', 'mz_summary', 'mz_thumbnail', 'title'],
+    ], true);
+}
+
+function meza_repair_service_acp_list_screen(): void
+{
+    if (!class_exists('AC\\Registry') || !class_exists('AC\\ListScreenRepository\\Storage')) {
+        return;
+    }
+
+    $target_version = '1.1.259';
+    if ((string) get_option('meza_acp_service_list_screen_repair_migration') === $target_version) {
+        return;
+    }
+
+    $storage = AC\Registry::get(AC\ListScreenRepository\Storage::class);
+    if (!($storage instanceof AC\ListScreenRepository\Storage)) {
+        return;
+    }
+
+    $replacement = meza_build_seeded_acp_column_collection('service');
+    if (!($replacement instanceof AC\ColumnCollection)) {
+        return;
+    }
+
+    foreach ($storage->find_all() as $list_screen) {
+        if (!is_object($list_screen) || !method_exists($list_screen, 'get_columns') || !method_exists($list_screen, 'get_post_type')) {
+            continue;
+        }
+
+        if (trim((string) $list_screen->get_post_type()) !== 'service') {
+            continue;
+        }
+
+        $existing_columns = $list_screen->get_columns();
+        if (!meza_service_acp_layout_matches_legacy_stub($existing_columns)) {
+            continue;
+        }
+
+        $list_screen->set_columns($replacement);
+        $storage->save($list_screen);
+    }
+
+    update_option('meza_acp_service_list_screen_repair_migration', $target_version, false);
+}
+
+add_action('admin_init', 'meza_repair_service_acp_list_screen', 1002);
+
+function meza_create_seeded_acp_base_column(string $type, string $label): ?AC\Column\Base
+{
+    if (
+        !class_exists('AC\\Column\\Base')
+        || !class_exists('AC\\Column\\Context')
+        || !class_exists('AC\\FormatterCollection')
+        || !class_exists('AC\\Setting\\ComponentCollection')
+        || !class_exists('AC\\Setting\\Config')
+        || !class_exists('AC\\Type\\ColumnId')
+        || !AC\Type\ColumnId::is_valid_id($type)
+    ) {
+        return null;
+    }
+
+    return new AC\Column\Base(
+        $type,
+        $label,
+        new AC\Setting\ComponentCollection(),
+        new AC\Type\ColumnId($type),
+        new AC\Column\Context(new AC\Setting\Config([
+            'name' => $type,
+            'label' => $label,
+        ]), $label),
+        new AC\FormatterCollection(),
+        'default'
+    );
+}
+
+function meza_repair_review_acp_list_screen(): void
+{
+    if (
+        !class_exists('AC\\Registry')
+        || !class_exists('AC\\ColumnCollection')
+        || !class_exists('AC\\ColumnIterator')
+        || !class_exists('AC\\ListScreenRepository\\Storage')
+    ) {
+        return;
+    }
+
+    $target_version = '1.1.260';
+    if ((string) get_option('meza_acp_review_list_screen_repair_migration') === $target_version) {
+        return;
+    }
+
+    $storage = AC\Registry::get(AC\ListScreenRepository\Storage::class);
+    if (!($storage instanceof AC\ListScreenRepository\Storage)) {
+        return;
+    }
+
+    foreach ($storage->find_all() as $list_screen) {
+        if (!is_object($list_screen) || !method_exists($list_screen, 'get_columns') || !method_exists($list_screen, 'get_post_type')) {
+            continue;
+        }
+
+        $post_type = trim((string) $list_screen->get_post_type());
+        if (!in_array($post_type, ['review', 'reviews'], true)) {
+            continue;
+        }
+
+        $existing_columns = $list_screen->get_columns();
+        if (!($existing_columns instanceof AC\ColumnIterator)) {
+            continue;
+        }
+
+        $repaired_columns = new AC\ColumnCollection();
+        $has_review_link = false;
+        $inserted_review_link = false;
+
+        foreach ($existing_columns as $column) {
+            if (!is_object($column) || !method_exists($column, 'get_id')) {
+                continue;
+            }
+
+            $column_id = trim((string) $column->get_id());
+            if ($column_id === 'mz_review_link') {
+                $has_review_link = true;
+            }
+
+            $repaired_columns->add($column);
+
+            if (!$inserted_review_link && in_array($column_id, ['mz_review_citer', 'mz_review_quote', 'date', 'title'], true)) {
+                $review_link_column = meza_create_seeded_acp_base_column('mz_review_link', __('Link'));
+                if ($review_link_column instanceof AC\Column\Base) {
+                    $repaired_columns->add($review_link_column);
+                    $inserted_review_link = true;
+                    $has_review_link = true;
+                }
+            }
+        }
+
+        if (!$has_review_link) {
+            $review_link_column = meza_create_seeded_acp_base_column('mz_review_link', __('Link'));
+            if ($review_link_column instanceof AC\Column\Base) {
+                $repaired_columns->add($review_link_column);
+                $has_review_link = true;
+            }
+        }
+
+        if (!$has_review_link || meza_get_acp_column_collection_ids($existing_columns) === meza_get_acp_column_collection_ids($repaired_columns)) {
+            continue;
+        }
+
+        $list_screen->set_columns($repaired_columns);
+        $storage->save($list_screen);
+    }
+
+    update_option('meza_acp_review_list_screen_repair_migration', $target_version, false);
+}
+
+add_action('admin_init', 'meza_repair_review_acp_list_screen', 1003);
 
 function meza_run_acp_default_admin_column_order_migration(): void
 {
@@ -3045,6 +3246,26 @@ function meza_admin_column_should_render_event_date($column, int $id, $value): b
         }
 
         if ($identifier === 'date' && meza_is_empty_admin_column_display_value($value)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function meza_admin_column_should_render_review_date($column, int $id, $value): bool
+{
+    if (!in_array((string) get_post_type($id), ['review', 'reviews'], true)) {
+        return false;
+    }
+
+    $normalized_identifiers = array_map(
+        'meza_normalize_admin_link_column_identifier',
+        meza_get_admin_column_identifiers($column)
+    );
+
+    foreach ($normalized_identifiers as $identifier) {
+        if (in_array($identifier, ['date', 'review date'], true)) {
             return true;
         }
     }
@@ -4148,6 +4369,7 @@ function meza_ensure_standard_admin_columns(array $columns, string $post_type): 
     $show_organization_url_column = meza_post_type_is_organization_like($post_type);
     $show_profile_title_column = meza_post_type_is_profile_like($post_type);
     $show_profile_link_column = meza_post_type_is_profile_like($post_type);
+    $show_review_link_column = in_array($post_type, ['review', 'reviews'], true);
     $show_faq_count_column = ($post_type === 'faq');
     $show_form_slug_column = ($post_type === 'form');
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
@@ -4199,6 +4421,16 @@ function meza_ensure_standard_admin_columns(array $columns, string $post_type): 
         }
     } else {
         unset($columns['mz_organization_url']);
+    }
+
+    if ($show_review_link_column) {
+        if ($first_taxonomy_key !== '') {
+            $columns = meza_insert_missing_admin_column_before($columns, [$first_taxonomy_key], 'mz_review_link', __('Link'));
+        } else {
+            $columns = meza_insert_missing_admin_column($columns, ['mz_review_citer', 'mz_review_quote', 'title'], 'mz_review_link', __('Link'));
+        }
+    } else {
+        unset($columns['mz_review_link']);
     }
 
     if ($show_summary_column) {
@@ -4351,7 +4583,7 @@ function meza_page_form_admin_column_is_default_visible(string $post_type): bool
         return false;
     }
 
-    return (trim($post_type) === 'page');
+    return in_array(trim($post_type), ['page', 'service'], true);
 }
 
 function meza_get_page_marketing_admin_column_ids(): array
@@ -4385,6 +4617,7 @@ function meza_normalize_admin_columns_managed_headings(array $columns, string $p
     $show_organization_url_column = meza_post_type_is_organization_like($post_type);
     $show_profile_title_column = meza_post_type_is_profile_like($post_type);
     $show_profile_link_column = meza_post_type_is_profile_like($post_type);
+    $show_review_link_column = in_array($post_type, ['review', 'reviews'], true);
     $show_faq_count_column = ($post_type === 'faq');
     $show_form_slug_column = ($post_type === 'form');
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
@@ -4433,6 +4666,10 @@ function meza_normalize_admin_columns_managed_headings(array $columns, string $p
                 break;
             case 'mz_organization_url':
                 if (!$show_organization_url_column) unset($columns[$key]);
+                else $columns[$key] = __('Link');
+                break;
+            case 'mz_review_link':
+                if (!$show_review_columns) unset($columns[$key]);
                 else $columns[$key] = __('Link');
                 break;
             case 'mz_summary':
@@ -4631,6 +4868,7 @@ function meza_normalize_datetime_columns(array $columns): array
             if ($show_review_columns) {
                 $updated['mz_review_quote'] = __('Quote');
                 $updated['mz_review_citer'] = __('Citer');
+                if ($show_review_link_column) $updated['mz_review_link'] = __('Link');
             }
             if ($show_page_columns) {
                 $updated['mz_page_headline'] = __('Page Headline (H1)');
@@ -4655,6 +4893,9 @@ function meza_normalize_datetime_columns(array $columns): array
     }
     if ($show_organization_url_column && !isset($updated['mz_organization_url'])) {
         $updated['mz_organization_url'] = __('Link');
+    }
+    if ($show_review_link_column && !isset($updated['mz_review_link'])) {
+        $updated['mz_review_link'] = __('Link');
     }
     if ($show_summary_column && !isset($updated['mz_summary'])) {
         $updated['mz_summary'] = meza_get_post_type_summary_admin_column_label($post_type);
@@ -4962,6 +5203,22 @@ add_filter('default_hidden_columns', function ($hidden, $screen) {
     if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
 
     $post_type = (string) ($screen->post_type ?? '');
+    if (!in_array($post_type, ['review', 'reviews'], true)) return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+
+    if (meza_review_link_admin_column_is_default_visible($post_type)) {
+        return array_values(array_diff($hidden, ['mz_review_link']));
+    }
+
+    $hidden[] = 'mz_review_link';
+    return array_values(array_unique($hidden));
+}, 307, 2);
+
+add_filter('default_hidden_columns', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+
+    $post_type = (string) ($screen->post_type ?? '');
     if ($post_type === '' || !meza_post_type_has_permalink($post_type)) return $hidden;
     if (meza_is_acf_admin_post_type($post_type)) return $hidden;
 
@@ -5077,13 +5334,46 @@ add_action('current_screen', function ($screen): void {
     if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
 
     $post_type = (string) ($screen->post_type ?? '');
+    if (!in_array($post_type, ['review', 'reviews'], true)) return;
+
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) return;
+
+    $meta_key = 'meza_review_link_visibility_initialized_post_types_v1';
+    $initialized_post_types = get_user_meta($user_id, $meta_key, true);
+    $initialized_post_types = is_array($initialized_post_types)
+        ? array_values(array_unique(array_map('strval', $initialized_post_types)))
+        : [];
+
+    if (in_array($post_type, $initialized_post_types, true)) return;
+
+    $hidden_key = 'manage' . $screen->id . 'columnshidden';
+    $hidden = get_user_option($hidden_key, $user_id);
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+
+    if (meza_review_link_admin_column_is_default_visible($post_type)) {
+        $hidden = array_values(array_diff($hidden, ['mz_review_link']));
+    } elseif (!in_array('mz_review_link', $hidden, true)) {
+        $hidden[] = 'mz_review_link';
+    }
+
+    update_user_option($user_id, $hidden_key, array_values(array_unique($hidden)), true);
+
+    $initialized_post_types[] = $post_type;
+    update_user_meta($user_id, $meta_key, array_values(array_unique($initialized_post_types)));
+}, 46);
+
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
+
+    $post_type = (string) ($screen->post_type ?? '');
     if ($post_type === '' || !meza_post_type_has_permalink($post_type)) return;
     if (meza_is_acf_admin_post_type($post_type)) return;
 
     $user_id = get_current_user_id();
     if ($user_id <= 0) return;
 
-    $meta_key = 'meza_page_marketing_visibility_initialized_post_types_v2';
+    $meta_key = 'meza_page_marketing_visibility_initialized_post_types_v3';
     $initialized_post_types = get_user_meta($user_id, $meta_key, true);
     $initialized_post_types = is_array($initialized_post_types)
         ? array_values(array_unique(array_map('strval', $initialized_post_types)))
@@ -5136,7 +5426,7 @@ add_action('current_screen', function ($screen): void {
     $user_id = get_current_user_id();
     if ($user_id <= 0) return;
 
-    $meta_key = 'meza_page_form_hidden_migrated_post_types_v4';
+    $meta_key = 'meza_page_form_hidden_migrated_post_types_v5';
     $migrated_post_types = get_user_meta($user_id, $meta_key, true);
     $migrated_post_types = is_array($migrated_post_types)
         ? array_values(array_unique(array_map('strval', $migrated_post_types)))
@@ -5209,7 +5499,7 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
         return array_values(array_unique($hidden));
     }
 
-    $meta_key = 'meza_page_form_hidden_migrated_post_types_v4';
+    $meta_key = 'meza_page_form_hidden_migrated_post_types_v5';
     $migrated_post_types = get_user_meta($user_id, $meta_key, true);
     $migrated_post_types = is_array($migrated_post_types)
         ? array_values(array_unique(array_map('strval', $migrated_post_types)))
@@ -5287,6 +5577,9 @@ add_filter('default_hidden_columns', function ($hidden, $screen) {
     if (meza_is_event_post_type($post_type)) {
         $visible_keys = array_merge($visible_keys, meza_get_event_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
     }
+    if (in_array($post_type, ['review', 'reviews'], true)) {
+        $visible_keys = array_merge($visible_keys, meza_get_review_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
+    }
 
     return array_values(array_diff($hidden, array_values(array_unique(array_filter(array_map('strval', $visible_keys))))));
 }, 1200, 2);
@@ -5304,6 +5597,9 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     if (meza_is_event_post_type($post_type)) {
         $visible_keys = array_merge($visible_keys, meza_get_event_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
     }
+    if (in_array($post_type, ['review', 'reviews'], true)) {
+        $visible_keys = array_merge($visible_keys, meza_get_review_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
+    }
 
     return array_values(array_diff($hidden, array_values(array_unique(array_filter(array_map('strval', $visible_keys))))));
 }, 1200, 3);
@@ -5319,6 +5615,18 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
     return array_values(array_diff($hidden, ['mz_organization_url']));
 }, 1110, 3);
+
+add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+    if (!$use_defaults) return $hidden;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if (!in_array($post_type, ['review', 'reviews'], true)) return $hidden;
+    if (!meza_review_link_admin_column_is_default_visible($post_type)) return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+    return array_values(array_diff($hidden, ['mz_review_link']));
+}, 1111, 3);
 
 function meza_register_datetime_sortable_columns(array $cols): array
 {
@@ -5340,6 +5648,12 @@ function meza_register_datetime_sortable_columns(array $cols): array
     if (($screen instanceof WP_Screen) && meza_is_event_post_type($post_type)) {
         foreach (meza_get_event_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)) as $column_key) {
             $cols[(string) $column_key] = ['start_datetime_order', true];
+        }
+    }
+
+    if (($screen instanceof WP_Screen) && in_array($post_type, ['review', 'reviews'], true)) {
+        foreach (meza_get_review_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)) as $column_key) {
+            $cols[(string) $column_key] = ['date', true];
         }
     }
 
@@ -5568,6 +5882,17 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html(meza_get_admin_link_column_display_text($url)) . '</a>';
         return;
     }
+    if ($column === 'mz_review_link') {
+        $url = meza_get_post_link_field_url((int) $post_id, ['link']);
+
+        if ($url === '') {
+            echo '&mdash;';
+            return;
+        }
+
+        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html(meza_get_admin_link_column_display_text($url)) . '</a>';
+        return;
+    }
     if ($column === 'mz_review_quote') {
         $quote = trim(wp_strip_all_tags((string) get_post_field('post_excerpt', (int) $post_id)));
 
@@ -5722,7 +6047,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     }
 
     if ($column === 'mz_page_headline') {
-        if (!meza_post_type_has_pages($post) || !meza_post_has_permalink((int) $post_id)) {
+        if (!meza_post_has_permalink((int) $post_id)) {
             echo '&mdash;';
             return;
         }
@@ -5751,7 +6076,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     }
 
     if ($column === 'mz_page_cta') {
-        if (!meza_post_type_has_pages($post) || !meza_post_has_permalink((int) $post_id)) {
+        if (!meza_post_has_permalink((int) $post_id)) {
             echo '&mdash;';
             return;
         }
@@ -5826,7 +6151,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     }
 
     if ($column === 'mz_page_form') {
-        if (!meza_post_type_has_pages($post) || !meza_post_has_permalink((int) $post_id)) {
+        if (!meza_post_has_permalink((int) $post_id)) {
             echo '&mdash;';
             return;
         }
@@ -6181,7 +6506,17 @@ add_action('pre_get_posts', function (WP_Query $q) {
     if (!in_array($post_type, ['review', 'reviews'], true)) return;
 
     $orderby = (string) $q->get('orderby');
-    if (!in_array($orderby, ['date', 'mz_published'], true)) return;
+    $review_date_sort_keys = ['date', 'mz_published'];
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if ($screen instanceof WP_Screen) {
+        $review_date_sort_keys = array_merge(
+            $review_date_sort_keys,
+            meza_get_review_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen))
+        );
+    }
+
+    if (!in_array($orderby, array_values(array_unique(array_filter(array_map('strval', $review_date_sort_keys)))), true)) return;
 
     $order = strtoupper((string) $q->get('order'));
     $order = in_array($order, ['ASC', 'DESC'], true) ? $order : 'DESC';
@@ -7142,6 +7477,22 @@ add_filter('ac/column/value', function ($value, $id, $column) {
 
     return $date_html !== '' ? $date_html : $value;
 }, 115, 3);
+
+// Admin Columns plugin renderer: render review ACF date fields when the
+// active Reviews list uses a standalone Date column instead of Published.
+add_filter('ac/column/value', function ($value, $id, $column) {
+    $id = (int) $id;
+    if ($id <= 0 || !meza_admin_column_should_render_review_date($column, $id, $value)) {
+        return $value;
+    }
+
+    $review_date_timestamp = meza_get_review_admin_column_date_timestamp($id);
+    if ($review_date_timestamp <= 0) {
+        return $value;
+    }
+
+    return esc_html(wp_date(get_option('date_format'), $review_date_timestamp));
+}, 116, 3);
 
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
