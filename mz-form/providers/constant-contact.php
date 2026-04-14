@@ -23,6 +23,15 @@ if (!defined('CC_REDIRECT_URI')) {
 if (!defined('CC_LIST_ID')) {
     define('CC_LIST_ID', '');
 }
+if (!defined('MZ_CC_SUBMISSION_BACKFILL_OPTION')) {
+    define('MZ_CC_SUBMISSION_BACKFILL_OPTION', 'mz_cc_submission_backfill');
+}
+if (!defined('MZ_CC_SUBMISSION_BACKFILL_NOTICE_TRANSIENT')) {
+    define('MZ_CC_SUBMISSION_BACKFILL_NOTICE_TRANSIENT', 'mz_cc_submission_backfill_notice');
+}
+if (!defined('MZ_CC_SUBMISSION_BACKFILL_HOOK')) {
+    define('MZ_CC_SUBMISSION_BACKFILL_HOOK', 'mz_cc_submission_backfill_batch');
+}
 
 if (!function_exists('cc_get_client_id')) {
     function cc_get_client_id(): string
@@ -407,6 +416,18 @@ if (!function_exists('cc_maybe_disconnect_when_platform_changes')) {
 
 add_action('acf/save_post', 'cc_maybe_disconnect_when_platform_changes', 30);
 
+if (!function_exists('cc_is_crm_options_save_request')) {
+    function cc_is_crm_options_save_request($post_id): bool
+    {
+        if (!in_array((string) $post_id, ['options', 'option'], true)) {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        return $page === 'crm';
+    }
+}
+
 if (!function_exists('cc_build_auth_url')) {
     function cc_build_auth_url(): string
     {
@@ -534,6 +555,9 @@ if (!function_exists('cc_process_oauth_callback')) {
             'scope'         => $json['scope']      ?? '',
         ];
         update_option('cc_tokens', $data, false);
+        if (function_exists('cc_queue_submission_backfill')) {
+            cc_queue_submission_backfill('oauth_connect');
+        }
 
         wp_safe_redirect(add_query_arg('cc_connected', '1', admin_url('options-general.php?page=crm')));
         exit;
@@ -981,6 +1005,348 @@ if (!function_exists('cc_get_contact_url')) {
         return (string) esc_url_raw($url);
     }
 }
+
+if (!function_exists('cc_set_submission_backfill_notice')) {
+    function cc_set_submission_backfill_notice(string $message, string $type = 'info'): void
+    {
+        $type = sanitize_key($type);
+        if (!in_array($type, ['success', 'info', 'warning', 'error'], true)) {
+            $type = 'info';
+        }
+
+        set_transient(MZ_CC_SUBMISSION_BACKFILL_NOTICE_TRANSIENT, [
+            'message' => sanitize_text_field($message),
+            'type' => $type,
+        ], HOUR_IN_SECONDS);
+    }
+}
+
+if (!function_exists('cc_get_submission_backfill_state')) {
+    function cc_get_submission_backfill_state(): array
+    {
+        $state = get_option(MZ_CC_SUBMISSION_BACKFILL_OPTION);
+        return is_array($state) ? $state : [];
+    }
+}
+
+if (!function_exists('cc_submission_has_live_link')) {
+    function cc_submission_has_live_link(int $submission_id): bool
+    {
+        $marketing_sync = get_post_meta($submission_id, '_mzf_marketing_sync', true);
+        if (!is_array($marketing_sync)) {
+            return false;
+        }
+
+        $provider = strtolower(trim((string) ($marketing_sync['provider'] ?? '')));
+        $sync_ok = !empty($marketing_sync['ok']);
+        $contact_url = trim((string) ($marketing_sync['contact_url'] ?? ''));
+        $dry_run = !empty($marketing_sync['dry_run']);
+
+        if ($provider !== 'constant_contact' || !$sync_ok) {
+            return false;
+        }
+
+        return ($contact_url !== '' || $dry_run);
+    }
+}
+
+if (!function_exists('cc_submission_should_backfill')) {
+    function cc_submission_should_backfill(int $submission_id): bool
+    {
+        if ($submission_id <= 0 || get_post_type($submission_id) !== 'mzf_submission') {
+            return false;
+        }
+
+        if (function_exists('mzf_submission_has_crm_entry') && !mzf_submission_has_crm_entry($submission_id)) {
+            return false;
+        }
+
+        $email = function_exists('mzf_submission_text_value')
+            ? mzf_submission_text_value($submission_id, ['Email'], '_mzf_email')
+            : trim((string) get_post_meta($submission_id, '_mzf_email', true));
+        if (!is_email($email)) {
+            return false;
+        }
+
+        $status_group = sanitize_key((string) get_post_meta($submission_id, '_mzf_delivery_status_group', true));
+        if ($status_group === '') {
+            $raw_status = sanitize_key((string) get_post_meta($submission_id, '_mzf_delivery_status', true));
+            if (function_exists('mzf_submission_status_group')) {
+                $status_group = mzf_submission_status_group($raw_status);
+            }
+        }
+        if (in_array($status_group, ['spam_detected', 'failure_validation'], true)) {
+            return false;
+        }
+
+        if (cc_submission_has_live_link($submission_id)) {
+            return false;
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('cc_build_submission_payload')) {
+    function cc_build_submission_payload(int $submission_id): array
+    {
+        $text_value = static function (array $keys, string $meta_key = '') use ($submission_id): string {
+            if (function_exists('mzf_submission_text_value')) {
+                return mzf_submission_text_value($submission_id, $keys, $meta_key);
+            }
+
+            if ($meta_key !== '') {
+                return trim((string) get_post_meta($submission_id, $meta_key, true));
+            }
+
+            return '';
+        };
+
+        $int_value = static function (array $keys, string $meta_key = '') use ($submission_id): int {
+            if (function_exists('mzf_submission_int_value')) {
+                return mzf_submission_int_value($submission_id, $keys, $meta_key);
+            }
+
+            if ($meta_key !== '') {
+                return (int) get_post_meta($submission_id, $meta_key, true);
+            }
+
+            return 0;
+        };
+
+        $form_slug = sanitize_key($text_value(['FormSlug'], '_mzf_form_slug'));
+        $page_id = $int_value(['PageId'], '_mzf_page_id');
+        $zip = function_exists('mzf_submission_zip_code')
+            ? mzf_submission_zip_code($submission_id)
+            : '';
+        $lead_tags = [];
+
+        if ($page_id > 0) {
+            $page_slug = sanitize_title((string) get_post_field('post_name', $page_id));
+            if ($page_slug !== '') {
+                $lead_tags[] = 'website_page_' . $page_slug;
+            }
+        }
+
+        if ($form_slug !== '') {
+            $lead_tags[] = 'website_form_' . sanitize_title($form_slug);
+        }
+
+        return [
+            'Email' => $text_value(['Email'], '_mzf_email'),
+            'FirstName' => $text_value(['FirstName', 'ContactFirstName'], '_mzf_first_name'),
+            'LastName' => $text_value(['LastName', 'ContactLastName'], '_mzf_last_name'),
+            'Phone' => $text_value(['Phone', 'WorkPhone', 'phone'], '_mzf_phone'),
+            'Company' => $text_value(['Company']),
+            'Zip' => $zip,
+            'PageId' => $page_id,
+            'FormSlug' => $form_slug,
+            'NewsletterSignup' => 'Yes',
+            'LeadTags' => array_values(array_unique(array_filter($lead_tags))),
+        ];
+    }
+}
+
+if (!function_exists('cc_store_submission_sync_result')) {
+    function cc_store_submission_sync_result(int $submission_id, array $marketing_sync): void
+    {
+        $normalized_sync = function_exists('mzf_log_normalize_value')
+            ? mzf_log_normalize_value($marketing_sync)
+            : $marketing_sync;
+
+        update_post_meta($submission_id, '_mzf_marketing_sync', $normalized_sync);
+        update_post_meta($submission_id, '_mzf_crm_platform', 'constant_contact');
+        update_post_meta($submission_id, '_mzf_crm_platform_label', 'Constant Contact');
+        update_post_meta($submission_id, '_mzf_newsletter_opt_in', '1');
+    }
+}
+
+if (!function_exists('cc_backfill_submission')) {
+    function cc_backfill_submission(int $submission_id): array
+    {
+        if (!cc_submission_should_backfill($submission_id)) {
+            return ['status' => 'skipped'];
+        }
+
+        $payload = cc_build_submission_payload($submission_id);
+        $result = mz_cc_add_contact($payload);
+        if (is_wp_error($result)) {
+            $sync_result = [
+                'ok' => false,
+                'provider' => 'constant_contact',
+                'label' => 'Constant Contact',
+                'error' => $result->get_error_message(),
+            ];
+            cc_store_submission_sync_result($submission_id, $sync_result);
+            return [
+                'status' => 'failed',
+                'message' => $result->get_error_message(),
+            ];
+        }
+
+        $sync_result = is_array($result)
+            ? $result
+            : ['ok' => true, 'provider' => 'constant_contact', 'label' => 'Constant Contact'];
+        cc_store_submission_sync_result($submission_id, $sync_result);
+
+        return ['status' => 'synced'];
+    }
+}
+
+if (!function_exists('cc_collect_submission_backfill_ids')) {
+    function cc_collect_submission_backfill_ids(): array
+    {
+        $query = new WP_Query([
+            'post_type' => 'mzf_submission',
+            'post_status' => ['private', 'publish', 'draft', 'pending', 'future'],
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'orderby' => 'date',
+            'order' => 'ASC',
+            'no_found_rows' => true,
+        ]);
+
+        $ids = [];
+        foreach ((array) $query->posts as $submission_id) {
+            $submission_id = (int) $submission_id;
+            if ($submission_id > 0 && cc_submission_should_backfill($submission_id)) {
+                $ids[] = $submission_id;
+            }
+        }
+
+        return $ids;
+    }
+}
+
+if (!function_exists('cc_schedule_submission_backfill_event')) {
+    function cc_schedule_submission_backfill_event(): void
+    {
+        if (!wp_next_scheduled(MZ_CC_SUBMISSION_BACKFILL_HOOK)) {
+            wp_schedule_single_event(time() + 5, MZ_CC_SUBMISSION_BACKFILL_HOOK);
+        }
+    }
+}
+
+if (!function_exists('cc_queue_submission_backfill')) {
+    function cc_queue_submission_backfill(string $trigger = 'manual'): array
+    {
+        if (!cc_is_platform_selected() || !cc_is_configured()) {
+            return ['queued' => false, 'count' => 0];
+        }
+
+        $pending_ids = cc_collect_submission_backfill_ids();
+        if (empty($pending_ids)) {
+            delete_option(MZ_CC_SUBMISSION_BACKFILL_OPTION);
+            cc_set_submission_backfill_notice('Constant Contact submission backfill is already up to date.', 'success');
+            return ['queued' => false, 'count' => 0];
+        }
+
+        update_option(MZ_CC_SUBMISSION_BACKFILL_OPTION, [
+            'provider' => 'constant_contact',
+            'trigger' => sanitize_key($trigger),
+            'pending_ids' => array_values($pending_ids),
+            'total' => count($pending_ids),
+            'success_count' => 0,
+            'failure_count' => 0,
+            'skipped_count' => 0,
+            'updated_at' => time(),
+        ], false);
+
+        cc_schedule_submission_backfill_event();
+        cc_set_submission_backfill_notice(
+            sprintf('Constant Contact submission backfill queued for %d entr%s.', count($pending_ids), count($pending_ids) === 1 ? 'y' : 'ies'),
+            'info'
+        );
+
+        return ['queued' => true, 'count' => count($pending_ids)];
+    }
+}
+
+if (!function_exists('cc_process_submission_backfill_batch')) {
+    function cc_process_submission_backfill_batch(): void
+    {
+        $state = cc_get_submission_backfill_state();
+        if (empty($state)) {
+            return;
+        }
+
+        if (!cc_is_platform_selected() || !cc_is_configured()) {
+            delete_option(MZ_CC_SUBMISSION_BACKFILL_OPTION);
+            cc_set_submission_backfill_notice('Constant Contact submission backfill stopped because Constant Contact is no longer connected.', 'warning');
+            return;
+        }
+
+        $pending_ids = array_values(array_filter(array_map('absint', (array) ($state['pending_ids'] ?? []))));
+        if (empty($pending_ids)) {
+            delete_option(MZ_CC_SUBMISSION_BACKFILL_OPTION);
+            return;
+        }
+
+        $success_count = (int) ($state['success_count'] ?? 0);
+        $failure_count = (int) ($state['failure_count'] ?? 0);
+        $skipped_count = (int) ($state['skipped_count'] ?? 0);
+        $batch_ids = array_splice($pending_ids, 0, 20);
+
+        foreach ($batch_ids as $submission_id) {
+            $result = cc_backfill_submission((int) $submission_id);
+            $status = (string) ($result['status'] ?? '');
+            if ($status === 'synced') {
+                $success_count++;
+            } elseif ($status === 'failed') {
+                $failure_count++;
+            } else {
+                $skipped_count++;
+            }
+        }
+
+        if (!empty($pending_ids)) {
+            $state['pending_ids'] = $pending_ids;
+            $state['success_count'] = $success_count;
+            $state['failure_count'] = $failure_count;
+            $state['skipped_count'] = $skipped_count;
+            $state['updated_at'] = time();
+            update_option(MZ_CC_SUBMISSION_BACKFILL_OPTION, $state, false);
+            cc_schedule_submission_backfill_event();
+            return;
+        }
+
+        delete_option(MZ_CC_SUBMISSION_BACKFILL_OPTION);
+        cc_set_submission_backfill_notice(
+            sprintf(
+                'Constant Contact submission backfill completed. %d synced, %d skipped, %d failed.',
+                $success_count,
+                $skipped_count,
+                $failure_count
+            ),
+            $failure_count > 0 ? 'warning' : 'success'
+        );
+    }
+}
+
+add_action(MZ_CC_SUBMISSION_BACKFILL_HOOK, 'cc_process_submission_backfill_batch');
+
+add_action('admin_notices', function () {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    if (!isset($_GET['page']) || $_GET['page'] !== 'crm') {
+        return;
+    }
+
+    $notice = get_transient(MZ_CC_SUBMISSION_BACKFILL_NOTICE_TRANSIENT);
+    if (!is_array($notice) || empty($notice['message'])) {
+        return;
+    }
+
+    delete_transient(MZ_CC_SUBMISSION_BACKFILL_NOTICE_TRANSIENT);
+    $type = sanitize_key((string) ($notice['type'] ?? 'info'));
+    if (!in_array($type, ['success', 'info', 'warning', 'error'], true)) {
+        $type = 'info';
+    }
+
+    echo '<div class="notice notice-' . esc_attr($type) . '"><p>' . esc_html((string) $notice['message']) . '</p></div>';
+});
+
 if (!function_exists('mz_cc_add_contact')) {
     /**
      * Upsert a contact and add to CC list; optionally tag.
@@ -1250,6 +1616,20 @@ add_action('init', function () {
         wp_schedule_event(time() + 300, 'hourly', 'cc_hourly_refresh');
     }
 });
+
+if (!function_exists('cc_maybe_queue_submission_backfill_on_crm_save')) {
+    function cc_maybe_queue_submission_backfill_on_crm_save($post_id): void
+    {
+        if (!cc_is_crm_options_save_request($post_id)) {
+            return;
+        }
+
+        cc_queue_submission_backfill('crm_settings_save');
+    }
+}
+
+add_action('acf/save_post', 'cc_maybe_queue_submission_backfill_on_crm_save', 40);
+
 add_action('cc_hourly_refresh', function () {
     // force a refresh if expiring within 30 minutes
     $t = get_option('cc_tokens');
