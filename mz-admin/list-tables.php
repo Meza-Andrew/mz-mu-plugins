@@ -1403,6 +1403,28 @@ function meza_get_acp_column_collection_ids($columns): array
     return $ids;
 }
 
+function meza_get_acp_column_collection_types($columns): array
+{
+    if (!($columns instanceof AC\ColumnIterator)) {
+        return [];
+    }
+
+    $types = [];
+
+    foreach ($columns as $column) {
+        if (!is_object($column) || !method_exists($column, 'get_type')) {
+            continue;
+        }
+
+        $type = trim((string) $column->get_type());
+        if ($type !== '') {
+            $types[] = $type;
+        }
+    }
+
+    return $types;
+}
+
 function meza_get_seeded_acp_default_admin_columns(): array
 {
     return [
@@ -1848,7 +1870,7 @@ function meza_get_default_visible_taxonomy_admin_column_keys(string $post_type):
 
 function meza_sync_seeded_acp_default_admin_columns(): void
 {
-    $target_version = '1.1.255';
+    $target_version = '1.1.256';
     if ((string) get_option('meza_acp_seeded_default_admin_columns_migration') === $target_version) {
         return;
     }
@@ -1861,6 +1883,110 @@ function meza_sync_seeded_acp_default_admin_columns(): void
 }
 
 add_action('admin_init', 'meza_sync_seeded_acp_default_admin_columns', 999);
+
+function meza_media_acp_layout_matches_legacy_stub($columns): bool
+{
+    $types = meza_get_acp_column_collection_types($columns);
+    sort($types);
+
+    return in_array($types, [
+        ['column-dimensions', 'column-postid', 'title'],
+        ['dimensions', 'mz_id', 'title'],
+    ], true);
+}
+
+function meza_build_seeded_media_acp_column_collection(): ?AC\ColumnCollection
+{
+    if (
+        !class_exists('AC\\ColumnCollection')
+        || !class_exists('AC\\Column\\Base')
+        || !class_exists('AC\\Column\\Context')
+        || !class_exists('AC\\FormatterCollection')
+        || !class_exists('AC\\Setting\\ComponentCollection')
+        || !class_exists('AC\\Setting\\Config')
+        || !class_exists('AC\\Type\\ColumnId')
+    ) {
+        return null;
+    }
+
+    $seeded_columns = meza_get_seeded_admin_column_defaults_for_list_key('wp-media');
+    if ($seeded_columns === []) {
+        return null;
+    }
+
+    $columns = new AC\ColumnCollection();
+
+    foreach ($seeded_columns as $type => $seeded_column) {
+        $type = trim((string) $type);
+        if ($type === '' || !AC\Type\ColumnId::is_valid_id($type)) {
+            continue;
+        }
+
+        $label = trim((string) ($seeded_column['label'] ?? ''));
+        if ($label === '') {
+            $label = $type;
+        }
+
+        $columns->add(new AC\Column\Base(
+            $type,
+            $label,
+            new AC\Setting\ComponentCollection(),
+            new AC\Type\ColumnId($type),
+            new AC\Column\Context(new AC\Setting\Config([
+                'name' => $type,
+                'label' => $label,
+            ]), $label),
+            new AC\FormatterCollection(),
+            'default'
+        ));
+    }
+
+    return $columns->count() > 0 ? $columns : null;
+}
+
+function meza_repair_media_acp_list_screen(): void
+{
+    if (
+        !class_exists('AC\\Registry')
+        || !class_exists('AC\\ListScreenRepository\\Storage')
+        || !class_exists('AC\\Type\\TableId')
+    ) {
+        return;
+    }
+
+    $target_version = '1.1.257';
+    if ((string) get_option('meza_acp_media_list_screen_repair_migration') === $target_version) {
+        return;
+    }
+
+    $storage = AC\Registry::get(AC\ListScreenRepository\Storage::class);
+    if (!($storage instanceof AC\ListScreenRepository\Storage)) {
+        return;
+    }
+
+    $replacement = meza_build_seeded_media_acp_column_collection();
+    if (!($replacement instanceof AC\ColumnCollection)) {
+        return;
+    }
+
+    foreach ($storage->find_all_by_table_id(new AC\Type\TableId('wp-media')) as $list_screen) {
+        if (!is_object($list_screen) || !method_exists($list_screen, 'get_columns')) {
+            continue;
+        }
+
+        $existing_columns = $list_screen->get_columns();
+        if (!meza_media_acp_layout_matches_legacy_stub($existing_columns)) {
+            continue;
+        }
+
+        $list_screen->set_columns($replacement);
+        $storage->save($list_screen);
+    }
+
+    update_option('meza_acp_media_list_screen_repair_migration', $target_version, false);
+}
+
+add_action('admin_init', 'meza_repair_media_acp_list_screen', 1001);
 
 function meza_run_acp_default_admin_column_order_migration(): void
 {
@@ -5406,8 +5532,9 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         return;
     }
     if ($column === 'mz_review_quote') {
-        $quote = '';
-        if (function_exists('get_field')) {
+        $quote = trim(wp_strip_all_tags((string) get_post_field('post_excerpt', (int) $post_id)));
+
+        if ($quote === '' && function_exists('get_field')) {
             foreach (['quote_short', 'quote'] as $field_name) {
                 $acf_quote = get_field($field_name, (int) $post_id);
                 if (is_string($acf_quote)) {
@@ -5433,10 +5560,25 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     if ($column === 'mz_review_citer') {
         $citer = '';
         if (function_exists('get_field')) {
-            $acf_citer = get_field('citer', (int) $post_id);
-            if (is_string($acf_citer)) $citer = trim(wp_strip_all_tags($acf_citer));
+            foreach (['cite', 'citer'] as $field_name) {
+                $acf_citer = get_field($field_name, (int) $post_id);
+                if (is_string($acf_citer)) {
+                    $citer = trim(wp_strip_all_tags($acf_citer));
+                }
+
+                if ($citer !== '') {
+                    break;
+                }
+            }
         }
-        if ($citer === '') $citer = trim(wp_strip_all_tags((string) get_post_meta((int) $post_id, 'citer', true)));
+        if ($citer === '') {
+            foreach (['cite', 'citer'] as $meta_key) {
+                $citer = trim(wp_strip_all_tags((string) get_post_meta((int) $post_id, $meta_key, true)));
+                if ($citer !== '') {
+                    break;
+                }
+            }
+        }
         if ($citer === '') {
             $citer_name = '';
             $citer_title = '';
