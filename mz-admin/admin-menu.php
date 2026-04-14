@@ -5227,13 +5227,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
             return true;
         }
 
-        $signatures = [];
-
-        if (function_exists('mz_plugins_get_env_plugin_signatures')) {
-            $signatures = array_values(array_filter(array_map('strtolower', mz_plugins_get_env_plugin_signatures()), static function ($signature): bool {
-                return is_string($signature) && $signature !== '';
-            }));
-        }
+        $signatures = array_values(array_unique(array_merge(
+            meza_admin_get_env_preferred_plugin_signatures(),
+            meza_admin_get_active_plugin_signatures()
+        )));
 
         // WP Super Cache needs to keep its native screen wrappers and injected UI intact.
         $signatures = array_values(array_unique(array_merge($signatures, [
@@ -5630,6 +5627,71 @@ if (!function_exists('meza_admin_get_env_preferred_plugin_signatures')) {
         return array_values(array_filter(array_map('strtolower', mz_plugins_get_env_plugin_signatures()), static function ($signature): bool {
             return is_string($signature) && $signature !== '';
         }));
+    }
+}
+
+if (!function_exists('meza_admin_get_active_plugin_signatures')) {
+    function meza_admin_get_active_plugin_signatures(): array
+    {
+        $plugin_files = (array) get_option('active_plugins', []);
+
+        if (is_multisite()) {
+            $network_active_plugins = get_site_option('active_sitewide_plugins', []);
+            if (is_array($network_active_plugins)) {
+                $plugin_files = array_merge($plugin_files, array_keys($network_active_plugins));
+            }
+        }
+
+        $plugin_files = array_values(array_unique(array_filter(array_map('strval', $plugin_files))));
+        if ($plugin_files === []) {
+            return [];
+        }
+
+        if (!function_exists('get_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        $all_plugins = function_exists('get_plugins') ? (array) get_plugins() : [];
+        $signatures = [];
+
+        foreach ($plugin_files as $plugin_file) {
+            $plugin_file = strtolower(trim($plugin_file));
+            if ($plugin_file === '') {
+                continue;
+            }
+
+            $plugin_slug = dirname($plugin_file);
+            if ($plugin_slug === '.' || $plugin_slug === '') {
+                $plugin_slug = basename($plugin_file, '.php');
+            }
+
+            $plugin_name = strtolower(trim(wp_strip_all_tags((string) ($all_plugins[$plugin_file]['Name'] ?? ''))));
+            $plugin_title = strtolower(trim(wp_strip_all_tags((string) ($all_plugins[$plugin_file]['Title'] ?? ''))));
+
+            $tokens = array_filter([
+                $plugin_slug,
+                str_replace('-', '_', $plugin_slug),
+                str_replace('-', '', $plugin_slug),
+                $plugin_file,
+                dirname($plugin_file) !== '.' ? dirname($plugin_file) : '',
+                $plugin_name,
+                str_replace(' ', '-', $plugin_name),
+                str_replace(' ', '_', $plugin_name),
+                str_replace([' ', '-'], '', $plugin_name),
+                $plugin_title,
+                str_replace(' ', '-', $plugin_title),
+                str_replace(' ', '_', $plugin_title),
+                str_replace([' ', '-'], '', $plugin_title),
+            ], static function (string $token): bool {
+                return $token !== '' && strlen($token) >= 4;
+            });
+
+            foreach ($tokens as $token) {
+                $signatures[$token] = true;
+            }
+        }
+
+        return array_keys($signatures);
     }
 }
 
