@@ -5069,7 +5069,11 @@ if (!function_exists('meza_ensure_admin_page_title_is_string')) {
             }
         }
 
-        if (function_exists('get_admin_page_title')) {
+        $plugin_page = $GLOBALS['plugin_page'] ?? null;
+        $can_resolve_core_admin_title = $page_slug !== ''
+            || (is_string($plugin_page) && $plugin_page !== '');
+
+        if ($can_resolve_core_admin_title && function_exists('get_admin_page_title')) {
             $resolved_title = trim(wp_strip_all_tags((string) get_admin_page_title()));
             if ($resolved_title !== '') {
                 $title = $resolved_title;
