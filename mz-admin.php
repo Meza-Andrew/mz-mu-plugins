@@ -652,6 +652,9 @@ if (!function_exists('meza_sync_site_manager_role')) {
             meza_submission_manager_capability(),
             meza_backup_manager_capability(),
             meza_customer_sign_generator_capability(),
+            'wpseo_manage_options',
+            'wpseo_edit_advanced_metadata',
+            'wpseo_bulk_edit',
         ];
         $sync_signature = meza_get_sync_signature([
             'role_key' => $role_key,
@@ -718,6 +721,12 @@ if (!function_exists('meza_sync_site_manager_role')) {
 
             if (!$administrator_role->has_cap(meza_customer_sign_generator_capability())) {
                 $administrator_role->add_cap(meza_customer_sign_generator_capability());
+            }
+
+            foreach (['wpseo_manage_options', 'wpseo_edit_advanced_metadata', 'wpseo_bulk_edit'] as $cap) {
+                if (!$administrator_role->has_cap($cap)) {
+                    $administrator_role->add_cap($cap);
+                }
             }
         }
 
@@ -1741,6 +1750,52 @@ if (!function_exists('meza_can_manage_site_kit')) {
     }
 }
 
+if (!function_exists('meza_get_yoast_management_caps')) {
+    function meza_get_yoast_management_caps(): array
+    {
+        return [
+            'wpseo_manage_options',
+            'wpseo_edit_advanced_metadata',
+            'wpseo_bulk_edit',
+        ];
+    }
+}
+
+if (!function_exists('meza_can_manage_yoast')) {
+    function meza_can_manage_yoast($user = null): bool
+    {
+        return meza_user_has_any_role($user, [
+            'administrator',
+            meza_site_manager_role_key(),
+        ]);
+    }
+}
+
+add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, array $args): array {
+    if ($user_id <= 0 || !in_array($cap, meza_get_yoast_management_caps(), true) || !meza_can_manage_yoast($user_id)) {
+        return $caps;
+    }
+
+    return ['read'];
+}, 19, 4);
+
+add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, WP_User $user): array {
+    if (!($user instanceof WP_User) || $user->ID <= 0 || !meza_can_manage_yoast($user)) {
+        return $allcaps;
+    }
+
+    $requested_cap = (string) ($args[0] ?? '');
+    if (!in_array($requested_cap, meza_get_yoast_management_caps(), true)) {
+        return $allcaps;
+    }
+
+    foreach (meza_get_yoast_management_caps() as $cap) {
+        $allcaps[$cap] = true;
+    }
+
+    return $allcaps;
+}, 19, 4);
+
 add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, array $args): array {
     static $mapping_site_kit_caps = false;
 
@@ -2184,9 +2239,48 @@ if (!function_exists('meza_should_default_to_yoast_site_representation_for_user'
     }
 }
 
+if (!function_exists('meza_is_yoast_new_settings_ui_enabled')) {
+    function meza_is_yoast_new_settings_ui_enabled(): bool
+    {
+        return defined('YOAST_SEO_NEW_SETTINGS_UI') && (bool) YOAST_SEO_NEW_SETTINGS_UI;
+    }
+}
+
+if (!function_exists('meza_get_yoast_settings_page_slug')) {
+    function meza_get_yoast_settings_page_slug(): string
+    {
+        return 'wpseo_dashboard';
+    }
+}
+
+if (!function_exists('meza_get_yoast_settings_target_page_slug')) {
+    function meza_get_yoast_settings_target_page_slug(): string
+    {
+        return 'wpseo_page_settings';
+    }
+}
+
+if (!function_exists('meza_get_yoast_menu_entry_slug')) {
+    function meza_get_yoast_menu_entry_slug(): string
+    {
+        return 'wpseo_dashboard';
+    }
+}
+
+if (!function_exists('meza_get_yoast_settings_admin_url')) {
+    function meza_get_yoast_settings_admin_url(): string
+    {
+        return admin_url('admin.php?page=' . meza_get_yoast_settings_target_page_slug());
+    }
+}
+
 if (!function_exists('meza_get_yoast_site_representation_admin_url')) {
     function meza_get_yoast_site_representation_admin_url(): string
     {
+        if (!meza_is_yoast_new_settings_ui_enabled()) {
+            return meza_get_yoast_settings_admin_url();
+        }
+
         return admin_url('admin.php?page=wpseo_page_settings#/site-representation');
     }
 }
@@ -2303,7 +2397,6 @@ add_action('admin_init', function (): void {
 
     $user = wp_get_current_user();
     $page = isset($_GET['page']) ? sanitize_key((string) $_GET['page']) : '';
-
     if (meza_should_hide_yoast_admin_menu_for_user($user) && str_starts_with($page, 'wpseo')) {
         wp_safe_redirect(admin_url());
         exit;
@@ -2342,11 +2435,13 @@ add_action('admin_head', function (): void {
     }
 
     $target_url = meza_get_yoast_site_representation_admin_url();
+    $new_settings_ui_enabled = meza_is_yoast_new_settings_ui_enabled();
 ?>
     <script>
         (() => {
             const targetUrl = <?php echo wp_json_encode($target_url); ?>;
             const yoastDefaultPages = new Set(['wpseo_dashboard', 'wpseo_page_settings']);
+            const newSettingsUiEnabled = <?php echo wp_json_encode($new_settings_ui_enabled); ?>;
 
             const getUrl = (value) => {
                 try {
@@ -2372,6 +2467,10 @@ add_action('admin_head', function (): void {
             };
 
             const ensureYoastSettingsHash = () => {
+                if (!newSettingsUiEnabled) {
+                    return;
+                }
+
                 const currentUrl = getUrl(window.location.href);
                 if (!currentUrl || currentUrl.searchParams.get('page') !== 'wpseo_page_settings') {
                     return;
