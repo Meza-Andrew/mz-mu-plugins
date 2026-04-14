@@ -787,50 +787,11 @@ if (!function_exists('mzf_submission_added_to_crm_data')) {
             }
         }
 
-        if (!$is_live_env && !$newsletter_opt_in) {
-            return ['text' => '', 'url' => '', 'csv' => ''];
-        }
-
-        if (is_array($marketing_sync)) {
-            $sync_ok = mzf_submission_meta_truthy((string) ($marketing_sync['ok'] ?? ''));
-            if ($sync_ok) {
-                $provider = strtolower(trim((string) ($marketing_sync['provider'] ?? '')));
-                if (in_array($provider, ['mailchimp', 'constant_contact'], true)) {
-                    $sync_label = trim((string) ($marketing_sync['label'] ?? ''));
-                    $sync_contact_url = trim((string) ($marketing_sync['contact_url'] ?? ''));
-                    if ($provider === 'constant_contact') {
-                        $sync_contact_id = trim((string) ($marketing_sync['contact_id'] ?? ''));
-                        if ($sync_contact_id !== '') {
-                            $sync_contact_url = 'https://app.constantcontact.com/contacts/' . rawurlencode($sync_contact_id) . '/profile';
-                        }
-                    }
-                    if ($sync_contact_url !== '') {
-                        $connected_label = $sync_label !== ''
-                            ? $sync_label
-                            : (($provider === 'mailchimp') ? 'Mailchimp' : 'Constant Contact');
-                        return [
-                            'text' => $connected_label,
-                            'url' => $sync_contact_url,
-                            'csv' => $connected_label,
-                        ];
-                    }
-                }
-            }
-        }
-
-        if ($is_live_env || !$newsletter_opt_in) {
+        if (!$newsletter_opt_in) {
             return ['text' => '', 'url' => '', 'csv' => ''];
         }
 
         $stored_crm_label = trim((string) get_post_meta($submission_id, '_mzf_crm_platform_label', true));
-        if ($stored_crm_label !== '') {
-            return [
-                'text' => $stored_crm_label,
-                'url' => '',
-                'csv' => $stored_crm_label,
-            ];
-        }
-
         $crm_platform = (string) get_post_meta($submission_id, '_mzf_crm_platform', true);
         if ($crm_platform === '' && is_array($marketing_sync)) {
             $crm_platform = (string) ($marketing_sync['provider'] ?? '');
@@ -845,16 +806,51 @@ if (!function_exists('mzf_submission_added_to_crm_data')) {
             $crm_platform = (string) mzf_marketing_provider();
         }
 
-        $crm_label = function_exists('mzf_crm_platform_label') ? mzf_crm_platform_label($crm_platform) : '';
-        if ($crm_label === '') {
-            return ['text' => '', 'url' => '', 'csv' => ''];
+        $crm_label = $stored_crm_label;
+        if ($crm_label === '' && function_exists('mzf_crm_platform_label')) {
+            $crm_label = mzf_crm_platform_label($crm_platform);
         }
 
-        return [
-            'text' => $crm_label,
-            'url' => '',
-            'csv' => $crm_label,
-        ];
+        if (is_array($marketing_sync)) {
+            $sync_ok = mzf_submission_meta_truthy((string) ($marketing_sync['ok'] ?? ''));
+            if ($sync_ok) {
+                $provider = strtolower(trim((string) ($marketing_sync['provider'] ?? '')));
+                $sync_label = trim((string) ($marketing_sync['label'] ?? ''));
+                $sync_contact_url = trim((string) ($marketing_sync['contact_url'] ?? ''));
+                if ($provider === 'constant_contact') {
+                    $sync_contact_id = trim((string) ($marketing_sync['contact_id'] ?? ''));
+                    if ($sync_contact_id !== '') {
+                        $sync_contact_url = 'https://app.constantcontact.com/contacts/' . rawurlencode($sync_contact_id) . '/profile';
+                    }
+                }
+
+                $connected_label = $sync_label;
+                if ($connected_label === '' && function_exists('mzf_crm_platform_label')) {
+                    $connected_label = mzf_crm_platform_label($provider);
+                }
+                if ($connected_label === '') {
+                    $connected_label = $crm_label;
+                }
+
+                if ($connected_label !== '') {
+                    return [
+                        'text' => $connected_label,
+                        'url' => $sync_contact_url,
+                        'csv' => $connected_label,
+                    ];
+                }
+            }
+        }
+
+        if ($crm_label !== '') {
+            return [
+                'text' => $crm_label,
+                'url' => '',
+                'csv' => $crm_label,
+            ];
+        }
+
+        return ['text' => '', 'url' => '', 'csv' => ''];
     }
 }
 
