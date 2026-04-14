@@ -779,7 +779,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'aria-label' => '',
                         'type' => 'text',
                         'instructions' => 'Used in the footer of emails sent through the website.',
-                        'required' => 1,
+                        'required' => 0,
                         'conditional_logic' => 0,
                         'wrapper' => [
                             'width' => '',
@@ -1054,6 +1054,27 @@ if (!function_exists('meza_normalize_acf_textarea_option_value')) {
     }
 }
 
+if (!function_exists('meza_acf_google_map_has_meaningful_value')) {
+    function meza_acf_google_map_has_meaningful_value($value): bool
+    {
+        if (is_array($value)) {
+            foreach (['address', 'formatted_address', 'place_name', 'name', 'place_id'] as $key) {
+                if (!array_key_exists($key, $value) || is_array($value[$key])) {
+                    continue;
+                }
+
+                if (trim((string) $value[$key]) !== '') {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return trim((string) $value) !== '';
+    }
+}
+
 add_filter('acf/load_value', static function ($value, $post_id, $field) {
     if (($field['type'] ?? '') !== 'textarea' || !is_array($value)) {
         return $value;
@@ -1067,6 +1088,14 @@ add_filter('acf/load_value', static function ($value, $post_id, $field) {
     return meza_normalize_acf_textarea_option_value($value);
 }, 5, 3);
 
+add_filter('acf/load_value/key=field_69b5a2b623bc0', static function ($value, $post_id, $field) {
+    if (meza_acf_google_map_has_meaningful_value($value)) {
+        return $value;
+    }
+
+    return '';
+}, 5, 3);
+
 add_filter('acf/update_value', static function ($value, $post_id, $field) {
     if (($field['type'] ?? '') !== 'textarea' || !is_array($value)) {
         return $value;
@@ -1078,6 +1107,14 @@ add_filter('acf/update_value', static function ($value, $post_id, $field) {
     }
 
     return meza_normalize_acf_textarea_option_value($value);
+}, 5, 3);
+
+add_filter('acf/update_value/key=field_69b5a2b623bc0', static function ($value, $post_id, $field) {
+    if (meza_acf_google_map_has_meaningful_value($value)) {
+        return $value;
+    }
+
+    return '';
 }, 5, 3);
 
 foreach (meza_get_business_information_branding_field_map() as $field_name => $callbacks) {
