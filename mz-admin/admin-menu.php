@@ -907,31 +907,7 @@ add_action('admin_menu', function (): void {
 
 function meza_customize_yoast_admin_menu(): void
 {
-    global $submenu;
-
-    if (!isset($submenu['wpseo_dashboard']) || !is_array($submenu['wpseo_dashboard'])) {
-        return;
-    }
-
-    $filtered_items = [];
-
-    foreach ($submenu['wpseo_dashboard'] as $item) {
-        if (!is_array($item)) {
-            continue;
-        }
-
-        $slug = strtolower((string) ($item[2] ?? ''));
-        $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
-        $is_dashboard = $slug === 'wpseo_dashboard'
-            || in_array($title, ['general', 'dashboard'], true);
-        if ($is_dashboard) {
-            continue;
-        }
-
-        $filtered_items[] = $item;
-    }
-
-    $submenu['wpseo_dashboard'] = array_values($filtered_items);
+    // Keep Yoast's native parent submenu registration intact for core admin hooks.
 }
 
 add_action('admin_menu', 'meza_customize_yoast_admin_menu', 20);
@@ -972,15 +948,19 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $
 }, 100, 4);
 
 add_action('admin_head', function (): void {
-    if (!meza_is_site_manager_user(wp_get_current_user())) {
+    $user = wp_get_current_user();
+    if (!($user instanceof WP_User) || !meza_can_access_yoast_admin_menu($user)) {
         return;
     }
 
-    $site_representation_url = esc_url(admin_url('admin.php?page=wpseo_page_settings#/site-representation'));
+    $target_url = meza_is_site_manager_user($user)
+        ? esc_url(admin_url('admin.php?page=wpseo_page_settings#/site-representation'))
+        : esc_url(admin_url('admin.php?page=wpseo_page_settings'));
 ?>
     <script id="meza-yoast-settings-submenu-link">
         (() => {
-            const targetHref = <?php echo wp_json_encode($site_representation_url); ?>;
+            const targetHref = <?php echo wp_json_encode($target_url); ?>;
+            const isSiteManager = <?php echo meza_is_site_manager_user($user) ? 'true' : 'false'; ?>;
 
             const updateSettingsLink = () => {
                 const topLevelLink = document.querySelector('#toplevel_page_wpseo_dashboard > a');
@@ -995,7 +975,7 @@ add_action('admin_head', function (): void {
 
                     try {
                         const url = new URL(link.href, window.location.origin);
-                        if (url.searchParams.get('page') !== 'wpseo_page_settings') {
+                        if (!isSiteManager || url.searchParams.get('page') !== 'wpseo_page_settings') {
                             return;
                         }
 
@@ -8250,6 +8230,8 @@ function meza_cleanup_menu_separators(): void
 {
     global $menu;
     if (!is_array($menu) || empty($menu)) return;
+
+    $menu = array_values($menu);
 
     $is_separator = static function ($item): bool {
         if (!is_array($item)) return false;

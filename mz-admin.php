@@ -3,12 +3,27 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.443
+ * Version: 1.1.447
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) return;
+
+// Prevent core admin menu helpers from receiving a null plugin page slug.
+foreach (['_GET', '_POST', '_REQUEST'] as $superglobal_name) {
+    if (!isset($GLOBALS[$superglobal_name]) || !is_array($GLOBALS[$superglobal_name])) {
+        continue;
+    }
+
+    if (array_key_exists('page', $GLOBALS[$superglobal_name]) && $GLOBALS[$superglobal_name]['page'] === null) {
+        unset($GLOBALS[$superglobal_name]['page']);
+    }
+}
+
+if (array_key_exists('plugin_page', $GLOBALS) && $GLOBALS['plugin_page'] === null) {
+    unset($GLOBALS['plugin_page']);
+}
 
 if (file_exists(__DIR__ . '/mz-hosting.php')) {
     require_once __DIR__ . '/mz-hosting.php';
@@ -1827,6 +1842,10 @@ add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, arr
         return ['read'];
     }
 
+    if (in_array($cap, $widget_caps, true) && $user_id > 0 && meza_can_manage_site_kit($user_id)) {
+        return ['read'];
+    }
+
     if (!in_array($cap, array_merge($dashboard_caps, $widget_caps), true) || $user_id <= 0) {
         return $caps;
     }
@@ -1883,9 +1902,21 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
         'googlesitekit_view_authenticated_dashboard',
         'googlesitekit_view_splash',
     ];
+    $widget_caps = [
+        'googlesitekit_view_wp_dashboard_widget',
+        'googlesitekit_view_admin_bar_menu',
+    ];
 
     if (in_array($requested_cap, $dashboard_caps, true) && meza_can_manage_site_kit($user)) {
         foreach ($dashboard_caps as $site_kit_cap) {
+            $allcaps[$site_kit_cap] = true;
+        }
+
+        return $allcaps;
+    }
+
+    if (in_array($requested_cap, $widget_caps, true) && meza_can_manage_site_kit($user)) {
+        foreach ($widget_caps as $site_kit_cap) {
             $allcaps[$site_kit_cap] = true;
         }
 
@@ -2328,7 +2359,6 @@ add_action('admin_init', function (): void {
 }, 20);
 
 add_action('admin_menu', function (): void {
-    remove_submenu_page('wpseo_dashboard', 'wpseo_dashboard');
     remove_submenu_page('wpseo_dashboard', 'wpseo_workouts');
     remove_submenu_page('wpseo_dashboard', 'wpseo_redirects');
     remove_submenu_page('wpseo_dashboard', 'wpseo_page_academy');
@@ -2403,6 +2433,11 @@ add_action('admin_head', function (): void {
     );
 ?>
     <style id="meza-yoast-promo-cleanup">
+        #toplevel_page_wpseo_dashboard .wp-submenu a[href="admin.php?page=wpseo_dashboard"],
+        #toplevel_page_wpseo_dashboard .wp-submenu a[href$="page=wpseo_dashboard"] {
+            display: none !important;
+        }
+
         .yoast_premium_upsell,
         #sidebar-container,
         #yoast-helpscout-beacon,

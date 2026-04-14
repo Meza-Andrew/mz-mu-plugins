@@ -32,6 +32,7 @@ function meza_dashboard_collect_widgets(): array
 function meza_dashboard_find_site_kit_widget_id(array $widgets): string
 {
     $known_ids = [
+        'google_dashboard_widget',
         'googlesitekit_dashboard_widget',
         'googlesitekit_dashboard_key_metrics',
         'googlesitekit_dashboard_summary',
