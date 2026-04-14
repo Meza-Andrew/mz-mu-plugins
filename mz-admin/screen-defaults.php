@@ -281,46 +281,235 @@ add_filter('get_user_option_screen_layout_dashboard', function () {
 add_action('admin_head-index.php', function () {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
     if (!($screen instanceof WP_Screen) || $screen->id !== 'dashboard') return;
+?>
+    <style id="meza-dashboard-responsive-columns">
+        #ws_php_error_log .inside {
+            padding-bottom: 0 !important;
+        }
 
-    echo '<style id="meza-dashboard-responsive-columns">' .
-        '#ws_php_error_log .inside{' .
-        'padding-bottom:0!important;' .
-        '}' .
-        '#ws_php_error_log .elm-upgrade-to-pro-footer{' .
-        'display:none!important;' .
-        '}' .
-        '#screen-options-wrap .columns-prefs{' .
-        'display:none!important;' .
-        '}' .
-        '#dashboard-widgets .postbox-container{' .
-        'width:25%!important;' .
-        'float:left!important;' .
-        'margin-right:0!important;' .
-        'clear:none!important;' .
-        '}' .
-        '@media screen and (max-width:1400px){' .
-        '#dashboard-widgets .postbox-container{' .
-        'width:50%!important;' .
-        'float:left!important;' .
-        'margin-right:0!important;' .
-        '}' .
-        '#dashboard-widgets #postbox-container-1,' .
-        '#dashboard-widgets #postbox-container-3{' .
-        'clear:left;' .
-        '}' .
-        '#dashboard-widgets #postbox-container-2,' .
-        '#dashboard-widgets #postbox-container-4{' .
-        'clear:none;' .
-        '}' .
-        '}' .
-        '@media screen and (max-width:850px){' .
-        '#dashboard-widgets .postbox-container{' .
-        'width:100%!important;' .
-        'float:none!important;' .
-        'clear:both!important;' .
-        '}' .
-        '}' .
-        '</style>';
+        #ws_php_error_log.meza-dashboard-error-log-needs-bottom-spacing .inside {
+            padding-bottom: 12px !important;
+        }
+
+        #ws_php_error_log .elm-upgrade-to-pro-footer {
+            display: none !important;
+        }
+
+        #ws_php_error_log.meza-dashboard-error-log-has-actions p.meza-dashboard-error-log-actions {
+            margin-bottom: 12px !important;
+        }
+
+        #screen-options-wrap .columns-prefs {
+            display: none !important;
+        }
+
+        #wpbody-content > .notice,
+        #wpbody-content > .update-nag,
+        #wpbody-content > .updated,
+        #wpbody-content > .error,
+        #wpbody-content > .fs-notice,
+        #wpbody-content > [class*="notice-"],
+        #wpbody-content > [id*="notice"] {
+            display: none !important;
+        }
+
+        #dashboard-widgets .postbox-container {
+            width: 25% !important;
+            float: left !important;
+            margin-right: 0 !important;
+            clear: none !important;
+        }
+
+        @media screen and (max-width:1400px) {
+            #dashboard-widgets .postbox-container {
+                width: 50% !important;
+                float: left !important;
+                margin-right: 0 !important;
+            }
+
+            #dashboard-widgets #postbox-container-1,
+            #dashboard-widgets #postbox-container-3 {
+                clear: left;
+            }
+
+            #dashboard-widgets #postbox-container-2,
+            #dashboard-widgets #postbox-container-4 {
+                clear: none;
+            }
+        }
+
+        @media screen and (max-width:850px) {
+            #dashboard-widgets .postbox-container {
+                width: 100% !important;
+                float: none !important;
+                clear: both !important;
+            }
+        }
+    </style>
+    <script id="meza-dashboard-widget-cleanup">
+        (() => {
+            const noticeSelector = [
+                '.notice',
+                '.update-nag',
+                '.updated',
+                '.error',
+                '.fs-notice',
+                '[class*="notice-"]',
+                '[id*="notice"]'
+            ].join(', ');
+            const siteKitReplacementRules = [
+                [/Visit your Site Kit dashboard/gi, 'View full analytics dashboard'],
+                [/Site Kit dashboard/gi, 'analytics dashboard'],
+                [/Site Kit by Google/gi, 'Google Analytics'],
+                [/\bSite Kit\b/gi, 'analytics'],
+            ];
+
+            const replaceSiteKitCopy = (value) => {
+                let nextValue = String(value || '');
+
+                siteKitReplacementRules.forEach(([pattern, replacement]) => {
+                    nextValue = nextValue.replace(pattern, replacement);
+                });
+
+                return nextValue;
+            };
+
+            const removeDashboardNotices = () => {
+                const bodyContent = document.getElementById('wpbody-content');
+
+                if (!(bodyContent instanceof HTMLElement)) {
+                    return;
+                }
+
+                Array.from(bodyContent.children).forEach((child) => {
+                    if (!(child instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const isTopLevelNotice = child.matches(noticeSelector);
+                    const containsNoticeOnly = !child.querySelector('.metabox-holder, #dashboard-widgets, #dashboard-widgets-wrap')
+                        && child.querySelector(noticeSelector);
+
+                    if (!isTopLevelNotice && !containsNoticeOnly) {
+                        return;
+                    }
+
+                    child.remove();
+                });
+            };
+
+            const normalizeAnalyticsWidgetCopy = () => {
+                const widget = document.querySelector('#dashboard-widgets .postbox[id*="googlesitekit"], #dashboard-widgets .postbox[id*="sitekit"]');
+
+                if (!(widget instanceof HTMLElement)) {
+                    return;
+                }
+
+                widget.querySelectorAll('[title], [aria-label]').forEach((element) => {
+                    if (!(element instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    ['title', 'aria-label'].forEach((attributeName) => {
+                        if (!element.hasAttribute(attributeName)) {
+                            return;
+                        }
+
+                        const currentValue = element.getAttribute(attributeName) || '';
+                        const nextValue = replaceSiteKitCopy(currentValue);
+
+                        if (nextValue !== currentValue) {
+                            element.setAttribute(attributeName, nextValue);
+                        }
+                    });
+                });
+
+                const walker = document.createTreeWalker(
+                    widget,
+                    NodeFilter.SHOW_TEXT,
+                    {
+                        acceptNode(node) {
+                            if (!(node instanceof Text)) {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+
+                            if (!(node.parentElement instanceof HTMLElement)) {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+
+                            if (node.parentElement.closest('script, style, noscript, svg')) {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+
+                            return /site kit/i.test(node.nodeValue || '')
+                                ? NodeFilter.FILTER_ACCEPT
+                                : NodeFilter.FILTER_SKIP;
+                        }
+                    }
+                );
+                const textNodes = [];
+
+                while (walker.nextNode()) {
+                    textNodes.push(walker.currentNode);
+                }
+
+                textNodes.forEach((node) => {
+                    const currentValue = node.nodeValue || '';
+                    const nextValue = replaceSiteKitCopy(currentValue);
+
+                    if (nextValue !== currentValue) {
+                        node.nodeValue = nextValue;
+                    }
+                });
+            };
+
+            const updateErrorLogWidgetSpacing = () => {
+                const widget = document.getElementById('ws_php_error_log');
+
+                if (!(widget instanceof HTMLElement)) {
+                    return;
+                }
+
+                const hasPromoFooter = !!widget.querySelector('.elm-upgrade-to-pro-footer');
+
+                widget.querySelectorAll('p').forEach((paragraph) => {
+                    if (!(paragraph instanceof HTMLParagraphElement)) {
+                        return;
+                    }
+
+                    const hasActionButtons = !!paragraph.querySelector('.button');
+                    paragraph.classList.toggle('meza-dashboard-error-log-actions', hasActionButtons);
+                });
+
+                const hasActionRow = !!widget.querySelector('p.meza-dashboard-error-log-actions');
+                widget.classList.toggle('meza-dashboard-error-log-has-actions', hasActionRow && !hasPromoFooter);
+                widget.classList.toggle('meza-dashboard-error-log-needs-bottom-spacing', !hasPromoFooter);
+            };
+
+            const refreshDashboardWidgets = () => {
+                removeDashboardNotices();
+                normalizeAnalyticsWidgetCopy();
+                updateErrorLogWidgetSpacing();
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', refreshDashboardWidgets, { once: true });
+            } else {
+                refreshDashboardWidgets();
+            }
+
+            const observerRoot = document.getElementById('wpbody-content') || document.body;
+
+            if (observerRoot instanceof HTMLElement) {
+                const observer = new MutationObserver(() => {
+                    refreshDashboardWidgets();
+                });
+
+                observer.observe(observerRoot, { childList: true, subtree: true });
+            }
+        })();
+    </script>
+<?php
 }, PHP_INT_MAX - 2);
 
 // Restrict dashboard widgets and place the allowed ones in requested columns.
@@ -431,6 +620,70 @@ add_action('in_admin_header', function () {
     if (!($screen instanceof WP_Screen) || $screen->id !== 'dashboard') return;
     meza_dashboard_normalize_widget_titles();
 }, 1);
+
+// Keep Screen Options checkboxes in the same order as the visible dashboard columns.
+add_action('admin_footer-index.php', function (): void {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->id !== 'dashboard') {
+        return;
+    }
+
+    $order = array_values(array_filter(array_map('strval', $GLOBALS['meza_dashboard_allowed_ids'] ?? [])));
+    if ($order === []) {
+        return;
+    }
+
+    $order_json = wp_json_encode($order);
+    if (!is_string($order_json) || $order_json === '') {
+        return;
+    }
+?>
+    <script id="meza-dashboard-screen-options-sort">
+        (() => {
+            const orderedIds = <?php echo $order_json; ?>;
+
+            const sortScreenOptions = () => {
+                const prefs = document.querySelector('#screen-options-wrap .metabox-prefs');
+
+                if (!(prefs instanceof HTMLElement)) {
+                    return;
+                }
+
+                const labelsByWidgetId = new Map();
+
+                prefs.querySelectorAll('label[for$="-hide"]').forEach((label) => {
+                    if (!(label instanceof HTMLLabelElement)) {
+                        return;
+                    }
+
+                    const target = String(label.getAttribute('for') || '');
+                    const widgetId = target.endsWith('-hide') ? target.slice(0, -5) : '';
+
+                    if (!widgetId) {
+                        return;
+                    }
+
+                    labelsByWidgetId.set(widgetId, label);
+                });
+
+                orderedIds.forEach((widgetId) => {
+                    const label = labelsByWidgetId.get(widgetId);
+
+                    if (label) {
+                        prefs.appendChild(label);
+                    }
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', sortScreenOptions, { once: true });
+            } else {
+                sortScreenOptions();
+            }
+        })();
+    </script>
+<?php
+}, 100);
 
 // Form edit screen defaults: keep Slug visible in Screen Options for first-load users.
 add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
