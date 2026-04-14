@@ -18,13 +18,14 @@ add_filter('mzf_recipients', static function (array $to, array $data, $env): arr
 
     $form_slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
     if ($form_slug === 'contact') {
+        $option_email = function_exists('get_field') ? sanitize_email((string) get_field('email', 'option')) : '';
         $interest_map = [
-            'volunteer' => ['amanda@fahass.org', 'jason@fahass.org'],
-            'sponsor' => ['amanda@fahass.org', 'jason@fahass.org'],
-            'events' => ['amanda@fahass.org', 'jason@fahass.org'],
-            'hiv-testing' => ['ashley@fahass.org'],
-            'appointments' => ['ashley@fahass.org'],
-            'free-condoms' => ['programs@fahass.org'],
+            'volunteer' => [$option_email],
+            'sponsor' => [$option_email],
+            'events' => [$option_email],
+            'hiv-testing' => ['jason@fahass.org', 'michelle@fahass.org'],
+            'appointments' => ['jason@fahass.org', 'michelle@fahass.org'],
+            'free-condoms' => ['jason@fahass.org', 'michelle@fahass.org'],
         ];
 
         $raw_interests = $data['Interests'] ?? [];
