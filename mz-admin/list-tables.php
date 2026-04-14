@@ -2240,6 +2240,32 @@ function meza_get_event_admin_column_datetime_value(int $post_id, string $contex
         return '';
     }
 
+    $normalize_date = static function ($value): string {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (preg_match('/^\d{8}$/', $value)) {
+            return substr($value, 0, 4) . '-' . substr($value, 4, 2) . '-' . substr($value, 6, 2);
+        }
+
+        return $value;
+    };
+
+    $normalize_time = static function ($value): string {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (preg_match('/^\d{1,2}:\d{2}$/', $value)) {
+            return $value . ':00';
+        }
+
+        return $value;
+    };
+
     $meta_keys = $context === 'start'
         ? ['_EventStartDate', 'start_datetime', 'start_date', '_event_start_date']
         : ['_EventEndDate', 'end_datetime', 'end_date', '_event_end_date'];
@@ -2248,6 +2274,47 @@ function meza_get_event_admin_column_datetime_value(int $post_id, string $contex
         $value = get_post_meta($post_id, $meta_key, true);
         if (is_string($value) && trim($value) !== '') {
             return trim($value);
+        }
+    }
+
+    $start_date = $normalize_date(get_post_meta($post_id, 'date_start', true));
+
+    if ($context === 'start') {
+        if ($start_date !== '') {
+            $time_start = $normalize_time(get_post_meta($post_id, 'times_0_time_start', true));
+            if ($time_start !== '') {
+                return $start_date . ' ' . $time_start;
+            }
+
+            return $start_date;
+        }
+    }
+
+    if ($context === 'end') {
+        $end_date = $normalize_date(get_post_meta($post_id, 'date_end', true));
+        $end_time = '';
+
+        foreach ([
+            'times_0_time_end',
+            'time_end',
+            'times_1_time_start',
+        ] as $meta_key) {
+            $end_time = $normalize_time(get_post_meta($post_id, $meta_key, true));
+            if ($end_time !== '') {
+                break;
+            }
+        }
+
+        if ($end_date === '') {
+            $end_date = $start_date;
+        }
+
+        if ($end_date !== '' && $end_time !== '') {
+            return $end_date . ' ' . $end_time;
+        }
+
+        if ($end_date !== '') {
+            return $end_date;
         }
     }
 
@@ -2563,6 +2630,28 @@ function meza_get_admin_link_column_display_text(string $url): string
     return $display;
 }
 
+function meza_get_admin_column_identifiers($column): array
+{
+    if (!is_object($column)) {
+        return [];
+    }
+
+    $identifiers = [];
+
+    foreach (['get_meta_key', 'get_name', 'get_type', 'get_label', 'get_custom_label'] as $method) {
+        if (!method_exists($column, $method)) {
+            continue;
+        }
+
+        $candidate = $column->{$method}();
+        if (is_string($candidate) && trim($candidate) !== '') {
+            $identifiers[] = $candidate;
+        }
+    }
+
+    return array_values(array_unique(array_filter(array_map('strval', $identifiers))));
+}
+
 function meza_normalize_admin_link_column_identifier(string $value): string
 {
     $value = strtolower(trim(wp_strip_all_tags($value)));
@@ -2574,24 +2663,7 @@ function meza_normalize_admin_link_column_identifier(string $value): string
 
 function meza_admin_column_name_supports_link_value($column): bool
 {
-    if (!is_object($column)) {
-        return false;
-    }
-
-    $identifiers = [];
-
-    foreach (['get_meta_key', 'get_name', 'get_label', 'get_custom_label'] as $method) {
-        if (!method_exists($column, $method)) {
-            continue;
-        }
-
-        $candidate = $column->{$method}();
-        if (is_string($candidate) && trim($candidate) !== '') {
-            $identifiers[] = $candidate;
-        }
-    }
-
-    foreach ($identifiers as $identifier) {
+    foreach (meza_get_admin_column_identifiers($column) as $identifier) {
         $normalized = meza_normalize_admin_link_column_identifier((string) $identifier);
         if ($normalized !== '' && str_contains($normalized, 'link')) {
             return true;
@@ -2644,6 +2716,42 @@ function meza_get_admin_link_column_parts($value): array
 function meza_admin_column_raw_value_is_link_like($value): bool
 {
     return meza_get_admin_link_column_parts($value) !== [];
+}
+
+function meza_is_empty_admin_column_display_value($value): bool
+{
+    $normalized = html_entity_decode(wp_strip_all_tags((string) $value), ENT_QUOTES, 'UTF-8');
+    $normalized = trim(preg_replace('/\s+/', ' ', $normalized) ?? $normalized);
+
+    return $normalized === '' || in_array($normalized, ['-', '–', '—'], true);
+}
+
+function meza_admin_column_should_render_event_date($column, int $id, $value): bool
+{
+    if (!meza_is_event_post_type(get_post_type($id))) {
+        return false;
+    }
+
+    $normalized_identifiers = array_map(
+        'meza_normalize_admin_link_column_identifier',
+        meza_get_admin_column_identifiers($column)
+    );
+
+    foreach ($normalized_identifiers as $identifier) {
+        if (in_array($identifier, ['eventstartdate', 'eventenddate'], true)) {
+            return true;
+        }
+
+        if (in_array($identifier, ['start datetime', 'start date', 'end datetime', 'end date', 'event date', 'date start'], true)) {
+            return true;
+        }
+
+        if ($identifier === 'date' && meza_is_empty_admin_column_display_value($value)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function meza_extract_admin_column_emails($value): array
@@ -6640,6 +6748,7 @@ add_filter('ac/column/value', function ($value, $id, $column) {
     }
 
     $raw_value = $column->get_raw_value($id);
+
     if (
         !meza_admin_column_name_supports_link_value($column)
         && !meza_admin_column_raw_value_is_link_like($raw_value)
@@ -6668,6 +6777,25 @@ add_filter('ac/column/value', function ($value, $id, $column) {
 
     return '<a href="' . esc_url($url) . '" target="' . esc_attr($target) . '"' . $rel . '>' . esc_html($label) . '</a>';
 }, 110, 3);
+
+// Admin Columns plugin renderer: render event date custom fields as the
+// normalized start/end date range even when ACP does not format the field.
+add_filter('ac/column/value', function ($value, $id, $column) {
+    $id = (int) $id;
+    if ($id <= 0 || !meza_admin_column_should_render_event_date($column, $id, $value)) {
+        return $value;
+    }
+
+    $start_raw = meza_get_event_admin_column_datetime_value($id, 'start');
+    if ($start_raw === '') {
+        return $value;
+    }
+
+    $end_raw = meza_get_event_admin_column_datetime_value($id, 'end');
+    $date_html = meza_get_event_admin_datetime_range_html($start_raw, $end_raw);
+
+    return $date_html !== '' ? $date_html : $value;
+}, 115, 3);
 
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
