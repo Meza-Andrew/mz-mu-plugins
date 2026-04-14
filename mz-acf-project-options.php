@@ -771,7 +771,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'name' => 'phone',
                         'aria-label' => '',
                         'type' => 'text',
-                        'instructions' => '',
+                        'instructions' => 'Used in the footer of emails sent through the website.',
                         'required' => 1,
                         'conditional_logic' => 0,
                         'wrapper' => [
@@ -792,7 +792,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'name' => 'email',
                         'aria-label' => '',
                         'type' => 'email',
-                        'instructions' => '',
+                        'instructions' => 'The default recipient for forms. Also used in the footer of emails sent through the website.',
                         'required' => 1,
                         'conditional_logic' => 0,
                         'wrapper' => [
@@ -812,7 +812,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'name' => 'address',
                         'aria-label' => '',
                         'type' => 'google_map',
-                        'instructions' => 'Choose this option if visitors can come to a real street address.',
+                        'instructions' => 'Used in the footer of emails sent through the website. Only put an address in this field if visitors can come to a real location.',
                         'required' => 1,
                         'conditional_logic' => [
                             [
@@ -839,7 +839,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'name' => 'address_text',
                         'aria-label' => '',
                         'type' => 'textarea',
-                        'instructions' => 'Use this instead for a mailing-only address, such as a PO box or any address that should not appear as a map pin.',
+                        'instructions' => 'Used in the footer of emails sent through the website. Only put a mailing-only address in this field, such as a P.O. Box.',
                         'required' => 1,
                         'conditional_logic' => [
                             [
