@@ -5,7 +5,7 @@
  *  ================================ */
 
 // Keep a raw sortable version of start_datetime in Y-m-d H:i:s.
-add_action('save_post_event', function ($post_id) {
+add_action('save_post_tribe_events', function ($post_id) {
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
     if (wp_is_post_revision($post_id)) return;
 
@@ -408,21 +408,7 @@ function meza_post_has_permalink(int $post_id): bool
 
 function meza_should_show_posts_categories_column(): bool
 {
-    $default_category_id = (int) get_option('default_category');
-    if ($default_category_id <= 0) return true;
-
-    $category_ids = get_terms([
-        'taxonomy' => 'category',
-        'hide_empty' => false,
-        'fields' => 'ids',
-    ]);
-
-    if (is_wp_error($category_ids) || !is_array($category_ids)) return true;
-
-    $category_ids = array_values(array_unique(array_map('intval', $category_ids)));
-    if (count($category_ids) !== 1) return true;
-
-    return ((int) $category_ids[0] !== $default_category_id);
+    return true;
 }
 
 add_filter('disable_categories_dropdown', function ($disable, $post_type) {
@@ -432,6 +418,14 @@ add_filter('disable_categories_dropdown', function ($disable, $post_type) {
 
     return meza_should_show_posts_categories_column() ? $disable : true;
 }, 200, 2);
+
+add_filter('manage_posts_columns', function ($columns, $post_type) {
+    if ((string) $post_type !== 'post') {
+        return $columns;
+    }
+
+    return meza_ensure_taxonomy_admin_columns(is_array($columns) ? $columns : [], 'post');
+}, 1000, 2);
 
 add_filter('wp_mail_smtp_tasks_tasks_action_scheduler_tools_plugin_exceptions', function ($plugins) {
     $plugins = is_array($plugins) ? $plugins : [];
@@ -689,6 +683,12 @@ function meza_post_type_uses_admin_columns_layout(string $post_type): bool
     }
 
     if (!function_exists('is_plugin_active') || !is_plugin_active('codepress-admin-columns/codepress-admin-columns.php')) {
+        return false;
+    }
+
+    // TEC's Events list table is the one admin screen where the managed-columns
+    // path has been unstable. Let it use the simpler core list-table flow.
+    if ($post_type === 'tribe_events') {
         return false;
     }
 
@@ -4694,9 +4694,8 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
 }, 350, 3);
 
 add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
-    unset($use_defaults);
-
     if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+    if (!$use_defaults) return $hidden;
 
     $post_type = (string) ($screen->post_type ?? '');
     if (!meza_post_type_supports_menu_order_admin_column($post_type)) return $hidden;
@@ -4723,9 +4722,8 @@ add_filter('default_hidden_columns', function ($hidden, $screen) {
 }, 1200, 2);
 
 add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
-    unset($use_defaults);
-
     if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+    if (!$use_defaults) return $hidden;
 
     $post_type = (string) ($screen->post_type ?? '');
     if ($post_type === '') return $hidden;
@@ -4741,9 +4739,8 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
 }, 1200, 3);
 
 add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
-    unset($use_defaults);
-
     if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+    if (!$use_defaults) return $hidden;
 
     $post_type = (string) ($screen->post_type ?? '');
     if (!meza_post_type_is_organization_like($post_type)) return $hidden;
@@ -5579,7 +5576,7 @@ add_action('pre_get_posts', function (WP_Query $q) {
 
     if ($orderby === 'start_datetime_order') {
         $dir = $order ?: 'DESC';
-        $q->set('meta_key', 'start_datetime_raw');
+        $q->set('meta_key', '_EventStartDate');
         $q->set('meta_type', 'DATETIME');
         $q->set('orderby', [
             'meta_value' => $dir,

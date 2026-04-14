@@ -36,6 +36,13 @@ if (!function_exists('meza_get_business_information_page_title')) {
     }
 }
 
+if (!function_exists('meza_shared_project_acf_options_are_available')) {
+    function meza_shared_project_acf_options_are_available(): bool
+    {
+        return function_exists('acf_add_options_page') && function_exists('acf_add_local_field_group');
+    }
+}
+
 if (!function_exists('meza_get_shared_project_acf_options_pages')) {
     function meza_get_shared_project_acf_options_pages(): array
     {
@@ -1243,6 +1250,8 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             return;
         }
 
+        $acf_options_available = meza_shared_project_acf_options_are_available();
+
         $business_information_item = null;
         $branding_item = null;
         $crm_item = null;
@@ -1272,6 +1281,11 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             $slug = (string) ($item[2] ?? '');
 
             if (in_array($slug, ['business-information', 'admin.php?page=business-information', 'options-general.php?page=business-information'], true)) {
+                if (!$acf_options_available) {
+                    unset($submenu['options-general.php'][$index]);
+                    continue;
+                }
+
                 $submenu['options-general.php'][$index][0] = $business_information_menu_label;
                 $submenu['options-general.php'][$index][2] = 'business-information';
                 if (isset($submenu['options-general.php'][$index][3])) {
@@ -1284,6 +1298,11 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             }
 
             if (in_array($slug, ['crm', 'admin.php?page=crm', 'options-general.php?page=crm'], true)) {
+                if (!$acf_options_available) {
+                    unset($submenu['options-general.php'][$index]);
+                    continue;
+                }
+
                 $submenu['options-general.php'][$index][0] = 'CRM Integration';
                 $submenu['options-general.php'][$index][2] = 'crm';
                 if (isset($submenu['options-general.php'][$index][3])) {
@@ -1299,6 +1318,11 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
                 continue;
             }
 
+            if (!$acf_options_available) {
+                unset($submenu['options-general.php'][$index]);
+                continue;
+            }
+
             $submenu['options-general.php'][$index][0] = 'Branding';
             $submenu['options-general.php'][$index][2] = 'branding';
             if (isset($submenu['options-general.php'][$index][3])) {
@@ -1307,6 +1331,11 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
 
             $branding_item = $submenu['options-general.php'][$index];
             unset($submenu['options-general.php'][$index]);
+        }
+
+        if (!$acf_options_available) {
+            $submenu['options-general.php'] = array_values($submenu['options-general.php']);
+            return;
         }
 
         if ($business_information_item === null && in_array('business-information', $allowed_expected_item_slugs, true)) {

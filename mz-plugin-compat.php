@@ -1062,7 +1062,178 @@ if (!function_exists('mz_plugin_compat_dequeue_divi_builder_assets_for_single_ev
     }
 }
 
+if (!function_exists('mz_plugin_compat_get_safe_tec_venue_object')) {
+    function mz_plugin_compat_get_safe_tec_venue_object($venue): ?WP_Post
+    {
+        if (!function_exists('tribe_get_venue_object')) {
+            return null;
+        }
+
+        $venue_id = 0;
+
+        if ($venue instanceof WP_Post) {
+            $venue_id = (int) $venue->ID;
+        } elseif (is_object($venue) && isset($venue->ID)) {
+            $venue_id = (int) $venue->ID;
+        } elseif (is_scalar($venue)) {
+            $venue_id = absint($venue);
+        }
+
+        if ($venue_id <= 0) {
+            return null;
+        }
+
+        $normalized_venue = tribe_get_venue_object($venue_id);
+
+        return $normalized_venue instanceof WP_Post ? $normalized_venue : null;
+    }
+}
+
+if (!function_exists('mz_plugin_compat_render_tec_venue_html')) {
+    function mz_plugin_compat_render_tec_venue_html($event, string $slug, array $config): string
+    {
+        $config = wp_parse_args($config, [
+            'wrapper_class' => '',
+            'title_class' => '',
+            'address_class' => '',
+            'include_city' => true,
+            'include_country' => false,
+            'include_after_action' => false,
+        ]);
+
+        if (!is_object($event) || !isset($event->venues) || !is_object($event->venues) || !method_exists($event->venues, 'count')) {
+            return '';
+        }
+
+        if ((int) $event->venues->count() < 1) {
+            return '';
+        }
+
+        $venue = mz_plugin_compat_get_safe_tec_venue_object($event->venues[0] ?? null);
+        if (!($venue instanceof WP_Post)) {
+            return '';
+        }
+
+        $separator = esc_html_x(', ', 'Address separator', 'the-events-calendar');
+        $state_parts = array_values(array_filter(array_map('trim', array_filter([
+            $venue->state_province ?? null,
+            $venue->state ?? null,
+            $venue->province ?? null,
+        ], static fn($value): bool => !is_array($value)))));
+        $state_part = $state_parts[0] ?? '';
+        $city = trim((string) ($venue->city ?? ''));
+        $country = trim((string) ($venue->country ?? ''));
+        $address = trim((string) ($venue->address ?? ''));
+
+        $address_line = $address;
+
+        if (!post_password_required($venue->ID)) {
+            if (!empty($config['include_city'])) {
+                if ($address_line !== '' && ($city !== '' || $state_part !== '')) {
+                    $address_line .= $separator;
+                }
+
+                if ($city !== '') {
+                    $address_line .= $city;
+                }
+
+                if ($state_part !== '') {
+                    if ($address_line !== '' && $city !== '') {
+                        $address_line .= $separator;
+                    }
+
+                    $address_line .= $state_part;
+                }
+            } elseif ($state_part !== '') {
+                if ($address_line !== '') {
+                    $address_line .= $separator;
+                }
+
+                $address_line .= $state_part;
+            }
+
+            if (!empty($config['include_country']) && $country !== '') {
+                if ($address_line !== '') {
+                    $address_line .= $separator;
+                }
+
+                $address_line .= $country;
+            }
+        } else {
+            $address_line = '';
+        }
+
+        ob_start();
+        ?>
+<address class="<?php echo esc_attr((string) $config['wrapper_class']); ?>">
+    <span class="<?php echo esc_attr((string) $config['title_class']); ?>">
+        <?php echo wp_kses_post($venue->post_title); ?>
+    </span>
+    <span class="<?php echo esc_attr((string) $config['address_class']); ?>">
+        <?php echo esc_html($address_line); ?>
+    </span>
+    <?php
+        if (!empty($config['include_after_action'])) {
+            do_action('tec_events_view_venue_after_address', $event, $slug);
+        }
+    ?>
+</address>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+}
+
+if (!function_exists('mz_plugin_compat_render_safe_tec_venue_template_html')) {
+    function mz_plugin_compat_render_safe_tec_venue_template_html($html, $file, $name, $template, array $config, array $context = []): ?string
+    {
+        unset($file, $name);
+
+        $existing_html = is_string($html) ? $html : null;
+
+        if (!is_object($template) || !method_exists($template, 'get')) {
+            return $existing_html;
+        }
+
+        $event = $context['event'] ?? $template->get('event');
+        $slug = isset($context['slug']) ? (string) $context['slug'] : (string) $template->get('slug', '');
+        $rendered = mz_plugin_compat_render_tec_venue_html($event, $slug, $config);
+
+        return $rendered !== '' ? $rendered : $existing_html;
+    }
+}
+
 add_filter('template_include', 'mz_plugin_compat_override_single_event_template_include', 999);
 add_filter('et_theme_builder_template_layouts', 'mz_plugin_compat_disable_divi_theme_builder_for_single_events', 20);
 add_filter('body_class', 'mz_plugin_compat_strip_divi_builder_body_classes_for_single_events', 20);
 add_action('wp_enqueue_scripts', 'mz_plugin_compat_dequeue_divi_builder_assets_for_single_events', 999);
+add_filter('tribe_template_pre_html:events/v2/list/event/venue', static function ($html, $file, $name, $template, $context = []) {
+    return mz_plugin_compat_render_safe_tec_venue_template_html($html, $file, $name, $template, [
+        'wrapper_class' => 'tribe-events-calendar-list__event-venue tribe-common-b2',
+        'title_class' => 'tribe-events-calendar-list__event-venue-title tribe-common-b2--bold',
+        'address_class' => 'tribe-events-calendar-list__event-venue-address',
+        'include_city' => true,
+        'include_country' => true,
+        'include_after_action' => true,
+    ], is_array($context) ? $context : []);
+}, 20, 5);
+add_filter('tribe_template_pre_html:events/v2/day/event/venue', static function ($html, $file, $name, $template, $context = []) {
+    return mz_plugin_compat_render_safe_tec_venue_template_html($html, $file, $name, $template, [
+        'wrapper_class' => 'tribe-events-calendar-day__event-venue tribe-common-b2',
+        'title_class' => 'tribe-events-calendar-day__event-venue-title tribe-common-b2--bold',
+        'address_class' => 'tribe-events-calendar-day__event-venue-address',
+        'include_city' => true,
+        'include_country' => false,
+        'include_after_action' => true,
+    ], is_array($context) ? $context : []);
+}, 20, 5);
+add_filter('tribe_template_pre_html:events/v2/latest-past/event/venue', static function ($html, $file, $name, $template, $context = []) {
+    return mz_plugin_compat_render_safe_tec_venue_template_html($html, $file, $name, $template, [
+        'wrapper_class' => 'tribe-events-calendar-latest-past__event-venue tribe-common-b2',
+        'title_class' => 'tribe-events-calendar-latest-past__event-venue-title tribe-common-b2--bold',
+        'address_class' => 'tribe-events-calendar-latest-past__event-venue-address',
+        'include_city' => true,
+        'include_country' => false,
+        'include_after_action' => false,
+    ], is_array($context) ? $context : []);
+}, 20, 5);

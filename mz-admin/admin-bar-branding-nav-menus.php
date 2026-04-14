@@ -924,6 +924,10 @@ add_action('admin_enqueue_scripts', function (string $hook_suffix): void {
         return;
     }
 
+    if (function_exists('meza_shared_project_acf_options_are_available') && !meza_shared_project_acf_options_are_available()) {
+        return;
+    }
+
     wp_add_inline_script('jquery', <<<JS
 jQuery(function ($) {
     ['#blogname', '#blogdescription', '#site_icon_hidden_field'].forEach(function (selector) {
