@@ -507,6 +507,8 @@ add_action('admin_head-edit.php', function (): void {
 
     $current_columns = function_exists('get_column_headers') ? get_column_headers($screen) : [];
     $event_date_column_keys = is_array($current_columns) ? meza_get_event_date_admin_column_keys($current_columns) : ['start' => '', 'end' => ''];
+    $event_runtime_date_keys = is_array($current_columns) ? meza_get_event_date_admin_column_runtime_keys($current_columns) : [];
+    $age_group_column_keys = is_array($current_columns) ? meza_get_age_group_admin_column_keys($current_columns) : [];
 
     $column_map = [];
     $taxonomy_keys = meza_get_taxonomy_admin_column_keys_for_post_type($post_type);
@@ -528,6 +530,18 @@ add_action('admin_head-edit.php', function (): void {
             }
 
             $column_map[(int) $post->ID][(string) $column_key] = $column_html;
+        }
+
+        if ($age_group_column_keys !== []) {
+            $age_group_html = meza_get_age_group_admin_column_html($post);
+            if ($age_group_html !== '') {
+                foreach ($age_group_column_keys as $column_key) {
+                    $column_map[(int) $post->ID][(string) $column_key] = $age_group_html;
+                }
+
+                $column_map[(int) $post->ID]['age-group'] = $age_group_html;
+                $column_map[(int) $post->ID]['age_group'] = $age_group_html;
+            }
         }
     }
 
@@ -561,6 +575,11 @@ add_action('admin_head-edit.php', function (): void {
                             keys.push(className.slice(7));
                         }
                     });
+
+                const label = normalize(cell.textContent);
+                if (label === 'age group') {
+                    keys.push('age-group', 'age_group');
+                }
 
                 return Array.from(new Set(keys.filter(Boolean)));
             };
@@ -624,16 +643,24 @@ add_action('admin_head-edit.php', function (): void {
         }
 
         $date_value = meza_get_event_admin_datetime_range_html($start_raw, $end_raw);
+        $date_map[(int) $post->ID] = [
+            'start-date' => $date_value,
+            'start_date' => $date_value,
+        ];
+
         $start_column_key = trim((string) ($event_date_column_keys['start'] ?? ''));
-        if ($start_column_key === '') {
-            $start_column_key = 'start-date';
+        if ($start_column_key !== '') {
+            $date_map[(int) $post->ID][$start_column_key] = $date_value;
         }
 
-        $date_map[(int) $post->ID] = [
-            $start_column_key => $date_value,
-            'start-date'      => $date_value,
-            'start_date'      => $date_value,
-        ];
+        foreach ($event_runtime_date_keys as $column_key) {
+            $column_key = trim((string) $column_key);
+            if ($column_key === '') {
+                continue;
+            }
+
+            $date_map[(int) $post->ID][$column_key] = $date_value;
+        }
     }
 
     if ($column_map === [] && $date_map === []) {
@@ -677,6 +704,9 @@ add_action('admin_head-edit.php', function (): void {
                 }
                 if (label === 'date') {
                     keys.push(...eventDateColumnKeys);
+                }
+                if (label === 'age group') {
+                    keys.push('age-group', 'age_group');
                 }
 
                 return Array.from(new Set(keys.filter(Boolean)));

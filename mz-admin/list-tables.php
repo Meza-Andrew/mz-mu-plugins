@@ -9,7 +9,16 @@ add_action('save_post_event', function ($post_id) {
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
     if (wp_is_post_revision($post_id)) return;
 
-    $pretty = get_post_meta($post_id, 'start_datetime', true); // e.g. "September 9, 2025 6:00 pm"
+    $pretty = '';
+
+    foreach (['_EventStartDate', 'start_datetime', 'start_date', '_event_start_date'] as $meta_key) {
+        $value = get_post_meta($post_id, $meta_key, true);
+        if (is_string($value) && trim($value) !== '') {
+            $pretty = trim($value);
+            break;
+        }
+    }
+
     if (!$pretty) {
         delete_post_meta($post_id, 'start_datetime_raw');
         return;
@@ -755,6 +764,15 @@ function meza_get_event_date_admin_column_keys(array $columns): array
         }
     }
 
+    if ($resolved['start'] === '') {
+        foreach ($columns as $key => $label) {
+            if (meza_admin_column_matches_tokens((string) $key, $label, ['date'])) {
+                $resolved['start'] = (string) $key;
+                break;
+            }
+        }
+    }
+
     return $resolved;
 }
 
@@ -780,6 +798,32 @@ function meza_combine_event_date_admin_columns(array $columns, string $post_type
     unset($columns[$end_key]);
 
     return $columns;
+}
+
+function meza_get_event_date_admin_column_runtime_keys(array $columns): array
+{
+    if (!is_array($columns) || $columns === []) {
+        return [];
+    }
+
+    $keys = [];
+    $resolved = meza_get_event_date_admin_column_keys($columns);
+
+    $start_key = trim((string) ($resolved['start'] ?? ''));
+    if ($start_key !== '') {
+        $keys[] = $start_key;
+    }
+
+    foreach (meza_get_admin_column_keys_matching_tokens($columns, ['date', 'start-date', 'start_date', 'start date']) as $key) {
+        $keys[] = $key;
+    }
+
+    return array_values(array_unique(array_filter(array_map('strval', $keys))));
+}
+
+function meza_get_age_group_admin_column_keys(array $columns): array
+{
+    return meza_get_admin_column_keys_matching_tokens($columns, ['age group', 'age_group', 'age-group']);
 }
 
 function meza_get_sorted_taxonomy_admin_column_keys(array $columns, string $post_type): array
@@ -922,6 +966,41 @@ function meza_admin_column_matches_tokens(string $key, $label, array $tokens): b
     }
 
     return false;
+}
+
+function meza_get_admin_column_keys_matching_tokens(array $columns, array $tokens): array
+{
+    if (!is_array($columns) || $columns === [] || $tokens === []) {
+        return [];
+    }
+
+    $matched = [];
+
+    foreach ($columns as $key => $label) {
+        $key = trim((string) $key);
+        if ($key === '') {
+            continue;
+        }
+
+        if (!meza_admin_column_matches_tokens($key, $label, $tokens)) {
+            continue;
+        }
+
+        $matched[] = $key;
+    }
+
+    return array_values(array_unique($matched));
+}
+
+function meza_get_current_screen_column_headers_map($screen): array
+{
+    if (!($screen instanceof WP_Screen) || !function_exists('get_column_headers')) {
+        return [];
+    }
+
+    $headers = get_column_headers($screen);
+
+    return is_array($headers) ? $headers : [];
 }
 
 function meza_move_taxonomy_columns_before_meta_columns(array $columns, string $post_type): array
@@ -1449,6 +1528,7 @@ function meza_get_seeded_acp_default_admin_columns(): array
         '_ac_columns_default_event' => [
             'mz_id' => ['label' => 'ID'],
             'title' => ['label' => 'Title'],
+            'start-date' => ['label' => 'Start Date'],
             'mz_summary' => ['label' => 'Summary'],
             'mz_page_headline' => ['label' => 'Page Headline (H1)'],
             'mz_page_cta' => ['label' => 'Page CTA'],
@@ -1565,6 +1645,8 @@ function meza_get_seeded_admin_column_alias_candidates(string $key): array
         'last_login' => ['last_login', 'mz_last_login'],
         'mz_last_login' => ['mz_last_login', 'last_login'],
         'comment_id' => ['comment_id', 'mz_id'],
+        'start-date' => ['start-date', 'start_date'],
+        'start_date' => ['start_date', 'start-date'],
     ];
 
     return array_values(array_unique(array_filter(array_map('strval', $aliases[$key] ?? [$key]))));
@@ -1583,6 +1665,8 @@ function meza_get_seeded_admin_column_label_candidates(string $seeded_key, strin
     $label_aliases = [
         'date' => ['Published', 'Date'],
         'mz_published' => ['Published', 'Date'],
+        'start-date' => ['Start Date', 'Date'],
+        'start_date' => ['Start Date', 'Date'],
         'mz_modified' => ['Modified'],
         'mz_faq_count' => ['Count'],
         'mime_type' => ['Type'],
@@ -1721,7 +1805,7 @@ function meza_get_default_visible_taxonomy_admin_column_keys(string $post_type):
 
 function meza_sync_seeded_acp_default_admin_columns(): void
 {
-    $target_version = '1.1.253';
+    $target_version = '1.1.254';
     if ((string) get_option('meza_acp_seeded_default_admin_columns_migration') === $target_version) {
         return;
     }
@@ -2309,6 +2393,80 @@ function meza_get_taxonomy_admin_column_html(string $taxonomy, WP_Post $post): s
     }
 
     return $html !== '' ? $html : '&mdash;';
+}
+
+function meza_get_age_group_admin_column_values(int $post_id): array
+{
+    $post_id = (int) $post_id;
+    if ($post_id <= 0) {
+        return [];
+    }
+
+    $raw_value = get_post_meta($post_id, 'age_group', true);
+    $values = is_array($raw_value) ? $raw_value : [$raw_value];
+    $values = array_values(array_unique(array_filter(array_map(static function ($value): string {
+        return is_scalar($value) ? trim((string) $value) : '';
+    }, $values))));
+
+    if ($values === []) {
+        return [];
+    }
+
+    $choices = [];
+    $field = function_exists('get_field_object') ? get_field_object('age_group', $post_id) : null;
+    if (is_array($field) && !empty($field['choices']) && is_array($field['choices'])) {
+        $choices = $field['choices'];
+    }
+
+    $resolved = [];
+
+    foreach ($values as $value) {
+        $label = isset($choices[$value]) && is_scalar($choices[$value])
+            ? trim((string) $choices[$value])
+            : $value;
+
+        if ($label === '') {
+            continue;
+        }
+
+        $resolved[] = [
+            'value' => $value,
+            'label' => $label,
+        ];
+    }
+
+    return $resolved;
+}
+
+function meza_get_age_group_admin_column_html(WP_Post $post): string
+{
+    if (taxonomy_exists('age_group')) {
+        return '';
+    }
+
+    $values = meza_get_age_group_admin_column_values((int) $post->ID);
+    if ($values === []) {
+        return '&mdash;';
+    }
+
+    $links = [];
+
+    foreach ($values as $item) {
+        $value = trim((string) ($item['value'] ?? ''));
+        $label = trim((string) ($item['label'] ?? ''));
+        if ($value === '' || $label === '') {
+            continue;
+        }
+
+        $filter_url = add_query_arg([
+            'post_type' => $post->post_type,
+            'age_group' => $value,
+        ], admin_url('edit.php'));
+
+        $links[] = '<a href="' . esc_url($filter_url) . '">' . esc_html($label) . '</a>';
+    }
+
+    return $links !== [] ? implode(', ', $links) : '&mdash;';
 }
 
 function meza_get_admin_link_column_display_text(string $url): string
@@ -4556,7 +4714,12 @@ add_filter('default_hidden_columns', function ($hidden, $screen) {
 
     $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
 
-    return array_values(array_diff($hidden, meza_get_default_visible_taxonomy_admin_column_keys($post_type)));
+    $visible_keys = meza_get_default_visible_taxonomy_admin_column_keys($post_type);
+    if (meza_is_event_post_type($post_type)) {
+        $visible_keys = array_merge($visible_keys, meza_get_event_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
+    }
+
+    return array_values(array_diff($hidden, array_values(array_unique(array_filter(array_map('strval', $visible_keys))))));
 }, 1200, 2);
 
 add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
@@ -4569,7 +4732,12 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
 
     $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
 
-    return array_values(array_diff($hidden, meza_get_default_visible_taxonomy_admin_column_keys($post_type)));
+    $visible_keys = meza_get_default_visible_taxonomy_admin_column_keys($post_type);
+    if (meza_is_event_post_type($post_type)) {
+        $visible_keys = array_merge($visible_keys, meza_get_event_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)));
+    }
+
+    return array_values(array_diff($hidden, array_values(array_unique(array_filter(array_map('strval', $visible_keys))))));
 }, 1200, 3);
 
 add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
@@ -4601,6 +4769,13 @@ function meza_register_datetime_sortable_columns(array $cols): array
     $cols['mz_published'] = ['date', true];
     // Match the global default admin post-list sort so the active header state is visible on first load.
     $cols['mz_modified'] = ['modified', true, '', '', 'desc'];
+
+    if (($screen instanceof WP_Screen) && meza_is_event_post_type($post_type)) {
+        foreach (meza_get_event_date_admin_column_runtime_keys(meza_get_current_screen_column_headers_map($screen)) as $column_key) {
+            $cols[(string) $column_key] = ['start_datetime_order', true];
+        }
+    }
+
     return $cols;
 }
 
@@ -5393,7 +5568,10 @@ add_filter('woocommerce_products_admin_list_table_filters', function ($filters) 
 // Keep explicit event start-date sorting. Global default ordering is set below.
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
-    if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php' || $q->get('post_type') !== 'event') return;
+    if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php') return;
+
+    $post_type = sanitize_key((string) $q->get('post_type'));
+    if (!meza_is_event_post_type($post_type)) return;
 
     $orderby = (string) $q->get('orderby');
     $order   = strtoupper((string) $q->get('order'));
@@ -5416,6 +5594,28 @@ add_action('pre_get_posts', function (WP_Query $q) {
         $q->set('meta_type', '');
     }
 });
+
+add_action('pre_get_posts', function (WP_Query $q) {
+    global $pagenow;
+    if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php') return;
+    if (taxonomy_exists('age_group')) return;
+
+    $age_group = isset($_GET['age_group']) ? wp_unslash($_GET['age_group']) : '';
+    if (!is_scalar($age_group)) return;
+
+    $age_group = sanitize_text_field((string) $age_group);
+    if ($age_group === '') return;
+
+    $meta_query = $q->get('meta_query');
+    $meta_query = is_array($meta_query) ? $meta_query : [];
+    $meta_query[] = [
+        'key' => 'age_group',
+        'value' => $age_group,
+        'compare' => '=',
+    ];
+
+    $q->set('meta_query', $meta_query);
+}, 20);
 
 /** ================================
  *  CTA ADMIN SORTING
