@@ -1573,6 +1573,16 @@ function meza_get_seeded_acp_default_admin_columns(): array
             'mz_review_quote' => ['label' => 'Quote'],
             'mz_review_citer' => ['label' => 'Citer'],
             'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
+        '_ac_columns_default_reviews' => [
+            'mz_id' => ['label' => 'ID'],
+            'mz_menu_order' => ['label' => '#'],
+            'title' => ['label' => 'Title'],
+            'mz_review_quote' => ['label' => 'Quote'],
+            'mz_review_citer' => ['label' => 'Citer'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
         ],
         '_ac_columns_default_wp_block' => [
             'mz_id' => ['label' => 'ID'],
@@ -1746,6 +1756,29 @@ function meza_apply_seeded_admin_column_order(array $columns, string $list_key, 
         $used[$match] = true;
     }
 
+    // Keep taxonomy columns available on seeded Admin Columns layouts even when
+    // the layout definition itself does not enumerate them.
+    if (post_type_exists($list_key)) {
+        foreach (meza_get_sorted_taxonomy_admin_column_keys($columns, $list_key) as $taxonomy_key) {
+            $taxonomy_key = (string) $taxonomy_key;
+            if ($taxonomy_key === '' || isset($used[$taxonomy_key]) || !array_key_exists($taxonomy_key, $columns)) {
+                continue;
+            }
+
+            $ordered[$taxonomy_key] = $columns[$taxonomy_key];
+            $used[$taxonomy_key] = true;
+        }
+    }
+
+    foreach (['mz_modified', 'mz_published'] as $runtime_key) {
+        if (!array_key_exists($runtime_key, $columns) || isset($used[$runtime_key])) {
+            continue;
+        }
+
+        $ordered[$runtime_key] = $columns[$runtime_key];
+        $used[$runtime_key] = true;
+    }
+
     if ($drop_unseeded_columns) {
         return $ordered;
     }
@@ -1806,12 +1839,16 @@ function meza_get_default_visible_taxonomy_admin_column_keys(string $post_type):
         }
     }
 
+    if ($visible_keys === []) {
+        return meza_get_taxonomy_admin_column_keys_for_post_type($post_type);
+    }
+
     return array_values(array_unique(array_filter(array_map('strval', $visible_keys))));
 }
 
 function meza_sync_seeded_acp_default_admin_columns(): void
 {
-    $target_version = '1.1.254';
+    $target_version = '1.1.255';
     if ((string) get_option('meza_acp_seeded_default_admin_columns_migration') === $target_version) {
         return;
     }
@@ -1831,7 +1868,7 @@ function meza_run_acp_default_admin_column_order_migration(): void
         return;
     }
 
-    $target_version = '1.1.252';
+    $target_version = '1.1.253';
     if ((string) get_option('meza_acp_default_admin_column_order_migration') === $target_version) {
         return;
     }
@@ -2524,6 +2561,89 @@ function meza_get_admin_link_column_display_text(string $url): string
     }
 
     return $display;
+}
+
+function meza_normalize_admin_link_column_identifier(string $value): string
+{
+    $value = strtolower(trim(wp_strip_all_tags($value)));
+    $value = str_replace(['_', '-'], ' ', $value);
+    $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+
+    return trim($value);
+}
+
+function meza_admin_column_name_supports_link_value($column): bool
+{
+    if (!is_object($column)) {
+        return false;
+    }
+
+    $identifiers = [];
+
+    foreach (['get_meta_key', 'get_name', 'get_label', 'get_custom_label'] as $method) {
+        if (!method_exists($column, $method)) {
+            continue;
+        }
+
+        $candidate = $column->{$method}();
+        if (is_string($candidate) && trim($candidate) !== '') {
+            $identifiers[] = $candidate;
+        }
+    }
+
+    foreach ($identifiers as $identifier) {
+        $normalized = meza_normalize_admin_link_column_identifier((string) $identifier);
+        if ($normalized !== '' && str_contains($normalized, 'link')) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function meza_get_admin_link_column_parts($value): array
+{
+    if (is_string($value)) {
+        $value = maybe_unserialize($value);
+    }
+
+    if (is_array($value)) {
+        $url = isset($value['url']) && !is_array($value['url'])
+            ? trim((string) $value['url'])
+            : '';
+        $title = isset($value['title']) && !is_array($value['title'])
+            ? trim(wp_strip_all_tags((string) $value['title']))
+            : '';
+        $target = isset($value['target']) && !is_array($value['target'])
+            ? trim((string) $value['target'])
+            : '';
+
+        if ($url !== '') {
+            return [
+                'url' => $url,
+                'title' => $title,
+                'target' => $target,
+            ];
+        }
+
+        return [];
+    }
+
+    $url = trim((string) $value);
+    if ($url === '') {
+        return [];
+    }
+
+    return [
+        'url' => $url,
+        'title' => '',
+        'target' => '',
+    ];
+}
+
+function meza_admin_column_raw_value_is_link_like($value): bool
+{
+    return meza_get_admin_link_column_parts($value) !== [];
 }
 
 function meza_extract_admin_column_emails($value): array
@@ -3737,32 +3857,56 @@ function meza_place_summary_before_taxonomy_columns(array $columns, string $post
     }
 
     $post_type = trim($post_type);
-    if ($post_type === '' || !array_key_exists('mz_summary', $columns)) {
+    if ($post_type === '') {
         return $columns;
     }
 
-    $taxonomy_keys = array_fill_keys(meza_get_sorted_taxonomy_admin_column_keys($columns, $post_type), true);
-    if (empty($taxonomy_keys)) {
+    $sorted_taxonomy_keys = meza_get_sorted_taxonomy_admin_column_keys($columns, $post_type);
+    if ($sorted_taxonomy_keys === []) {
         return $columns;
     }
 
-    $summary_label = $columns['mz_summary'];
-    unset($columns['mz_summary']);
+    $taxonomy_keys = array_fill_keys($sorted_taxonomy_keys, true);
+    $summary_label = array_key_exists('mz_summary', $columns) ? $columns['mz_summary'] : null;
+    if ($summary_label !== null) {
+        unset($columns['mz_summary']);
+    }
 
     $updated = [];
     $inserted = false;
 
     foreach ($columns as $key => $label) {
         if (!$inserted && isset($taxonomy_keys[(string) $key])) {
-            $updated['mz_summary'] = $summary_label;
+            if ($summary_label !== null) {
+                $updated['mz_summary'] = $summary_label;
+            }
+
+            foreach ($sorted_taxonomy_keys as $taxonomy_key) {
+                if (array_key_exists($taxonomy_key, $columns)) {
+                    $updated[$taxonomy_key] = $columns[$taxonomy_key];
+                }
+            }
+
             $inserted = true;
+        }
+
+        if (isset($taxonomy_keys[(string) $key])) {
+            continue;
         }
 
         $updated[$key] = $label;
     }
 
     if (!$inserted) {
-        $updated['mz_summary'] = $summary_label;
+        if ($summary_label !== null) {
+            $updated['mz_summary'] = $summary_label;
+        }
+
+        foreach ($sorted_taxonomy_keys as $taxonomy_key) {
+            if (array_key_exists($taxonomy_key, $columns)) {
+                $updated[$taxonomy_key] = $columns[$taxonomy_key];
+            }
+        }
     }
 
     return $updated;
@@ -3966,19 +4110,27 @@ function meza_normalize_admin_columns_managed_headings(array $columns, string $p
     $has_seeded_layout = meza_get_seeded_admin_column_defaults_for_post_type($post_type) !== [];
 
     if ($preserve_existing_order) {
-        return $has_seeded_layout
+        $columns = $has_seeded_layout
             ? meza_apply_seeded_admin_column_order($columns, $post_type, true)
             : $columns;
+
+        return meza_place_summary_before_taxonomy_columns($columns, $post_type);
     }
 
     if ($has_seeded_layout) {
-        return meza_apply_seeded_admin_column_order($columns, $post_type, true);
+        return meza_place_summary_before_taxonomy_columns(
+            meza_apply_seeded_admin_column_order($columns, $post_type, true),
+            $post_type
+        );
     }
 
-    return meza_apply_default_admin_column_order(
-        meza_move_custom_admin_columns_before_meta_columns(
-            meza_move_taxonomy_columns_before_meta_columns(
-                meza_reinsert_sorted_taxonomy_columns($columns, $post_type),
+    return meza_place_summary_before_taxonomy_columns(
+        meza_apply_default_admin_column_order(
+            meza_move_custom_admin_columns_before_meta_columns(
+                meza_move_taxonomy_columns_before_meta_columns(
+                    meza_reinsert_sorted_taxonomy_columns($columns, $post_type),
+                    $post_type
+                ),
                 $post_type
             ),
             $post_type
@@ -4115,12 +4267,18 @@ function meza_normalize_datetime_columns(array $columns): array
     $updated = meza_ensure_modified_published_admin_columns($updated);
 
     if (meza_get_seeded_admin_column_defaults_for_post_type($post_type) !== []) {
-        return meza_apply_seeded_admin_column_order($updated, $post_type, true);
+        return meza_place_summary_before_taxonomy_columns(
+            meza_apply_seeded_admin_column_order($updated, $post_type, true),
+            $post_type
+        );
     }
 
-    return meza_apply_default_admin_column_order(
-        meza_move_taxonomy_columns_before_meta_columns(
-            meza_reinsert_sorted_taxonomy_columns($updated, $post_type),
+    return meza_place_summary_before_taxonomy_columns(
+        meza_apply_default_admin_column_order(
+            meza_move_taxonomy_columns_before_meta_columns(
+                meza_reinsert_sorted_taxonomy_columns($updated, $post_type),
+                $post_type
+            ),
             $post_type
         ),
         $post_type
@@ -5007,10 +5165,25 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     if ($column === 'mz_review_quote') {
         $quote = '';
         if (function_exists('get_field')) {
-            $acf_quote = get_field('quote', (int) $post_id);
-            if (is_string($acf_quote)) $quote = trim(wp_strip_all_tags($acf_quote));
+            foreach (['quote_short', 'quote'] as $field_name) {
+                $acf_quote = get_field($field_name, (int) $post_id);
+                if (is_string($acf_quote)) {
+                    $quote = trim(wp_strip_all_tags($acf_quote));
+                }
+
+                if ($quote !== '') {
+                    break;
+                }
+            }
         }
-        if ($quote === '') $quote = trim(wp_strip_all_tags((string) get_post_meta((int) $post_id, 'quote', true)));
+        if ($quote === '') {
+            foreach (['quote_short', 'quote'] as $meta_key) {
+                $quote = trim(wp_strip_all_tags((string) get_post_meta((int) $post_id, $meta_key, true)));
+                if ($quote !== '') {
+                    break;
+                }
+            }
+        }
         echo ($quote !== '') ? esc_html($quote) : '&mdash;';
         return;
     }
@@ -6458,6 +6631,43 @@ add_filter('ac/column/value', function ($value, $id, $column) {
 
     return '&mdash;';
 }, 100, 3);
+
+// Admin Columns plugin renderer: support ACF link arrays for custom columns whose
+// key or label includes "link" (for example, "external_link").
+add_filter('ac/column/value', function ($value, $id, $column) {
+    if (!method_exists($column, 'get_raw_value')) {
+        return $value;
+    }
+
+    $raw_value = $column->get_raw_value($id);
+    if (
+        !meza_admin_column_name_supports_link_value($column)
+        && !meza_admin_column_raw_value_is_link_like($raw_value)
+    ) {
+        return $value;
+    }
+
+    $link_parts = meza_get_admin_link_column_parts($raw_value);
+    if ($link_parts === []) {
+        return $value;
+    }
+
+    $url = trim((string) ($link_parts['url'] ?? ''));
+    if ($url === '') {
+        return $value;
+    }
+
+    $label = trim((string) ($link_parts['title'] ?? ''));
+    if ($label === '') {
+        $label = meza_get_admin_link_column_display_text($url);
+    }
+
+    $target = trim((string) ($link_parts['target'] ?? ''));
+    $target = in_array($target, ['_blank', '_self', '_parent', '_top'], true) ? $target : '_blank';
+    $rel = ($target === '_blank') ? ' rel="noopener noreferrer"' : '';
+
+    return '<a href="' . esc_url($url) . '" target="' . esc_attr($target) . '"' . $rel . '>' . esc_html($label) . '</a>';
+}, 110, 3);
 
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
