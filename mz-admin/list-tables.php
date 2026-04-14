@@ -2661,11 +2661,24 @@ function meza_normalize_admin_link_column_identifier(string $value): string
     return trim($value);
 }
 
+function meza_admin_column_identifier_supports_link_value(string $identifier): bool
+{
+    $normalized = meza_normalize_admin_link_column_identifier($identifier);
+    if ($normalized === '') {
+        return false;
+    }
+
+    if (str_contains($normalized, 'link')) {
+        return true;
+    }
+
+    return (bool) preg_match('/(^|\s)url(\s|$)/', $normalized);
+}
+
 function meza_admin_column_name_supports_link_value($column): bool
 {
     foreach (meza_get_admin_column_identifiers($column) as $identifier) {
-        $normalized = meza_normalize_admin_link_column_identifier((string) $identifier);
-        if ($normalized !== '' && str_contains($normalized, 'link')) {
+        if (meza_admin_column_identifier_supports_link_value((string) $identifier)) {
             return true;
         }
     }
@@ -2752,6 +2765,71 @@ function meza_get_event_link_admin_column_html(int $post_id): string
     return '<a href="' . esc_url($url) . '" target="' . esc_attr($target) . '"' . $rel . '>' . esc_html($label) . '</a>';
 }
 
+function meza_get_certification_link_admin_column_html(int $post_id): string
+{
+    $post_id = (int) $post_id;
+    if ($post_id <= 0 || get_post_type($post_id) !== 'certification') {
+        return '';
+    }
+
+    $raw_value = function_exists('get_field') ? get_field('url', $post_id) : null;
+    if ($raw_value === null || $raw_value === '') {
+        $raw_value = get_post_meta($post_id, 'url', true);
+    }
+
+    if ($raw_value === null || $raw_value === '') {
+        $raw_value = function_exists('get_field') ? get_field('link', $post_id) : null;
+    }
+
+    if ($raw_value === null || $raw_value === '') {
+        $raw_value = get_post_meta($post_id, 'link', true);
+    }
+
+    $link_parts = meza_get_admin_link_column_parts($raw_value);
+    if ($link_parts === []) {
+        return '';
+    }
+
+    $url = trim((string) ($link_parts['url'] ?? ''));
+    if ($url === '') {
+        return '';
+    }
+
+    $label = trim((string) ($link_parts['title'] ?? ''));
+    if ($label === '') {
+        $label = meza_get_admin_link_column_display_text($url);
+    }
+
+    $target = trim((string) ($link_parts['target'] ?? ''));
+    $target = in_array($target, ['_blank', '_self', '_parent', '_top'], true) ? $target : '_blank';
+    $rel = ($target === '_blank') ? ' rel="noopener noreferrer"' : '';
+
+    return '<a href="' . esc_url($url) . '" target="' . esc_attr($target) . '"' . $rel . '>' . esc_html($label) . '</a>';
+}
+
+function meza_get_post_type_link_admin_column_html(int $post_id): string
+{
+    $post_id = (int) $post_id;
+    if ($post_id <= 0) {
+        return '';
+    }
+
+    $post_type = (string) get_post_type($post_id);
+    if ($post_type === '') {
+        return '';
+    }
+
+    if (meza_is_event_post_type($post_type)) {
+        return meza_get_event_link_admin_column_html($post_id);
+    }
+
+    if ($post_type === 'certification') {
+        return meza_get_certification_link_admin_column_html($post_id);
+    }
+
+    return '';
+}
+
 function meza_is_empty_admin_column_display_value($value): bool
 {
     $normalized = html_entity_decode(wp_strip_all_tags((string) $value), ENT_QUOTES, 'UTF-8');
@@ -2773,8 +2851,8 @@ function meza_get_link_admin_column_keys(array $columns): array
         $normalized_label = meza_normalize_admin_column_token((string) $label);
 
         if (
-            ($normalized_key !== '' && str_contains($normalized_key, 'link'))
-            || ($normalized_label !== '' && str_contains($normalized_label, 'link'))
+            ($normalized_key !== '' && meza_admin_column_identifier_supports_link_value($normalized_key))
+            || ($normalized_label !== '' && meza_admin_column_identifier_supports_link_value($normalized_label))
         ) {
             $matched[] = (string) $key;
         }

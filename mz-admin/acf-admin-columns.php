@@ -508,7 +508,7 @@ add_action('admin_head-edit.php', function (): void {
     $current_columns = function_exists('get_column_headers') ? get_column_headers($screen) : [];
     $event_date_column_keys = is_array($current_columns) ? meza_get_event_date_admin_column_keys($current_columns) : ['start' => '', 'end' => ''];
     $event_runtime_date_keys = is_array($current_columns) ? meza_get_event_date_admin_column_runtime_keys($current_columns) : [];
-    $event_link_column_keys = is_array($current_columns) ? meza_get_link_admin_column_keys($current_columns) : [];
+    $link_column_keys = is_array($current_columns) ? meza_get_link_admin_column_keys($current_columns) : [];
     $age_group_column_keys = is_array($current_columns) ? meza_get_age_group_admin_column_keys($current_columns) : [];
 
     $column_map = [];
@@ -547,13 +547,38 @@ add_action('admin_head-edit.php', function (): void {
     }
 
     if (!meza_is_event_post_type($post_type)) {
-        if ($column_map === []) {
+        $link_map = [];
+
+        if ($link_column_keys !== []) {
+            foreach ($posts as $post) {
+                if (!($post instanceof WP_Post)) {
+                    continue;
+                }
+
+                $link_html = meza_get_post_type_link_admin_column_html((int) $post->ID);
+                if ($link_html === '') {
+                    continue;
+                }
+
+                foreach ($link_column_keys as $column_key) {
+                    $column_key = trim((string) $column_key);
+                    if ($column_key === '') {
+                        continue;
+                    }
+
+                    $link_map[(int) $post->ID][$column_key] = $link_html;
+                }
+            }
+        }
+
+        if ($column_map === [] && $link_map === []) {
             return;
         }
 ?>
     <script id="meza-admin-column-content-normalizer">
         (() => {
             const columnMap = <?php echo wp_json_encode($column_map); ?> || {};
+            const linkMap = <?php echo wp_json_encode($link_map); ?> || {};
 
             const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
@@ -602,15 +627,26 @@ add_action('admin_head-edit.php', function (): void {
                             if (!match) return;
 
                             const postColumns = columnMap[match[1]];
-                            if (!postColumns) return;
+                            const postLinks = linkMap[match[1]];
+                            if (!postColumns && !postLinks) return;
 
                             Array.from(row.children).forEach((cell, index) => {
                                 if (!(cell instanceof HTMLElement)) return;
 
-                                const matchedKey = (columnKeysByIndex[index] || []).find((key) => key && postColumns[key]);
-                                if (!matchedKey) return;
+                                const matchedKey = postColumns
+                                    ? (columnKeysByIndex[index] || []).find((key) => key && postColumns[key])
+                                    : '';
+                                if (matchedKey) {
+                                    cell.innerHTML = postColumns[matchedKey] || '&mdash;';
+                                    return;
+                                }
 
-                                cell.innerHTML = postColumns[matchedKey] || '&mdash;';
+                                if (!postLinks) return;
+
+                                const linkKey = (columnKeysByIndex[index] || []).find((key) => key && postLinks[key]);
+                                if (!linkKey) return;
+
+                                cell.innerHTML = postLinks[linkKey] || '&mdash;';
                             });
                         });
                     });
@@ -664,10 +700,10 @@ add_action('admin_head-edit.php', function (): void {
             $date_map[(int) $post->ID][$column_key] = $date_value;
         }
 
-        if ($event_link_column_keys !== []) {
-            $link_html = meza_get_event_link_admin_column_html((int) $post->ID);
+        if ($link_column_keys !== []) {
+            $link_html = meza_get_post_type_link_admin_column_html((int) $post->ID);
             if ($link_html !== '') {
-                foreach ($event_link_column_keys as $column_key) {
+                foreach ($link_column_keys as $column_key) {
                     $column_key = trim((string) $column_key);
                     if ($column_key === '') {
                         continue;
