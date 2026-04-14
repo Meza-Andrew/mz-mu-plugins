@@ -2718,12 +2718,69 @@ function meza_admin_column_raw_value_is_link_like($value): bool
     return meza_get_admin_link_column_parts($value) !== [];
 }
 
+function meza_get_event_link_admin_column_html(int $post_id): string
+{
+    $post_id = (int) $post_id;
+    if ($post_id <= 0 || !meza_is_event_post_type(get_post_type($post_id))) {
+        return '';
+    }
+
+    $raw_value = function_exists('get_field') ? get_field('link', $post_id) : null;
+    if ($raw_value === null || $raw_value === '') {
+        $raw_value = get_post_meta($post_id, 'link', true);
+    }
+
+    $link_parts = meza_get_admin_link_column_parts($raw_value);
+    if ($link_parts === []) {
+        return '';
+    }
+
+    $url = trim((string) ($link_parts['url'] ?? ''));
+    if ($url === '') {
+        return '';
+    }
+
+    $label = trim((string) ($link_parts['title'] ?? ''));
+    if ($label === '') {
+        $label = meza_get_admin_link_column_display_text($url);
+    }
+
+    $target = trim((string) ($link_parts['target'] ?? ''));
+    $target = in_array($target, ['_blank', '_self', '_parent', '_top'], true) ? $target : '_blank';
+    $rel = ($target === '_blank') ? ' rel="noopener noreferrer"' : '';
+
+    return '<a href="' . esc_url($url) . '" target="' . esc_attr($target) . '"' . $rel . '>' . esc_html($label) . '</a>';
+}
+
 function meza_is_empty_admin_column_display_value($value): bool
 {
     $normalized = html_entity_decode(wp_strip_all_tags((string) $value), ENT_QUOTES, 'UTF-8');
     $normalized = trim(preg_replace('/\s+/', ' ', $normalized) ?? $normalized);
 
     return $normalized === '' || in_array($normalized, ['-', '–', '—'], true);
+}
+
+function meza_get_link_admin_column_keys(array $columns): array
+{
+    if (!is_array($columns) || $columns === []) {
+        return [];
+    }
+
+    $matched = [];
+
+    foreach ($columns as $key => $label) {
+        $normalized_key = meza_normalize_admin_column_token((string) $key);
+        $normalized_label = meza_normalize_admin_column_token((string) $label);
+
+        if (
+            ($normalized_key !== '' && str_contains($normalized_key, 'link'))
+            || ($normalized_label !== '' && str_contains($normalized_label, 'link'))
+        ) {
+            $matched[] = (string) $key;
+        }
+    }
+
+    return array_values(array_unique(array_filter(array_map('strval', $matched))));
 }
 
 function meza_admin_column_should_render_event_date($column, int $id, $value): bool
@@ -7055,6 +7112,93 @@ add_action('admin_head', function (): void {
 
             const sync = () => {
                 document.querySelectorAll('table.wp-list-table').forEach(syncTable);
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', sync, { once: true });
+            } else {
+                sync();
+            }
+
+            const observer = new MutationObserver(sync);
+            observer.observe(document.documentElement, {
+                childList: true,
+                subtree: true,
+            });
+        })();
+    </script>
+<?php
+});
+
+add_action('admin_head', function (): void {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || (string) ($screen->base ?? '') !== 'edit') {
+        return;
+    }
+?>
+    <script id="meza-admin-post-link-line-breaks">
+        (() => {
+            const editPostPattern = /(?:^|\/)post\.php\?(?=[^#]*\bpost=\d+\b)(?=[^#]*\baction=edit\b)/i;
+            const ignoreSelector = '.row-actions, .ac-show-more__toggle, .ac-show-more__divider';
+
+            const isEditPostLink = (node) => (
+                node instanceof HTMLAnchorElement
+                && editPostPattern.test(String(node.getAttribute('href') || ''))
+                && !node.closest(ignoreSelector)
+            );
+
+            const hasOnlySeparators = (value) => /^[\s,\u00a0]+$/.test(String(value || ''));
+
+            const shouldFormatContainer = (container) => {
+                if (!(container instanceof HTMLElement)) return false;
+
+                const links = Array.from(container.querySelectorAll('a')).filter(isEditPostLink);
+                return links.length >= 2;
+            };
+
+            const formatContainer = (container) => {
+                if (!(container instanceof HTMLElement)) return;
+                if (container.dataset.mezaPostLinkLineBreaks === 'true') return;
+                if (!shouldFormatContainer(container)) return;
+
+                const walker = document.createTreeWalker(
+                    container,
+                    NodeFilter.SHOW_TEXT,
+                    {
+                        acceptNode(node) {
+                            if (!(node instanceof Text)) {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+
+                            const parent = node.parentElement;
+                            if (!parent || parent.closest(ignoreSelector)) {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+
+                            return hasOnlySeparators(node.textContent || '')
+                                ? NodeFilter.FILTER_ACCEPT
+                                : NodeFilter.FILTER_REJECT;
+                        },
+                    }
+                );
+
+                const separatorNodes = [];
+                while (walker.nextNode()) {
+                    separatorNodes.push(walker.currentNode);
+                }
+
+                separatorNodes.forEach((node) => {
+                    const lineBreak = document.createElement('br');
+                    node.parentNode?.replaceChild(lineBreak, node);
+                });
+
+                container.dataset.mezaPostLinkLineBreaks = 'true';
+            };
+
+            const sync = () => {
+                document.querySelectorAll(
+                    'table.wp-list-table td, table.wp-list-table .ac-show-more__content'
+                ).forEach(formatContainer);
             };
 
             if (document.readyState === 'loading') {

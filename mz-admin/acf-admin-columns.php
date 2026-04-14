@@ -508,6 +508,7 @@ add_action('admin_head-edit.php', function (): void {
     $current_columns = function_exists('get_column_headers') ? get_column_headers($screen) : [];
     $event_date_column_keys = is_array($current_columns) ? meza_get_event_date_admin_column_keys($current_columns) : ['start' => '', 'end' => ''];
     $event_runtime_date_keys = is_array($current_columns) ? meza_get_event_date_admin_column_runtime_keys($current_columns) : [];
+    $event_link_column_keys = is_array($current_columns) ? meza_get_link_admin_column_keys($current_columns) : [];
     $age_group_column_keys = is_array($current_columns) ? meza_get_age_group_admin_column_keys($current_columns) : [];
 
     $column_map = [];
@@ -628,6 +629,7 @@ add_action('admin_head-edit.php', function (): void {
     }
 
     $date_map = [];
+    $link_map = [];
 
     foreach ($posts as $post) {
         if (!($post instanceof WP_Post)) {
@@ -661,9 +663,23 @@ add_action('admin_head-edit.php', function (): void {
 
             $date_map[(int) $post->ID][$column_key] = $date_value;
         }
+
+        if ($event_link_column_keys !== []) {
+            $link_html = meza_get_event_link_admin_column_html((int) $post->ID);
+            if ($link_html !== '') {
+                foreach ($event_link_column_keys as $column_key) {
+                    $column_key = trim((string) $column_key);
+                    if ($column_key === '') {
+                        continue;
+                    }
+
+                    $link_map[(int) $post->ID][$column_key] = $link_html;
+                }
+            }
+        }
     }
 
-    if ($column_map === [] && $date_map === []) {
+    if ($column_map === [] && $date_map === [] && $link_map === []) {
         return;
     }
 ?>
@@ -671,6 +687,7 @@ add_action('admin_head-edit.php', function (): void {
         (() => {
             const columnMap = <?php echo wp_json_encode($column_map); ?> || {};
             const dateMap = <?php echo wp_json_encode($date_map); ?> || {};
+            const linkMap = <?php echo wp_json_encode($link_map); ?> || {};
             const eventDateColumnKeys = <?php echo wp_json_encode(array_values(array_filter(array_unique(array_map('strval', [
                 $event_date_column_keys['start'] ?? '',
                 'start-date',
@@ -737,6 +754,7 @@ add_action('admin_head-edit.php', function (): void {
 
                             const postColumns = columnMap[match[1]] || {};
                             const postDates = dateMap[match[1]];
+                            const postLinks = linkMap[match[1]];
 
                             Array.from(row.children).forEach((cell, index) => {
                                 if (!(cell instanceof HTMLElement)) return;
@@ -748,12 +766,20 @@ add_action('admin_head-edit.php', function (): void {
                                     return;
                                 }
 
-                                if (!postDates) return;
+                                const dateKey = postDates
+                                    ? keys.find((key) => key && postDates[key])
+                                    : '';
+                                if (dateKey) {
+                                    cell.innerHTML = postDates[dateKey] || '&mdash;';
+                                    return;
+                                }
 
-                                const dateKey = keys.find((key) => key && postDates[key]);
-                                if (!dateKey) return;
+                                if (!postLinks) return;
 
-                                cell.innerHTML = postDates[dateKey] || '&mdash;';
+                                const linkKey = keys.find((key) => key && postLinks[key]);
+                                if (!linkKey) return;
+
+                                cell.innerHTML = postLinks[linkKey] || '&mdash;';
                             });
                         });
                     });
