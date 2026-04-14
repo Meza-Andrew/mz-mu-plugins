@@ -957,6 +957,12 @@ add_action('admin_head', function (): void {
         ? esc_url(admin_url('admin.php?page=wpseo_page_settings#/site-representation'))
         : esc_url(admin_url('admin.php?page=wpseo_page_settings'));
 ?>
+    <style id="meza-yoast-dashboard-submenu-hide">
+        #toplevel_page_wpseo_dashboard .wp-submenu a[href="admin.php?page=wpseo_dashboard"],
+        #toplevel_page_wpseo_dashboard .wp-submenu a[href$="page=wpseo_dashboard"] {
+            display: none !important;
+        }
+    </style>
     <script id="meza-yoast-settings-submenu-link">
         (() => {
             const targetHref = <?php echo wp_json_encode($target_url); ?>;

@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.448
+ * Version: 1.1.449
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -2433,11 +2433,6 @@ add_action('admin_head', function (): void {
     );
 ?>
     <style id="meza-yoast-promo-cleanup">
-        #toplevel_page_wpseo_dashboard .wp-submenu a[href="admin.php?page=wpseo_dashboard"],
-        #toplevel_page_wpseo_dashboard .wp-submenu a[href$="page=wpseo_dashboard"] {
-            display: none !important;
-        }
-
         .yoast_premium_upsell,
         #sidebar-container,
         #yoast-helpscout-beacon,
