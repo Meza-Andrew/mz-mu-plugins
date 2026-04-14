@@ -1132,6 +1132,10 @@ function meza_is_restricted_settings_tools_submenu_item(string $parent_slug, arr
         return !meza_is_site_manager_allowed_settings_submenu_item($item);
     }
 
+    if (meza_is_site_manager_user(wp_get_current_user()) && meza_is_backups_menu_item($parent_slug, $item)) {
+        return true;
+    }
+
     if (meza_is_default_wordpress_submenu_item($parent_slug, $item)) {
         return false;
     }
@@ -1153,6 +1157,10 @@ function meza_should_grant_site_manager_utility_submenu_access(string $parent_sl
 
     if (strtolower($parent_slug) === 'options-general.php') {
         return meza_is_site_manager_allowed_settings_submenu_item($item);
+    }
+
+    if (meza_is_backups_menu_item($parent_slug, $item)) {
+        return false;
     }
 
     if (meza_is_admin_only_media_performance_item($parent_slug, $item)) {
@@ -7467,6 +7475,17 @@ function meza_is_settings_utility_menu_item($item): bool
     return $is_acf || $is_mail || $is_security || $is_backups;
 }
 
+function meza_is_backups_menu_item(string $parent_slug, array $item): bool
+{
+    $parent_slug = strtolower($parent_slug);
+    $slug = strtolower((string) ($item[2] ?? ''));
+    $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+    return str_contains($parent_slug, 'updraft')
+        || str_contains($slug, 'updraft')
+        || in_array($label, ['backups', 'updraft', 'updraftplus'], true);
+}
+
 function meza_remove_site_manager_restricted_top_level_menus(): void
 {
     if (!meza_is_site_manager_user(wp_get_current_user())) {
@@ -7485,8 +7504,9 @@ function meza_remove_site_manager_restricted_top_level_menus(): void
             $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
             $is_acf = $slug === 'edit.php?post_type=acf-field-group' || $label === 'acf';
             $is_mail = str_contains($slug, 'wp-mail-smtp') || $label === 'mail';
+            $is_backups = str_contains($slug, 'updraft') || in_array($label, ['backups', 'updraft', 'updraftplus'], true);
 
-            return !$is_acf && !$is_mail;
+            return !$is_acf && !$is_mail && !$is_backups;
         }));
     }
 
@@ -7495,6 +7515,12 @@ function meza_remove_site_manager_restricted_top_level_menus(): void
     }
 
     unset($submenu['edit.php?post_type=acf-field-group'], $submenu['wp-mail-smtp']);
+
+    foreach (array_keys($submenu) as $parent_slug) {
+        if (str_contains(strtolower((string) $parent_slug), 'updraft')) {
+            unset($submenu[$parent_slug]);
+        }
+    }
 }
 
 function meza_enforce_site_manager_settings_submenu(): void
