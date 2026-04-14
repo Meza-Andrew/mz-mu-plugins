@@ -5705,17 +5705,22 @@ add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
     if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php') return;
 
-    $orderby = (string) $q->get('orderby');
+    $orderby = $q->get('orderby');
+    if (!is_scalar($orderby)) return;
+    $orderby = trim((string) $orderby);
     if (!str_starts_with($orderby, 'mz_tax_')) return;
 
     $taxonomy = substr($orderby, 7);
     if (!is_string($taxonomy) || $taxonomy === '') return;
     if (!taxonomy_exists($taxonomy)) return;
 
-    $post_type = (string) $q->get('post_type');
+    $post_type = $q->get('post_type');
+    if (!is_scalar($post_type)) return;
+    $post_type = trim((string) $post_type);
     if ($post_type === '' || !is_object_in_taxonomy($post_type, $taxonomy)) return;
 
-    $order = strtoupper((string) $q->get('order'));
+    $order = $q->get('order');
+    $order = is_scalar($order) ? strtoupper(trim((string) $order)) : '';
     $q->set('order', in_array($order, ['ASC', 'DESC'], true) ? $order : 'ASC');
     $q->set('meza_tax_sort', $taxonomy);
 });

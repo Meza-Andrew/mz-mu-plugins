@@ -4961,6 +4961,10 @@ if (!function_exists('meza_get_shared_settings_browser_title')) {
     {
         $page_slug = sanitize_key($page_slug);
 
+        if ($page_slug === 'business-information' && function_exists('meza_get_business_information_page_title')) {
+            return meza_get_business_information_page_title();
+        }
+
         $title_map = [
             'business-information' => 'Business Information Settings',
             'branding' => 'Branding Settings',
@@ -7506,7 +7510,9 @@ function meza_enforce_site_manager_settings_submenu(): void
     }
 
     $allowed_settings_pages = [
-        'business-information' => 'Business Information',
+        'business-information' => function_exists('meza_get_business_information_menu_label')
+            ? meza_get_business_information_menu_label()
+            : 'Business Information',
         'branding' => 'Branding',
         'crm' => 'CRM Integration',
     ];

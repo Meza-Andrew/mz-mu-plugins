@@ -8,13 +8,41 @@ if (defined('WP_INSTALLING') && WP_INSTALLING) {
     return;
 }
 
+if (!function_exists('meza_get_business_information_type')) {
+    function meza_get_business_information_type(): string
+    {
+        $option_value = get_option('options_type');
+        $value = is_scalar($option_value) ? trim((string) $option_value) : '';
+
+        $value = sanitize_key($value);
+
+        return in_array($value, ['business', 'nonprofit'], true) ? $value : 'business';
+    }
+}
+
+if (!function_exists('meza_get_business_information_menu_label')) {
+    function meza_get_business_information_menu_label(): string
+    {
+        return meza_get_business_information_type() === 'nonprofit'
+            ? 'Nonprofit Information'
+            : 'Business Information';
+    }
+}
+
+if (!function_exists('meza_get_business_information_page_title')) {
+    function meza_get_business_information_page_title(): string
+    {
+        return meza_get_business_information_menu_label() . ' Settings';
+    }
+}
+
 if (!function_exists('meza_get_shared_project_acf_options_pages')) {
     function meza_get_shared_project_acf_options_pages(): array
     {
         $pages = [
             [
-                'page_title'      => 'Business Information Settings',
-                'menu_title'      => 'Business Information',
+                'page_title'      => meza_get_business_information_page_title(),
+                'menu_title'      => meza_get_business_information_menu_label(),
                 'menu_slug'       => 'business-information',
                 'parent_slug'     => 'options-general.php',
                 'capability'      => 'manage_options',
@@ -1088,8 +1116,8 @@ add_filter('acf/ui_options_page/registration_args', function (array $args, array
     }
 
     if ($menu_slug === 'business-information') {
-        $args['page_title'] = 'Business Information Settings';
-        $args['menu_title'] = 'Business Information';
+        $args['page_title'] = meza_get_business_information_page_title();
+        $args['menu_title'] = meza_get_business_information_menu_label();
 
         return $args;
     }
@@ -1120,8 +1148,8 @@ add_filter('acf/get_options_page', function ($page, $slug) {
         $page['page_title'] = 'Branding Settings';
         $page['menu_title'] = 'Branding';
     } elseif ($slug === 'business-information') {
-        $page['page_title'] = 'Business Information Settings';
-        $page['menu_title'] = 'Business Information';
+        $page['page_title'] = meza_get_business_information_page_title();
+        $page['menu_title'] = meza_get_business_information_menu_label();
         $page['menu_slug'] = 'business-information';
         $page['capability'] = 'manage_options';
     } elseif ($slug === 'crm') {
@@ -1151,8 +1179,8 @@ add_filter('acf/get_options_pages', function ($pages) {
 
         $page = $pages[$legacy_slug];
         $page['menu_slug'] = $current_slug;
-        $page['page_title'] = 'Business Information Settings';
-        $page['menu_title'] = 'Business Information';
+        $page['page_title'] = meza_get_business_information_page_title();
+        $page['menu_title'] = meza_get_business_information_menu_label();
         $page['capability'] = 'manage_options';
         $pages[$current_slug] = $page;
         unset($pages[$legacy_slug]);
@@ -1218,8 +1246,10 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
         $business_information_item = null;
         $branding_item = null;
         $crm_item = null;
+        $business_information_menu_label = meza_get_business_information_menu_label();
+        $business_information_page_title = meza_get_business_information_page_title();
         $expected_items = [
-            'business-information' => ['Business Information', 'manage_options', 'business-information', 'Business Information Settings'],
+            'business-information' => [$business_information_menu_label, 'manage_options', 'business-information', $business_information_page_title],
             'branding' => ['Branding', 'manage_options', 'branding', 'Branding Settings'],
             'crm' => ['CRM Integration', 'manage_options', 'crm', 'CRM Integration Settings'],
         ];
@@ -1242,10 +1272,10 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             $slug = (string) ($item[2] ?? '');
 
             if (in_array($slug, ['business-information', 'admin.php?page=business-information', 'options-general.php?page=business-information'], true)) {
-                $submenu['options-general.php'][$index][0] = 'Business Information';
+                $submenu['options-general.php'][$index][0] = $business_information_menu_label;
                 $submenu['options-general.php'][$index][2] = 'business-information';
                 if (isset($submenu['options-general.php'][$index][3])) {
-                    $submenu['options-general.php'][$index][3] = 'Business Information Settings';
+                    $submenu['options-general.php'][$index][3] = $business_information_page_title;
                 }
 
                 $business_information_item = $submenu['options-general.php'][$index];
