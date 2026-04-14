@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.463
+ * Version: 1.1.464
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -2187,6 +2187,81 @@ add_filter('submenu_file', function ($submenu_file) {
 
     return meza_get_site_kit_dashboard_menu_slug();
 }, PHP_INT_MAX - 1);
+
+if (!function_exists('meza_enforce_site_manager_site_kit_menu_state')) {
+    function meza_enforce_site_manager_site_kit_menu_state(): void
+    {
+        if (!is_admin() || !meza_is_site_manager_user(wp_get_current_user())) {
+            return;
+        }
+
+        global $menu, $submenu;
+
+        remove_submenu_page('googlesitekit-dashboard', 'googlesitekit-settings');
+        remove_submenu_page('admin.php?page=googlesitekit-dashboard', 'googlesitekit-settings');
+
+        if (is_array($submenu)) {
+            foreach (['googlesitekit-dashboard', 'admin.php?page=googlesitekit-dashboard'] as $parent_slug) {
+                if (!isset($submenu[$parent_slug]) || !is_array($submenu[$parent_slug])) {
+                    continue;
+                }
+
+                $submenu[$parent_slug] = array_values(array_filter($submenu[$parent_slug], static function ($item): bool {
+                    return is_array($item) && ((string) ($item[2] ?? '')) !== 'googlesitekit-settings';
+                }));
+            }
+        }
+
+        if (!is_array($menu)) {
+            return;
+        }
+
+        foreach ($menu as &$item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+            $is_site_kit = $slug === 'googlesitekit-dashboard'
+                || $slug === 'admin.php?page=googlesitekit-dashboard'
+                || $title === 'web analytics';
+
+            if (!$is_site_kit) {
+                continue;
+            }
+
+            $item[6] = 'dashicons-chart-area';
+        }
+        unset($item);
+    }
+}
+
+add_action('admin_menu', function (): void {
+    meza_enforce_site_manager_site_kit_menu_state();
+}, PHP_INT_MAX);
+
+add_action('current_screen', function (): void {
+    meza_enforce_site_manager_site_kit_menu_state();
+}, 1000);
+
+add_action('adminmenu', function (): void {
+    meza_enforce_site_manager_site_kit_menu_state();
+}, PHP_INT_MAX);
+
+add_action('admin_init', function (): void {
+    if (!is_admin() || !meza_is_site_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash((string) $_GET['page'])) : '';
+    if ($page !== 'googlesitekit-settings') {
+        return;
+    }
+
+    wp_safe_redirect(admin_url('admin.php?page=googlesitekit-dashboard'));
+    exit;
+}, 20);
 
 add_filter('option_page_capability_updraft-options-group', function (): string {
     return meza_backup_manager_capability();

@@ -3348,6 +3348,10 @@ function meza_reorder_dashboard_utility_items(): void
 
     if (!is_array($menu) || empty($menu)) return;
 
+    // WordPress stores top-level menus with sparse position keys, but the regrouping
+    // logic below uses array_splice offsets. Reindex first so we remove the intended items.
+    $menu = array_values($menu);
+
     $user = wp_get_current_user();
     $hide_yoast_menu = meza_should_hide_yoast_admin_menu_for_user($user);
     $is_site_manager_user = $user instanceof WP_User
