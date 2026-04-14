@@ -21,6 +21,307 @@ if (!mz_plugin_compat_enabled()) {
     return;
 }
 
+if (!function_exists('mz_plugin_compat_toolset_value_is_enabled')) {
+    function mz_plugin_compat_toolset_value_is_enabled($value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return ((int) $value) !== 0;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return !in_array($normalized, ['0', 'false', 'no', 'off'], true);
+    }
+}
+
+if (!function_exists('mz_plugin_compat_toolset_expand_label_template')) {
+    function mz_plugin_compat_toolset_expand_label_template(string $key, string $label, string $singular, string $plural): string
+    {
+        if (!str_contains($label, '%s')) {
+            return $label;
+        }
+
+        $singular_keys = [
+            'singular_name',
+            'add_new_item',
+            'edit_item',
+            'new_item',
+            'view_item',
+            'parent_item',
+            'parent_item_colon',
+            'update_item',
+            'new_item_name',
+            'name_admin_bar',
+            'enter_title_here',
+        ];
+
+        $replacement = in_array($key, $singular_keys, true) ? $singular : $plural;
+
+        return sprintf($label, $replacement);
+    }
+}
+
+if (!function_exists('mz_plugin_compat_toolset_build_labels')) {
+    function mz_plugin_compat_toolset_build_labels(array $labels): array
+    {
+        $singular = trim((string) ($labels['singular_name'] ?? ''));
+        $plural = trim((string) ($labels['name'] ?? $singular));
+
+        if ($singular === '') {
+            $singular = $plural;
+        }
+
+        $resolved = [];
+
+        foreach ($labels as $key => $value) {
+            if (!is_string($key) || !is_scalar($value)) {
+                continue;
+            }
+
+            $resolved[$key] = mz_plugin_compat_toolset_expand_label_template(
+                $key,
+                (string) $value,
+                $singular,
+                $plural
+            );
+        }
+
+        return $resolved;
+    }
+}
+
+if (!function_exists('mz_plugin_compat_toolset_normalize_menu_icon')) {
+    function mz_plugin_compat_toolset_normalize_menu_icon(string $icon): string
+    {
+        $icon = trim($icon);
+        if ($icon === '') {
+            return '';
+        }
+
+        if (
+            str_starts_with($icon, 'dashicons-')
+            || str_contains($icon, '/')
+            || str_contains($icon, '.')
+            || str_starts_with($icon, 'data:')
+        ) {
+            return $icon;
+        }
+
+        return 'dashicons-' . $icon;
+    }
+}
+
+if (!function_exists('mz_plugin_compat_toolset_build_rewrite_args')) {
+    function mz_plugin_compat_toolset_build_rewrite_args(array $rewrite_definition, string $default_slug): array|bool
+    {
+        if (!mz_plugin_compat_toolset_value_is_enabled($rewrite_definition['enabled'] ?? false)) {
+            return false;
+        }
+
+        $rewrite = [
+            'with_front' => mz_plugin_compat_toolset_value_is_enabled($rewrite_definition['with_front'] ?? true),
+            'hierarchical' => mz_plugin_compat_toolset_value_is_enabled($rewrite_definition['hierarchical'] ?? false),
+        ];
+
+        if (array_key_exists('feeds', $rewrite_definition)) {
+            $rewrite['feeds'] = mz_plugin_compat_toolset_value_is_enabled($rewrite_definition['feeds']);
+        }
+
+        if (array_key_exists('pages', $rewrite_definition)) {
+            $rewrite['pages'] = mz_plugin_compat_toolset_value_is_enabled($rewrite_definition['pages']);
+        }
+
+        $slug = trim((string) ($rewrite_definition['slug'] ?? ''));
+        if ($slug !== '') {
+            $rewrite['slug'] = $slug;
+        } elseif ($default_slug !== '') {
+            $rewrite['slug'] = $default_slug;
+        }
+
+        return $rewrite;
+    }
+}
+
+if (!function_exists('mz_plugin_compat_toolset_get_enabled_keys')) {
+    function mz_plugin_compat_toolset_get_enabled_keys($values): array
+    {
+        if (!is_array($values)) {
+            return [];
+        }
+
+        $enabled = [];
+
+        foreach ($values as $key => $value) {
+            $key = sanitize_key((string) $key);
+            if ($key === '' || !mz_plugin_compat_toolset_value_is_enabled($value)) {
+                continue;
+            }
+
+            $enabled[] = $key;
+        }
+
+        return array_values(array_unique($enabled));
+    }
+}
+
+if (!function_exists('mz_plugin_compat_get_toolset_taxonomy_args')) {
+    function mz_plugin_compat_get_toolset_taxonomy_args(string $taxonomy, array $definition): array
+    {
+        $labels = mz_plugin_compat_toolset_build_labels(
+            isset($definition['labels']) && is_array($definition['labels'])
+                ? $definition['labels']
+                : []
+        );
+
+        $query_var_enabled = mz_plugin_compat_toolset_value_is_enabled($definition['query_var_enabled'] ?? false);
+        $query_var_value = trim((string) ($definition['query_var'] ?? ''));
+
+        $args = [
+            'labels' => $labels,
+            'description' => (string) ($definition['description'] ?? ''),
+            'public' => mz_plugin_compat_toolset_value_is_enabled($definition['public'] ?? false),
+            'hierarchical' => mz_plugin_compat_toolset_value_is_enabled($definition['hierarchical'] ?? false),
+            'show_ui' => mz_plugin_compat_toolset_value_is_enabled($definition['show_ui'] ?? false),
+            'show_in_nav_menus' => mz_plugin_compat_toolset_value_is_enabled($definition['show_in_nav_menus'] ?? false),
+            'show_tagcloud' => mz_plugin_compat_toolset_value_is_enabled($definition['show_tagcloud'] ?? false),
+            'show_admin_column' => mz_plugin_compat_toolset_value_is_enabled($definition['show_admin_column'] ?? false),
+            'query_var' => $query_var_enabled ? ($query_var_value !== '' ? $query_var_value : true) : false,
+            'rewrite' => mz_plugin_compat_toolset_build_rewrite_args(
+                isset($definition['rewrite']) && is_array($definition['rewrite']) ? $definition['rewrite'] : [],
+                trim((string) ($definition['slug'] ?? $taxonomy))
+            ),
+        ];
+
+        $rest_base = trim((string) ($definition['rest_base'] ?? ''));
+        if ($rest_base !== '') {
+            $args['rest_base'] = $rest_base;
+        }
+
+        $meta_box_callback = trim((string) ($definition['meta_box_cb']['callback'] ?? ''));
+        if ($meta_box_callback !== '') {
+            $args['meta_box_cb'] = $meta_box_callback;
+        }
+
+        return $args;
+    }
+}
+
+if (!function_exists('mz_plugin_compat_get_toolset_post_type_args')) {
+    function mz_plugin_compat_get_toolset_post_type_args(string $post_type, array $definition): array
+    {
+        $labels = mz_plugin_compat_toolset_build_labels(
+            isset($definition['labels']) && is_array($definition['labels'])
+                ? $definition['labels']
+                : []
+        );
+
+        $show_in_menu_page = trim((string) ($definition['show_in_menu_page'] ?? ''));
+        $show_in_menu = mz_plugin_compat_toolset_value_is_enabled($definition['show_in_menu'] ?? false);
+
+        if ($show_in_menu_page !== '') {
+            $show_in_menu = $show_in_menu_page;
+        }
+
+        $has_archive_enabled = mz_plugin_compat_toolset_value_is_enabled($definition['has_archive'] ?? false);
+        $has_archive_slug = trim((string) ($definition['has_archive_slug'] ?? ''));
+
+        $query_var_enabled = mz_plugin_compat_toolset_value_is_enabled($definition['query_var_enabled'] ?? false);
+        $query_var_value = trim((string) ($definition['query_var'] ?? ''));
+
+        $args = [
+            'labels' => $labels,
+            'description' => (string) ($definition['description'] ?? ''),
+            'public' => mz_plugin_compat_toolset_value_is_enabled($definition['public'] ?? false),
+            'publicly_queryable' => mz_plugin_compat_toolset_value_is_enabled($definition['publicly_queryable'] ?? false),
+            'show_ui' => mz_plugin_compat_toolset_value_is_enabled($definition['show_ui'] ?? false),
+            'show_in_menu' => $show_in_menu,
+            'show_in_nav_menus' => mz_plugin_compat_toolset_value_is_enabled($definition['show_in_nav_menus'] ?? false),
+            'show_in_rest' => mz_plugin_compat_toolset_value_is_enabled($definition['show_in_rest'] ?? false),
+            'exclude_from_search' => mz_plugin_compat_toolset_value_is_enabled($definition['exclude_from_search'] ?? false),
+            'hierarchical' => mz_plugin_compat_toolset_value_is_enabled($definition['hierarchical'] ?? false),
+            'can_export' => mz_plugin_compat_toolset_value_is_enabled($definition['can_export'] ?? true),
+            'menu_icon' => mz_plugin_compat_toolset_normalize_menu_icon((string) ($definition['icon'] ?? '')),
+            'supports' => mz_plugin_compat_toolset_get_enabled_keys($definition['supports'] ?? []),
+            'taxonomies' => mz_plugin_compat_toolset_get_enabled_keys($definition['taxonomies'] ?? []),
+            'rewrite' => mz_plugin_compat_toolset_build_rewrite_args(
+                isset($definition['rewrite']) && is_array($definition['rewrite']) ? $definition['rewrite'] : [],
+                trim((string) ($definition['slug'] ?? $post_type))
+            ),
+            'has_archive' => $has_archive_slug !== '' ? $has_archive_slug : $has_archive_enabled,
+            'query_var' => $query_var_enabled ? ($query_var_value !== '' ? $query_var_value : true) : false,
+        ];
+
+        $rest_base = trim((string) ($definition['rest_base'] ?? ''));
+        if ($rest_base !== '') {
+            $args['rest_base'] = $rest_base;
+        }
+
+        return $args;
+    }
+}
+
+if (!function_exists('mz_plugin_compat_restore_toolset_content_types')) {
+    function mz_plugin_compat_restore_toolset_content_types(): void
+    {
+        $stored_taxonomies = get_option('wpcf-custom-taxonomies', []);
+        if (is_array($stored_taxonomies)) {
+            foreach ($stored_taxonomies as $taxonomy => $definition) {
+                $taxonomy = sanitize_key((string) $taxonomy);
+                if (
+                    $taxonomy === ''
+                    || taxonomy_exists($taxonomy)
+                    || !is_array($definition)
+                    || mz_plugin_compat_toolset_value_is_enabled($definition['disabled'] ?? false)
+                ) {
+                    continue;
+                }
+
+                $object_types = mz_plugin_compat_toolset_get_enabled_keys($definition['supports'] ?? []);
+                if ($object_types === []) {
+                    continue;
+                }
+
+                register_taxonomy(
+                    $taxonomy,
+                    $object_types,
+                    mz_plugin_compat_get_toolset_taxonomy_args($taxonomy, $definition)
+                );
+            }
+        }
+
+        $stored_post_types = get_option('wpcf-custom-types', []);
+        if (!is_array($stored_post_types)) {
+            return;
+        }
+
+        foreach ($stored_post_types as $post_type => $definition) {
+            $post_type = sanitize_key((string) $post_type);
+            if (
+                $post_type === ''
+                || post_type_exists($post_type)
+                || !is_array($definition)
+                || mz_plugin_compat_toolset_value_is_enabled($definition['disabled'] ?? false)
+            ) {
+                continue;
+            }
+
+            register_post_type(
+                $post_type,
+                mz_plugin_compat_get_toolset_post_type_args($post_type, $definition)
+            );
+        }
+    }
+}
+
+add_action('init', 'mz_plugin_compat_restore_toolset_content_types', 100);
+
 // Popup Maker can cache its bundled frontend assets into uploads, but this site
 // is currently returning 404s for those generated files. Force the plugin back
 // to its built-in asset URLs so popup markup does not render inline unstyled.

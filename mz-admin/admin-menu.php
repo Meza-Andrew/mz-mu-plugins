@@ -8671,10 +8671,6 @@ function meza_group_site_manager_appearance_and_fallback_menus(): void
         }
     }
 
-    if ($fallback_start === null && $appearance_end !== null) {
-        $fallback_start = $appearance_end + 1;
-    }
-
     if ($fallback_start !== null && $fallback_start > 0 && isset($menu[$fallback_start])) {
         $previous_item = $menu[$fallback_start - 1] ?? null;
         if (!$is_separator($previous_item)) {
