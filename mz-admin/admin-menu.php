@@ -8916,6 +8916,23 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_cleanup_menu_separators();
 }
 
+function meza_apply_missing_late_admin_menu_mutations(): void
+{
+    meza_remove_site_manager_restricted_top_level_menus();
+    meza_enforce_restricted_top_level_utility_menus();
+    meza_remove_media_performance_menu_for_site_managers();
+    meza_prune_empty_top_level_admin_menu_groups();
+    meza_restore_settings_utility_group_separator();
+    meza_restore_default_fallback_group_separator();
+    meza_enforce_site_manager_settings_submenu();
+    meza_reorder_site_manager_admin_preferences_group();
+    meza_group_site_manager_appearance_and_fallback_menus();
+    meza_cleanup_menu_separators();
+}
+
+// Apply the late role-specific cleanup pass during normal admin menu rendering too.
+add_action('admin_menu', 'meza_apply_missing_late_admin_menu_mutations', PHP_INT_MAX);
+
 function meza_get_admin_menu_editor_property(object $instance, string $property)
 {
     try {
