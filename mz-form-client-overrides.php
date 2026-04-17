@@ -143,7 +143,7 @@ add_filter('mzf_admin_field_display', static function ($display, string $field_k
         return $display;
     }
 
-    return $display . ' <small>(preferred)</small>';
+    return $display . ' (preferred)';
 }, 20, 4);
 
 add_filter('mzf_fields', static function (array $fields): array {
