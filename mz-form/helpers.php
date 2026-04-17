@@ -66,6 +66,9 @@ if (!function_exists('mz_build_user_email')) {
         if ($main_html === '') {
             $main_html = '<p>Thanks for reaching out — we’ll follow up shortly.</p>';
         }
+        $unlock_link_html = function_exists('mzf_user_email_unlock_link_html')
+            ? mzf_user_email_unlock_link_html($form_data)
+            : '';
 
         $salutation_html = $salutation !== ''
             ? '<p>' . wp_kses_post($salutation) . '<br>'
@@ -76,9 +79,86 @@ if (!function_exists('mz_build_user_email')) {
 
         $email = [
             'subject' => $subject,
-            'body' => $logo_html . $greeting_html . $main_html . $salutation_html . '<strong>' . esc_html($signature) . '</strong></p>' . $footer,
+            'body' => $logo_html . $greeting_html . $main_html . $unlock_link_html . $salutation_html . '<strong>' . esc_html($signature) . '</strong></p>' . $footer,
         ];
         return (array) apply_filters('mzf_user_email', $email, $form_data, $footer);
+    }
+}
+
+if (!function_exists('mzf_unlock_query_arg')) {
+    function mzf_unlock_query_arg(): string
+    {
+        return (string) apply_filters('mzf_unlock_query_arg', 'mzf_reveal');
+    }
+}
+
+if (!function_exists('mzf_submission_page_url')) {
+    function mzf_submission_page_url(array $form_data): string
+    {
+        $page_id = isset($form_data['PageId']) ? (int) $form_data['PageId'] : 0;
+        if ($page_id <= 0 || !function_exists('get_permalink')) {
+            return '';
+        }
+
+        $page_url = get_permalink($page_id);
+        return is_string($page_url) ? trim($page_url) : '';
+    }
+}
+
+if (!function_exists('mzf_submission_unlock_url')) {
+    function mzf_submission_unlock_url(array $form_data): string
+    {
+        $page_url = function_exists('mzf_submission_page_url')
+            ? mzf_submission_page_url($form_data)
+            : '';
+
+        if ($page_url === '') {
+            return '';
+        }
+
+        $slug = function_exists('mzf_get_form_slug')
+            ? mzf_get_form_slug($form_data)
+            : sanitize_key((string) ($form_data['FormSlug'] ?? ''));
+
+        if (!function_exists('mzf_slug_matches_family') || !mzf_slug_matches_family($slug, 'lead-gen')) {
+            return '';
+        }
+
+        return (string) add_query_arg(mzf_unlock_query_arg(), '1', $page_url);
+    }
+}
+
+if (!function_exists('mzf_user_email_unlock_link_html')) {
+    function mzf_user_email_unlock_link_html(array $form_data): string
+    {
+        $unlock_url = function_exists('mzf_submission_unlock_url')
+            ? mzf_submission_unlock_url($form_data)
+            : '';
+
+        if ($unlock_url === '') {
+            return '';
+        }
+
+        $slug = function_exists('mzf_get_form_slug')
+            ? mzf_get_form_slug($form_data)
+            : sanitize_key((string) ($form_data['FormSlug'] ?? ''));
+
+        $link_text = (string) apply_filters(
+            'mzf_user_email_unlock_link_text',
+            (function_exists('mzf_slug_matches_family') && mzf_slug_matches_family($slug, 'lead-gen'))
+                ? 'Access this page again'
+                : 'View this page',
+            $form_data,
+            $unlock_url
+        );
+        $intro_text = (string) apply_filters(
+            'mzf_user_email_unlock_link_intro',
+            'You can come back to this page any time using the link below.',
+            $form_data,
+            $unlock_url
+        );
+
+        return '<p>' . esc_html($intro_text) . '</p><p><a href="' . esc_url($unlock_url) . '">' . esc_html($link_text) . '</a></p>';
     }
 }
 
