@@ -100,8 +100,7 @@ add_filter('mzf_slug_registry', static function (array $registry): array {
             'FullName',
             'Email',
             'Phone',
-            'HivTestingRequestType',
-            'PreferredAppointmentTimeframe',
+            'Request',
             'Comments',
             'NewsletterSignup',
         ],
@@ -119,8 +118,7 @@ add_filter('mzf_slug_registry', static function (array $registry): array {
 add_filter('mzf_field_labels', static function (array $labels, array $data): array {
     $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
     if ($slug === 'hiv-testing') {
-        $labels['HivTestingRequestType'] = 'What Are You Looking For?';
-        $labels['PreferredAppointmentTimeframe'] = 'Preferred Appointment Timeframe';
+        $labels['Request'] = 'Request';
         $labels['Comments'] = 'Additional Details';
     }
     if ($slug === 'co-lender') {
@@ -215,6 +213,23 @@ add_filter('mzf_admin_request_heading', static function (string $heading, array 
 
 add_filter('mzf_normalized_data', static function (array $data, array $src): array {
     $slug = sanitize_key((string) ($data['FormSlug'] ?? $src['FormSlug'] ?? ''));
+    if ($slug === 'hiv-testing') {
+        $request_type = trim((string) ($data['HivTestingRequestType'] ?? $src['HivTestingRequestType'] ?? ''));
+        $appointment_timeframe = trim((string) ($data['PreferredAppointmentTimeframe'] ?? $src['PreferredAppointmentTimeframe'] ?? ''));
+
+        if ($request_type === 'Schedule an HIV test') {
+            if ($appointment_timeframe !== '') {
+                $data['Request'] = 'Schedule an HIV test ' . strtolower($appointment_timeframe);
+            } else {
+                $data['Request'] = 'Schedule an HIV test';
+            }
+        } elseif ($request_type !== '') {
+            $data['Request'] = $request_type;
+        }
+
+        return $data;
+    }
+
     if ($slug !== 'co-lender') {
         return $data;
     }
@@ -235,4 +250,18 @@ add_filter('mzf_normalized_data', static function (array $data, array $src): arr
     }
 
     return $data;
+}, 20, 2);
+
+add_filter('mzf_subject', static function (string $subject, array $data): string {
+    $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
+    if ($slug !== 'hiv-testing') {
+        return $subject;
+    }
+
+    $request_type = trim((string) ($data['HivTestingRequestType'] ?? ''));
+    if ($request_type === 'Schedule an HIV test') {
+        return 'New scheduling request for an HIV test';
+    }
+
+    return 'New questions about HIV testing';
 }, 20, 2);
