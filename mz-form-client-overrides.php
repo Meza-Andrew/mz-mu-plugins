@@ -93,6 +93,20 @@ add_filter('mzf_require_last_name', static function (bool $required, array $data
 }, 20, 2);
 
 add_filter('mzf_slug_registry', static function (array $registry): array {
+    $registry['hiv-testing'] = [
+        'subject' => 'New HIV testing request from {{name_company}}',
+        'required' => ['FirstName', 'PageId', 'FormSlug', 'PreferredContactMethod', 'HivTestingRequestType'],
+        'layout' => [
+            'FullName',
+            'Email',
+            'Phone',
+            'HivTestingRequestType',
+            'PreferredAppointmentTimeframe',
+            'Comments',
+            'NewsletterSignup',
+        ],
+    ];
+
     $registry['co-lender'] = [
         'subject' => 'New co-lender inquiry [{{site_domain}}]',
         'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
@@ -104,12 +118,79 @@ add_filter('mzf_slug_registry', static function (array $registry): array {
 
 add_filter('mzf_field_labels', static function (array $labels, array $data): array {
     $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
+    if ($slug === 'hiv-testing') {
+        $preferred_contact = trim((string) ($data['PreferredContactMethod'] ?? ''));
+        if ($preferred_contact === 'Email') {
+            $labels['Email'] = 'Email (Preferred)';
+        } elseif ($preferred_contact === 'Phone') {
+            $labels['Phone'] = 'Phone (Preferred)';
+        }
+        $labels['HivTestingRequestType'] = 'What Are You Looking For?';
+        $labels['PreferredAppointmentTimeframe'] = 'Preferred Appointment Timeframe';
+        $labels['Comments'] = 'Additional Details';
+    }
     if ($slug === 'co-lender') {
         $labels['Experience'] = 'Co-Lended Before';
         $labels['Comments'] = 'Comments';
     }
 
     return $labels;
+}, 20, 2);
+
+add_filter('mzf_fields', static function (array $fields): array {
+    $fields[] = 'PreferredContactMethod';
+    $fields[] = 'HivTestingRequestType';
+    $fields[] = 'PreferredAppointmentTimeframe';
+
+    return array_values(array_unique($fields));
+}, 20);
+
+add_filter('mzf_required_fields', static function (array $required_fields, array $data): array {
+    $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
+    if ($slug === 'hiv-testing') {
+        return ['FirstName', 'LastName', 'Email', 'Phone'];
+    }
+
+    return $required_fields;
+}, 20, 2);
+
+add_filter('mzf_validate_data', static function ($result, array $data) {
+    if (is_wp_error($result) || $result === false) {
+        return $result;
+    }
+
+    $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
+    if ($slug !== 'hiv-testing') {
+        return $result;
+    }
+
+    $preferred_contact = trim((string) ($data['PreferredContactMethod'] ?? ''));
+    $request_type = trim((string) ($data['HivTestingRequestType'] ?? ''));
+    $appointment_timeframe = trim((string) ($data['PreferredAppointmentTimeframe'] ?? ''));
+    $email = trim((string) ($data['Email'] ?? ''));
+    $phone = trim((string) ($data['Phone'] ?? ''));
+
+    if (!in_array($preferred_contact, ['Email', 'Phone'], true)) {
+        return new WP_Error('mz_hiv_testing_contact_method_invalid', 'Please select a preferred contact method.');
+    }
+
+    if (!in_array($request_type, ['Schedule an HIV test', 'Learn more about HIV testing', 'Ask a question'], true)) {
+        return new WP_Error('mz_hiv_testing_request_type_invalid', 'Please select what you are looking for.');
+    }
+
+    if ($preferred_contact === 'Email' && $email === '') {
+        return new WP_Error('mz_hiv_testing_email_missing', 'Please provide your email address.');
+    }
+
+    if ($preferred_contact === 'Phone' && $phone === '') {
+        return new WP_Error('mz_hiv_testing_phone_missing', 'Please provide your phone number.');
+    }
+
+    if ($request_type === 'Schedule an HIV test' && $appointment_timeframe === '') {
+        return new WP_Error('mz_hiv_testing_timeframe_missing', 'Please select your preferred appointment timeframe.');
+    }
+
+    return $result;
 }, 20, 2);
 
 add_filter('mzf_admin_request_heading', static function (string $heading, array $data): string {
