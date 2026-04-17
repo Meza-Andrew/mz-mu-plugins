@@ -119,12 +119,6 @@ add_filter('mzf_slug_registry', static function (array $registry): array {
 add_filter('mzf_field_labels', static function (array $labels, array $data): array {
     $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
     if ($slug === 'hiv-testing') {
-        $preferred_contact = trim((string) ($data['PreferredContactMethod'] ?? ''));
-        if ($preferred_contact === 'Email') {
-            $labels['Email'] = 'Email (Preferred)';
-        } elseif ($preferred_contact === 'Phone') {
-            $labels['Phone'] = 'Phone (Preferred)';
-        }
         $labels['HivTestingRequestType'] = 'What Are You Looking For?';
         $labels['PreferredAppointmentTimeframe'] = 'Preferred Appointment Timeframe';
         $labels['Comments'] = 'Additional Details';
@@ -136,6 +130,23 @@ add_filter('mzf_field_labels', static function (array $labels, array $data): arr
 
     return $labels;
 }, 20, 2);
+
+add_filter('mzf_admin_field_display', static function ($display, string $field_key, $raw, array $data) {
+    $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
+    if ($slug !== 'hiv-testing') {
+        return $display;
+    }
+
+    $preferred_contact = trim((string) ($data['PreferredContactMethod'] ?? ''));
+    $is_preferred_email = $field_key === 'Email' && $preferred_contact === 'Email';
+    $is_preferred_phone = $field_key === 'Phone' && $preferred_contact === 'Phone';
+
+    if (!$is_preferred_email && !$is_preferred_phone) {
+        return $display;
+    }
+
+    return $display . ' <small>(preferred)</small>';
+}, 20, 4);
 
 add_filter('mzf_fields', static function (array $fields): array {
     $fields[] = 'PreferredContactMethod';

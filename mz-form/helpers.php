@@ -1001,6 +1001,8 @@ if (!function_exists('mzf_render_admin_body')) {
                 }
             }
 
+            $display = apply_filters('mzf_admin_field_display', $display, (string) $field_key, $raw, $data, $context, $label);
+
             if ($slug === 'volunteer' && in_array((string) $field_key, ['PreferredName', 'Pronouns'], true)) {
                 continue;
             }
