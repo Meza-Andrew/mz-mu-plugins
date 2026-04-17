@@ -1753,9 +1753,114 @@ function meza_get_acp_column_collection_types($columns): array
     return $types;
 }
 
+function meza_should_show_taxonomy_admin_column_for_post_type(string $post_type, $taxonomy): bool
+{
+    $post_type = trim($post_type);
+    if ($post_type === '' || !($taxonomy instanceof WP_Taxonomy)) {
+        return false;
+    }
+
+    if (
+        empty($taxonomy->show_ui)
+        || empty($taxonomy->show_admin_column)
+        || !in_array($post_type, (array) $taxonomy->object_type, true)
+    ) {
+        return false;
+    }
+
+    return !(function_exists('meza_is_disabled_tag_taxonomy') && meza_is_disabled_tag_taxonomy((string) $taxonomy->name));
+}
+
+function meza_get_seeded_taxonomy_admin_columns_for_post_type(string $post_type): array
+{
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return [];
+    }
+
+    $taxonomies = get_object_taxonomies($post_type, 'objects');
+    if (!is_array($taxonomies) || $taxonomies === []) {
+        return [];
+    }
+
+    $seeded = [];
+
+    foreach ($taxonomies as $taxonomy_name => $taxonomy) {
+        $taxonomy_name = sanitize_key((string) $taxonomy_name);
+        if ($taxonomy_name === '' || !meza_should_show_taxonomy_admin_column_for_post_type($post_type, $taxonomy)) {
+            continue;
+        }
+
+        $preferred_keys = meza_get_taxonomy_admin_column_preferred_keys($post_type, $taxonomy_name);
+        $preferred_key = trim((string) ($preferred_keys[0] ?? ''));
+        if ($preferred_key === '') {
+            continue;
+        }
+
+        $label = trim(wp_strip_all_tags((string) ($taxonomy->labels->name ?? '')));
+        if ($label === '') {
+            $label = ucwords(str_replace(['-', '_'], ' ', $taxonomy_name));
+        }
+
+        $seeded[$preferred_key] = ['label' => $label];
+    }
+
+    return $seeded;
+}
+
+function meza_merge_seeded_taxonomy_admin_columns(array $defaults, string $post_type): array
+{
+    if ($defaults === []) {
+        return $defaults;
+    }
+
+    $taxonomy_defaults = meza_get_seeded_taxonomy_admin_columns_for_post_type($post_type);
+    if ($taxonomy_defaults === []) {
+        return $defaults;
+    }
+
+    $ordered = [];
+    $inserted_taxonomies = false;
+    $anchor_keys = [
+        'mz_page_headline',
+        'mz_page_cta',
+        'mz_page_form',
+        'wpseo-title',
+        'wpseo-metadesc',
+        'mz_thumbnail',
+        'mz_share_title',
+        'mz_share_description',
+        'mz_modified',
+        'mz_published',
+    ];
+
+    foreach ($defaults as $key => $config) {
+        if (!$inserted_taxonomies && in_array((string) $key, $anchor_keys, true)) {
+            foreach ($taxonomy_defaults as $taxonomy_key => $taxonomy_config) {
+                if (!isset($defaults[$taxonomy_key])) {
+                    $ordered[$taxonomy_key] = $taxonomy_config;
+                }
+            }
+            $inserted_taxonomies = true;
+        }
+
+        $ordered[$key] = $config;
+    }
+
+    if (!$inserted_taxonomies) {
+        foreach ($taxonomy_defaults as $taxonomy_key => $taxonomy_config) {
+            if (!isset($defaults[$taxonomy_key])) {
+                $ordered[$taxonomy_key] = $taxonomy_config;
+            }
+        }
+    }
+
+    return $ordered;
+}
+
 function meza_get_seeded_acp_default_admin_columns(): array
 {
-    return [
+    $defaults = [
         '_ac_columns_default_acf-post-type' => [
             'title' => ['label' => 'Title'],
             'acf-taxonomies' => ['label' => 'Taxonomies'],
@@ -1979,6 +2084,38 @@ function meza_get_seeded_acp_default_admin_columns(): array
             'last_login' => ['label' => 'Last Login'],
         ],
     ];
+
+    foreach (array_keys($defaults) as $option_name) {
+        if (!str_starts_with((string) $option_name, '_ac_columns_default_')) {
+            continue;
+        }
+
+        $list_key = substr((string) $option_name, strlen('_ac_columns_default_'));
+        if ($list_key === '' || !post_type_exists($list_key)) {
+            continue;
+        }
+
+        $defaults[$option_name] = meza_merge_seeded_taxonomy_admin_columns(
+            is_array($defaults[$option_name]) ? $defaults[$option_name] : [],
+            $list_key
+        );
+    }
+
+    foreach (get_taxonomies(['show_ui' => true], 'names') as $taxonomy_name) {
+        $taxonomy_name = sanitize_key((string) $taxonomy_name);
+        if ($taxonomy_name === '') {
+            continue;
+        }
+
+        $taxonomy_defaults = meza_get_seeded_admin_column_defaults_for_taxonomy($taxonomy_name);
+        if ($taxonomy_defaults === []) {
+            continue;
+        }
+
+        $defaults['_ac_columns_default_wp-taxonomy_' . $taxonomy_name] = $taxonomy_defaults;
+    }
+
+    return $defaults;
 }
 
 function meza_get_seeded_admin_column_defaults_for_list_key(string $list_key): array
@@ -1999,6 +2136,38 @@ function meza_get_seeded_admin_column_defaults_for_list_key(string $list_key): a
 function meza_get_seeded_admin_column_defaults_for_post_type(string $post_type): array
 {
     return meza_get_seeded_admin_column_defaults_for_list_key($post_type);
+}
+
+function meza_get_taxonomy_term_admin_column_count_key(string $taxonomy): string
+{
+    return sanitize_key($taxonomy) === 'link_category' ? 'links' : 'posts';
+}
+
+function meza_get_seeded_admin_column_defaults_for_taxonomy(string $taxonomy): array
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if ($taxonomy === '' || !taxonomy_exists($taxonomy)) {
+        return [];
+    }
+
+    $taxonomy_object = get_taxonomy($taxonomy);
+    if (!($taxonomy_object instanceof WP_Taxonomy) || empty($taxonomy_object->show_ui)) {
+        return [];
+    }
+
+    $count_key = meza_get_taxonomy_term_admin_column_count_key($taxonomy);
+    $count_label = $count_key === 'links'
+        ? __('Links')
+        : _x('Count', 'Number/count of items');
+
+    return [
+        'name' => ['label' => _x('Name', 'term name')],
+        'slug' => ['label' => __('Slug')],
+        'wpseo-title' => ['label' => __('Meta Title')],
+        'wpseo-metadesc' => ['label' => __('Meta Description')],
+        'description' => ['label' => __('Description')],
+        $count_key => ['label' => $count_label],
+    ];
 }
 
 function meza_get_seeded_admin_column_alias_candidates(string $key): array
@@ -2206,9 +2375,33 @@ function meza_get_default_visible_taxonomy_admin_column_keys(string $post_type):
     return array_values(array_unique(array_filter(array_map('strval', $visible_keys))));
 }
 
+function meza_get_default_visible_taxonomy_term_admin_column_keys(string $taxonomy): array
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if ($taxonomy === '') {
+        return [];
+    }
+
+    $seeded_columns = meza_get_seeded_admin_column_defaults_for_list_key('wp-taxonomy_' . $taxonomy);
+    if ($seeded_columns === []) {
+        return [];
+    }
+
+    $visible_keys = [];
+
+    foreach (array_keys($seeded_columns) as $seeded_key) {
+        $visible_keys = array_merge(
+            $visible_keys,
+            meza_get_seeded_admin_column_alias_candidates((string) $seeded_key)
+        );
+    }
+
+    return array_values(array_unique(array_filter(array_map('strval', $visible_keys))));
+}
+
 function meza_sync_seeded_acp_default_admin_columns(): void
 {
-    $target_version = '1.1.260';
+    $target_version = '1.1.262';
     if ((string) get_option('meza_acp_seeded_default_admin_columns_migration') === $target_version) {
         return;
     }
@@ -2500,6 +2693,280 @@ function meza_repair_review_acp_list_screen(): void
 }
 
 add_action('admin_init', 'meza_repair_review_acp_list_screen', 1003);
+
+function meza_build_repaired_taxonomy_acp_column_collection($columns, string $post_type, string $table_id = ''): ?AC\ColumnCollection
+{
+    if (!($columns instanceof AC\ColumnIterator) || !class_exists('AC\\ColumnCollection')) {
+        return null;
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return null;
+    }
+
+    $existing_ids = meza_get_acp_column_collection_ids($columns);
+    if ($existing_ids === []) {
+        return null;
+    }
+
+    $expected_taxonomy_columns = meza_get_seeded_taxonomy_admin_columns_for_post_type($post_type);
+    if ($expected_taxonomy_columns === []) {
+        return null;
+    }
+
+    $repaired_columns = new AC\ColumnCollection();
+    $did_add_columns = false;
+
+    foreach ($columns as $column) {
+        if (!is_object($column) || !method_exists($column, 'get_id')) {
+            continue;
+        }
+
+        $repaired_columns->add($column);
+    }
+
+    foreach ($expected_taxonomy_columns as $column_id => $column_config) {
+        $column_id = trim((string) $column_id);
+        if ($column_id === '' || in_array($column_id, $existing_ids, true)) {
+            continue;
+        }
+
+        $column = meza_create_seeded_acp_base_column($column_id, (string) ($column_config['label'] ?? $column_id));
+        if (!($column instanceof AC\Column\Base)) {
+            continue;
+        }
+
+        $repaired_columns->add($column);
+        $did_add_columns = true;
+    }
+
+    if (!$did_add_columns) {
+        return null;
+    }
+
+    return meza_build_reordered_acp_column_collection($repaired_columns, $post_type, $table_id) ?: $repaired_columns;
+}
+
+function meza_repair_taxonomy_acp_list_screens(): void
+{
+    if (
+        !class_exists('AC\\Registry')
+        || !class_exists('AC\\ColumnCollection')
+        || !class_exists('AC\\ColumnIterator')
+        || !class_exists('AC\\ListScreenRepository\\Storage')
+    ) {
+        return;
+    }
+
+    $target_version = '1.1.263';
+    if ((string) get_option('meza_acp_taxonomy_list_screen_repair_migration') === $target_version) {
+        return;
+    }
+
+    $storage = AC\Registry::get(AC\ListScreenRepository\Storage::class);
+    if (!($storage instanceof AC\ListScreenRepository\Storage)) {
+        return;
+    }
+
+    foreach ($storage->find_all() as $list_screen) {
+        if (
+            !is_object($list_screen)
+            || !method_exists($list_screen, 'get_columns')
+            || !method_exists($list_screen, 'get_post_type')
+        ) {
+            continue;
+        }
+
+        $post_type = trim((string) $list_screen->get_post_type());
+        if ($post_type === '' || !post_type_exists($post_type)) {
+            continue;
+        }
+
+        $table_id = method_exists($list_screen, 'get_table_id')
+            ? trim((string) $list_screen->get_table_id())
+            : '';
+
+        $existing_columns = $list_screen->get_columns();
+        $repaired_columns = meza_build_repaired_taxonomy_acp_column_collection($existing_columns, $post_type, $table_id);
+        if (!($repaired_columns instanceof AC\ColumnCollection)) {
+            continue;
+        }
+
+        if (meza_get_acp_column_collection_ids($existing_columns) === meza_get_acp_column_collection_ids($repaired_columns)) {
+            continue;
+        }
+
+        $list_screen->set_columns($repaired_columns);
+        $storage->save($list_screen);
+    }
+
+    update_option('meza_acp_taxonomy_list_screen_repair_migration', $target_version, false);
+}
+
+add_action('admin_init', 'meza_repair_taxonomy_acp_list_screens', 1004);
+
+function meza_build_seeded_acp_database_column_config(string $column_id, string $label): array
+{
+    return [
+        'name' => $column_id,
+        'label' => $label,
+        'width_unit' => '%',
+        'width' => '',
+        'type' => $column_id,
+    ];
+}
+
+function meza_reorder_seeded_acp_database_columns(array $columns, string $post_type): array
+{
+    $post_type = trim($post_type);
+    if ($post_type === '' || $columns === []) {
+        return $columns;
+    }
+
+    $labels = [];
+    $column_map = [];
+
+    foreach ($columns as $column) {
+        if (!is_array($column)) {
+            continue;
+        }
+
+        $column_id = trim((string) ($column['name'] ?? $column['type'] ?? ''));
+        if ($column_id === '') {
+            continue;
+        }
+
+        $labels[$column_id] = (string) ($column['label'] ?? $column_id);
+        $column_map[$column_id] = $column;
+    }
+
+    if ($column_map === []) {
+        return $columns;
+    }
+
+    $ordered = [];
+    $used = [];
+    $desired = meza_apply_seeded_admin_column_order($labels, $post_type, true);
+
+    foreach (array_keys($desired) as $column_id) {
+        $column_id = (string) $column_id;
+        if ($column_id === '' || !isset($column_map[$column_id]) || isset($used[$column_id])) {
+            continue;
+        }
+
+        $ordered[] = $column_map[$column_id];
+        $used[$column_id] = true;
+    }
+
+    foreach ($column_map as $column_id => $column) {
+        if (isset($used[$column_id])) {
+            continue;
+        }
+
+        $ordered[] = $column;
+    }
+
+    return $ordered;
+}
+
+function meza_repair_taxonomy_acp_database_rows(): void
+{
+    global $wpdb;
+
+    if (!($wpdb instanceof wpdb)) {
+        return;
+    }
+
+    $target_version = '1.1.264';
+    if ((string) get_option('meza_acp_taxonomy_database_row_repair_migration') === $target_version) {
+        return;
+    }
+
+    $table = $wpdb->prefix . 'admin_columns';
+    $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+    if ($table_exists !== $table) {
+        return;
+    }
+
+    $rows = $wpdb->get_results("SELECT list_id, list_key, columns FROM {$table}");
+    if (!is_array($rows) || $rows === []) {
+        update_option('meza_acp_taxonomy_database_row_repair_migration', $target_version, false);
+        return;
+    }
+
+    foreach ($rows as $row) {
+        $post_type = trim((string) ($row->list_key ?? ''));
+        if ($post_type === '' || !post_type_exists($post_type)) {
+            continue;
+        }
+
+        $expected_taxonomy_columns = meza_get_seeded_taxonomy_admin_columns_for_post_type($post_type);
+        if ($expected_taxonomy_columns === []) {
+            continue;
+        }
+
+        $columns = maybe_unserialize($row->columns ?? null);
+        if (!is_array($columns) || $columns === []) {
+            continue;
+        }
+
+        $existing_names = [];
+        foreach ($columns as $column) {
+            if (!is_array($column)) {
+                continue;
+            }
+
+            $column_name = trim((string) ($column['name'] ?? $column['type'] ?? ''));
+            if ($column_name !== '') {
+                $existing_names[$column_name] = true;
+            }
+        }
+
+        $did_add_columns = false;
+
+        foreach ($expected_taxonomy_columns as $column_id => $column_config) {
+            $column_id = trim((string) $column_id);
+            if ($column_id === '' || isset($existing_names[$column_id])) {
+                continue;
+            }
+
+            $columns[] = meza_build_seeded_acp_database_column_config(
+                $column_id,
+                (string) ($column_config['label'] ?? $column_id)
+            );
+            $did_add_columns = true;
+        }
+
+        if (!$did_add_columns) {
+            continue;
+        }
+
+        $columns = meza_reorder_seeded_acp_database_columns($columns, $post_type);
+
+        $wpdb->update(
+            $table,
+            [
+                'columns' => serialize($columns),
+                'date_modified' => current_time('mysql'),
+            ],
+            [
+                'list_id' => (string) ($row->list_id ?? ''),
+            ],
+            [
+                '%s',
+                '%s',
+            ],
+            [
+                '%s',
+            ]
+        );
+    }
+
+    update_option('meza_acp_taxonomy_database_row_repair_migration', $target_version, false);
+}
+
+add_action('admin_init', 'meza_repair_taxonomy_acp_database_rows', 1005);
 
 function meza_run_acp_default_admin_column_order_migration(): void
 {
@@ -5894,6 +6361,31 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     return array_values(array_diff($hidden, array_values(array_unique(array_filter(array_map('strval', $visible_keys))))));
 }, 1200, 3);
 
+add_filter('default_hidden_columns', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit-tags') return $hidden;
+
+    $taxonomy = sanitize_key((string) ($screen->taxonomy ?? ''));
+    if ($taxonomy === '') return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+    $visible_keys = meza_get_default_visible_taxonomy_term_admin_column_keys($taxonomy);
+
+    return array_values(array_diff($hidden, $visible_keys));
+}, 1200, 2);
+
+add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit-tags') return $hidden;
+    if (!$use_defaults) return $hidden;
+
+    $taxonomy = sanitize_key((string) ($screen->taxonomy ?? ''));
+    if ($taxonomy === '') return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+    $visible_keys = meza_get_default_visible_taxonomy_term_admin_column_keys($taxonomy);
+
+    return array_values(array_diff($hidden, $visible_keys));
+}, 1200, 3);
+
 add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
     if (!$use_defaults) return $hidden;
@@ -7043,14 +7535,22 @@ add_action('current_screen', function ($screen) {
     $taxonomy = (string) ($screen->taxonomy ?? '');
     if ($taxonomy === '') return;
 
-    add_filter("manage_edit-{$taxonomy}_columns", function ($cols) {
+    add_filter("manage_edit-{$taxonomy}_columns", function ($cols) use ($taxonomy) {
         if (!is_array($cols)) return $cols;
 
         foreach (['wpseo-score', 'wpseo-score-readability'] as $column_id) {
             if (array_key_exists($column_id, $cols)) unset($cols[$column_id]);
         }
 
-        return $cols;
+        if (array_key_exists('wpseo-title', $cols)) {
+            $cols['wpseo-title'] = __('Meta Title');
+        }
+
+        if (array_key_exists('wpseo-metadesc', $cols)) {
+            $cols['wpseo-metadesc'] = __('Meta Description');
+        }
+
+        return meza_apply_seeded_admin_column_order($cols, 'wp-taxonomy_' . sanitize_key($taxonomy));
     }, 9999);
 });
 
