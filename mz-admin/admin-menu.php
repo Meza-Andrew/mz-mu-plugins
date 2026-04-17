@@ -1546,6 +1546,22 @@ add_filter('screen_options_show_per_page', function ($show, $option = null, $scr
     return $show;
 }, 10, 3);
 
+add_filter('screen_options_show_submit', function (bool $show, $screen): bool {
+    if ($show || !($screen instanceof WP_Screen)) {
+        return $show;
+    }
+
+    $screen_base = strtolower((string) ($screen->base ?? ''));
+
+    // These MZ Admin list screen customizations reduce or remove the core pagination
+    // controls, so keep an explicit Screen Options Apply button available.
+    if (in_array($screen_base, ['edit', 'plugins', 'users'], true)) {
+        return true;
+    }
+
+    return $show;
+}, 10, 2);
+
 add_filter('screen_settings', function (string $settings, WP_Screen $screen): string {
     if (strtolower((string) ($screen->id ?? '')) !== 'plugins' || trim($settings) === '') {
         return $settings;
