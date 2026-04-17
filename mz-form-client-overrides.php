@@ -218,7 +218,7 @@ add_filter('mzf_normalized_data', static function (array $data, array $src): arr
         $appointment_timeframe = trim((string) ($data['PreferredAppointmentTimeframe'] ?? $src['PreferredAppointmentTimeframe'] ?? ''));
 
         if ($request_type === 'Schedule an HIV test') {
-            if ($appointment_timeframe !== '') {
+            if ($appointment_timeframe !== '' && strcasecmp($appointment_timeframe, 'Flexible') !== 0) {
                 $data['Request'] = 'Schedule an HIV test ' . strtolower($appointment_timeframe);
             } else {
                 $data['Request'] = 'Schedule an HIV test';
