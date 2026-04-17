@@ -219,7 +219,34 @@ if (!function_exists('mzf_slug_profile')) {
             }
         }
 
+        foreach ($registry as $base_slug => $profile) {
+            $base_slug = sanitize_key((string) $base_slug);
+            if ($base_slug === '' || !is_array($profile)) {
+                continue;
+            }
+
+            if (function_exists('mzf_slug_matches_family') && mzf_slug_matches_family($slug, $base_slug)) {
+                return $profile;
+            }
+        }
+
         return [];
+    }
+}
+
+if (!function_exists('mzf_slug_matches_family')) {
+    function mzf_slug_matches_family(string $slug, string $family): bool
+    {
+        $slug = sanitize_key($slug);
+        $family = sanitize_key($family);
+
+        if ($slug === '' || $family === '') {
+            return false;
+        }
+
+        return $slug === $family
+            || str_starts_with($slug, $family . '-')
+            || str_ends_with($slug, '-' . $family);
     }
 }
 
