@@ -711,11 +711,15 @@ if (!function_exists('mzf_render_admin_body')) {
         }
         $contact_email_value = trim((string) $value_for('Email'));
         if ($contact_email_value !== '') {
-            $contact_rows[] = '<p><strong>' . esc_html($label_email) . ':</strong><br><a href="mailto:' . esc_attr($contact_email_value) . '">' . esc_html($contact_email_value) . '</a></p>';
+            $contact_email_display = '<a href="mailto:' . esc_attr($contact_email_value) . '">' . esc_html($contact_email_value) . '</a>';
+            $contact_email_display = apply_filters('mzf_admin_field_display', $contact_email_display, 'Email', $contact_email_value, $data, $context, $label_email);
+            $contact_rows[] = '<p><strong>' . esc_html($label_email) . ':</strong><br>' . $contact_email_display . '</p>';
         }
         $contact_phone_value = trim((string) $value_for('Phone'));
         if ($contact_phone_value !== '') {
-            $contact_rows[] = '<p><strong>' . esc_html($label_phone) . ':</strong><br><a href="tel:' . esc_attr(preg_replace('/[^0-9+]/', '', $contact_phone_value)) . '">' . esc_html($contact_phone_value) . '</a></p>';
+            $contact_phone_display = '<a href="tel:' . esc_attr(preg_replace('/[^0-9+]/', '', $contact_phone_value)) . '">' . esc_html($contact_phone_value) . '</a>';
+            $contact_phone_display = apply_filters('mzf_admin_field_display', $contact_phone_display, 'Phone', $contact_phone_value, $data, $context, $label_phone);
+            $contact_rows[] = '<p><strong>' . esc_html($label_phone) . ':</strong><br>' . $contact_phone_display . '</p>';
         }
         $newsletter_value = '';
         $deferred_comments = '';

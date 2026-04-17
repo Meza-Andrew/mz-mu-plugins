@@ -119,7 +119,7 @@ add_filter('mzf_field_labels', static function (array $labels, array $data): arr
     $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
     if ($slug === 'hiv-testing') {
         $labels['Request'] = 'Request';
-        $labels['Comments'] = 'Additional Details';
+        $labels['Comments'] = 'Comments';
     }
     if ($slug === 'co-lender') {
         $labels['Experience'] = 'Co-Lended Before';
