@@ -1795,7 +1795,7 @@ function meza_get_seeded_acp_default_admin_columns(): array
         ],
         '_ac_columns_default_form' => [
             'mz_id' => ['label' => 'ID'],
-            'title' => ['label' => 'Headline (H2)'],
+            'title' => ['label' => 'Name'],
             'mz_slug' => ['label' => 'Slug'],
             'mz_form_recipients' => ['label' => 'Recipients'],
             'mz_modified' => ['label' => 'Modified'],
@@ -4917,7 +4917,7 @@ function meza_normalize_admin_columns_managed_headings(array $columns, string $p
     $title_column_label = (
         (meza_post_type_is_profile_like($post_type) || meza_post_type_is_organization_like($post_type))
         ? __('Name')
-        : (in_array($post_type, ['cta', 'form'], true) ? __('Headline (H2)') : null)
+        : ($post_type === 'cta' ? __('Headline (H2)') : ($post_type === 'form' ? __('Name') : null))
     );
 
     foreach ($columns as $key => $label) {
@@ -5105,7 +5105,7 @@ function meza_normalize_datetime_columns(array $columns): array
     $title_column_label = (
         (meza_post_type_is_profile_like($post_type) || meza_post_type_is_organization_like($post_type))
         ? __('Name')
-        : (in_array($post_type, ['cta', 'form'], true) ? __('Headline (H2)') : null)
+        : ($post_type === 'cta' ? __('Headline (H2)') : ($post_type === 'form' ? __('Name') : null))
     );
 
     $has_modified = false;

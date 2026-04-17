@@ -165,7 +165,7 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-mz_cta_secondary_link{width:200px;}' .
             '.wp-list-table .column-website{width:200px;}' .
             '.wp-list-table .column-mz_faq_count{width:80px;}' .
-            '.wp-list-table .column-mz_form_recipients{width:150px;}' .
+            '.wp-list-table .column-mz_form_recipients{width:200px;}' .
             '.wp-list-table .column-mz_slug{width:175px;}' .
             '.wp-list-table .column-mz_organization_url{width:200px;}' .
             '.wp-list-table .column-mz_profile_link{width:200px;}' .
@@ -207,7 +207,7 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-mz_cta_secondary_link{width:200px;max-width:200px;}' .
             '.wp-list-table .column-website{width:200px;max-width:200px;}' .
             '.wp-list-table .column-mz_faq_count{width:80px;max-width:80px;}' .
-            '.wp-list-table .column-mz_form_recipients{width:150px;max-width:150px;}' .
+            '.wp-list-table .column-mz_form_recipients{width:200px;max-width:200px;}' .
             '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
             '.wp-list-table .column-mz_organization_url{width:200px;max-width:200px;}' .
             '.wp-list-table .column-mz_profile_link{width:200px;max-width:200px;}' .
@@ -257,7 +257,7 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table .column-mz_cta_secondary_link{width:200px;max-width:200px;}' .
         '.wp-list-table .column-website{width:200px;max-width:200px;}' .
         '.wp-list-table .column-mz_faq_count{width:80px;max-width:80px;}' .
-        '.wp-list-table .column-mz_form_recipients{width:150px;max-width:150px;}' .
+        '.wp-list-table .column-mz_form_recipients{width:200px;max-width:200px;}' .
         '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_organization_url{width:200px;max-width:200px;}' .
         '.wp-list-table .column-mz_profile_link{width:200px;max-width:200px;}' .
