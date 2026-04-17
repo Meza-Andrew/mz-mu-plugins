@@ -582,6 +582,11 @@ function meza_review_link_admin_column_is_default_visible(string $post_type): bo
     return false;
 }
 
+function meza_review_date_admin_column_is_default_visible(string $post_type): bool
+{
+    return false;
+}
+
 function meza_post_type_is_profile_like(string $post_type): bool
 {
     return in_array(trim($post_type), ['profile', 'team-member'], true);
@@ -1470,6 +1475,7 @@ function meza_move_custom_admin_columns_before_meta_columns(array $columns, stri
         'mz_cta_secondary_link',
         'mz_slug',
         'mz_form_recipients',
+        'mz_review_date',
         'mz_review_quote',
         'mz_review_citer',
         'mz_page_headline',
@@ -2031,7 +2037,7 @@ function meza_get_seeded_acp_default_admin_columns(): array
             'mz_id' => ['label' => 'ID'],
             'mz_menu_order' => ['label' => '#'],
             'title' => ['label' => 'Title'],
-            'date' => ['label' => 'Date'],
+            'mz_review_date' => ['label' => 'Review Date'],
             'mz_review_quote' => ['label' => 'Quote'],
             'mz_review_citer' => ['label' => 'Citer'],
             'mz_review_link' => ['label' => 'Link'],
@@ -2042,7 +2048,7 @@ function meza_get_seeded_acp_default_admin_columns(): array
             'mz_id' => ['label' => 'ID'],
             'mz_menu_order' => ['label' => '#'],
             'title' => ['label' => 'Title'],
-            'date' => ['label' => 'Date'],
+            'mz_review_date' => ['label' => 'Review Date'],
             'mz_review_quote' => ['label' => 'Quote'],
             'mz_review_citer' => ['label' => 'Citer'],
             'mz_review_link' => ['label' => 'Link'],
@@ -5227,10 +5233,11 @@ function meza_ensure_standard_admin_columns(array $columns, string $post_type): 
     }
 
     if ($show_review_columns) {
+        $columns = meza_insert_missing_admin_column($columns, ['title', 'mz_summary'], 'mz_review_date', __('Review Date'));
         $columns = meza_insert_missing_admin_column($columns, ['title', 'mz_summary'], 'mz_review_quote', __('Quote'));
         $columns = meza_insert_missing_admin_column($columns, ['mz_review_quote', 'title', 'mz_summary'], 'mz_review_citer', __('Citer'));
     } else {
-        unset($columns['mz_review_quote'], $columns['mz_review_citer']);
+        unset($columns['mz_review_date'], $columns['mz_review_quote'], $columns['mz_review_citer']);
     }
 
     if ($show_page_columns) {
@@ -5623,6 +5630,7 @@ function meza_normalize_datetime_columns(array $columns): array
             if ($show_form_slug_column) $updated['mz_slug'] = __('Slug');
             if ($show_form_recipients_column) $updated['mz_form_recipients'] = __('Recipients');
             if ($show_review_columns) {
+                $updated['mz_review_date'] = __('Review Date');
                 $updated['mz_review_quote'] = __('Quote');
                 $updated['mz_review_citer'] = __('Citer');
                 if ($show_review_link_column) $updated['mz_review_link'] = __('Link');
@@ -5976,6 +5984,22 @@ add_filter('default_hidden_columns', function ($hidden, $screen) {
     if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
 
     $post_type = (string) ($screen->post_type ?? '');
+    if (!in_array($post_type, ['review', 'reviews'], true)) return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+
+    if (meza_review_date_admin_column_is_default_visible($post_type)) {
+        return array_values(array_diff($hidden, ['mz_review_date']));
+    }
+
+    $hidden[] = 'mz_review_date';
+    return array_values(array_unique($hidden));
+}, 308, 2);
+
+add_filter('default_hidden_columns', function ($hidden, $screen) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+
+    $post_type = (string) ($screen->post_type ?? '');
     if ($post_type === '' || !meza_post_type_has_permalink($post_type)) return $hidden;
     if (meza_is_acf_admin_post_type($post_type)) return $hidden;
 
@@ -6112,6 +6136,39 @@ add_action('current_screen', function ($screen): void {
         $hidden = array_values(array_diff($hidden, ['mz_review_link']));
     } elseif (!in_array('mz_review_link', $hidden, true)) {
         $hidden[] = 'mz_review_link';
+    }
+
+    update_user_option($user_id, $hidden_key, array_values(array_unique($hidden)), true);
+
+    $initialized_post_types[] = $post_type;
+    update_user_meta($user_id, $meta_key, array_values(array_unique($initialized_post_types)));
+}, 46);
+
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if (!in_array($post_type, ['review', 'reviews'], true)) return;
+
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) return;
+
+    $meta_key = 'meza_review_date_visibility_initialized_post_types_v1';
+    $initialized_post_types = get_user_meta($user_id, $meta_key, true);
+    $initialized_post_types = is_array($initialized_post_types)
+        ? array_values(array_unique(array_map('strval', $initialized_post_types)))
+        : [];
+
+    if (in_array($post_type, $initialized_post_types, true)) return;
+
+    $hidden_key = 'manage' . $screen->id . 'columnshidden';
+    $hidden = get_user_option($hidden_key, $user_id);
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+
+    if (meza_review_date_admin_column_is_default_visible($post_type)) {
+        $hidden = array_values(array_diff($hidden, ['mz_review_date']));
+    } elseif (!in_array('mz_review_date', $hidden, true)) {
+        $hidden[] = 'mz_review_date';
     }
 
     update_user_option($user_id, $hidden_key, array_values(array_unique($hidden)), true);
@@ -6410,6 +6467,18 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
     return array_values(array_diff($hidden, ['mz_review_link']));
 }, 1111, 3);
 
+add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') return $hidden;
+    if (!$use_defaults) return $hidden;
+
+    $post_type = (string) ($screen->post_type ?? '');
+    if (!in_array($post_type, ['review', 'reviews'], true)) return $hidden;
+    if (!meza_review_date_admin_column_is_default_visible($post_type)) return $hidden;
+
+    $hidden = is_array($hidden) ? array_map('strval', $hidden) : [];
+    return array_values(array_diff($hidden, ['mz_review_date']));
+}, 1112, 3);
+
 function meza_register_datetime_sortable_columns(array $cols): array
 {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
@@ -6482,6 +6551,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         if (
             $column === 'mz_modified' ||
             $column === 'mz_published' ||
+            $column === 'mz_review_date' ||
             $column === 'mz_id' ||
             $column === 'mz_menu_order' ||
             $column === 'mz_form_recipients' ||
@@ -6519,6 +6589,16 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     if ($column === 'mz_slug') {
         $slug = (string) ($post->post_name ?? '');
         echo ($slug !== '') ? esc_html($slug) : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_review_date') {
+        $review_date_timestamp = meza_get_review_admin_column_date_timestamp((int) $post_id);
+        if ($review_date_timestamp <= 0) {
+            echo '&mdash;';
+            return;
+        }
+
+        echo esc_html(wp_date(get_option('date_format'), $review_date_timestamp));
         return;
     }
     if ($column === 'mz_faq_count') {
@@ -6991,15 +7071,6 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     }
 
     if ($column !== 'mz_published') return;
-
-    if (in_array((string) $post->post_type, ['review', 'reviews'], true)) {
-        $review_date_timestamp = meza_get_review_admin_column_date_timestamp((int) $post_id);
-        if ($review_date_timestamp > 0) {
-            $date = wp_date(get_option('date_format'), $review_date_timestamp);
-            echo esc_html__('Date') . '<br>' . esc_html($date);
-            return;
-        }
-    }
 
     $published_timestamp = get_post_time('U', false, $post, true);
     if (!$published_timestamp) {
