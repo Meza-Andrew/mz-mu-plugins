@@ -1909,6 +1909,10 @@ function meza_should_disable_tag_taxonomy_registration(string $taxonomy, array $
         return false;
     }
 
+    if ($taxonomy !== 'post_tag') {
+        return false;
+    }
+
     if (!empty($args['hierarchical'])) {
         return false;
     }
@@ -1929,6 +1933,10 @@ function meza_is_disabled_tag_taxonomy(string $taxonomy): bool
 {
     $taxonomy = sanitize_key($taxonomy);
     if ($taxonomy === '' || !taxonomy_exists($taxonomy) || in_array($taxonomy, meza_get_exempt_tag_taxonomies(), true)) {
+        return false;
+    }
+
+    if ($taxonomy !== 'post_tag') {
         return false;
     }
 

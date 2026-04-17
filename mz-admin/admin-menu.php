@@ -9063,6 +9063,259 @@ function meza_build_admin_menu_editor_default_snapshot(array $default_menu, arra
     return $snapshot;
 }
 
+function meza_get_expected_post_type_taxonomy_menu_items(string $post_type): array
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '') {
+        return [];
+    }
+
+    $taxonomy_items = [];
+
+    foreach (get_taxonomies([], 'objects') as $taxonomy_name => $taxonomy) {
+        $taxonomy_name = sanitize_key((string) $taxonomy_name);
+        if (
+            $taxonomy_name === ''
+            || !($taxonomy instanceof WP_Taxonomy)
+            || empty($taxonomy->show_ui)
+            || empty($taxonomy->show_in_menu)
+            || !in_array($post_type, (array) $taxonomy->object_type, true)
+        ) {
+            continue;
+        }
+
+        if (function_exists('meza_is_disabled_tag_taxonomy') && meza_is_disabled_tag_taxonomy($taxonomy_name)) {
+            continue;
+        }
+
+        $taxonomy_items[$taxonomy_name] = $taxonomy;
+    }
+
+    uasort($taxonomy_items, static function (WP_Taxonomy $left, WP_Taxonomy $right): int {
+        $left_label = trim((string) ($left->labels->menu_name ?? $left->label ?? $left->name));
+        $right_label = trim((string) ($right->labels->menu_name ?? $right->label ?? $right->name));
+
+        return strnatcasecmp($left_label, $right_label);
+    });
+
+    return $taxonomy_items;
+}
+
+function meza_get_post_type_taxonomy_menu_parent_slug(string $post_type): string
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '') {
+        return '';
+    }
+
+    return $post_type === 'post'
+        ? 'edit.php'
+        : 'edit.php?post_type=' . $post_type;
+}
+
+function meza_get_taxonomy_submenu_slug(string $post_type, string $taxonomy, bool $escape_ampersand = false): string
+{
+    $post_type = sanitize_key($post_type);
+    $taxonomy = sanitize_key($taxonomy);
+
+    if ($post_type === '' || $taxonomy === '') {
+        return '';
+    }
+
+    if ($post_type === 'post') {
+        return 'edit-tags.php?taxonomy=' . $taxonomy;
+    }
+
+    $separator = $escape_ampersand ? '&amp;' : '&';
+
+    return 'edit-tags.php?taxonomy=' . $taxonomy . $separator . 'post_type=' . $post_type;
+}
+
+function meza_get_taxonomy_from_menu_slug(string $menu_slug): string
+{
+    $menu_slug = html_entity_decode(trim($menu_slug), ENT_QUOTES, get_bloginfo('charset') ?: 'UTF-8');
+    if ($menu_slug === '') {
+        return '';
+    }
+
+    $query = (string) parse_url($menu_slug, PHP_URL_QUERY);
+    if ($query === '') {
+        return '';
+    }
+
+    parse_str($query, $query_args);
+
+    return sanitize_key((string) ($query_args['taxonomy'] ?? ''));
+}
+
+function meza_build_taxonomy_submenu_item(string $post_type, WP_Taxonomy $taxonomy): array
+{
+    $label = trim((string) ($taxonomy->labels->menu_name ?? $taxonomy->label ?? $taxonomy->name));
+    $label = $label !== '' ? $label : $taxonomy->name;
+
+    return [
+        esc_attr($label),
+        (string) ($taxonomy->cap->manage_terms ?? 'manage_categories'),
+        meza_get_taxonomy_submenu_slug($post_type, (string) $taxonomy->name, false),
+    ];
+}
+
+function meza_restore_expected_taxonomy_submenus(): void
+{
+    global $submenu;
+
+    if (!is_array($submenu) || $submenu === []) {
+        return;
+    }
+
+    foreach (get_post_types(['show_ui' => true, 'show_in_menu' => true], 'objects') as $post_type => $post_type_object) {
+        if (!($post_type_object instanceof WP_Post_Type)) {
+            continue;
+        }
+
+        $parent_slug = meza_get_post_type_taxonomy_menu_parent_slug((string) $post_type);
+        if ($parent_slug === '' || !isset($submenu[$parent_slug]) || !is_array($submenu[$parent_slug])) {
+            continue;
+        }
+
+        $expected_taxonomies = meza_get_expected_post_type_taxonomy_menu_items((string) $post_type);
+        if ($expected_taxonomies === []) {
+            continue;
+        }
+
+        $present_taxonomies = [];
+
+        foreach ($submenu[$parent_slug] as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $taxonomy_name = meza_get_taxonomy_from_menu_slug((string) ($item[2] ?? ''));
+            if ($taxonomy_name !== '') {
+                $present_taxonomies[$taxonomy_name] = true;
+            }
+        }
+
+        $did_add_items = false;
+
+        foreach ($expected_taxonomies as $taxonomy_name => $taxonomy) {
+            if (isset($present_taxonomies[$taxonomy_name])) {
+                continue;
+            }
+
+            $submenu[$parent_slug][] = meza_build_taxonomy_submenu_item((string) $post_type, $taxonomy);
+            $did_add_items = true;
+        }
+
+        if ($did_add_items) {
+            $submenu[$parent_slug] = meza_sort_submenu_items_with_standard_structure(
+                array_values($submenu[$parent_slug]),
+                $parent_slug,
+                (string) $post_type
+            );
+        }
+    }
+}
+
+function meza_build_admin_menu_editor_taxonomy_item(string $post_type, string $parent_slug, WP_Taxonomy $taxonomy): array
+{
+    $taxonomy_name = sanitize_key((string) $taxonomy->name);
+    $label = trim((string) ($taxonomy->labels->menu_name ?? $taxonomy->label ?? $taxonomy_name));
+    $label = $label !== '' ? $label : $taxonomy_name;
+    $escaped_slug = meza_get_taxonomy_submenu_slug($post_type, $taxonomy_name, true);
+
+    $item = [
+        'template_id' => $parent_slug . '>' . $escaped_slug,
+        'defaults' => [
+            'menu_title' => $label,
+            'access_level' => (string) ($taxonomy->cap->manage_terms ?? 'manage_categories'),
+            'file' => $escaped_slug,
+        ],
+        'f' => $post_type === 'post' ? 'iup' : 'ip',
+    ];
+
+    if ($post_type === 'post') {
+        $item['required_capability_read_only'] = (string) ($taxonomy->cap->manage_terms ?? 'manage_categories');
+    } else {
+        $item['defaults']['url'] = meza_get_taxonomy_submenu_slug($post_type, $taxonomy_name, false);
+    }
+
+    return $item;
+}
+
+function meza_sync_admin_menu_editor_taxonomy_submenu_items(): void
+{
+    if (!is_admin()) {
+        return;
+    }
+
+    $menu_editor_settings = get_option('ws_menu_editor');
+    if (
+        !is_array($menu_editor_settings)
+        || !isset($menu_editor_settings['custom_menu']['tree'])
+        || !is_array($menu_editor_settings['custom_menu']['tree'])
+    ) {
+        return;
+    }
+
+    $did_update = false;
+    $tree = $menu_editor_settings['custom_menu']['tree'];
+
+    foreach (get_post_types(['show_ui' => true, 'show_in_menu' => true], 'objects') as $post_type => $post_type_object) {
+        if (!($post_type_object instanceof WP_Post_Type)) {
+            continue;
+        }
+
+        $parent_slug = meza_get_post_type_taxonomy_menu_parent_slug((string) $post_type);
+        if (
+            $parent_slug === ''
+            || !isset($tree[$parent_slug])
+            || !is_array($tree[$parent_slug])
+            || !isset($tree[$parent_slug]['items'])
+            || !is_array($tree[$parent_slug]['items'])
+        ) {
+            continue;
+        }
+
+        $expected_taxonomies = meza_get_expected_post_type_taxonomy_menu_items((string) $post_type);
+        if ($expected_taxonomies === []) {
+            continue;
+        }
+
+        $present_taxonomies = [];
+
+        foreach ($tree[$parent_slug]['items'] as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $defaults = isset($item['defaults']) && is_array($item['defaults']) ? $item['defaults'] : [];
+            $candidate_slug = (string) ($defaults['file'] ?? $item['file'] ?? $item['template_id'] ?? '');
+            $taxonomy_name = meza_get_taxonomy_from_menu_slug($candidate_slug);
+            if ($taxonomy_name !== '') {
+                $present_taxonomies[$taxonomy_name] = true;
+            }
+        }
+
+        foreach ($expected_taxonomies as $taxonomy_name => $taxonomy) {
+            if (isset($present_taxonomies[$taxonomy_name])) {
+                continue;
+            }
+
+            $tree[$parent_slug]['items'][] = meza_build_admin_menu_editor_taxonomy_item((string) $post_type, $parent_slug, $taxonomy);
+            $did_update = true;
+        }
+    }
+
+    if (!$did_update) {
+        return;
+    }
+
+    $menu_editor_settings['custom_menu']['tree'] = $tree;
+    update_option('ws_menu_editor', $menu_editor_settings);
+}
+add_action('admin_init', 'meza_sync_admin_menu_editor_taxonomy_submenu_items', 20);
+
 function meza_build_admin_menu_editor_config(array $menu, array $submenu, array $blacklist = []): ?array
 {
     if (!class_exists('ameMenu', false)) {
@@ -9694,6 +9947,7 @@ function meza_apply_tail_admin_menu_mutations(): void
     meza_filter_dashboard_submenu_items();
     meza_streamline_tools_submenu_items();
     meza_remove_admin_menu_counters();
+    meza_restore_expected_taxonomy_submenus();
     meza_normalize_post_type_add_new_submenu_labels();
     meza_simplify_content_menu_submenu_labels();
     meza_alphabetize_fallback_plugin_submenus();
