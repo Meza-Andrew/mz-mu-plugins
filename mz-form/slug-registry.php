@@ -72,9 +72,14 @@ if (!function_exists('mzf_slug_registry')) {
                 'layout' => $contact_layout,
             ],
             'lead-gen' => [
-                'subject' => 'New lead from {{name_company}}',
+                'subject' => 'An {{lead_gen_role}} just viewed the {{page_title}} [{{site_domain}}]',
                 'required' => ['FirstName', 'Email', 'PageId', 'FormSlug'],
                 'layout' => ['FullName', 'Email'],
+            ],
+            'co-lender' => [
+                'subject' => '{{co_lender_subject_prefix}}co-lender is interested in working with you [{{site_domain}}]',
+                'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
+                'layout' => ['FullName', 'Email', 'Phone', 'Experience', 'Comments'],
             ],
             'volunteer' => [
                 'subject' => 'New volunteer interest from {{name_company}}',

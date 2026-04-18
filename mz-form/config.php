@@ -933,6 +933,12 @@ if (!function_exists('mzf_apply_subject_templates')) {
 
         $templates = (array) apply_filters('mzf_subject_templates', mzf_default_subject_templates(), $data, $context);
         $template = isset($templates[$slug]) ? (string) $templates[$slug] : '';
+        if ($template === '' && function_exists('mzf_slug_profile')) {
+            $profile = mzf_slug_profile($slug);
+            if (!empty($profile['subject'])) {
+                $template = (string) $profile['subject'];
+            }
+        }
         if ($template === '') {
             return $default_subject;
         }
@@ -944,6 +950,15 @@ if (!function_exists('mzf_apply_subject_templates')) {
         $name_company = $name !== '' ? $name : 'A visitor';
         if ($company !== '') {
             $name_company .= ' at ' . $company;
+        }
+        $page_id = isset($data['PageId']) ? (int) $data['PageId'] : 0;
+        $page_title = $page_id > 0 ? trim((string) get_the_title($page_id)) : '';
+        if ($page_title === '') {
+            $page_title = 'this page';
+        }
+        $site_name = trim((string) get_bloginfo('name'));
+        if ($site_name === '') {
+            $site_name = 'Website';
         }
 
         $vocals_value = trim((string) ($data['Vocals'] ?? ''));
@@ -1040,15 +1055,34 @@ if (!function_exists('mzf_apply_subject_templates')) {
             }
         }
 
+        $experience_value = strtolower(trim((string) ($data['Experience'] ?? '')));
+        $co_lender_value = trim((string) ($data['CoLender'] ?? ''));
+        $co_lender_subject_prefix = 'A ';
+        if (str_starts_with($experience_value, 'no')) {
+            $co_lender_subject_prefix = 'A first-time ';
+        } elseif (str_starts_with($experience_value, 'yes') && $co_lender_value !== '') {
+            $co_lender_subject_prefix = 'An experienced ';
+        }
+        $lead_gen_role = 'interested party';
+        if (str_contains($slug, 'co-lender') || str_contains($slug, 'lender')) {
+            $lead_gen_role = 'interested co-lender';
+        } elseif (str_contains($slug, 'borrower')) {
+            $lead_gen_role = 'interested borrower';
+        }
+
         $tokens = [
             'name'         => $name !== '' ? $name : 'A visitor',
             'company'      => $company,
             'name_company' => $name_company,
             'form_slug'    => $slug,
+            'page_title'   => $page_title,
+            'site_name'    => $site_name,
             'domain'       => (string) ($context['domain'] ?? ''),
             'site_domain'  => (string) ($context['domain'] ?? ''),
             'vocals'       => $vocals_subject,
             'vocals_or_vocalist' => $vocals_or_vocalist,
+            'co_lender_subject_prefix' => $co_lender_subject_prefix,
+            'lead_gen_role' => $lead_gen_role,
             'condom_count' => trim((string) ($data['CondomCount'] ?? '')),
             'state'        => $state,
             'state_clause' => (trim((string) ($data['LocationDisplay'] ?? '')) !== '' ? (' for ' . trim((string) ($data['LocationDisplay'] ?? ''))) : ''),

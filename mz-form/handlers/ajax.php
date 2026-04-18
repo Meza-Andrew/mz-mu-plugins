@@ -490,6 +490,12 @@ if (!function_exists('send_form_data')) :
             $data['LocationDisplay'] = trim((string) ($data['Location'] ?? $data['Place'] ?? $data['ReceivingAddressDisplay'] ?? $data['ReceivingAddress'] ?? ''));
         }
         $data = (array) apply_filters('mzf_normalized_data', $data, $src);
+        $normalized_slug = function_exists('mzf_get_form_slug')
+            ? mzf_get_form_slug($data)
+            : sanitize_key((string) ($data['FormSlug'] ?? ''));
+        if (function_exists('mzf_slug_matches_family') && mzf_slug_matches_family($normalized_slug, 'lead-gen')) {
+            $data['NewsletterSignup'] = 'Yes';
+        }
         // Canonical comments key only.
         $comments = isset($data['Comments']) ? trim((string) $data['Comments']) : '';
         $data['Comments'] = $comments;
@@ -871,7 +877,7 @@ if (!function_exists('send_form_data')) :
                 $subject = trim($subject) . $store_segment;
             }
         }
-        if ($site_domain) {
+        if ($site_domain && !preg_match('/\[[^\]]+\]\s*$/', (string) $subject)) {
             $subject = preg_replace('/\s*[\(\[]' . preg_quote($site_domain, '/') . '[\)\]]\s*/i', ' ', $subject);
             $subject = trim(preg_replace('/\s{2,}/', ' ', $subject));
             $subject .= ' [' . $site_domain . ']';

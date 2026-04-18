@@ -92,16 +92,6 @@ add_filter('mzf_require_last_name', static function (bool $required, array $data
     return $required;
 }, 20, 2);
 
-add_filter('mzf_slug_registry', static function (array $registry): array {
-    $registry['co-lender'] = [
-        'subject' => 'New co-lender inquiry [{{site_domain}}]',
-        'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
-        'layout' => ['FullName', 'Email', 'Phone', 'Experience', 'Comments'],
-    ];
-
-    return $registry;
-}, 20);
-
 add_filter('mzf_field_labels', static function (array $labels, array $data): array {
     $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
     if ($slug === 'co-lender') {
