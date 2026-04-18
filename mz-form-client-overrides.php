@@ -10,6 +10,64 @@ if (!defined('ABSPATH')) {
  * Keep this file portable across sites by limiting it to filters.
  */
 
+$mzf_contact_interest_data = static function (array $data, array $src = []): array {
+    $interest_source = $data['Interests'] ?? $src['Interests'] ?? [];
+    $interest_values = [];
+
+    if (is_array($interest_source)) {
+        foreach ($interest_source as $interest_value) {
+            $interest_value = trim((string) $interest_value);
+            if ($interest_value !== '') {
+                $interest_values[] = $interest_value;
+            }
+        }
+    } else {
+        $interest_text = trim((string) $interest_source);
+        if ($interest_text !== '') {
+            foreach (preg_split('/\s*,\s*/', $interest_text) as $interest_value) {
+                $interest_value = trim((string) $interest_value);
+                if ($interest_value !== '') {
+                    $interest_values[] = $interest_value;
+                }
+            }
+        }
+    }
+
+    $labels_by_key = [
+        'borrowing' => 'Borrowing',
+        'co-lending' => 'Co-Lending',
+        'third-party' => 'Third-Party',
+        'other' => 'Other',
+    ];
+
+    $normalized_keys = [];
+    foreach ($interest_values as $interest_value) {
+        $interest_key = sanitize_key((string) $interest_value);
+        if (!isset($labels_by_key[$interest_key])) {
+            continue;
+        }
+        $normalized_keys[] = $interest_key;
+    }
+
+    $normalized_keys = array_values(array_unique($normalized_keys));
+    $business_interest_labels = [];
+    foreach ($normalized_keys as $interest_key) {
+        if (!in_array($interest_key, ['borrowing', 'co-lending'], true)) {
+            continue;
+        }
+        $business_interest_labels[] = $labels_by_key[$interest_key];
+    }
+
+    $request_interest = implode('/', $business_interest_labels);
+    $primary_subject = count($normalized_keys) === 1 ? (string) $normalized_keys[0] : '';
+
+    return [
+        'keys' => $normalized_keys,
+        'request_interest' => $request_interest,
+        'primary_subject' => $primary_subject,
+    ];
+};
+
 add_filter('mzf_recipients', static function (array $to, array $data, $env): array {
     $env_name = strtolower(trim((string) $env));
     if (in_array($env_name, ['development', 'staging', 'local'], true)) {
@@ -94,6 +152,9 @@ add_filter('mzf_require_last_name', static function (bool $required, array $data
 
 add_filter('mzf_field_labels', static function (array $labels, array $data): array {
     $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
+    if ($slug === 'contact') {
+        $labels['Interests'] = 'Interested In';
+    }
     if ($slug === 'co-lender') {
         $labels['Experience'] = 'Co-Lended Before';
         $labels['Comments'] = 'Comments';
@@ -111,8 +172,16 @@ add_filter('mzf_admin_request_heading', static function (string $heading, array 
     return $heading;
 }, 20, 2);
 
-add_filter('mzf_normalized_data', static function (array $data, array $src): array {
+add_filter('mzf_normalized_data', static function (array $data, array $src) use ($mzf_contact_interest_data): array {
     $slug = sanitize_key((string) ($data['FormSlug'] ?? $src['FormSlug'] ?? ''));
+    if ($slug === 'contact') {
+        $contact_interest_data = $mzf_contact_interest_data($data, $src);
+        $data['ContactInterestKeys'] = $contact_interest_data['keys'];
+        $data['ContactInterestPrimary'] = $contact_interest_data['primary_subject'];
+        $data['Interests'] = $contact_interest_data['request_interest'];
+        return $data;
+    }
+
     if ($slug !== 'co-lender') {
         return $data;
     }
@@ -133,4 +202,24 @@ add_filter('mzf_normalized_data', static function (array $data, array $src): arr
     }
 
     return $data;
+}, 20, 2);
+
+add_filter('mzf_subject', static function (string $subject, array $data): string {
+    $slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
+    if ($slug !== 'contact') {
+        return $subject;
+    }
+
+    $contact_interest = sanitize_key((string) ($data['ContactInterestPrimary'] ?? ''));
+    if ($contact_interest === 'co-lending') {
+        return 'An interested co-lender sent a message';
+    }
+    if ($contact_interest === 'borrowing') {
+        return 'An interested borrower sent a message';
+    }
+    if ($contact_interest === 'third-party') {
+        return 'A third-party involved in a transaction sent a message';
+    }
+
+    return $subject;
 }, 20, 2);
