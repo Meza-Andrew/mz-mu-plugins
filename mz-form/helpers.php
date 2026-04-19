@@ -1187,14 +1187,11 @@ if (!function_exists('mzf_render_admin_body')) {
         $marketing_sync = isset($context['marketing_sync']) && is_array($context['marketing_sync']) ? $context['marketing_sync'] : [];
         $crm_platform = function_exists('mzf_crm_platform') ? mzf_crm_platform() : '';
         $crm_label = function_exists('mzf_crm_platform_label') ? mzf_crm_platform_label($crm_platform) : '';
-        $crm_url = function_exists('mzf_crm_click_url') ? mzf_crm_click_url($crm_platform) : '';
+        $crm_url = ($crm_platform !== '' && function_exists('mzf_crm_click_url')) ? mzf_crm_click_url($crm_platform) : '';
         $env = function_exists('wp_get_environment_type') ? strtolower((string) wp_get_environment_type()) : 'production';
         $is_live_env = in_array($env, ['production', 'qa'], true);
-        if ($crm_label === '') {
-            $crm_label = 'Zeffy';
-        }
-        if ($crm_url === '' && function_exists('mzf_crm_dashboard_url')) {
-            $crm_url = mzf_crm_dashboard_url($crm_platform !== '' ? $crm_platform : 'zeffy');
+        if ($crm_platform !== '' && $crm_url === '' && function_exists('mzf_crm_dashboard_url')) {
+            $crm_url = mzf_crm_dashboard_url($crm_platform);
         }
 
         if ($newsletter_yes && !$is_lead_gen) {
@@ -1215,9 +1212,9 @@ if (!function_exists('mzf_render_admin_body')) {
                     }
                     $newsletter_line .= ' (<a href="' . esc_url($sync_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($sync_link_text) . '</a>)';
                 }
-            } elseif ($is_live_env && $crm_url !== '') {
+            } elseif ($is_live_env && $crm_platform !== '' && $crm_url !== '') {
                 $newsletter_line .= ' (<a href="' . esc_url($crm_url) . '" target="_blank" rel="noopener noreferrer">Click to add to ' . esc_html($crm_label) . '</a>)';
-            } elseif ($is_live_env) {
+            } elseif ($is_live_env && $crm_platform !== '' && $crm_label !== '') {
                 $newsletter_line .= ' (Click to add to ' . esc_html($crm_label) . ')';
             }
             $marketing_rows[] = '<p><strong>' . esc_html((string) ($labels['NewsletterSignup'] ?? 'Signed Up for Newsletter')) . ':</strong><br>' . $newsletter_line . '</p>';

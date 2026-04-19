@@ -905,22 +905,10 @@ if (!function_exists('mzf_submission_added_to_crm_data')) {
         if ($crm_platform === '' && is_array($marketing_sync)) {
             $crm_platform = (string) ($marketing_sync['provider'] ?? '');
         }
-        if ($crm_platform === '' && function_exists('mzf_selected_crm_platform')) {
-            $crm_platform = (string) mzf_selected_crm_platform();
-        }
-        if ($crm_platform === '' && function_exists('mzf_crm_platform')) {
-            $crm_platform = (string) mzf_crm_platform();
-        }
-        if ($crm_platform === '' && function_exists('mzf_marketing_provider')) {
-            $crm_platform = (string) mzf_marketing_provider();
-        }
 
         $crm_label = $stored_crm_label;
         if ($crm_label === '' && function_exists('mzf_crm_platform_label')) {
             $crm_label = mzf_crm_platform_label($crm_platform);
-        }
-        if ($crm_label === '') {
-            $crm_label = 'Zeffy';
         }
 
         if (is_array($marketing_sync)) {
