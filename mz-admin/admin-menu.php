@@ -9227,6 +9227,10 @@ function meza_restore_expected_taxonomy_submenus(): void
         return;
     }
 
+    if (doing_action('admin_menu_editor-menu_replaced')) {
+        return;
+    }
+
     foreach (get_post_types(['show_ui' => true, 'show_in_menu' => true], 'objects') as $post_type => $post_type_object) {
         if (!($post_type_object instanceof WP_Post_Type)) {
             continue;
@@ -9302,9 +9306,16 @@ function meza_build_admin_menu_editor_taxonomy_item(string $post_type, string $p
     return $item;
 }
 
+function meza_should_auto_sync_admin_menu_editor_taxonomy_submenu_items(): bool
+{
+    // Admin Menu Editor already merges saved changes with the current default menu.
+    // Rewriting the stored tree here makes intentionally hidden or removed taxonomy items reappear.
+    return (bool) apply_filters('meza_auto_sync_admin_menu_editor_taxonomy_submenu_items', false);
+}
+
 function meza_sync_admin_menu_editor_taxonomy_submenu_items(): void
 {
-    if (!is_admin()) {
+    if (!is_admin() || !meza_should_auto_sync_admin_menu_editor_taxonomy_submenu_items()) {
         return;
     }
 
