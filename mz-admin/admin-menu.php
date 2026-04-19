@@ -5171,6 +5171,34 @@ if (!function_exists('meza_should_lock_admin_title_chrome')) {
 }
 
 if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
+    function meza_is_editor_admin_screen(?WP_Screen $screen = null): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        if (!($screen instanceof WP_Screen) && function_exists('get_current_screen')) {
+            $screen = get_current_screen();
+        }
+
+        if ($screen instanceof WP_Screen) {
+            $screen_base = strtolower((string) ($screen->base ?? ''));
+            $screen_id = strtolower((string) ($screen->id ?? ''));
+
+            if (in_array($screen_base, ['post'], true)) {
+                return true;
+            }
+
+            if (in_array($screen_id, ['post', 'post-new'], true)) {
+                return true;
+            }
+        }
+
+        $php_self = isset($_SERVER['PHP_SELF']) ? basename((string) $_SERVER['PHP_SELF']) : '';
+
+        return in_array($php_self, ['post.php', 'post-new.php'], true);
+    }
+
     function meza_is_current_acf_admin_or_options_screen(?WP_Screen $screen = null): bool
     {
         if (!is_admin()) {
@@ -5333,6 +5361,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
                     return true;
                 }
 
+                if (meza_is_editor_admin_screen($screen)) {
+                    return true;
+                }
+
                 if ((string) $screen->id === 'edit-page') {
                     return true;
                 }
@@ -5389,6 +5421,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         }
 
         if ($php_self === 'media-new.php') {
+            return true;
+        }
+
+        if (meza_is_editor_admin_screen()) {
             return true;
         }
 
@@ -5493,8 +5529,13 @@ if (!function_exists('meza_admin_wpwrap_allowed_selectors')) {
         return [
             '#wpadminbar',
             '#wpwrap',
+            '#wp-link-wrap',
+            '#wp-link-backdrop',
             '.media-modal',
             '.media-modal-backdrop',
+            '.mce-window',
+            '.mce-inline-toolbar-grp',
+            '.ui-autocomplete',
             'noscript',
             'style',
             'link',
@@ -5512,6 +5553,8 @@ if (!function_exists('meza_admin_wpbody_content_trailing_allowed_selectors')) {
         return [
             '.clear',
             '#wp-auth-check-wrap',
+            '#wp-link-wrap',
+            '#wp-link-backdrop',
             '[data-meza-admin-chrome]',
             '.meza-admin-chrome',
         ];
