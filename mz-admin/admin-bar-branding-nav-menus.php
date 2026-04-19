@@ -1234,6 +1234,8 @@ add_action('admin_head-upload.php', function (): void {
         . '.upload-php .wp-list-table td.column-title .media-icon{display:inline-flex!important;align-items:flex-start!important;justify-content:flex-start!important;width:100px!important;max-width:100%!important;max-height:100px!important;line-height:0!important;margin:0 12px 6px 0!important;vertical-align:top!important;float:left!important;overflow:visible!important;}'
         . '.upload-php .wp-list-table td.column-title .media-icon img{display:block!important;width:auto!important;height:auto!important;max-width:100px!important;max-height:100px!important;object-fit:contain!important;margin:0!important;}'
         . '.upload-php .wp-list-table td.column-title .row-title{display:block;}'
+        . '.upload-php .wp-list-table td.column-title p.filename,.upload-php .wp-list-table td.column-title .row-actions{margin-left:112px!important;}'
+        . '.upload-php .wp-list-table td.column-title .row-actions{display:block!important;min-height:1.5em;}'
         . '</style>';
 }, 1000);
 

@@ -4448,6 +4448,78 @@ function meza_media_attachment_has_converted_asset(int $attachment_id): bool
     return false;
 }
 
+if (!function_exists('meza_is_media_library_list_view_request')) {
+    function meza_is_media_library_list_view_request(): bool
+    {
+        global $pagenow;
+
+        if (!is_admin() || $pagenow !== 'upload.php') {
+            return false;
+        }
+
+        $mode = isset($_GET['mode']) ? sanitize_key((string) wp_unslash($_GET['mode'])) : '';
+        if ($mode === '') {
+            $mode = sanitize_key((string) get_user_setting('libraryContent', 'list'));
+        }
+
+        return $mode !== 'grid';
+    }
+}
+
+if (!function_exists('meza_get_media_library_list_thumbnail_downsize')) {
+    function meza_get_media_library_list_thumbnail_downsize(int $attachment_id): array|false
+    {
+        if ($attachment_id <= 0 || !wp_attachment_is_image($attachment_id)) {
+            return false;
+        }
+
+        $medium = image_get_intermediate_size($attachment_id, 'medium');
+        if (is_array($medium) && !empty($medium['url']) && !empty($medium['width']) && !empty($medium['height'])) {
+            return [
+                (string) $medium['url'],
+                (int) $medium['width'],
+                (int) $medium['height'],
+                true,
+            ];
+        }
+
+        $full_url = wp_get_attachment_url($attachment_id);
+        $metadata = wp_get_attachment_metadata($attachment_id);
+        $width = is_array($metadata) ? (int) ($metadata['width'] ?? 0) : 0;
+        $height = is_array($metadata) ? (int) ($metadata['height'] ?? 0) : 0;
+
+        if ($full_url === '' || $width <= 0 || $height <= 0) {
+            return false;
+        }
+
+        return [
+            (string) $full_url,
+            $width,
+            $height,
+            false,
+        ];
+    }
+}
+
+add_filter('image_downsize', function ($downsize, $attachment_id, $size) {
+    if ($downsize !== false || !meza_is_media_library_list_view_request()) {
+        return $downsize;
+    }
+
+    if (!is_array($size) || count($size) < 2) {
+        return $downsize;
+    }
+
+    $requested_width = (int) ($size[0] ?? 0);
+    $requested_height = (int) ($size[1] ?? 0);
+    if ($requested_width !== 60 || $requested_height !== 60) {
+        return $downsize;
+    }
+
+    $replacement = meza_get_media_library_list_thumbnail_downsize((int) $attachment_id);
+    return $replacement !== false ? $replacement : $downsize;
+}, 10, 3);
+
 function meza_render_media_admin_column(string $column_name, int $post_id): void
 {
     if ($post_id <= 0) {
