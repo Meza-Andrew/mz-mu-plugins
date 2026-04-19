@@ -4459,11 +4459,18 @@ if (!function_exists('meza_get_media_branding_assignment_label')) {
             return __('Site Icon');
         }
 
+        $alternative_logo_id = function_exists('meza_get_alternative_logo_id')
+            ? (int) meza_get_alternative_logo_id()
+            : (int) get_option('meza_alternative_logo_id', 0);
+        if ($alternative_logo_id > 0 && $attachment_id === $alternative_logo_id) {
+            return __('Site Logo (Alt)');
+        }
+
         $custom_logo_id = function_exists('meza_get_custom_logo_id')
             ? (int) meza_get_custom_logo_id()
             : (int) get_theme_mod('custom_logo');
         if ($custom_logo_id > 0 && $attachment_id === $custom_logo_id) {
-            return __('Logo');
+            return __('Site Logo');
         }
 
         return '';

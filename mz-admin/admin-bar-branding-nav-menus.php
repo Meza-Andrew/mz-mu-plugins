@@ -1218,7 +1218,7 @@ add_action('admin_head-upload.php', function (): void {
     echo '<style id="meza-media-list-layout">'
         . '.upload-php .wp-list-table .column-mz_id{width:65px;min-width:65px;max-width:65px;}'
         . '.upload-php .wp-list-table .column-mz_converted{width:90px;min-width:90px;max-width:90px;text-align:center;}'
-        . '.upload-php .wp-list-table .column-title{width:450px;min-width:450px;max-width:450px;}'
+        . '.upload-php .wp-list-table .column-title{width:350px;min-width:350px;max-width:350px;}'
         . '.upload-php .wp-list-table .column-alt_text{width:225px;min-width:225px;max-width:225px;}'
         . '.upload-php .wp-list-table .column-mime_type{width:125px;min-width:125px;max-width:125px;}'
         . '.upload-php .wp-list-table .column-dimensions{width:125px;min-width:125px;max-width:125px;}'
