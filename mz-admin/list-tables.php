@@ -2072,7 +2072,7 @@ function meza_get_seeded_acp_default_admin_columns(): array
         '_ac_columns_default_wp-media' => [
             'mz_id' => ['label' => 'ID'],
             'title' => ['label' => 'File'],
-            'parent' => ['label' => 'Uploaded to'],
+            'mz_parent' => ['label' => 'Uploaded to'],
             'alt_text' => ['label' => 'Alt Text'],
             'file_size' => ['label' => 'Size'],
             'mime_type' => ['label' => 'Type'],
@@ -4322,9 +4322,8 @@ function meza_customize_media_admin_columns(array $columns): array
         $columns['title'] = __('File');
     }
 
-    if (isset($columns['parent'])) {
-        $columns['parent'] = __('Uploaded to');
-    }
+    unset($columns['parent']);
+    $columns['mz_parent'] = __('Uploaded to');
 
     $columns['alt_text'] = __('Alt Text');
     $columns['file_size'] = __('Size');
@@ -4448,6 +4447,99 @@ function meza_media_attachment_has_converted_asset(int $attachment_id): bool
     return false;
 }
 
+if (!function_exists('meza_get_media_branding_assignment_label')) {
+    function meza_get_media_branding_assignment_label(int $attachment_id): string
+    {
+        if ($attachment_id <= 0 || get_post_type($attachment_id) !== 'attachment') {
+            return '';
+        }
+
+        $site_icon_id = (int) get_option('site_icon');
+        if ($site_icon_id > 0 && $attachment_id === $site_icon_id) {
+            return __('Site Icon');
+        }
+
+        $custom_logo_id = function_exists('meza_get_custom_logo_id')
+            ? (int) meza_get_custom_logo_id()
+            : (int) get_theme_mod('custom_logo');
+        if ($custom_logo_id > 0 && $attachment_id === $custom_logo_id) {
+            return __('Logo');
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('meza_get_branding_settings_admin_url')) {
+    function meza_get_branding_settings_admin_url(): string
+    {
+        return current_user_can('manage_options')
+            ? admin_url('options-general.php?page=branding')
+            : '';
+    }
+}
+
+if (!function_exists('meza_render_media_parent_admin_column')) {
+    function meza_render_media_parent_admin_column(int $post_id): void
+    {
+        $branding_label = meza_get_media_branding_assignment_label($post_id);
+        if ($branding_label !== '') {
+            $branding_url = meza_get_branding_settings_admin_url();
+            if ($branding_url !== '') {
+                echo '<strong><a href="' . esc_url($branding_url) . '">' . esc_html($branding_label) . '</a></strong>';
+            } else {
+                echo '<strong>' . esc_html($branding_label) . '</strong>';
+            }
+
+            return;
+        }
+
+        $attachment = get_post($post_id);
+        if (!($attachment instanceof WP_Post)) {
+            echo '&mdash;';
+            return;
+        }
+
+        $user_can_edit = current_user_can('edit_post', $attachment->ID);
+        $parent = ($attachment->post_parent > 0) ? get_post($attachment->post_parent) : false;
+
+        if ($parent instanceof WP_Post) {
+            $title = _draft_or_post_title($attachment->post_parent);
+            $parent_type = get_post_type_object($parent->post_type);
+
+            if ($parent_type && $parent_type->show_ui && current_user_can('edit_post', $attachment->post_parent)) {
+                echo '<strong><a href="' . esc_url(get_edit_post_link($attachment->post_parent)) . '">' . $title . '</a></strong>';
+            } elseif ($parent_type && current_user_can('read_post', $attachment->post_parent)) {
+                echo '<strong>' . $title . '</strong>';
+            } else {
+                esc_html_e('(Private post)');
+            }
+
+            if ($user_can_edit) {
+                $detach_url = add_query_arg(
+                    [
+                        'parent_post_id' => $attachment->post_parent,
+                        'media[]'        => $attachment->ID,
+                        '_wpnonce'       => wp_create_nonce('bulk-media'),
+                    ],
+                    'upload.php'
+                );
+
+                echo '<br /><a href="' . esc_url($detach_url) . '" class="hide-if-no-js detach-from-parent" aria-label="' . esc_attr(sprintf(__('Detach from &#8220;%s&#8221;'), wp_strip_all_tags($title))) . '">' . esc_html__('Detach') . '</a>';
+            }
+
+            return;
+        }
+
+        esc_html_e('(Unattached)');
+
+        if ($user_can_edit) {
+            $title = _draft_or_post_title($attachment->post_parent);
+            echo '<br /><a href="#the-list" onclick="findPosts.open( \'media[]\', \'' . esc_attr((string) $attachment->ID) . '\' ); return false;" class="hide-if-no-js aria-button-if-js" aria-label="' . esc_attr(sprintf(__('Attach &#8220;%s&#8221; to existing content'), wp_strip_all_tags($title))) . '">' . esc_html__('Attach') . '</a>';
+        }
+    }
+}
+
 if (!function_exists('meza_is_media_library_list_view_request')) {
     function meza_is_media_library_list_view_request(): bool
     {
@@ -4520,6 +4612,28 @@ add_filter('image_downsize', function ($downsize, $attachment_id, $size) {
     return $replacement !== false ? $replacement : $downsize;
 }, 10, 3);
 
+add_filter('display_media_states', function (array $states, WP_Post $post): array {
+    if ($post->post_type !== 'attachment') {
+        return $states;
+    }
+
+    if (meza_get_media_branding_assignment_label((int) $post->ID) === '') {
+        return $states;
+    }
+
+    return array_values(array_filter($states, static function ($state): bool {
+        return !in_array((string) $state, [__('Logo'), __('Site Icon')], true);
+    }));
+}, 20, 2);
+
+add_filter('media_row_actions', function (array $actions, WP_Post $post): array {
+    if (meza_get_media_branding_assignment_label((int) $post->ID) !== '') {
+        unset($actions['attach']);
+    }
+
+    return $actions;
+}, 20, 2);
+
 function meza_render_media_admin_column(string $column_name, int $post_id): void
 {
     if ($post_id <= 0) {
@@ -4529,6 +4643,11 @@ function meza_render_media_admin_column(string $column_name, int $post_id): void
 
     if ($column_name === 'mz_id') {
         echo (int) $post_id;
+        return;
+    }
+
+    if ($column_name === 'mz_parent') {
+        meza_render_media_parent_admin_column($post_id);
         return;
     }
 
