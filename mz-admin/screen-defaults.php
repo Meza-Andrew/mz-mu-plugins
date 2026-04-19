@@ -1749,6 +1749,25 @@ if (!function_exists('meza_get_post_admin_list_per_page')) {
     }
 }
 
+if (!function_exists('meza_get_post_admin_list_per_page_for_user')) {
+    function meza_get_post_admin_list_per_page_for_user(string $post_type, int $user_id = 0): int
+    {
+        $option = meza_get_post_admin_list_screen_option_name($post_type);
+        $default_per_page = meza_get_post_admin_list_per_page();
+        if ($option === '') {
+            return $default_per_page;
+        }
+
+        $user_id = $user_id > 0 ? $user_id : get_current_user_id();
+        if ($user_id <= 0) {
+            return $default_per_page;
+        }
+
+        $saved_value = (int) get_user_option($option, $user_id);
+        return $saved_value > 0 ? $saved_value : $default_per_page;
+    }
+}
+
 if (!function_exists('meza_get_post_admin_list_screen_option_name')) {
     function meza_get_post_admin_list_screen_option_name(string $post_type): string
     {
@@ -1757,7 +1776,7 @@ if (!function_exists('meza_get_post_admin_list_screen_option_name')) {
     }
 }
 
-// Keep post-type admin lists light enough to stay responsive on content-heavy sites.
+// Default post-type admin lists to a reasonable page size without overwriting saved screen options.
 add_action('current_screen', function ($screen): void {
     if (!($screen instanceof WP_Screen)) return;
     if ((string) ($screen->base ?? '') !== 'edit') return;
@@ -1771,7 +1790,6 @@ add_action('current_screen', function ($screen): void {
     $option = meza_get_post_admin_list_screen_option_name($post_type);
     if ($option === '') return;
     $target_per_page = meza_get_post_admin_list_per_page();
-    $user_id = get_current_user_id();
 
     add_filter($option, function ($per_page) use ($target_per_page) {
         $per_page = (int) $per_page;
@@ -1779,7 +1797,7 @@ add_action('current_screen', function ($screen): void {
             return $target_per_page;
         }
 
-        return min($per_page, $target_per_page);
+        return $per_page;
     });
 
     add_filter('get_user_option_' . $option, function ($value) use ($target_per_page) {
@@ -1788,19 +1806,11 @@ add_action('current_screen', function ($screen): void {
             return $target_per_page;
         }
 
-        return min($value, $target_per_page);
+        return $value;
     });
-
-    if ($user_id <= 0) return;
-
-    $saved_value = (int) get_user_option($option, $user_id);
-    if ($saved_value !== $target_per_page) {
-        update_user_option($user_id, $option, $target_per_page, false);
-    }
 }, 20);
 
-// Enforce the post-list page size on the actual main admin query too, since some
-// edit screens can rebuild the query with a larger payload after screen options load.
+// Keep the actual main admin query aligned with the saved post-list screen option.
 add_action('pre_get_posts', function (WP_Query $query): void {
     global $pagenow;
 
@@ -1822,15 +1832,15 @@ add_action('pre_get_posts', function (WP_Query $query): void {
         return;
     }
 
-    $target_per_page = meza_get_post_admin_list_per_page();
+    $target_per_page = meza_get_post_admin_list_per_page_for_user($post_type);
     $current_per_page = (int) $query->get('posts_per_page');
 
-    if ($current_per_page <= 0 || $current_per_page > $target_per_page) {
+    if ($current_per_page <= 0) {
         $query->set('posts_per_page', $target_per_page);
     }
 
     $archive_per_page = (int) $query->get('posts_per_archive_page');
-    if ($archive_per_page <= 0 || $archive_per_page > $target_per_page) {
+    if ($archive_per_page <= 0) {
         $query->set('posts_per_archive_page', $target_per_page);
     }
 

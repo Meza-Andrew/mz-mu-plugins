@@ -5,7 +5,7 @@
  * Description: Core site settings, defaults, and bootstrap configuration.
  * Author: Meza LLC
  * Author URI: https://meza.design
- * Version: 1.8.6
+ * Version: 1.8.7
  */
 
 /** ================================
@@ -752,20 +752,19 @@ function meza_action_scheduler_admin_item_count(): int
     }
 }
 
-/** Force admin "items per page" to one value across post types/taxonomies/list tables. */
+/** Default admin "items per page" to one value without overriding saved user choices. */
 add_action('admin_init', function () {
     foreach (meza_admin_per_page_option_keys() as $option_key) {
-        add_filter("get_user_option_{$option_key}", function ($value, $option, $user) {
+        add_filter("default_user_option_{$option_key}", function ($default_value) {
             return meza_admin_items_per_page_target();
+        }, 9999, 1);
+
+        add_filter("get_user_option_{$option_key}", function ($value, $option, $user) {
+            $value = (int) $value;
+            return $value > 0 ? $value : meza_admin_items_per_page_target();
         }, 9999, 3);
     }
 }, 1);
-
-/** Keep saved screen-option values locked to MEZA_ADMIN_ITEMS_PER_PAGE. */
-add_filter('set-screen-option', function ($status, $option, $value) {
-    if (!in_array((string)$option, meza_admin_per_page_option_keys(), true)) return $status;
-    return meza_admin_items_per_page_target();
-}, 9999, 3);
 
 /** Hide the Pagination screen option on post and taxonomy lists that do not exceed the forced page size. */
 add_action('admin_head', function () {
