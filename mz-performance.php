@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DS Performance
  * Description: Front-end asset, markup, and performance optimizations.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -147,9 +147,17 @@ if (in_array(strtolower((string) (defined('WP_ENV') ? WP_ENV : 'production')), [
     add_filter('style_loader_src', 'meza_remove_query_strings', 15, 1);
 }
 
-/** Strip the version query string from a CSS or JS URL so cache layers see a cleaner asset path. */
+/** Strip the version query string from a local CSS or JS URL so cache layers see a cleaner asset path. */
 function meza_remove_query_strings($src)
 {
+    $asset_host = wp_parse_url($src, PHP_URL_HOST);
+    $site_host = wp_parse_url(home_url(), PHP_URL_HOST);
+
+    // External URLs can depend on query strings for the actual asset definition, like Google Fonts.
+    if (!empty($asset_host) && !empty($site_host) && strtolower((string) $asset_host) !== strtolower((string) $site_host)) {
+        return $src;
+    }
+
     return strpos($src, '?') ? substr($src, 0, strpos($src, '?')) : $src;
 }
 
