@@ -66,7 +66,6 @@ if (!function_exists('mz_build_user_email')) {
         if ($main_html === '') {
             $main_html = '<p>Thanks for reaching out — we’ll follow up shortly.</p>';
         }
-
         $salutation_html = $salutation !== ''
             ? '<p>' . wp_kses_post($salutation) . '<br>'
             : '<p>Sincerely,<br>';
@@ -79,6 +78,83 @@ if (!function_exists('mz_build_user_email')) {
             'body' => $logo_html . $greeting_html . $main_html . $salutation_html . '<strong>' . esc_html($signature) . '</strong></p>' . $footer,
         ];
         return (array) apply_filters('mzf_user_email', $email, $form_data, $footer);
+    }
+}
+
+if (!function_exists('mzf_unlock_query_arg')) {
+    function mzf_unlock_query_arg(): string
+    {
+        return (string) apply_filters('mzf_unlock_query_arg', 'mzf_reveal');
+    }
+}
+
+if (!function_exists('mzf_submission_page_url')) {
+    function mzf_submission_page_url(array $form_data): string
+    {
+        $page_id = isset($form_data['PageId']) ? (int) $form_data['PageId'] : 0;
+        if ($page_id <= 0 || !function_exists('get_permalink')) {
+            return '';
+        }
+
+        $page_url = get_permalink($page_id);
+        return is_string($page_url) ? trim($page_url) : '';
+    }
+}
+
+if (!function_exists('mzf_submission_unlock_url')) {
+    function mzf_submission_unlock_url(array $form_data): string
+    {
+        $page_url = function_exists('mzf_submission_page_url')
+            ? mzf_submission_page_url($form_data)
+            : '';
+
+        if ($page_url === '') {
+            return '';
+        }
+
+        $slug = function_exists('mzf_get_form_slug')
+            ? mzf_get_form_slug($form_data)
+            : sanitize_key((string) ($form_data['FormSlug'] ?? ''));
+
+        if (!function_exists('mzf_slug_matches_family') || !mzf_slug_matches_family($slug, 'lead-gen')) {
+            return '';
+        }
+
+        return (string) add_query_arg(mzf_unlock_query_arg(), '1', $page_url);
+    }
+}
+
+if (!function_exists('mzf_user_email_unlock_link_html')) {
+    function mzf_user_email_unlock_link_html(array $form_data): string
+    {
+        $unlock_url = function_exists('mzf_submission_unlock_url')
+            ? mzf_submission_unlock_url($form_data)
+            : '';
+
+        if ($unlock_url === '') {
+            return '';
+        }
+
+        $slug = function_exists('mzf_get_form_slug')
+            ? mzf_get_form_slug($form_data)
+            : sanitize_key((string) ($form_data['FormSlug'] ?? ''));
+
+        $link_text = (string) apply_filters(
+            'mzf_user_email_unlock_link_text',
+            (function_exists('mzf_slug_matches_family') && mzf_slug_matches_family($slug, 'lead-gen'))
+                ? 'Access this page again'
+                : 'View this page',
+            $form_data,
+            $unlock_url
+        );
+        $intro_text = (string) apply_filters(
+            'mzf_user_email_unlock_link_intro',
+            'You can come back to this page any time using the link below.',
+            $form_data,
+            $unlock_url
+        );
+
+        return '<p>' . esc_html($intro_text) . '</p><p><a href="' . esc_url($unlock_url) . '">' . esc_html($link_text) . '</a></p>';
     }
 }
 
@@ -110,11 +186,30 @@ if (!function_exists('mzf_site_logo_absolute_url')) {
         if (function_exists('meza_get_custom_logo_url')) {
             $url = (string) meza_get_custom_logo_url();
         }
+        if ($url === '' && function_exists('meza_get_custom_logo_id')) {
+            $custom_logo_id = (int) meza_get_custom_logo_id();
+            if ($custom_logo_id > 0) {
+                $custom_logo_url = wp_get_attachment_image_url($custom_logo_id, 'full');
+                $url = is_string($custom_logo_url) ? $custom_logo_url : '';
+            }
+        }
         if ($url === '') {
             $custom_logo_id = (int) get_theme_mod('custom_logo');
             if ($custom_logo_id > 0) {
                 $custom_logo_url = wp_get_attachment_image_url($custom_logo_id, 'full');
                 $url = is_string($custom_logo_url) ? $custom_logo_url : '';
+            }
+        }
+        if ($url === '' && function_exists('get_custom_logo')) {
+            $custom_logo_html = (string) get_custom_logo();
+            if ($custom_logo_html !== '' && preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $custom_logo_html, $matches)) {
+                $url = (string) ($matches[1] ?? '');
+            }
+        }
+        if ($url === '' && function_exists('meza_get_footer_logo_html')) {
+            $footer_logo_html = (string) meza_get_footer_logo_html();
+            if ($footer_logo_html !== '' && preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $footer_logo_html, $matches)) {
+                $url = (string) ($matches[1] ?? '');
             }
         }
         return mzf_ensure_absolute_url((string) $url);
@@ -370,6 +465,9 @@ if (!function_exists('mzf_build_footer_html')) {
         $domain = trim((string) $domain);
         $domain_href = $domain !== '' ? ('https://' . $domain) : '';
         $site_href = mzf_ensure_absolute_url($site_url);
+        $option_addr_text = function_exists('get_field') ? trim((string) get_field('address_text', 'option')) : '';
+        $address_uses_maps = ($maps_url !== '');
+        $using_address_text_fallback = false;
         if ($site_href === '') {
             $site_href = $domain_href;
         }
@@ -408,6 +506,7 @@ if (!function_exists('mzf_build_footer_html')) {
             if ($state_zip !== '') $parts[] = $state_zip;
             if (!empty($parts)) {
                 $addr_display = implode(', ', $parts);
+                $address_uses_maps = true;
             } else {
                 if ($option_addr !== '') {
                     $chunks = array_values(array_filter(array_map('trim', explode(',', $option_addr)), static fn($v) => $v !== ''));
@@ -415,6 +514,7 @@ if (!function_exists('mzf_build_footer_html')) {
                         array_shift($chunks); // drop place/business name
                     }
                     $addr_display = implode(', ', $chunks);
+                    $address_uses_maps = true;
                 }
             }
         } elseif (is_string($option_addr_raw)) {
@@ -425,14 +525,21 @@ if (!function_exists('mzf_build_footer_html')) {
                     array_shift($chunks); // drop place/business name
                 }
                 $addr_display = implode(', ', $chunks);
+                $address_uses_maps = true;
             }
+        }
+        if ($addr_display === '' && $option_addr_text !== '') {
+            $addr_display = preg_replace('/\s*\R\s*/', ', ', $option_addr_text);
+            $addr_display = trim((string) $addr_display, " \t\n\r\0\x0B,");
+            $address_uses_maps = false;
+            $using_address_text_fallback = true;
         }
         $addr_label = preg_replace('/,\s*(US|USA|United States(?: of America)?)\s*$/i', '', $addr_display);
         $addr_label = trim((string) $addr_label);
         if ($addr_label === '') {
             $addr_label = $addr_display;
         }
-        if ($maps_url === '' && $addr_display !== '') {
+        if ($maps_url === '' && $address_uses_maps && $addr_display !== '') {
             $maps_url = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($addr_display);
         }
 
@@ -441,16 +548,18 @@ if (!function_exists('mzf_build_footer_html')) {
         if ($site_href !== '') {
             $footer .= '<a href="' . esc_url($site_href) . '" target="_blank" rel="noopener">' . esc_html($site_name) . '</a><br>';
         }
-        if ($addr_display !== '' && $maps_url !== '') {
-            $footer .= '<a href="' . esc_url($maps_url) . '" target="_blank" rel="noopener">' . esc_html($addr_label) . '</a><br>';
-        } elseif ($addr_display !== '') {
-            $footer .= esc_html($addr_label) . '<br>';
-        }
         if ($phone !== '') {
             $footer .= '<a href="tel:' . esc_attr($phone_href) . '" target="_blank">' . esc_html($phone) . '</a><br>';
         }
         if ($email_display !== '') {
             $footer .= '<a href="mailto:' . esc_attr($email_display) . '" target="_blank">' . esc_html($email_display) . '</a><br>';
+        }
+        if ($addr_display !== '' && $using_address_text_fallback) {
+            $footer .= esc_html($addr_label) . '<br>';
+        } elseif ($addr_display !== '' && $maps_url !== '') {
+            $footer .= '<a href="' . esc_url($maps_url) . '" target="_blank" rel="noopener">' . esc_html($addr_label) . '</a><br>';
+        } elseif ($addr_display !== '') {
+            $footer .= esc_html($addr_label) . '<br>';
         }
         $footer .= '<br><strong>Powered by <a href="https://meza.design" target="_blank" rel="noopener">meza.</a></strong><br>';
         $footer .= '<em>This is an automated email. Please do not reply directly to this message.</em>';
@@ -489,6 +598,10 @@ if (!function_exists('mzf_render_admin_body')) {
 
         $layouts = (array) apply_filters('mzf_body_layouts', mzf_default_body_layouts(), $data, $context);
         $layout = isset($layouts[$slug]) && is_array($layouts[$slug]) ? $layouts[$slug] : null;
+        if (empty($layout) && function_exists('mzf_slug_profile')) {
+            $profile = mzf_slug_profile($slug);
+            $layout = isset($profile['layout']) && is_array($profile['layout']) ? $profile['layout'] : null;
+        }
         if (empty($layout)) {
             return $fallback_body;
         }
@@ -502,6 +615,7 @@ if (!function_exists('mzf_render_admin_body')) {
             $labels['ItemType'] = 'Service';
         }
         $labels['NewsletterSignup'] = 'Signed Up for Newsletter';
+        $is_lead_gen = function_exists('mzf_slug_matches_family') && mzf_slug_matches_family($slug, 'lead-gen');
         $receiving_option = strtolower(trim((string) ($data['ReceivingOption'] ?? '')));
         if ($receiving_option === 'delivery' || $receiving_option === 'deliver') {
             $labels['LocationDisplay'] = 'Deliver to Address';
@@ -520,6 +634,17 @@ if (!function_exists('mzf_render_admin_body')) {
         }
         $full_name = trim((string) ($data['FirstName'] ?? '') . ' ' . (string) ($data['LastName'] ?? ''));
         $footer = (string) ($context['footer_html'] ?? '');
+        $lead_gen_page_row = '';
+        if ($is_lead_gen) {
+            $page_id = isset($data['PageId']) ? (int) $data['PageId'] : 0;
+            $page_title = $page_id > 0 ? trim((string) get_the_title($page_id)) : '';
+            $page_url = $page_id > 0 ? trim((string) get_permalink($page_id)) : '';
+            if ($page_title !== '' && $page_url !== '') {
+                $lead_gen_page_row = '<p><strong>Page:</strong><br><a href="' . esc_url($page_url) . '" target="_blank" rel="noopener">' . esc_html($page_title) . '</a></p>';
+            } elseif ($page_title !== '') {
+                $lead_gen_page_row = '<p><strong>Page:</strong><br>' . esc_html($page_title) . '</p>';
+            }
+        }
 
         $value_for = static function (string $key) use ($data, $full_name) {
             if ($key === 'FullName') return $full_name;
@@ -1010,7 +1135,9 @@ if (!function_exists('mzf_render_admin_body')) {
             if ($slug === 'volunteer' && in_array((string) $field_key, ['PreferredName', 'Pronouns'], true)) {
                 continue;
             }
-            if ($slug === 'volunteer' && (string) $field_key === 'Date') {
+            if ($is_lead_gen) {
+                $contact_rows[] = '<p><strong>' . esc_html($label) . ':</strong><br>' . $display . '</p>';
+            } elseif ($slug === 'volunteer' && (string) $field_key === 'Date') {
                 $contact_rows[] = '<p><strong>' . esc_html($label) . ':</strong><br>' . $display . '</p>';
             } else {
                 $request_rows[] = '<p><strong>' . esc_html($label) . ':</strong><br>' . $display . '</p>';
@@ -1034,7 +1161,12 @@ if (!function_exists('mzf_render_admin_body')) {
             $sl = esc_url_raw($files_link_text);
             if ($sl !== '') {
                 $files_link_label = (string) ($labels['FilesLink'] ?? 'Files Link');
-                $request_rows[] = '<p><strong>' . esc_html($files_link_label) . ':</strong><br><a href="' . esc_url($sl) . '" target="_blank" rel="noopener noreferrer">' . esc_html($sl) . '</a></p>';
+                $file_row = '<p><strong>' . esc_html($files_link_label) . ':</strong><br><a href="' . esc_url($sl) . '" target="_blank" rel="noopener noreferrer">' . esc_html($sl) . '</a></p>';
+                if ($is_lead_gen) {
+                    $contact_rows[] = $file_row;
+                } else {
+                    $request_rows[] = $file_row;
+                }
             }
         }
         if ($deferred_comments === '') {
@@ -1043,7 +1175,12 @@ if (!function_exists('mzf_render_admin_body')) {
         $comments_text = trim((string) $deferred_comments);
         if ($comments_text !== '') {
             $comments_label = (string) ($labels['Comments'] ?? 'Comments');
-            $request_rows[] = '<p><strong>' . esc_html($comments_label) . ':</strong><br>' . nl2br(esc_html($comments_text)) . '</p>';
+            $comment_row = '<p><strong>' . esc_html($comments_label) . ':</strong><br>' . nl2br(esc_html($comments_text)) . '</p>';
+            if ($is_lead_gen) {
+                $contact_rows[] = $comment_row;
+            } else {
+                $request_rows[] = $comment_row;
+            }
         }
         if ($slug === 'volunteer' && !empty($uploaded_files)) {
             $request_rows[] = '<p><strong>Photo ID:</strong><br>' . implode('<br>', $uploaded_files) . '</p>';
@@ -1056,17 +1193,14 @@ if (!function_exists('mzf_render_admin_body')) {
         $marketing_sync = isset($context['marketing_sync']) && is_array($context['marketing_sync']) ? $context['marketing_sync'] : [];
         $crm_platform = function_exists('mzf_crm_platform') ? mzf_crm_platform() : '';
         $crm_label = function_exists('mzf_crm_platform_label') ? mzf_crm_platform_label($crm_platform) : '';
-        $crm_url = function_exists('mzf_crm_click_url') ? mzf_crm_click_url($crm_platform) : '';
+        $crm_url = ($crm_platform !== '' && function_exists('mzf_crm_click_url')) ? mzf_crm_click_url($crm_platform) : '';
         $env = function_exists('wp_get_environment_type') ? strtolower((string) wp_get_environment_type()) : 'production';
         $is_live_env = in_array($env, ['production', 'qa'], true);
-        if ($crm_label === '') {
-            $crm_label = 'Zeffy';
-        }
-        if ($crm_url === '' && function_exists('mzf_crm_dashboard_url')) {
-            $crm_url = mzf_crm_dashboard_url($crm_platform !== '' ? $crm_platform : 'zeffy');
+        if ($crm_platform !== '' && $crm_url === '' && function_exists('mzf_crm_dashboard_url')) {
+            $crm_url = mzf_crm_dashboard_url($crm_platform);
         }
 
-        if ($newsletter_yes) {
+        if ($newsletter_yes && !$is_lead_gen) {
             $newsletter_line = 'Yes';
             $sync_ok = !empty($marketing_sync['ok']);
             $sync_label = trim((string) ($marketing_sync['label'] ?? ''));
@@ -1084,19 +1218,22 @@ if (!function_exists('mzf_render_admin_body')) {
                     }
                     $newsletter_line .= ' (<a href="' . esc_url($sync_url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($sync_link_text) . '</a>)';
                 }
-            } elseif ($is_live_env && $crm_url !== '') {
+            } elseif ($is_live_env && $crm_platform !== '' && $crm_url !== '') {
                 $newsletter_line .= ' (<a href="' . esc_url($crm_url) . '" target="_blank" rel="noopener noreferrer">Click to add to ' . esc_html($crm_label) . '</a>)';
-            } elseif ($is_live_env) {
+            } elseif ($is_live_env && $crm_platform !== '' && $crm_label !== '') {
                 $newsletter_line .= ' (Click to add to ' . esc_html($crm_label) . ')';
             }
             $marketing_rows[] = '<p><strong>' . esc_html((string) ($labels['NewsletterSignup'] ?? 'Signed Up for Newsletter')) . ':</strong><br>' . $newsletter_line . '</p>';
+        }
+        if ($is_lead_gen && $lead_gen_page_row !== '') {
+            $marketing_rows[] = $lead_gen_page_row;
         }
 
         if (!empty($contact_rows)) {
             $body .= '<hr><h3 style="margin:1em 0 .5em 0;">Contact Details</h3>';
             $body .= implode('', $contact_rows);
         }
-        if (!empty($request_rows)) {
+        if (!empty($request_rows) && !$is_lead_gen) {
             $request_heading = (string) apply_filters('mzf_admin_request_heading', 'Request Details', $data, $context);
             $body .= '<hr><h3 style="margin:1em 0 .5em 0;">' . esc_html($request_heading) . '</h3>';
             $body .= implode('', $request_rows);

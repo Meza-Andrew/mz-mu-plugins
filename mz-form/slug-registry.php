@@ -72,9 +72,14 @@ if (!function_exists('mzf_slug_registry')) {
                 'layout' => $contact_layout,
             ],
             'lead-gen' => [
-                'subject' => 'New lead from {{name_company}}',
+                'subject' => 'An {{lead_gen_role}} just viewed the {{page_title}} [{{site_domain}}]',
                 'required' => ['FirstName', 'Email', 'PageId', 'FormSlug'],
                 'layout' => ['FullName', 'Email'],
+            ],
+            'co-lender' => [
+                'subject' => '{{co_lender_subject_prefix}}co-lender is interested in working with you [{{site_domain}}]',
+                'required' => ['FirstName', 'LastName', 'Email', 'PageId', 'FormSlug'],
+                'layout' => ['FullName', 'Email', 'Phone', 'Experience', 'Comments'],
             ],
             'volunteer' => [
                 'subject' => 'New volunteer interest from {{name_company}}',
@@ -219,7 +224,34 @@ if (!function_exists('mzf_slug_profile')) {
             }
         }
 
+        foreach ($registry as $base_slug => $profile) {
+            $base_slug = sanitize_key((string) $base_slug);
+            if ($base_slug === '' || !is_array($profile)) {
+                continue;
+            }
+
+            if (function_exists('mzf_slug_matches_family') && mzf_slug_matches_family($slug, $base_slug)) {
+                return $profile;
+            }
+        }
+
         return [];
+    }
+}
+
+if (!function_exists('mzf_slug_matches_family')) {
+    function mzf_slug_matches_family(string $slug, string $family): bool
+    {
+        $slug = sanitize_key($slug);
+        $family = sanitize_key($family);
+
+        if ($slug === '' || $family === '') {
+            return false;
+        }
+
+        return $slug === $family
+            || str_starts_with($slug, $family . '-')
+            || str_ends_with($slug, '-' . $family);
     }
 }
 

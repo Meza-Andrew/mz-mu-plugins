@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.465
+ * Version: 1.1.481
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1785,6 +1785,38 @@ if (!function_exists('meza_can_manage_yoast')) {
         ]);
     }
 }
+
+if (!function_exists('meza_can_manage_privacy_options')) {
+    function meza_can_manage_privacy_options($user = null): bool
+    {
+        return meza_user_has_any_role($user, [
+            'administrator',
+            meza_site_manager_role_key(),
+        ]);
+    }
+}
+
+add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, array $args): array {
+    if ($cap !== 'manage_privacy_options' || $user_id <= 0 || !meza_can_manage_privacy_options($user_id)) {
+        return $caps;
+    }
+
+    return ['read'];
+}, 19, 4);
+
+add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, WP_User $user): array {
+    if (!($user instanceof WP_User) || $user->ID <= 0 || !meza_can_manage_privacy_options($user)) {
+        return $allcaps;
+    }
+
+    if ((string) ($args[0] ?? '') !== 'manage_privacy_options') {
+        return $allcaps;
+    }
+
+    $allcaps['manage_privacy_options'] = true;
+
+    return $allcaps;
+}, 19, 4);
 
 add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, array $args): array {
     if ($user_id <= 0 || !in_array($cap, meza_get_yoast_management_caps(), true) || !meza_can_manage_yoast($user_id)) {

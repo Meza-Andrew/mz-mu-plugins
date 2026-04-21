@@ -4,7 +4,7 @@
  * Plugin Name: MZ Form (MU)
  * Description: AJAX form intake + admin/user emailer with DS-compatible defaults.
  * Author: Meza
- * Version: 1.1.0
+ * Version: 1.1.6
  */
 
 if (!defined('ABSPATH')) {
