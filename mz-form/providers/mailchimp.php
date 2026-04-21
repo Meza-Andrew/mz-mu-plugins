@@ -1086,26 +1086,26 @@ add_action('admin_notices', function () {
     echo '<div class="notice notice-info"><p><strong>Mailchimp Integration</strong></p>';
     $api_key = mz_mc_get_api_key();
     if ($api_key === '') {
-        echo '<p>Mailchimp API key is missing. Set API Key in CRM Integration (Mailchimp group), or fallback constant <code>MAILCHIMP_API_KEY</code>.</p>';
-        echo '<p style="margin:0 0 10px 0;">Saving a valid API key will queue the Mailchimp backfill for prior signup submissions.</p>';
+        echo '<p>Mailchimp settings are missing. Set API Key and List ID in CRM Integration (Mailchimp group), or fallback constants <code>MAILCHIMP_API_KEY</code> and <code>MAILCHIMP_LIST_ID</code>.</p>';
+        echo '</div>';
+        return;
+    }
+
+    $list_id = mz_mc_get_list_id();
+    if ($list_id === '') {
+        echo '<p>Mailchimp List ID is missing. Set API Key and List ID in CRM Integration (Mailchimp group), or fallback constants <code>MAILCHIMP_API_KEY</code> and <code>MAILCHIMP_LIST_ID</code>.</p>';
         echo '</div>';
         return;
     }
 
     $auth = mz_mc_get_auth_context();
     if (empty($auth['ok'])) {
-        echo '<p>Mailchimp API key is saved, but the data center could not be derived from it. Mailchimp API keys should end with a data center suffix like <code>-us6</code>.</p>';
+        echo '<p>Mailchimp API Key is saved, but it appears invalid. Mailchimp API keys should end with a data center suffix like <code>-us6</code>. You can set the API Key and List ID in CRM Integration (Mailchimp group), or fallback constants <code>MAILCHIMP_API_KEY</code> and <code>MAILCHIMP_LIST_ID</code>.</p>';
         echo '</div>';
         return;
     }
 
-    $list_id = mz_mc_get_list_id();
-    if ($list_id !== '') {
-        echo '<p>Mailchimp will sync with API key authentication using audience <code>' . esc_html($list_id) . '</code>.</p>';
-    } else {
-        echo '<p>Mailchimp will sync with API key authentication and use the first available audience if List ID is left blank.</p>';
-    }
-    echo '<p style="margin:0 0 10px 0;">Saving these CRM settings queues a backfill for older signup submissions that have not been synced yet.</p>';
+    echo '<p>Mailchimp is configured with the saved API Key and List ID <code>' . esc_html($list_id) . '</code>. You can also provide these via <code>MAILCHIMP_API_KEY</code> and <code>MAILCHIMP_LIST_ID</code> in <code>wp-config.php</code>.</p>';
     echo '</div>';
 });
 
