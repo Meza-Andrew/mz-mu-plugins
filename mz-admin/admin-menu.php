@@ -311,7 +311,11 @@ function meza_is_current_aios_admin_page(): bool
     }
 
     $page = sanitize_key((string) ($_GET['page'] ?? ''));
-    if (in_array($page, ['aiowpsec', 'aiowpsec_settings', 'aiowpsec_two_factor_auth_user'], true)) {
+    if (
+        $page === 'aiowpsec'
+        || str_starts_with($page, 'aiowpsec_')
+        || str_contains($page, 'wp-security')
+    ) {
         return true;
     }
 
