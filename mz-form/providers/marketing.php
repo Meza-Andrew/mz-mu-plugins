@@ -89,6 +89,15 @@ if (!function_exists('mzf_sync_marketing_contact')) {
         }
 
         if ($provider === 'mailchimp') {
+            if (function_exists('mz_mc_is_configured') && !mz_mc_is_configured()) {
+                return [
+                    'ok' => false,
+                    'provider' => 'mailchimp',
+                    'label' => 'Mailchimp',
+                    'skipped' => true,
+                    'error' => 'Mailchimp authentication is missing.',
+                ];
+            }
             if (!function_exists('mz_mc_upsert_contact')) {
                 return [
                     'ok' => false,
@@ -113,6 +122,15 @@ if (!function_exists('mzf_sync_marketing_contact')) {
         }
 
         if ($provider === 'constant_contact') {
+            if (function_exists('cc_is_configured') && !cc_is_configured()) {
+                return [
+                    'ok' => false,
+                    'provider' => 'constant_contact',
+                    'label' => 'Constant Contact',
+                    'skipped' => true,
+                    'error' => 'Constant Contact authentication is missing.',
+                ];
+            }
             if (!function_exists('mz_cc_add_contact')) {
                 return [
                     'ok' => false,
