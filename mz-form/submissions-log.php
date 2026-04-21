@@ -34,8 +34,27 @@ if (!function_exists('mzf_log_normalize_value')) {
             return $normalized;
         }
 
+        if (is_object($value)) {
+            if ($value instanceof JsonSerializable) {
+                $json_value = $value->jsonSerialize();
+                if ($json_value !== $value) {
+                    return mzf_log_normalize_value($json_value);
+                }
+            }
+
+            if ($value instanceof Stringable) {
+                return sanitize_textarea_field((string) $value);
+            }
+
+            return mzf_log_normalize_value(get_object_vars($value));
+        }
+
         if (is_bool($value) || is_int($value) || is_float($value) || $value === null) {
             return $value;
+        }
+
+        if (is_resource($value)) {
+            return '';
         }
 
         return sanitize_textarea_field((string) $value);

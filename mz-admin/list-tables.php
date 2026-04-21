@@ -5767,6 +5767,7 @@ function meza_normalize_datetime_columns(array $columns): array
     $show_organization_url_column = meza_post_type_is_organization_like($post_type);
     $show_profile_title_column = meza_post_type_is_profile_like($post_type);
     $show_profile_link_column = meza_post_type_is_profile_like($post_type);
+    $show_review_link_column = in_array($post_type, ['review', 'reviews'], true);
     $show_faq_count_column = ($post_type === 'faq');
     $show_form_slug_column = ($post_type === 'form');
     $show_review_columns = in_array($post_type, ['review', 'reviews'], true);
