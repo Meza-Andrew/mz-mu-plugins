@@ -49,7 +49,6 @@ if (!function_exists('mzf_registry_field_labels')) {
             'LocationDisplay' => 'Shipping Address',
             'Explosive' => 'Explosive Materials',
             'Weight' => 'Weight',
-            'CondomCount' => 'Quantity',
             'Training' => 'Training Acknowledged',
             'Conduct' => 'Volunteer Conduct Acknowledged',
             'Confidentiality' => 'Confidentiality Acknowledged',
@@ -141,11 +140,6 @@ if (!function_exists('mzf_slug_registry')) {
                 'subject' => 'New medical services request from {{name_company}}',
                 'required' => ['FirstName', 'Email'],
                 'layout' => ['FullName', 'Email', 'Phone', 'Company', 'LocationDisplay', 'Interests', 'Comments'],
-            ],
-            'condoms' => [
-                'subject' => 'New condom order request ({{condom_count}}) for {{state}}',
-                'required' => ['FirstName', 'Email'],
-                'layout' => ['FullName', 'Email', 'Phone', 'Company', 'LocationDisplay', 'CondomCount', 'Interests', 'Comments'],
             ],
             'audition' => [
                 'subject' => 'New {{vocals_or_vocalist}} requesting an audition',

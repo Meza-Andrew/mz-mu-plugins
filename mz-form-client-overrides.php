@@ -83,7 +83,6 @@ add_filter('mzf_recipients', static function (array $to, array $data, $env): arr
             'events' => [$option_email],
             'hiv-testing' => ['jason@fahass.org', 'michelle@fahass.org'],
             'appointments' => ['jason@fahass.org', 'michelle@fahass.org'],
-            'free-condoms' => ['jason@fahass.org', 'michelle@fahass.org'],
         ];
 
         $raw_interests = $data['Interests'] ?? [];

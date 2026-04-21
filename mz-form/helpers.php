@@ -1348,13 +1348,10 @@ if (!function_exists('mzf_has_fh_contract')) {
     {
         $slug = function_exists('mzf_get_form_slug') ? mzf_get_form_slug($data) : sanitize_key((string) ($data['FormSlug'] ?? ''));
         $slug = function_exists('mzf_normalize_form_slug') ? mzf_normalize_form_slug($slug) : $slug;
-        if (!in_array($slug, ['contact', 'volunteer', 'medical', 'condoms'], true)) {
+        if (!in_array($slug, ['contact', 'volunteer', 'medical'], true)) {
             return false;
         }
         if (trim((string) ($data['FirstName'] ?? '')) === '' || trim((string) ($data['Email'] ?? '')) === '') {
-            return false;
-        }
-        if ($slug === 'condoms' && trim((string) ($data['CondomCount'] ?? '')) === '') {
             return false;
         }
         return true;
