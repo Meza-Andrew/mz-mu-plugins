@@ -460,7 +460,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'name' => 'api',
                         'aria-label' => '',
                         'type' => 'password',
-                        'instructions' => 'Paste the Mailchimp API key used for audience sync and submission backfill.',
+                        'instructions' => '',
                         'required' => 1,
                         'conditional_logic' => 0,
                         'wrapper' => [
