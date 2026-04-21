@@ -456,39 +456,13 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'sub_fields' => [
                     [
                         'key' => 'field_69b5d528ed70c',
-                        'label' => 'Client ID',
-                        'name' => 'client_id',
+                        'label' => 'API Key',
+                        'name' => 'api',
                         'aria-label' => '',
                         'type' => 'password',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'allow_in_bindings' => 0,
-                        'placeholder' => '',
-                        'prepend' => '',
-                        'append' => '',
-                    ],
-                    [
-                        'key' => 'field_69b5d528ed70d',
-                        'label' => 'Client Secret',
-                        'name' => 'client_secret',
-                        'aria-label' => '',
-                        'type' => 'password',
-                        'instructions' => '',
+                        'instructions' => 'Paste the Mailchimp API key used for audience sync and submission backfill.',
                         'required' => 1,
-                        'conditional_logic' => [
-                            [
-                                [
-                                    'field' => 'field_69b5d528ed70c',
-                                    'operator' => '!=empty',
-                                ],
-                            ],
-                        ],
+                        'conditional_logic' => 0,
                         'wrapper' => [
                             'width' => '',
                             'class' => '',
@@ -511,10 +485,6 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                             [
                                 [
                                     'field' => 'field_69b5d528ed70c',
-                                    'operator' => '!=empty',
-                                ],
-                                [
-                                    'field' => 'field_69b5d528ed70d',
                                     'operator' => '!=empty',
                                 ],
                             ],
