@@ -738,10 +738,15 @@ function meza_get_logo_link_html(int $attachment_id): string
         return '';
     }
 
-    $logo = wp_get_attachment_image($attachment_id, 'full', false, [
+    $logo_size = function_exists('meza_get_custom_logo_image_size')
+        ? meza_get_custom_logo_image_size($attachment_id)
+        : 'medium';
+
+    $logo = wp_get_attachment_image($attachment_id, $logo_size, false, [
         'class' => 'custom-logo',
         'loading' => 'lazy',
         'decoding' => 'async',
+        'sizes' => function_exists('meza_get_image_sizes_attr') ? meza_get_image_sizes_attr('custom-logo') : '(max-width: 767px) 180px, 250px',
     ]);
 
     if (!is_string($logo) || $logo === '') {
@@ -774,7 +779,11 @@ function meza_get_footer_logo_html(): string
     }
 
     if (function_exists('get_custom_logo')) {
-        $custom_logo = (string) get_custom_logo();
+        $custom_logo = function_exists('meza_get_custom_logo_html')
+            ? meza_get_custom_logo_html([
+                'loading' => 'lazy',
+            ])
+            : (string) get_custom_logo();
         if ($custom_logo !== '') {
             return $custom_logo;
         }
