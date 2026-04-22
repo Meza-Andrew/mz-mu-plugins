@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Theme Config
  * Description: Loads client child theme config and maps it into Meza Starter filters.
- * Version: 1.0.1
+ * Version: 1.0.2
  */
 
 if (!defined('ABSPATH')) {
@@ -59,12 +59,18 @@ add_filter('theme_assets', function ($assets) use ($mz_theme_config) {
     $assets['conditional'] = $assets['conditional'] ?? [];
 
     foreach ($additional_assets as $key => $data) {
-        if (!empty($data['assets'])) {
-            $assets['conditional'][$key] = [
+        if (empty($data['assets']) || empty($data['type'])) {
+            continue;
+        }
+
+        $assets['conditional'][$key] = array_merge(
+            $assets['conditional'][$key] ?? [],
+            $data,
+            [
                 'type' => $data['type'],
                 'assets' => $data['assets'],
-            ];
-        }
+            ]
+        );
     }
 
     return $assets;
