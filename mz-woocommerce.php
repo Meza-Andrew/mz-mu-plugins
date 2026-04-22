@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DS WooCommerce
  * Description: WooCommerce query rules, asset loading, and storefront behavior.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -253,9 +253,21 @@ add_action('init', function () {
  *  LEGACY THEME COMPATIBILITY
  *  ================================ */
 
-/** Remove jQuery on non-Woo pages for the legacy theme stack.
- * Disabled by default because core/admin flows (e.g. remove-weak-pw) depend on jquery being registered.
- * To re-enable intentionally, set `define('MZ_ALLOW_JQUERY_REMOVAL', true);` in wp-config.php.
+/** Decide whether front-end jQuery should be stripped for the current request.
+ * Non-Woo sites strip it by default, while Woo sites keep the store-page rules above.
+ * Projects that truly need front-end jQuery can opt back in via a constant or filter.
+ */
+function meza_should_strip_frontend_jquery(): bool
+{
+    if (defined('MZ_ALLOW_JQUERY_REMOVAL')) {
+        return MZ_ALLOW_JQUERY_REMOVAL === true;
+    }
+
+    return (bool) apply_filters('meza_strip_frontend_jquery', !mz_has_woo());
+}
+
+/** Remove jQuery on non-Woo sites for the legacy theme stack.
+ * Core/admin auth screens and async endpoints intentionally keep their own registrations.
  */
 add_action('wp_default_scripts', function ($scripts) {
     global $pagenow;
@@ -273,7 +285,7 @@ add_action('wp_default_scripts', function ($scripts) {
         return;
     }
 
-    if (!defined('MZ_ALLOW_JQUERY_REMOVAL') || MZ_ALLOW_JQUERY_REMOVAL !== true) {
+    if (!meza_should_strip_frontend_jquery()) {
         return;
     }
 
