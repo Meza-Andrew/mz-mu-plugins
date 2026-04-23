@@ -4459,6 +4459,20 @@ if (!function_exists('meza_get_media_branding_assignment_label')) {
             return __('Site Icon');
         }
 
+        $theme_thumbnail_id = function_exists('meza_get_theme_thumbnail_id')
+            ? (int) meza_get_theme_thumbnail_id()
+            : (int) get_option('meza_theme_thumbnail_id', 0);
+        if ($theme_thumbnail_id > 0 && $attachment_id === $theme_thumbnail_id) {
+            return __('Theme Thumbnail');
+        }
+
+        $social_share_default_id = function_exists('meza_get_social_share_default_id')
+            ? (int) meza_get_social_share_default_id()
+            : (int) get_option('meza_social_share_default_id', 0);
+        if ($social_share_default_id > 0 && $attachment_id === $social_share_default_id) {
+            return __('Social Share Default');
+        }
+
         $alternative_logo_id = function_exists('meza_get_alternative_logo_id')
             ? (int) meza_get_alternative_logo_id()
             : (int) get_option('meza_alternative_logo_id', 0);
@@ -7028,30 +7042,60 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     }
 
     if ($column === 'mz_thumbnail') {
-        if (!post_type_supports((string) $post->post_type, 'thumbnail')) {
-            echo '&mdash;';
-            return;
-        }
-
-        $thumb_id = (int) get_post_thumbnail_id((int) $post_id);
+        $uses_share_image = meza_post_has_permalink((int) $post_id);
+        $supports_thumbnail = post_type_supports((string) $post->post_type, 'thumbnail');
+        $using_site_default = false;
+        $thumb_id = 0;
+        $thumb_url = '';
         $thumb_attrs = [
             'style' => 'width:auto;height:auto;max-width:100%;display:block;margin:0;',
             'loading' => 'lazy',
             'decoding' => 'async',
         ];
-        $thumb_html = ($thumb_id > 0)
-            ? wp_get_attachment_image($thumb_id, 'medium', false, $thumb_attrs)
-            : get_the_post_thumbnail((int) $post_id, 'medium', $thumb_attrs);
+
+        $thumb_html = '';
+
+        if ($uses_share_image) {
+            if (function_exists('meza_get_post_resolved_social_share_image_id')) {
+                $thumb_id = (int) meza_get_post_resolved_social_share_image_id((int) $post_id);
+            }
+
+            if (function_exists('meza_get_post_resolved_social_share_image_url')) {
+                $thumb_url = (string) meza_get_post_resolved_social_share_image_url((int) $post_id);
+            }
+
+            if ($thumb_id > 0) {
+                $thumb_html = wp_get_attachment_image($thumb_id, 'medium', false, $thumb_attrs);
+                if ($thumb_url === '') {
+                    $thumb_url = (string) wp_get_attachment_url($thumb_id);
+                }
+            } elseif ($thumb_url !== '') {
+                $thumb_html = '<img src="' . esc_url($thumb_url) . '" alt="" style="width:auto;height:auto;max-width:100%;display:block;margin:0;" loading="lazy" decoding="async" />';
+            }
+
+            $using_site_default = function_exists('meza_post_is_using_site_default_social_share_image')
+                && meza_post_is_using_site_default_social_share_image((int) $post_id);
+        }
+
+        if ($thumb_html === '' && $supports_thumbnail) {
+            $thumb_id = (int) get_post_thumbnail_id((int) $post_id);
+            $thumb_html = ($thumb_id > 0)
+                ? wp_get_attachment_image($thumb_id, 'medium', false, $thumb_attrs)
+                : get_the_post_thumbnail((int) $post_id, 'medium', $thumb_attrs);
+
+            if ($thumb_id > 0 && $thumb_url === '') {
+                $thumb_url = (string) wp_get_attachment_url($thumb_id);
+            }
+        }
+
         if ($thumb_html === '') {
             echo '&mdash;';
             return;
         }
 
         $thumb_alt = '';
-        $thumb_url = '';
         if ($thumb_id > 0) {
             $thumb_alt = trim((string) get_post_meta($thumb_id, '_wp_attachment_image_alt', true));
-            $thumb_url = (string) wp_get_attachment_url($thumb_id);
         }
 
         $actions = [];
@@ -7079,6 +7123,9 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             echo $thumb_html;
         }
         echo '</span>';
+        if ($using_site_default) {
+            echo '<div><span>(site default)</span></div>';
+        }
         if (!empty($actions)) echo '<div class="row-actions">' . implode(' | ', $actions) . '</div>';
         return;
     }

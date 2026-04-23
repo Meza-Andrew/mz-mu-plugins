@@ -43,6 +43,258 @@ if (!function_exists('meza_shared_project_acf_options_are_available')) {
     }
 }
 
+if (!function_exists('meza_get_theme_thumbnail_id')) {
+    function meza_get_theme_thumbnail_id(): int
+    {
+        $thumbnail_id = (int) get_option('meza_theme_thumbnail_id', 0);
+
+        return $thumbnail_id > 0 && get_post_type($thumbnail_id) === 'attachment'
+            ? $thumbnail_id
+            : 0;
+    }
+}
+
+if (!function_exists('meza_get_social_share_default_id')) {
+    function meza_get_social_share_default_id(): int
+    {
+        $default_id = (int) get_option('meza_social_share_default_id', 0);
+        if ($default_id > 0 && get_post_type($default_id) === 'attachment') {
+            return $default_id;
+        }
+
+        return meza_get_theme_thumbnail_id();
+    }
+}
+
+if (!function_exists('meza_get_social_share_default_url')) {
+    function meza_get_social_share_default_url(): string
+    {
+        $default_id = meza_get_social_share_default_id();
+        if ($default_id <= 0) {
+            return '';
+        }
+
+        $default_url = wp_get_attachment_image_url($default_id, 'full');
+
+        return is_string($default_url) ? $default_url : '';
+    }
+}
+
+if (!function_exists('meza_post_uses_share_image_permalink')) {
+    function meza_post_uses_share_image_permalink(int $post_id): bool
+    {
+        $post = get_post($post_id);
+        if (!($post instanceof WP_Post)) {
+            return false;
+        }
+
+        if (in_array((string) $post->post_status, ['auto-draft', 'trash'], true)) {
+            return false;
+        }
+
+        $post_type = trim((string) $post->post_type);
+        if ($post_type === '') {
+            return false;
+        }
+
+        $post_type_object = get_post_type_object($post_type);
+        if (!($post_type_object instanceof WP_Post_Type)) {
+            return false;
+        }
+
+        if (function_exists('is_post_type_viewable') && !is_post_type_viewable($post_type_object)) {
+            return false;
+        }
+
+        if ($post_type === 'post' || $post_type === 'page') {
+            return true;
+        }
+
+        return !empty($post_type_object->rewrite) || !empty($post_type_object->query_var);
+    }
+}
+
+if (!function_exists('meza_get_post_explicit_social_share_image_id')) {
+    function meza_get_post_explicit_social_share_image_id(int $post_id): int
+    {
+        if ($post_id <= 0) {
+            return 0;
+        }
+
+        foreach ([
+            '_yoast_wpseo_opengraph-image-id',
+            '_yoast_wpseo_twitter-image-id',
+        ] as $meta_key) {
+            $attachment_id = absint(get_post_meta($post_id, $meta_key, true));
+            if ($attachment_id > 0 && get_post_type($attachment_id) === 'attachment') {
+                return $attachment_id;
+            }
+        }
+
+        foreach ([
+            '_yoast_wpseo_opengraph-image',
+            '_yoast_wpseo_twitter-image',
+        ] as $meta_key) {
+            $image_url = trim((string) get_post_meta($post_id, $meta_key, true));
+            if ($image_url === '') {
+                continue;
+            }
+
+            $attachment_id = function_exists('attachment_url_to_postid')
+                ? absint(attachment_url_to_postid($image_url))
+                : 0;
+
+            if ($attachment_id > 0 && get_post_type($attachment_id) === 'attachment') {
+                return $attachment_id;
+            }
+        }
+
+        return 0;
+    }
+}
+
+if (!function_exists('meza_get_post_explicit_social_share_image_url')) {
+    function meza_get_post_explicit_social_share_image_url(int $post_id): string
+    {
+        $attachment_id = meza_get_post_explicit_social_share_image_id($post_id);
+        if ($attachment_id > 0) {
+            $image_url = wp_get_attachment_image_url($attachment_id, 'full');
+            if (is_string($image_url) && $image_url !== '') {
+                return $image_url;
+            }
+        }
+
+        foreach ([
+            '_yoast_wpseo_opengraph-image',
+            '_yoast_wpseo_twitter-image',
+        ] as $meta_key) {
+            $image_url = trim((string) get_post_meta($post_id, $meta_key, true));
+            if ($image_url !== '') {
+                return $image_url;
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('meza_post_has_explicit_social_share_image')) {
+    function meza_post_has_explicit_social_share_image(int $post_id): bool
+    {
+        if ($post_id <= 0) {
+            return false;
+        }
+
+        if (meza_get_post_explicit_social_share_image_id($post_id) > 0) {
+            return true;
+        }
+
+        return meza_get_post_explicit_social_share_image_url($post_id) !== '';
+    }
+}
+
+if (!function_exists('meza_post_has_explicit_social_share_image_meta')) {
+    function meza_post_has_explicit_social_share_image_meta(int $post_id, array $meta_keys): bool
+    {
+        if ($post_id <= 0) {
+            return false;
+        }
+
+        foreach ($meta_keys as $meta_key) {
+            $meta_value = trim((string) get_post_meta($post_id, (string) $meta_key, true));
+            if ($meta_value !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_get_post_resolved_social_share_image_id')) {
+    function meza_get_post_resolved_social_share_image_id(int $post_id): int
+    {
+        $explicit_attachment_id = meza_get_post_explicit_social_share_image_id($post_id);
+        if ($explicit_attachment_id > 0) {
+            return $explicit_attachment_id;
+        }
+
+        if (!meza_post_uses_share_image_permalink($post_id)) {
+            return 0;
+        }
+
+        return meza_get_social_share_default_id();
+    }
+}
+
+if (!function_exists('meza_get_post_resolved_social_share_image_url')) {
+    function meza_get_post_resolved_social_share_image_url(int $post_id): string
+    {
+        $explicit_image_url = meza_get_post_explicit_social_share_image_url($post_id);
+        if ($explicit_image_url !== '') {
+            return $explicit_image_url;
+        }
+
+        if (!meza_post_uses_share_image_permalink($post_id)) {
+            return '';
+        }
+
+        return meza_get_social_share_default_url();
+    }
+}
+
+if (!function_exists('meza_post_is_using_site_default_social_share_image')) {
+    function meza_post_is_using_site_default_social_share_image(int $post_id): bool
+    {
+        if ($post_id <= 0 || meza_post_has_explicit_social_share_image($post_id)) {
+            return false;
+        }
+
+        return meza_post_uses_share_image_permalink($post_id) && meza_get_social_share_default_id() > 0;
+    }
+}
+
+if (!function_exists('meza_get_social_share_default_image_payload')) {
+    function meza_get_social_share_default_image_payload(): array
+    {
+        $attachment_id = meza_get_social_share_default_id();
+        $image_url = meza_get_social_share_default_url();
+
+        if ($attachment_id <= 0 || $image_url === '') {
+            return [];
+        }
+
+        return [
+            'id' => $attachment_id,
+            'url' => $image_url,
+            'alt' => trim((string) get_post_meta($attachment_id, '_wp_attachment_image_alt', true)),
+            'warnings' => [],
+        ];
+    }
+}
+
+if (!function_exists('meza_get_theme_thumbnail_allowed_extensions')) {
+    function meza_get_theme_thumbnail_allowed_extensions(): array
+    {
+        return ['png', 'gif', 'jpg', 'jpeg', 'webp', 'avif'];
+    }
+}
+
+if (!function_exists('meza_theme_thumbnail_attachment_is_supported')) {
+    function meza_theme_thumbnail_attachment_is_supported(int $attachment_id): bool
+    {
+        $mime_type = strtolower((string) get_post_mime_type($attachment_id));
+
+        return in_array($mime_type, [
+            'image/png',
+            'image/gif',
+            'image/jpeg',
+            'image/webp',
+            'image/avif',
+        ], true);
+    }
+}
+
 if (!function_exists('meza_get_shared_project_acf_options_pages')) {
     function meza_get_shared_project_acf_options_pages(): array
     {
@@ -288,6 +540,58 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'max_height' => '',
                 'max_size' => '',
                 'mime_types' => '',
+                'allow_in_bindings' => 0,
+            ],
+            [
+                'key' => 'field_meza_business_theme_thumbnail',
+                'label' => 'Theme Thumbnail',
+                'name' => 'wp_theme_thumbnail',
+                'aria-label' => '',
+                'type' => 'image',
+                'instructions' => 'Used by WordPress to represent the website. Upload a 4:3 image that is at least 1200 by 900 pixels.',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'return_format' => 'id',
+                'library' => 'all',
+                'preview_size' => 'meza_theme_thumbnail_preview',
+                'min_width' => '',
+                'min_height' => '',
+                'min_size' => '',
+                'max_width' => '',
+                'max_height' => '',
+                'max_size' => '',
+                'mime_types' => 'png,gif,jpg,jpeg,webp,avif',
+                'allow_in_bindings' => 0,
+            ],
+            [
+                'key' => 'field_meza_business_social_share_default',
+                'label' => 'Social Share Default',
+                'name' => 'wp_social_share_default',
+                'aria-label' => '',
+                'type' => 'image',
+                'instructions' => 'Used when a page or post does not have its own share image. Defaults to the Theme Thumbnail until you choose a replacement.',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'return_format' => 'id',
+                'library' => 'all',
+                'preview_size' => 'meza_theme_thumbnail_preview',
+                'min_width' => '',
+                'min_height' => '',
+                'min_size' => '',
+                'max_width' => '',
+                'max_height' => '',
+                'max_size' => '',
+                'mime_types' => 'png,gif,jpg,jpeg,webp,avif',
                 'allow_in_bindings' => 0,
             ],
         ];
@@ -960,6 +1264,107 @@ if (!function_exists('meza_get_business_information_branding_field_map')) {
                     return $site_icon_id;
                 },
             ],
+            'wp_theme_thumbnail' => [
+                'load' => static function (): int {
+                    return meza_get_theme_thumbnail_id();
+                },
+                'validate' => static function ($valid, $value) {
+                    if ($valid !== true) {
+                        return $valid;
+                    }
+
+                    $attachment_id = absint($value);
+                    if ($attachment_id <= 0) {
+                        return $valid;
+                    }
+
+                    $attachment = get_post($attachment_id);
+                    if (!($attachment instanceof WP_Post) || $attachment->post_type !== 'attachment') {
+                        return __('Select a valid media library image for the Theme Thumbnail.', 'mz-mu-plugins');
+                    }
+
+                    if (!meza_theme_thumbnail_attachment_is_supported($attachment_id)) {
+                        return __('Select a PNG, JPG, GIF, WebP, or AVIF image for the Theme Thumbnail.', 'mz-mu-plugins');
+                    }
+
+                    $thumbnail_url = wp_get_attachment_image_url($attachment_id, 'full');
+                    if (!is_string($thumbnail_url) || $thumbnail_url === '') {
+                        return __('The selected Theme Thumbnail image URL could not be found.', 'mz-mu-plugins');
+                    }
+
+                    return $valid;
+                },
+                'update' => static function ($value): int {
+                    $thumbnail_id = absint($value);
+                    $GLOBALS['meza_previous_theme_thumbnail_id'] = meza_get_theme_thumbnail_id();
+
+                    if ($thumbnail_id <= 0) {
+                        delete_option('meza_theme_thumbnail_id');
+                        return 0;
+                    }
+
+                    update_option('meza_theme_thumbnail_id', $thumbnail_id, false);
+                    return $thumbnail_id;
+                },
+            ],
+            'wp_social_share_default' => [
+                'load' => static function (): int {
+                    return meza_get_social_share_default_id();
+                },
+                'validate' => static function ($valid, $value) {
+                    if ($valid !== true) {
+                        return $valid;
+                    }
+
+                    $attachment_id = absint($value);
+                    if ($attachment_id <= 0) {
+                        return $valid;
+                    }
+
+                    $attachment = get_post($attachment_id);
+                    if (!($attachment instanceof WP_Post) || $attachment->post_type !== 'attachment') {
+                        return __('Select a valid media library image for the Social Share Default.', 'mz-mu-plugins');
+                    }
+
+                    if (!meza_theme_thumbnail_attachment_is_supported($attachment_id)) {
+                        return __('Select a PNG, JPG, GIF, WebP, or AVIF image for the Social Share Default.', 'mz-mu-plugins');
+                    }
+
+                    $thumbnail_url = wp_get_attachment_image_url($attachment_id, 'full');
+                    if (!is_string($thumbnail_url) || $thumbnail_url === '') {
+                        return __('The selected Social Share Default image URL could not be found.', 'mz-mu-plugins');
+                    }
+
+                    return $valid;
+                },
+                'update' => static function ($value): int {
+                    $default_id = absint($value);
+                    $theme_thumbnail_id = meza_get_theme_thumbnail_id();
+                    $stored_default_id = (int) get_option('meza_social_share_default_id', 0);
+                    $previous_theme_thumbnail_id = isset($GLOBALS['meza_previous_theme_thumbnail_id'])
+                        ? absint($GLOBALS['meza_previous_theme_thumbnail_id'])
+                        : $theme_thumbnail_id;
+
+                    if ($default_id <= 0) {
+                        delete_option('meza_social_share_default_id');
+
+                        return $theme_thumbnail_id;
+                    }
+
+                    if ($stored_default_id <= 0 && $previous_theme_thumbnail_id > 0 && $default_id === $previous_theme_thumbnail_id) {
+                        delete_option('meza_social_share_default_id');
+                        return $theme_thumbnail_id > 0 ? $theme_thumbnail_id : $default_id;
+                    }
+
+                    if ($default_id > 0 && $default_id === $theme_thumbnail_id) {
+                        delete_option('meza_social_share_default_id');
+                        return $default_id;
+                    }
+
+                    update_option('meza_social_share_default_id', $default_id, false);
+                    return $default_id;
+                },
+            ],
         ];
     }
 }
@@ -1106,6 +1511,133 @@ foreach (meza_get_business_information_branding_field_map() as $field_name => $c
         }, 20, 3);
     }
 }
+
+add_filter('wp_prepare_themes_for_js', static function (array $themes): array {
+    $thumbnail_id = meza_get_theme_thumbnail_id();
+    if ($thumbnail_id <= 0) {
+        return $themes;
+    }
+
+    $thumbnail_url = wp_get_attachment_image_url($thumbnail_id, 'full');
+    if (!is_string($thumbnail_url) || $thumbnail_url === '') {
+        return $themes;
+    }
+
+    $current_theme = get_stylesheet();
+
+    foreach ($themes as &$theme) {
+        if (!is_array($theme) || (string) ($theme['id'] ?? '') !== $current_theme) {
+            continue;
+        }
+
+        $theme['screenshot'] = [$thumbnail_url];
+        break;
+    }
+    unset($theme);
+
+    return $themes;
+}, 20);
+
+add_filter('wpseo_add_opengraph_additional_images', static function ($image_container) {
+    if (is_object($image_container) && method_exists($image_container, 'has_images') && $image_container->has_images()) {
+        return $image_container;
+    }
+
+    $default_id = meza_get_social_share_default_id();
+    if ($default_id <= 0 || !is_object($image_container) || !method_exists($image_container, 'add_image_by_id')) {
+        return $image_container;
+    }
+
+    $image_container->add_image_by_id($default_id);
+
+    return $image_container;
+}, 20);
+
+add_filter('wpseo_twitter_image', static function ($image_url): string {
+    $image_url = is_scalar($image_url) ? trim((string) $image_url) : '';
+    if ($image_url !== '') {
+        return $image_url;
+    }
+
+    return meza_get_social_share_default_url();
+}, 20);
+
+add_filter('wpseo_post_edit_values', static function (array $values, $post): array {
+    if (!($post instanceof WP_Post) || !meza_post_is_using_site_default_social_share_image((int) $post->ID)) {
+        return $values;
+    }
+
+    $default_image_url = meza_get_social_share_default_url();
+    if ($default_image_url === '') {
+        return $values;
+    }
+
+    $values['social_image_template'] = $default_image_url;
+
+    return $values;
+}, 20, 2);
+
+add_action('admin_enqueue_scripts', static function (): void {
+    if (!is_admin() || !function_exists('get_current_screen')) {
+        return;
+    }
+
+    $screen = get_current_screen();
+    if (!($screen instanceof WP_Screen) || !in_array((string) $screen->base, ['post', 'post-new'], true)) {
+        return;
+    }
+
+    $post_id = isset($_GET['post']) ? absint(wp_unslash($_GET['post'])) : 0;
+    if ($post_id <= 0) {
+        $post = get_post();
+        $post_id = $post instanceof WP_Post ? (int) $post->ID : 0;
+    }
+
+    if ($post_id <= 0 || !meza_post_uses_share_image_permalink($post_id)) {
+        return;
+    }
+
+    $default_image = meza_get_social_share_default_image_payload();
+    if (empty($default_image)) {
+        return;
+    }
+
+    $config = [
+        'image' => $default_image,
+        'hasExplicitFacebookImage' => meza_post_has_explicit_social_share_image_meta($post_id, [
+            '_yoast_wpseo_opengraph-image-id',
+            '_yoast_wpseo_opengraph-image',
+        ]),
+        'hasExplicitTwitterImage' => meza_post_has_explicit_social_share_image_meta($post_id, [
+            '_yoast_wpseo_twitter-image-id',
+            '_yoast_wpseo_twitter-image',
+        ]),
+    ];
+
+    $script = 'window.mezaYoastSocialShareDefault = ' . wp_json_encode($config) . ';'
+        . '(function(config){'
+        . 'if(!config||!config.image||!config.image.url){return;}'
+        . 'var attempts=0;'
+        . 'var apply=function(){'
+        . 'if(!window.wp||!window.wp.data||typeof window.wp.data.dispatch!=="function"){return false;}'
+        . 'var store=window.wp.data.dispatch("yoast-seo/editor");'
+        . 'if(!store){return false;}'
+        . 'if(typeof store.loadFacebookPreviewData==="function"){store.loadFacebookPreviewData();}'
+        . 'if(typeof store.loadTwitterPreviewData==="function"){store.loadTwitterPreviewData();}'
+        . 'if(!config.hasExplicitFacebookImage&&typeof store.setFacebookPreviewImage==="function"){store.setFacebookPreviewImage(config.image);}'
+        . 'if(!config.hasExplicitTwitterImage&&typeof store.setTwitterPreviewImage==="function"){store.setTwitterPreviewImage({id:config.image.id,url:config.image.url,alt:config.image.alt||"",warnings:config.image.warnings||[]});}'
+        . 'return true;'
+        . '};'
+        . 'if(apply()){return;}'
+        . 'var timer=window.setInterval(function(){attempts+=1;if(apply()||attempts>40){window.clearInterval(timer);}},150);'
+        . '})(window.mezaYoastSocialShareDefault);';
+
+    foreach (['yoast-seo-post-edit', 'yoast-seo-post-edit-classic'] as $handle) {
+        if (wp_script_is($handle, 'registered') || wp_script_is($handle, 'enqueued')) {
+            wp_add_inline_script($handle, $script, 'after');
+        }
+    }
+}, 20);
 
 if (!function_exists('meza_is_business_information_options_screen')) {
     function meza_is_business_information_options_screen(): bool
@@ -1394,6 +1926,7 @@ add_action('admin_menu_editor-menu_replaced', 'meza_normalize_branding_settings_
 add_action('after_setup_theme', function (): void {
     if (function_exists('add_image_size')) {
         add_image_size('meza_branding_preview', 250, 50, false);
+        add_image_size('meza_theme_thumbnail_preview', 250, 188, false);
     }
 }, 20);
 
@@ -1418,6 +1951,29 @@ add_action('admin_head', function (): void {
         #acf-group_meza_business_branding .acf-field[data-name="wp_site_logo_alternative"] .acf-image-uploader .image-wrap img,
         .acf-postbox[data-key="group_meza_business_branding"] .acf-field[data-name="wp_site_logo_alternative"] .acf-image-uploader .image-wrap img {
             background: transparent;
+        }
+
+        #acf-group_meza_business_branding .acf-field[data-name="wp_theme_thumbnail"] .acf-image-uploader .image-wrap,
+        #acf-group_meza_business_branding .acf-field[data-name="wp_social_share_default"] .acf-image-uploader .image-wrap,
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-field[data-name="wp_theme_thumbnail"] .acf-image-uploader .image-wrap,
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-field[data-name="wp_social_share_default"] .acf-image-uploader .image-wrap {
+            width: 250px;
+            height: 188px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        #acf-group_meza_business_branding .acf-field[data-name="wp_theme_thumbnail"] .acf-image-uploader .image-wrap img,
+        #acf-group_meza_business_branding .acf-field[data-name="wp_social_share_default"] .acf-image-uploader .image-wrap img,
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-field[data-name="wp_theme_thumbnail"] .acf-image-uploader .image-wrap img,
+        .acf-postbox[data-key="group_meza_business_branding"] .acf-field[data-name="wp_social_share_default"] .acf-image-uploader .image-wrap img {
+            width: 100%;
+            height: 100%;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
         }
 
         #acf-group_meza_business_branding .acf-label p,
