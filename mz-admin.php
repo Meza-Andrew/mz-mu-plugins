@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.485
+ * Version: 1.1.489
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -488,6 +488,13 @@ if (!function_exists('meza_site_manager_role_key')) {
     }
 }
 
+if (!function_exists('meza_seo_manager_role_key')) {
+    function meza_seo_manager_role_key(): string
+    {
+        return 'wpseo_manager';
+    }
+}
+
 if (!function_exists('meza_events_manager_role_key')) {
     function meza_events_manager_role_key(): string
     {
@@ -608,7 +615,7 @@ if (!function_exists('meza_customer_sign_generator_capability')) {
 if (!function_exists('meza_redirect_manager_capability')) {
     function meza_redirect_manager_capability(): string
     {
-        return 'edit_theme_options';
+        return 'meza_manage_redirects';
     }
 }
 
@@ -633,6 +640,7 @@ if (!function_exists('meza_site_manager_capabilities')) {
         $site_manager_extras = [
             meza_submission_manager_capability(),
             meza_customer_sign_generator_capability(),
+            meza_redirect_manager_capability(),
             'wpseo_manage_options',
             'edit_theme_options',
             'list_users',
@@ -656,6 +664,38 @@ if (!function_exists('meza_site_manager_capabilities')) {
     }
 }
 
+if (!function_exists('meza_seo_manager_capabilities')) {
+    function meza_seo_manager_capabilities(): array
+    {
+        $caps = [
+            'read' => true,
+        ];
+
+        $editor_role = get_role('editor');
+        if ($editor_role instanceof WP_Role) {
+            foreach ((array) $editor_role->capabilities as $cap => $grant) {
+                if ($grant) {
+                    $caps[(string) $cap] = true;
+                }
+            }
+        }
+
+        $seo_manager_extras = [
+            meza_redirect_manager_capability(),
+            'import',
+            'wpseo_manage_options',
+            'wpseo_edit_advanced_metadata',
+            'wpseo_bulk_edit',
+        ];
+
+        foreach ($seo_manager_extras as $cap) {
+            $caps[$cap] = true;
+        }
+
+        return $caps;
+    }
+}
+
 if (!function_exists('meza_sync_site_manager_role')) {
     function meza_sync_site_manager_role(): void
     {
@@ -667,6 +707,7 @@ if (!function_exists('meza_sync_site_manager_role')) {
             meza_submission_manager_capability(),
             meza_backup_manager_capability(),
             meza_customer_sign_generator_capability(),
+            meza_redirect_manager_capability(),
             'wpseo_manage_options',
             'wpseo_edit_advanced_metadata',
             'wpseo_bulk_edit',
@@ -738,7 +779,7 @@ if (!function_exists('meza_sync_site_manager_role')) {
                 $administrator_role->add_cap(meza_customer_sign_generator_capability());
             }
 
-            foreach (['wpseo_manage_options', 'wpseo_edit_advanced_metadata', 'wpseo_bulk_edit'] as $cap) {
+            foreach ([meza_redirect_manager_capability(), 'wpseo_manage_options', 'wpseo_edit_advanced_metadata', 'wpseo_bulk_edit'] as $cap) {
                 if (!$administrator_role->has_cap($cap)) {
                     $administrator_role->add_cap($cap);
                 }
@@ -761,6 +802,63 @@ if (!function_exists('meza_sync_site_manager_role')) {
 }
 add_action('init', 'meza_sync_site_manager_role', 20);
 
+if (!function_exists('meza_sync_seo_manager_role')) {
+    function meza_sync_seo_manager_role(): void
+    {
+        $role_key = meza_seo_manager_role_key();
+        $target_caps = meza_seo_manager_capabilities();
+        $role = get_role($role_key);
+        $sync_signature = meza_get_sync_signature([
+            'role_key' => $role_key,
+            'target_caps' => $target_caps,
+        ]);
+        $stored_signature = meza_get_stored_sync_signature('meza_sync_seo_manager_role_signature');
+
+        if ($role instanceof WP_Role && $stored_signature === $sync_signature) {
+            return;
+        }
+
+        if (!($role instanceof WP_Role)) {
+            add_role($role_key, 'SEO Manager', $target_caps);
+            $role = get_role($role_key);
+        }
+
+        if ($role instanceof WP_Role) {
+            foreach ($target_caps as $cap => $grant) {
+                if ((bool) $grant && !$role->has_cap($cap)) {
+                    $role->add_cap($cap);
+                }
+            }
+
+            foreach ((array) $role->capabilities as $cap => $grant) {
+                if (array_key_exists($cap, $target_caps)) {
+                    if ((bool) $grant !== (bool) $target_caps[$cap]) {
+                        if ($target_caps[$cap]) {
+                            $role->add_cap($cap);
+                        } else {
+                            $role->remove_cap($cap);
+                        }
+                    }
+                    continue;
+                }
+
+                $role->remove_cap($cap);
+            }
+        }
+
+        $current_user = wp_get_current_user();
+        if (
+            $current_user instanceof WP_User
+            && in_array($role_key, (array) $current_user->roles, true)
+        ) {
+            $current_user->get_role_caps();
+        }
+
+        meza_store_sync_signature('meza_sync_seo_manager_role_signature', $sync_signature);
+    }
+}
+add_action('init', 'meza_sync_seo_manager_role', 20);
+
 if (!function_exists('meza_is_aios_user_two_factor_request')) {
     function meza_is_aios_user_two_factor_request(): bool
     {
@@ -775,15 +873,38 @@ if (!function_exists('meza_is_aios_user_two_factor_request')) {
 }
 
 add_filter('aios_management_permission', function ($capability) {
-    if (!meza_is_aios_user_two_factor_request() || !meza_user_has_any_role(wp_get_current_user(), [meza_site_manager_role_key()])) {
-        return $capability;
+    $current_user = wp_get_current_user();
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash((string) $_GET['page'])) : '';
+
+    if (
+        in_array($page, ['aiowpsec_tools', 'aiowpsec_two_factor_auth_user'], true)
+        && $current_user instanceof WP_User
+        && $current_user->exists()
+        && !in_array('administrator', (array) $current_user->roles, true)
+    ) {
+        return 'read';
     }
 
-    return 'read';
+    if (meza_is_aios_user_two_factor_request() && meza_user_has_any_role($current_user, [meza_site_manager_role_key()])) {
+        return 'read';
+    }
+
+    return $capability;
 }, 20);
 
 add_filter('simba_tfa_management_capability', function ($capability) {
-    if (!meza_is_aios_user_two_factor_request() || !meza_user_has_any_role(wp_get_current_user(), [meza_site_manager_role_key()])) {
+    $current_user = wp_get_current_user();
+
+    if (
+        meza_is_aios_user_two_factor_request()
+        && $current_user instanceof WP_User
+        && $current_user->exists()
+        && !in_array('administrator', (array) $current_user->roles, true)
+    ) {
+        return 'read';
+    }
+
+    if (!meza_is_aios_user_two_factor_request() || !meza_user_has_any_role($current_user, [meza_site_manager_role_key()])) {
         return $capability;
     }
 
@@ -980,6 +1101,14 @@ if (!function_exists('meza_can_access_profile_two_factor')) {
         return user_can($user, 'read');
     }
 }
+
+add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, array $args): array {
+    if ($cap !== 'view_site_health_checks') {
+        return $caps;
+    }
+
+    return ['manage_options'];
+}, 19, 4);
 
 if (!function_exists('meza_can_access_clear_cache')) {
     function meza_can_access_clear_cache($user = null): bool
@@ -1655,6 +1784,7 @@ if (!function_exists('meza_sync_site_kit_dashboard_sharing')) {
         $shared_roles = array_values(array_filter(array_unique([
             'shop_manager',
             meza_site_manager_role_key(),
+            meza_seo_manager_role_key(),
         ]), static function ($role_slug): bool {
             $role = get_role((string) $role_slug);
             return $role instanceof WP_Role && $role->has_cap('edit_posts');
@@ -1718,6 +1848,16 @@ if (!function_exists('meza_sync_site_kit_dashboard_sharing')) {
 }
 add_action('init', 'meza_sync_site_kit_dashboard_sharing', 25);
 
+if (!function_exists('meza_can_view_site_kit_dashboard_as_limited_role')) {
+    function meza_can_view_site_kit_dashboard_as_limited_role($user = null): bool
+    {
+        return meza_user_has_any_role($user, [
+            meza_site_manager_role_key(),
+            meza_seo_manager_role_key(),
+        ]);
+    }
+}
+
 if (!function_exists('meza_is_site_kit_plugin_available')) {
     function meza_is_site_kit_plugin_available(): bool
     {
@@ -1758,10 +1898,7 @@ if (!function_exists('meza_can_access_site_kit_splash')) {
 if (!function_exists('meza_can_manage_site_kit')) {
     function meza_can_manage_site_kit($user = null): bool
     {
-        return meza_user_has_any_role($user, [
-            'administrator',
-            meza_site_manager_role_key(),
-        ]);
+        return meza_user_has_any_role($user, ['administrator']);
     }
 }
 
@@ -1782,6 +1919,7 @@ if (!function_exists('meza_can_manage_yoast')) {
         return meza_user_has_any_role($user, [
             'administrator',
             meza_site_manager_role_key(),
+            meza_seo_manager_role_key(),
         ]);
     }
 }
@@ -1870,11 +2008,11 @@ add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, arr
         return ['read'];
     }
 
-    if (in_array($cap, $dashboard_caps, true) && $user_id > 0 && meza_can_manage_site_kit($user_id)) {
+    if (in_array($cap, $dashboard_caps, true) && $user_id > 0 && (meza_can_manage_site_kit($user_id) || meza_can_view_site_kit_dashboard_as_limited_role($user_id))) {
         return ['read'];
     }
 
-    if (in_array($cap, $widget_caps, true) && $user_id > 0 && meza_can_manage_site_kit($user_id)) {
+    if (in_array($cap, $widget_caps, true) && $user_id > 0 && (meza_can_manage_site_kit($user_id) || meza_can_view_site_kit_dashboard_as_limited_role($user_id))) {
         return ['read'];
     }
 
@@ -1939,7 +2077,7 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
         'googlesitekit_view_admin_bar_menu',
     ];
 
-    if (in_array($requested_cap, $dashboard_caps, true) && meza_can_manage_site_kit($user)) {
+    if (in_array($requested_cap, $dashboard_caps, true) && (meza_can_manage_site_kit($user) || meza_can_view_site_kit_dashboard_as_limited_role($user))) {
         foreach ($dashboard_caps as $site_kit_cap) {
             $allcaps[$site_kit_cap] = true;
         }
@@ -1947,7 +2085,7 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
         return $allcaps;
     }
 
-    if (in_array($requested_cap, $widget_caps, true) && meza_can_manage_site_kit($user)) {
+    if (in_array($requested_cap, $widget_caps, true) && (meza_can_manage_site_kit($user) || meza_can_view_site_kit_dashboard_as_limited_role($user))) {
         foreach ($widget_caps as $site_kit_cap) {
             $allcaps[$site_kit_cap] = true;
         }
@@ -2231,7 +2369,7 @@ if (!function_exists('meza_should_normalize_site_kit_menu_for_user')) {
             return false;
         }
 
-        return current_user_can('manage_options') || meza_is_site_manager_user($user);
+        return current_user_can('manage_options') || meza_can_view_site_kit_dashboard_as_limited_role($user);
     }
 }
 
@@ -2245,9 +2383,9 @@ if (!function_exists('meza_enforce_normalized_site_kit_menu_state')) {
 
         global $menu, $submenu;
 
-        $is_site_manager = meza_is_site_manager_user($user);
+        $is_limited_dashboard_user = meza_can_view_site_kit_dashboard_as_limited_role($user);
 
-        if ($is_site_manager) {
+        if ($is_limited_dashboard_user) {
             remove_submenu_page('googlesitekit-dashboard', 'googlesitekit-settings');
             remove_submenu_page('admin.php?page=googlesitekit-dashboard', 'googlesitekit-settings');
 
@@ -2302,7 +2440,11 @@ add_action('adminmenu', function (): void {
 }, PHP_INT_MAX);
 
 add_action('admin_init', function (): void {
-    if (!is_admin() || !meza_is_site_manager_user(wp_get_current_user())) {
+    if (
+        !is_admin()
+        || current_user_can('manage_options')
+        || !meza_can_view_site_kit_dashboard_as_limited_role(wp_get_current_user())
+    ) {
         return;
     }
 
@@ -2346,7 +2488,11 @@ if (!function_exists('meza_should_hide_yoast_admin_menu_for_user')) {
             return false;
         }
 
-        return !meza_user_has_any_role($user, ['administrator', meza_site_manager_role_key()]);
+        return !meza_user_has_any_role($user, [
+            'administrator',
+            meza_site_manager_role_key(),
+            meza_seo_manager_role_key(),
+        ]);
     }
 }
 
