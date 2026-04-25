@@ -1790,6 +1790,8 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
         }
 
         $acf_options_available = meza_shared_project_acf_options_are_available();
+        $is_site_manager = function_exists('meza_is_site_manager_user') && meza_is_site_manager_user(wp_get_current_user());
+        $menu_capability = $is_site_manager ? 'read' : 'manage_options';
 
         $business_information_item = null;
         $branding_item = null;
@@ -1797,13 +1799,13 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
         $business_information_menu_label = meza_get_business_information_menu_label();
         $business_information_page_title = meza_get_business_information_page_title();
         $expected_items = [
-            'business-information' => [$business_information_menu_label, 'manage_options', 'business-information', $business_information_page_title],
-            'branding' => ['Branding', 'manage_options', 'branding', 'Branding Settings'],
+            'business-information' => [$business_information_menu_label, $menu_capability, 'business-information', $business_information_page_title],
+            'branding' => ['Branding', $menu_capability, 'branding', 'Branding Settings'],
             'crm' => ['CRM Integration', 'manage_options', 'crm', 'CRM Integration Settings'],
         ];
         $allowed_expected_item_slugs = array_keys($expected_items);
 
-        if (function_exists('meza_is_site_manager_user') && meza_is_site_manager_user(wp_get_current_user())) {
+        if ($is_site_manager) {
             if (function_exists('meza_get_site_manager_allowed_settings_page_slugs')) {
                 $allowed_expected_item_slugs = array_values(array_intersect(
                     $allowed_expected_item_slugs,
@@ -1826,6 +1828,7 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
                 }
 
                 $submenu['options-general.php'][$index][0] = $business_information_menu_label;
+                $submenu['options-general.php'][$index][1] = $menu_capability;
                 $submenu['options-general.php'][$index][2] = 'business-information';
                 if (isset($submenu['options-general.php'][$index][3])) {
                     $submenu['options-general.php'][$index][3] = $business_information_page_title;
@@ -1863,6 +1866,7 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             }
 
             $submenu['options-general.php'][$index][0] = 'Branding';
+            $submenu['options-general.php'][$index][1] = $menu_capability;
             $submenu['options-general.php'][$index][2] = 'branding';
             if (isset($submenu['options-general.php'][$index][3])) {
                 $submenu['options-general.php'][$index][3] = 'Branding Settings';
