@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.511
+ * Version: 1.1.512
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -697,6 +697,25 @@ if (!function_exists('meza_seo_manager_capabilities')) {
 }
 
 if (!function_exists('meza_sync_site_manager_role')) {
+    function meza_role_matches_target_capabilities(WP_Role $role, array $target_caps): bool
+    {
+        foreach ($target_caps as $cap => $grant) {
+            if ((bool) $grant !== $role->has_cap((string) $cap)) {
+                return false;
+            }
+        }
+
+        foreach ((array) $role->capabilities as $cap => $grant) {
+            if (!array_key_exists($cap, $target_caps) && (bool) $grant) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('meza_sync_site_manager_role')) {
     function meza_sync_site_manager_role(): void
     {
         $role_key = meza_site_manager_role_key();
@@ -723,6 +742,7 @@ if (!function_exists('meza_sync_site_manager_role')) {
             $role instanceof WP_Role
             && $administrator_role instanceof WP_Role
             && $stored_signature === $sync_signature
+            && meza_role_matches_target_capabilities($role, $target_caps)
         ) {
             $administrator_caps_are_synced = true;
 
@@ -814,7 +834,11 @@ if (!function_exists('meza_sync_seo_manager_role')) {
         ]);
         $stored_signature = meza_get_stored_sync_signature('meza_sync_seo_manager_role_signature');
 
-        if ($role instanceof WP_Role && $stored_signature === $sync_signature) {
+        if (
+            $role instanceof WP_Role
+            && $stored_signature === $sync_signature
+            && meza_role_matches_target_capabilities($role, $target_caps)
+        ) {
             return;
         }
 
