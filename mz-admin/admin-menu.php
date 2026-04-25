@@ -866,6 +866,18 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
         return $allcaps;
     }
 
+    $requested_cap = strtolower((string) ($args[0] ?? ''));
+    if ($requested_cap !== '') {
+        $allcaps[$requested_cap] = true;
+    }
+
+    foreach ($caps as $cap) {
+        $cap = strtolower((string) $cap);
+        if ($cap !== '') {
+            $allcaps[$cap] = true;
+        }
+    }
+
     $allcaps['read'] = true;
 
     return $allcaps;
@@ -1005,6 +1017,12 @@ function meza_remove_native_aios_menu_for_site_managers(): void
             $parent_slug = (string) $parent_slug;
 
             if ($parent_slug === meza_get_site_manager_aios_security_menu_slug()) {
+                continue;
+            }
+
+            if ($parent_slug === 'aiowpsec') {
+                // Keep the native AIOS submenu registered in the background so
+                // WordPress can resolve and authorize native AIOS plugin pages.
                 continue;
             }
 
@@ -1169,13 +1187,13 @@ add_filter('submenu_file', function ($submenu_file) {
         'aiowpsec_two_factor_auth_user',
         meza_get_site_manager_aios_two_factor_menu_slug(),
     ], true)) {
-        return 'aiowpsec_two_factor_auth_user';
+        return meza_get_aios_two_factor_menu_slug();
     }
 
     if (in_array($page, [
         'aiowpsec_tools',
     ], true)) {
-        return 'aiowpsec_tools';
+        return meza_get_aios_tools_menu_slug();
     }
 
     return meza_get_site_manager_aios_security_menu_slug();
@@ -1826,7 +1844,7 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
                 if ($parent_slug === 'aiowpsec') {
                     $item[2] = 'aiowpsec_two_factor_auth_user';
                 } elseif ($parent_slug === meza_get_site_manager_aios_security_menu_slug()) {
-                    $item[2] = 'aiowpsec_two_factor_auth_user';
+                    $item[2] = meza_get_aios_two_factor_menu_slug();
                 } else {
                     $item[2] = meza_get_limited_aios_two_factor_menu_slug();
                 }
@@ -1854,7 +1872,7 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
                 if ($parent_slug === 'aiowpsec') {
                     $item[2] = 'aiowpsec_tools';
                 } elseif ($parent_slug === meza_get_site_manager_aios_security_menu_slug()) {
-                    $item[2] = 'aiowpsec_tools';
+                    $item[2] = meza_get_aios_tools_menu_slug();
                 } else {
                     $item[2] = meza_get_limited_aios_password_strength_menu_slug();
                 }
@@ -1887,11 +1905,11 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
             }
         } elseif ($parent_slug === meza_get_site_manager_aios_security_menu_slug()) {
             if (!$has_two_factor) {
-                $normalized_items[] = ['Two Factor Authentication', 'read', 'aiowpsec_two_factor_auth_user', 'Two Factor Authentication'];
+                $normalized_items[] = ['Two Factor Authentication', 'read', meza_get_aios_two_factor_menu_slug(), 'Two Factor Authentication'];
             }
 
             if (!$has_password_strength) {
-                $normalized_items[] = ['Password Strength', 'read', 'aiowpsec_tools', 'Password Strength'];
+                $normalized_items[] = ['Password Strength', 'read', meza_get_aios_tools_menu_slug(), 'Password Strength'];
             }
         } elseif ($parent_slug === meza_get_limited_aios_password_strength_parent_slug()) {
             if (!$has_two_factor) {
@@ -9029,8 +9047,8 @@ function meza_enforce_site_manager_security_submenu(): void
     global $submenu;
 
     $submenu[meza_get_site_manager_aios_security_menu_slug()] = [
-        ['Two Factor Authentication', 'read', 'aiowpsec_two_factor_auth_user', 'Two Factor Authentication'],
-        ['Password Strength', 'read', 'aiowpsec_tools', 'Password Strength'],
+        ['Two Factor Authentication', 'read', meza_get_aios_two_factor_menu_slug(), 'Two Factor Authentication'],
+        ['Password Strength', 'read', meza_get_aios_tools_menu_slug(), 'Password Strength'],
     ];
 }
 
