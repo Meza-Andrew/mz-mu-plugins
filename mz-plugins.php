@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.38
+ * Version: 1.4.39
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -189,6 +189,195 @@ function mz_plugins_clear_manual_override(string $plugin_file): void
     $overrides = mz_plugins_get_manual_overrides();
     unset($overrides['skip_install'][$plugin_file], $overrides['skip_activate'][$plugin_file]);
     mz_plugins_update_manual_overrides($overrides);
+}
+
+function mz_plugins_get_default_settings_import_specs(): array
+{
+    return [
+        'updraftplus/updraftplus.php' => [
+            'name' => 'UpdraftPlus',
+            'source' => __DIR__ . '/defaults/updraftplus-settings.json',
+            'signature_option' => 'mz_plugins_default_settings_signature_updraftplus',
+            'importer' => 'mz_plugins_import_updraftplus_settings_file',
+            'is_configured' => 'mz_plugins_has_updraft_settings',
+        ],
+        'all-in-one-wp-security-and-firewall/wp-security.php' => [
+            'name' => 'AIOS',
+            'source' => __DIR__ . '/defaults/aiowps-settings.txt',
+            'signature_option' => 'mz_plugins_default_settings_signature_aios',
+            'importer' => 'mz_plugins_import_aios_settings_file',
+            'is_configured' => 'mz_plugins_has_aios_settings',
+        ],
+    ];
+}
+
+function mz_plugins_has_updraft_settings(): bool
+{
+    return null !== get_option('updraft_interval', null)
+        || null !== get_option('updraft_retain', null);
+}
+
+function mz_plugins_has_aios_settings(): bool
+{
+    $configs = get_option('aio_wp_security_configs', null);
+
+    return is_array($configs) && [] !== $configs;
+}
+
+function mz_plugins_import_updraftplus_settings_file(string $settings_path)
+{
+    if (!file_exists($settings_path) || !is_readable($settings_path)) {
+        return new WP_Error('mz_plugins_updraft_settings_missing', 'Settings file is missing or unreadable.');
+    }
+
+    $raw_settings = file_get_contents($settings_path);
+    if (!is_string($raw_settings) || '' === trim($raw_settings)) {
+        return new WP_Error('mz_plugins_updraft_settings_empty', 'Settings file is empty.');
+    }
+
+    $decoded = json_decode($raw_settings, true);
+    if (!is_array($decoded) || !isset($decoded['data']) || !is_array($decoded['data'])) {
+        return new WP_Error('mz_plugins_updraft_settings_invalid', 'Settings file is not a valid Updraft export.');
+    }
+
+    global $updraftplus_admin;
+
+    if (!is_a($updraftplus_admin, 'UpdraftPlus_Admin')) {
+        $admin_file = WP_PLUGIN_DIR . '/updraftplus/admin.php';
+        if (file_exists($admin_file)) {
+            require_once $admin_file;
+        }
+    }
+
+    if (!is_a($updraftplus_admin, 'UpdraftPlus_Admin')) {
+        return new WP_Error('mz_plugins_updraft_admin_missing', 'Updraft admin importer is unavailable.');
+    }
+
+    if (!class_exists('UpdraftPlus_Options') || !UpdraftPlus_Options::user_can_manage()) {
+        return new WP_Error('mz_plugins_updraft_permission_denied', 'Current user cannot manage Updraft settings.');
+    }
+
+    $payload = [
+        'settings' => wp_json_encode($decoded['data']),
+        'updraftplus_version' => (string) ($decoded['version'] ?? ''),
+    ];
+
+    if (!is_string($payload['settings']) || '' === $payload['settings']) {
+        return new WP_Error('mz_plugins_updraft_settings_encode_failed', 'Could not encode Updraft settings for import.');
+    }
+
+    $result = $updraftplus_admin->import_settings($payload, true);
+
+    if (!is_array($result)) {
+        return new WP_Error('mz_plugins_updraft_import_unexpected', 'Unexpected Updraft import response.');
+    }
+
+    if (isset($result['saved']) && !$result['saved']) {
+        $message = isset($result['error_message']) && is_string($result['error_message']) && '' !== trim($result['error_message'])
+            ? $result['error_message']
+            : 'Updraft settings import failed.';
+
+        return new WP_Error('mz_plugins_updraft_import_failed', $message);
+    }
+
+    return $result;
+}
+
+function mz_plugins_import_aios_settings_file(string $settings_path)
+{
+    if (!file_exists($settings_path) || !is_readable($settings_path)) {
+        return new WP_Error('mz_plugins_aios_settings_missing', 'Settings file is missing or unreadable.');
+    }
+
+    $raw_settings = file_get_contents($settings_path);
+    if (!is_string($raw_settings) || '' === trim($raw_settings)) {
+        return new WP_Error('mz_plugins_aios_settings_empty', 'Settings file is empty.');
+    }
+
+    if (!class_exists('AIOWPSecurity_Commands')) {
+        $commands_file = WP_PLUGIN_DIR . '/all-in-one-wp-security-and-firewall/classes/wp-security-commands.php';
+        if (file_exists($commands_file)) {
+            require_once $commands_file;
+        }
+    }
+
+    if (!class_exists('AIOWPSecurity_Commands')) {
+        return new WP_Error('mz_plugins_aios_commands_missing', 'AIOS importer is unavailable.');
+    }
+
+    $commands = new AIOWPSecurity_Commands();
+    $result = $commands->perform_restore_aiowps_settings([
+        'aiowps_import_settings_file' => basename($settings_path),
+        'aiowps_import_settings_file_contents' => $raw_settings,
+    ]);
+
+    if (!is_array($result)) {
+        return new WP_Error('mz_plugins_aios_import_unexpected', 'Unexpected AIOS import response.');
+    }
+
+    if (($result['status'] ?? '') !== 'success') {
+        $message = isset($result['message']) && is_string($result['message']) && '' !== trim($result['message'])
+            ? $result['message']
+            : 'AIOS settings import failed.';
+
+        return new WP_Error('mz_plugins_aios_import_failed', $message);
+    }
+
+    return $result;
+}
+
+function mz_plugins_maybe_import_default_settings(array $should_activate, array $all, bool $network_wide, array &$results): void
+{
+    foreach (mz_plugins_get_default_settings_import_specs() as $plugin_file => $spec) {
+        $signature_option = (string) ($spec['signature_option'] ?? '');
+        $source = (string) ($spec['source'] ?? '');
+        $name = (string) ($spec['name'] ?? $plugin_file);
+        $importer = $spec['importer'] ?? null;
+        $is_configured = $spec['is_configured'] ?? null;
+
+        if ('' === $signature_option || '' === $source || !is_callable($importer)) {
+            continue;
+        }
+
+        if (!isset($should_activate[$plugin_file])) {
+            delete_option($signature_option);
+            continue;
+        }
+
+        $is_active = isset($all[$plugin_file]) && (is_plugin_active($plugin_file) || ($network_wide && is_multisite() && is_plugin_active_for_network($plugin_file)));
+        if (!$is_active) {
+            delete_option($signature_option);
+            continue;
+        }
+
+        if (!file_exists($source) || !is_readable($source)) {
+            $results[] = "Settings import failed: {$name} - bundled settings file missing.";
+            continue;
+        }
+
+        $raw_settings = file_get_contents($source);
+        if (!is_string($raw_settings) || '' === trim($raw_settings)) {
+            $results[] = "Settings import failed: {$name} - bundled settings file is empty.";
+            continue;
+        }
+
+        $signature = md5($raw_settings);
+        $has_settings = is_callable($is_configured) ? (bool) call_user_func($is_configured) : true;
+
+        if ((string) get_option($signature_option, '') === $signature && $has_settings) {
+            continue;
+        }
+
+        $import_result = call_user_func($importer, $source);
+        if (is_wp_error($import_result)) {
+            delete_option($signature_option);
+            $results[] = "Settings import failed: {$name} - " . $import_result->get_error_message();
+            continue;
+        }
+
+        update_option($signature_option, $signature, false);
+        $results[] = "Imported settings: {$name}";
+    }
 }
 
 if (!function_exists('mz_plugins_get_catalog')) {
@@ -732,6 +921,8 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
 
         $results[] = "Skip activate (pending): {$p['name']}";
     }
+
+    mz_plugins_maybe_import_default_settings($should_activate, $all, $network_wide, $results);
 
     // DEACTIVATE catalog-managed plugins that should NOT be active in this env
     foreach (array_keys($all) as $file) {
