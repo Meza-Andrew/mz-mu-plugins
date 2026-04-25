@@ -2066,6 +2066,19 @@ function meza_filter_disabled_tag_taxonomy_submenus(): void
 
 add_action('admin_menu', 'meza_filter_disabled_tag_taxonomy_submenus', PHP_INT_MAX - 5);
 
+function meza_remove_legacy_links_admin_menus(): void
+{
+    remove_menu_page('link-manager.php');
+    remove_submenu_page('link-manager.php', 'link-manager.php');
+    remove_submenu_page('link-manager.php', 'link-add.php');
+    remove_submenu_page('link-manager.php', 'edit-tags.php?taxonomy=link_category');
+    remove_submenu_page('options-general.php', 'link-manager.php');
+    remove_submenu_page('options-general.php', 'link-add.php');
+    remove_submenu_page('options-general.php', 'edit-tags.php?taxonomy=link_category');
+}
+
+add_action('admin_menu', 'meza_remove_legacy_links_admin_menus', PHP_INT_MAX);
+
 add_action('admin_init', function (): void {
     if (meza_site_has_subscribers()) return;
     if (!is_admin()) return;
@@ -2091,6 +2104,14 @@ add_action('admin_init', function (): void {
     $post_type = isset($_GET['post_type']) ? sanitize_key(wp_unslash((string) $_GET['post_type'])) : '';
 
     if (in_array($pagenow, ['edit-comments.php', 'comment.php', 'options-discussion.php'], true)) {
+        wp_safe_redirect(admin_url());
+        exit;
+    }
+
+    if (
+        in_array($pagenow, ['link-manager.php', 'link-add.php', 'edit-link-form.php'], true)
+        || ($pagenow === 'edit-tags.php' && $taxonomy === 'link_category')
+    ) {
         wp_safe_redirect(admin_url());
         exit;
     }

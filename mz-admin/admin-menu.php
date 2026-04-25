@@ -459,6 +459,30 @@ function meza_get_settings_admin_page_menu_slug(string $page_slug): string
     return $page_slug;
 }
 
+function meza_is_seo_manager_blocked_reviews_organizations_menu_item(array $item): bool
+{
+    $slug = strtolower((string) ($item[2] ?? ''));
+    $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+    if ($slug === '' && $label === '') {
+        return false;
+    }
+
+    if (in_array($slug, [
+        'edit.php?post_type=review',
+        'edit.php?post_type=organization',
+        'organization-events-settings',
+        'admin.php?page=organization-events-settings',
+    ], true)) {
+        return true;
+    }
+
+    return str_contains($slug, 'post_type=review')
+        || str_contains($slug, 'post_type=organization')
+        || str_contains($slug, 'organization-events-settings')
+        || in_array($label, ['reviews', 'organizations'], true);
+}
+
 function meza_get_site_manager_allowed_settings_page_slugs(): array
 {
     $allowed_slugs = [
@@ -1088,6 +1112,14 @@ add_filter('parent_file', function ($parent_file) {
 }, PHP_INT_MAX);
 
 add_filter('submenu_file', function ($submenu_file) {
+    if (meza_is_aios_dashboard_request() && meza_is_aios_plugin_active()) {
+        if (meza_is_site_manager_user(wp_get_current_user())) {
+            return meza_get_site_manager_aios_security_menu_slug();
+        }
+
+        return 'aiowpsec';
+    }
+
     if (
         meza_is_aios_locked_users_request()
         && meza_can_access_aios_locked_users(wp_get_current_user())
@@ -1962,6 +1994,15 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
 
             $slug = (string) ($item[2] ?? '');
             if ($slug === $parent_slug) {
+                if ($parent_slug === 'aiowpsec' && !$is_seo_manager_native_security_menu) {
+                    $item[0] = 'General';
+                    if (isset($item[3])) {
+                        $item[3] = 'General';
+                    }
+
+                    $normalized_items[] = $item;
+                }
+
                 continue;
             }
 
@@ -4016,7 +4057,19 @@ function meza_sort_submenu_items_with_standard_structure(array $items, string $p
             parse_str((string) parse_url($slug, PHP_URL_QUERY), $query_args);
             $pair_post_type = strtolower((string) ($query_args['post_type'] ?? ''));
             $pair_group_key = $pair_post_type;
-            $pair_group_label = meza_strip_parent_content_type_from_label($title, $parent_strip_candidates);
+            $pair_post_type_object = get_post_type_object($pair_post_type);
+            $pair_post_type_plural_label = '';
+            if ($pair_post_type_object instanceof WP_Post_Type) {
+                $pair_post_type_plural_label = trim((string) ($pair_post_type_object->labels->name ?? $pair_post_type_object->labels->singular_name ?? ''));
+            }
+            if ($pair_post_type_plural_label === '') {
+                $pair_post_type_plural_label = trim(str_replace(['-', '_'], ' ', $pair_post_type));
+                $pair_post_type_plural_label = $pair_post_type_plural_label !== '' ? ucwords($pair_post_type_plural_label) : '';
+            }
+            $pair_group_label = meza_strip_parent_content_type_from_label(
+                $pair_post_type_plural_label !== '' ? $pair_post_type_plural_label : $title,
+                $parent_strip_candidates
+            );
             $pair_priority = 10;
             $item[0] = $pair_group_label !== '' ? $pair_group_label : $title;
             if (isset($item[3])) $item[3] = $item[0];
@@ -4376,7 +4429,7 @@ function meza_normalize_admin_plugin_menus(): void
                 continue;
             }
 
-            if ($parent_slug !== 'options-general.php' && $title === 'general') {
+            if ($parent_slug !== 'options-general.php' && $title === 'general' && !meza_is_aios_menu_slug((string) $parent_slug, '')) {
                 $item[0] = 'Dashboard';
                 if (isset($item[3])) $item[3] = 'Dashboard';
                 continue;
@@ -9003,6 +9056,22 @@ function meza_enforce_seo_manager_limited_admin_menus(): void
     if ($tools_items !== []) {
         $submenu['tools.php'] = array_values($tools_items);
     }
+
+    if (is_array($menu)) {
+        $menu = array_values(array_filter($menu, static function ($item): bool {
+            return !is_array($item) || !meza_is_seo_manager_blocked_reviews_organizations_menu_item($item);
+        }));
+    }
+
+    foreach ($submenu as $parent_slug => $items) {
+        if (!is_array($items)) {
+            continue;
+        }
+
+        $submenu[$parent_slug] = array_values(array_filter($items, static function ($item): bool {
+            return !is_array($item) || !meza_is_seo_manager_blocked_reviews_organizations_menu_item($item);
+        }));
+    }
 }
 
 function meza_enforce_site_manager_settings_submenu(): void
@@ -9593,6 +9662,27 @@ function meza_move_single_item_top_level_menus_into_settings(): void
         $submenu['options-general.php'] = [];
     }
 
+    $is_legacy_links_settings_item = static function ($item): bool {
+        if (!is_array($item)) {
+            return false;
+        }
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+
+        return in_array($slug, [
+            'link-manager.php',
+            'link-add.php',
+            'edit-tags.php?taxonomy=link_category',
+        ], true);
+    };
+
+    $submenu['options-general.php'] = array_values(array_filter(
+        $submenu['options-general.php'],
+        static function ($item) use ($is_legacy_links_settings_item): bool {
+            return !$is_legacy_links_settings_item($item);
+        }
+    ));
+
     $moved_map = [];
     $moved_items = [];
     $menu_indexes_to_remove = [];
@@ -9622,6 +9712,17 @@ function meza_move_single_item_top_level_menus_into_settings(): void
 
         $target_slug = meza_get_collapsed_settings_menu_target_slug($parent_slug, $child_slug);
         if ($target_slug === '') continue;
+
+        if (in_array(strtolower($target_slug), [
+            'link-manager.php',
+            'link-add.php',
+            'edit-tags.php?taxonomy=link_category',
+        ], true)) {
+            unset($submenu[$parent_slug]);
+            $menu_indexes_to_remove[] = (int) $index;
+            continue;
+        }
+
         $target_page_slug = meza_get_settings_admin_page_slug($target_slug);
 
         $map_entry = [

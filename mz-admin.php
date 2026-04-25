@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.512
+ * Version: 1.1.518
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1994,6 +1994,72 @@ if (!function_exists('meza_can_manage_yoast')) {
     }
 }
 
+if (!function_exists('meza_get_seo_manager_blocked_post_types')) {
+    function meza_get_seo_manager_blocked_post_types(): array
+    {
+        return [
+            'organization',
+            'review',
+        ];
+    }
+}
+
+if (!function_exists('meza_is_seo_manager_blocked_post_type')) {
+    function meza_is_seo_manager_blocked_post_type(string $post_type): bool
+    {
+        return in_array(sanitize_key($post_type), meza_get_seo_manager_blocked_post_types(), true);
+    }
+}
+
+if (!function_exists('meza_get_seo_manager_blocked_plugin_admin_pages')) {
+    function meza_get_seo_manager_blocked_plugin_admin_pages(): array
+    {
+        return [
+            'organization-events-settings',
+        ];
+    }
+}
+
+if (!function_exists('meza_is_restricted_seo_manager_user')) {
+    function meza_is_restricted_seo_manager_user($user = null): bool
+    {
+        return function_exists('meza_user_has_any_role')
+            && function_exists('meza_seo_manager_role_key')
+            && meza_user_has_any_role($user, [meza_seo_manager_role_key()]);
+    }
+}
+
+if (!function_exists('meza_should_block_seo_manager_admin_request')) {
+    function meza_should_block_seo_manager_admin_request(): bool
+    {
+        if (!is_admin() || !meza_is_restricted_seo_manager_user(wp_get_current_user())) {
+            return false;
+        }
+
+        $page = sanitize_key((string) ($_GET['page'] ?? ''));
+        if ($page !== '' && in_array($page, meza_get_seo_manager_blocked_plugin_admin_pages(), true)) {
+            return true;
+        }
+
+        global $pagenow;
+
+        $post_type = sanitize_key((string) ($_GET['post_type'] ?? ''));
+        if ($post_type !== '' && meza_is_seo_manager_blocked_post_type($post_type)) {
+            return in_array((string) $pagenow, ['edit.php', 'post-new.php'], true);
+        }
+
+        $post_id = isset($_GET['post']) ? (int) $_GET['post'] : 0;
+        if ($post_id > 0) {
+            $post = get_post($post_id);
+            if ($post instanceof WP_Post && meza_is_seo_manager_blocked_post_type((string) $post->post_type)) {
+                return in_array((string) $pagenow, ['post.php', 'post-new.php'], true);
+            }
+        }
+
+        return false;
+    }
+}
+
 if (!function_exists('meza_can_manage_privacy_options')) {
     function meza_can_manage_privacy_options($user = null): bool
     {
@@ -2050,6 +2116,37 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
 
     return $allcaps;
 }, 19, 4);
+
+add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, array $args): array {
+    if (
+        $user_id <= 0
+        || !meza_is_restricted_seo_manager_user($user_id)
+        || !in_array($cap, ['edit_post', 'delete_post', 'read_post'], true)
+    ) {
+        return $caps;
+    }
+
+    $post_id = isset($args[0]) ? (int) $args[0] : 0;
+    if ($post_id <= 0) {
+        return $caps;
+    }
+
+    $post = get_post($post_id);
+    if (!($post instanceof WP_Post) || !meza_is_seo_manager_blocked_post_type((string) $post->post_type)) {
+        return $caps;
+    }
+
+    return ['do_not_allow'];
+}, 19, 4);
+
+add_action('admin_init', function (): void {
+    if (!meza_should_block_seo_manager_admin_request()) {
+        return;
+    }
+
+    wp_safe_redirect(admin_url());
+    exit;
+}, 19);
 
 add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, array $args): array {
     static $mapping_site_kit_caps = false;
