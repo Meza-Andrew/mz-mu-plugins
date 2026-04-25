@@ -2001,9 +2001,13 @@ function meza_pin_seo_manager_dashboard_utility_order(): void
     }
 }
 
-function meza_ensure_seo_manager_required_admin_menus(): void
+function meza_ensure_allowed_yoast_admin_menus(): void
 {
-    if (!meza_is_seo_manager_user(wp_get_current_user())) {
+    if (
+        !meza_can_access_yoast_admin_menu(wp_get_current_user())
+        || !function_exists('meza_is_yoast_plugin_available')
+        || !meza_is_yoast_plugin_available()
+    ) {
         return;
     }
 
@@ -2020,6 +2024,7 @@ function meza_ensure_seo_manager_required_admin_menus(): void
 
     $has_yoast_settings = false;
     $has_yoast_tools = false;
+
     foreach ($submenu['wpseo_dashboard'] as $item) {
         if (!is_array($item)) {
             continue;
@@ -2042,6 +2047,17 @@ function meza_ensure_seo_manager_required_admin_menus(): void
     if (!$has_yoast_tools) {
         $submenu['wpseo_dashboard'][] = ['Tools', 'read', 'wpseo_tools', 'Tools'];
     }
+
+    meza_enforce_yoast_admin_menu_state();
+}
+
+function meza_ensure_seo_manager_required_admin_menus(): void
+{
+    if (!meza_is_seo_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $submenu;
 
     meza_insert_missing_seo_manager_top_level_menu_item(
         ['Tools', 'read', 'tools.php', 'Tools', 'menu-top menu-icon-tools', 'menu-tools', 'dashicons-admin-tools'],
@@ -2070,7 +2086,6 @@ function meza_ensure_seo_manager_required_admin_menus(): void
     }
 
     meza_pin_seo_manager_dashboard_utility_order();
-    meza_enforce_yoast_admin_menu_state();
     meza_normalize_limited_tools_submenu();
     meza_normalize_aios_password_strength_submenu_labels();
     meza_remove_native_aios_menu_for_seo_managers();
@@ -10120,6 +10135,7 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_group_post_settings_utilities();
     meza_alphabetize_default_admin_menu_group();
     meza_move_single_item_top_level_menus_into_settings();
+    meza_enforce_site_manager_settings_submenu();
     meza_cleanup_menu_separators();
     meza_filter_events_role_admin_menu();
     meza_apply_tail_admin_menu_mutations();
@@ -10130,6 +10146,7 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_prune_empty_top_level_admin_menu_groups();
     meza_restore_settings_utility_group_separator();
     meza_restore_default_fallback_group_separator();
+    meza_ensure_allowed_yoast_admin_menus();
     meza_enforce_site_manager_settings_submenu();
     meza_reorder_site_manager_admin_preferences_group();
     meza_group_site_manager_appearance_and_fallback_menus();
@@ -10144,9 +10161,11 @@ function meza_apply_missing_late_admin_menu_mutations(): void
     meza_enforce_seo_manager_limited_admin_menus();
     meza_enforce_restricted_top_level_utility_menus();
     meza_remove_media_performance_menu_for_site_managers();
+    meza_enforce_site_manager_settings_submenu();
     meza_prune_empty_top_level_admin_menu_groups();
     meza_restore_settings_utility_group_separator();
     meza_restore_default_fallback_group_separator();
+    meza_ensure_allowed_yoast_admin_menus();
     meza_enforce_site_manager_settings_submenu();
     meza_reorder_site_manager_admin_preferences_group();
     meza_group_site_manager_appearance_and_fallback_menus();
