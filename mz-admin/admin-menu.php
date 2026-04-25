@@ -159,6 +159,7 @@ function meza_is_default_wordpress_submenu_item(string $parent_slug, array $item
             'options-discussion.php',
             'options-media.php',
             'options-permalink.php',
+            'options-privacy.php',
             'privacy.php',
         ],
     ];
@@ -429,6 +430,10 @@ function meza_get_settings_admin_page_slug(string $menu_slug): string
         return '';
     }
 
+    if (in_array($menu_slug, ['options-privacy.php', 'privacy.php'], true)) {
+        return 'privacy';
+    }
+
     if (str_starts_with($menu_slug, 'admin.php?page=')) {
         return sanitize_key((string) wp_unslash((string) $_GET['page'] ?? substr($menu_slug, strlen('admin.php?page='))));
     }
@@ -447,6 +452,10 @@ function meza_get_settings_admin_page_slug(string $menu_slug): string
 function meza_get_settings_admin_page_menu_slug(string $page_slug): string
 {
     $page_slug = sanitize_key($page_slug);
+    if ($page_slug === 'privacy') {
+        return 'options-privacy.php';
+    }
+
     return $page_slug;
 }
 
@@ -455,13 +464,14 @@ function meza_get_site_manager_allowed_settings_page_slugs(): array
     $allowed_slugs = [
         'business-information',
         'branding',
+        'privacy',
     ];
 
     if (function_exists('meza_get_shared_project_acf_options_page_slugs')) {
         $shared_page_slugs = array_map('sanitize_key', meza_get_shared_project_acf_options_page_slugs());
         $shared_allowed_slugs = array_values(array_intersect($allowed_slugs, $shared_page_slugs));
         if ($shared_allowed_slugs !== []) {
-            return $shared_allowed_slugs;
+            return array_values(array_unique(array_merge($shared_allowed_slugs, ['privacy'])));
         }
     }
 
@@ -490,7 +500,7 @@ function meza_is_site_manager_allowed_settings_submenu_item(array $item): bool
     $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
 
     return in_array($slug, meza_get_site_manager_allowed_settings_page_slugs(), true)
-        || in_array($label, ['branding', 'business information', 'contact information'], true);
+        || in_array($label, ['branding', 'business information', 'contact information', 'privacy'], true);
 }
 
 function meza_get_site_manager_aios_security_menu_slug(): string
@@ -9012,6 +9022,7 @@ function meza_enforce_site_manager_settings_submenu(): void
             ? meza_get_business_information_menu_label()
             : 'Business Information',
         'branding' => 'Branding',
+        'privacy' => 'Privacy',
         'crm' => 'CRM Integration',
     ];
     $allowed_settings_pages = array_intersect_key($allowed_settings_pages, array_flip(meza_get_site_manager_allowed_settings_page_slugs()));
@@ -9030,6 +9041,8 @@ function meza_enforce_site_manager_settings_submenu(): void
         if (!isset($allowed_settings_pages[$slug])) {
             if ($label === 'branding') {
                 $slug = 'branding';
+            } elseif ($label === 'privacy') {
+                $slug = 'privacy';
             } elseif ($label === 'crm integration') {
                 $slug = 'crm';
             } elseif (in_array($label, ['business information', 'contact information'], true)) {
@@ -9066,6 +9079,31 @@ function meza_enforce_site_manager_settings_submenu(): void
     }
 
     $submenu['options-general.php'] = meza_reorder_settings_submenu_items(array_values($filtered_items));
+
+    $desired_order = [
+        function_exists('meza_get_business_information_menu_label')
+            ? meza_get_business_information_menu_label()
+            : 'Business Information',
+        'Branding',
+        'Privacy',
+        'CRM Integration',
+    ];
+
+    usort($submenu['options-general.php'], static function (array $a, array $b) use ($desired_order): int {
+        $label_a = trim(wp_strip_all_tags((string) ($a[0] ?? '')));
+        $label_b = trim(wp_strip_all_tags((string) ($b[0] ?? '')));
+        $index_a = array_search($label_a, $desired_order, true);
+        $index_b = array_search($label_b, $desired_order, true);
+
+        $index_a = ($index_a === false) ? PHP_INT_MAX : (int) $index_a;
+        $index_b = ($index_b === false) ? PHP_INT_MAX : (int) $index_b;
+
+        if ($index_a === $index_b) {
+            return strnatcasecmp($label_a, $label_b);
+        }
+
+        return $index_a <=> $index_b;
+    });
 }
 
 function meza_enforce_site_manager_settings_top_level_target(): void
@@ -9120,6 +9158,79 @@ function meza_enforce_site_manager_security_submenu(): void
         ['Two Factor Authentication', 'read', meza_get_site_manager_aios_two_factor_redirect_menu_slug(), 'Two Factor Authentication'],
         ['Password Strength', 'read', meza_get_site_manager_aios_password_strength_menu_slug(), 'Password Strength'],
     ];
+}
+
+function meza_finalize_site_manager_settings_submenu_order(): void
+{
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $submenu, $_wp_real_parent_file;
+
+    if (isset($_wp_real_parent_file['options-general.php']) && $_wp_real_parent_file['options-general.php'] === 'options-privacy.php') {
+        unset($_wp_real_parent_file['options-general.php']);
+    }
+
+    if (isset($submenu['options-privacy.php']) && is_array($submenu['options-privacy.php'])) {
+        if (!isset($submenu['options-general.php']) || !is_array($submenu['options-general.php'])) {
+            $submenu['options-general.php'] = [];
+        }
+
+        $existing_slugs = [];
+        foreach ($submenu['options-general.php'] as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $existing_slugs[] = meza_get_settings_admin_page_slug((string) ($item[2] ?? ''));
+        }
+
+        foreach ($submenu['options-privacy.php'] as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = meza_get_settings_admin_page_slug((string) ($item[2] ?? ''));
+            if ($slug === '' || in_array($slug, $existing_slugs, true)) {
+                continue;
+            }
+
+            $submenu['options-general.php'][] = $item;
+            $existing_slugs[] = $slug;
+        }
+
+        unset($submenu['options-privacy.php']);
+    }
+
+    if (!isset($submenu['options-general.php']) || !is_array($submenu['options-general.php'])) {
+        return;
+    }
+
+    $desired_order = [
+        function_exists('meza_get_business_information_menu_label')
+            ? meza_get_business_information_menu_label()
+            : 'Business Information',
+        'Branding',
+        'Privacy',
+        'CRM Integration',
+    ];
+
+    usort($submenu['options-general.php'], static function (array $a, array $b) use ($desired_order): int {
+        $label_a = trim(wp_strip_all_tags((string) ($a[0] ?? '')));
+        $label_b = trim(wp_strip_all_tags((string) ($b[0] ?? '')));
+        $index_a = array_search($label_a, $desired_order, true);
+        $index_b = array_search($label_b, $desired_order, true);
+
+        $index_a = ($index_a === false) ? PHP_INT_MAX : (int) $index_a;
+        $index_b = ($index_b === false) ? PHP_INT_MAX : (int) $index_b;
+
+        if ($index_a === $index_b) {
+            return strnatcasecmp($label_a, $label_b);
+        }
+
+        return $index_a <=> $index_b;
+    });
 }
 
 function meza_reorder_site_manager_admin_preferences_group(): void
@@ -10546,6 +10657,13 @@ function meza_apply_missing_late_admin_menu_mutations(): void
 
 // Apply the late role-specific cleanup pass during normal admin menu rendering too.
 add_action('admin_menu', 'meza_apply_missing_late_admin_menu_mutations', PHP_INT_MAX);
+add_action('admin_menu', 'meza_finalize_site_manager_settings_submenu_order', PHP_INT_MAX);
+add_action('admin_menu_editor-menu_replaced', 'meza_finalize_site_manager_settings_submenu_order', PHP_INT_MAX);
+add_action('admin_head', 'meza_finalize_site_manager_settings_submenu_order', PHP_INT_MAX);
+add_filter('parent_file', static function ($parent_file) {
+    meza_finalize_site_manager_settings_submenu_order();
+    return $parent_file;
+}, PHP_INT_MAX);
 
 add_action('admin_init', function (): void {
     if (!meza_is_seo_manager_user(wp_get_current_user())) {

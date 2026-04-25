@@ -1919,6 +1919,31 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
         }
 
         array_splice($submenu['options-general.php'], $insert_index, 0, $items_to_insert);
+
+        if ($is_site_manager) {
+            $desired_order = [
+                $business_information_menu_label,
+                'Branding',
+                'Privacy',
+                'CRM Integration',
+            ];
+
+            usort($submenu['options-general.php'], static function (array $a, array $b) use ($desired_order): int {
+                $label_a = trim(wp_strip_all_tags((string) ($a[0] ?? '')));
+                $label_b = trim(wp_strip_all_tags((string) ($b[0] ?? '')));
+                $index_a = array_search($label_a, $desired_order, true);
+                $index_b = array_search($label_b, $desired_order, true);
+
+                $index_a = ($index_a === false) ? PHP_INT_MAX : (int) $index_a;
+                $index_b = ($index_b === false) ? PHP_INT_MAX : (int) $index_b;
+
+                if ($index_a === $index_b) {
+                    return strnatcasecmp($label_a, $label_b);
+                }
+
+                return $index_a <=> $index_b;
+            });
+        }
     }
 }
 
