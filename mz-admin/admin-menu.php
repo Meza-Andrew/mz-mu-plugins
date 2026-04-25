@@ -344,16 +344,6 @@ function meza_get_aios_two_factor_menu_slug(): string
     return 'admin.php?page=aiowpsec_two_factor_auth_user';
 }
 
-function meza_get_site_manager_aios_two_factor_redirect_menu_slug(): string
-{
-    return 'meza-site-manager-security-two-factor';
-}
-
-function meza_get_site_manager_aios_password_strength_menu_slug(): string
-{
-    return 'meza-site-manager-security-password-strength';
-}
-
 function meza_can_access_aios_password_strength_tool($user = null): bool
 {
     if (!meza_is_aios_plugin_active()) {
@@ -579,8 +569,6 @@ function meza_is_current_aios_admin_page(): bool
     if (in_array($page, [
         meza_get_site_manager_aios_security_menu_slug(),
         meza_get_site_manager_aios_two_factor_menu_slug(),
-        meza_get_site_manager_aios_two_factor_redirect_menu_slug(),
-        meza_get_site_manager_aios_password_strength_menu_slug(),
     ], true)) {
         return true;
     }
@@ -670,8 +658,6 @@ function meza_is_site_manager_aios_request(): bool
         'aiowpsec_tools',
         meza_get_site_manager_aios_security_menu_slug(),
         meza_get_site_manager_aios_two_factor_menu_slug(),
-        meza_get_site_manager_aios_two_factor_redirect_menu_slug(),
-        meza_get_site_manager_aios_password_strength_menu_slug(),
         meza_get_aios_locked_users_menu_slug(),
     ], true);
 }
@@ -689,8 +675,6 @@ function meza_is_allowed_site_manager_aios_request(): bool
         'aiowpsec_tools',
         meza_get_site_manager_aios_security_menu_slug(),
         meza_get_site_manager_aios_two_factor_menu_slug(),
-        meza_get_site_manager_aios_two_factor_redirect_menu_slug(),
-        meza_get_site_manager_aios_password_strength_menu_slug(),
     ], true)) {
         return true;
     }
@@ -928,6 +912,18 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
 }, 20, 4);
 
 add_action('admin_init', function (): void {
+    $page = sanitize_key((string) ($_GET['page'] ?? ''));
+
+    if ($page === 'meza-site-manager-security-two-factor') {
+        wp_safe_redirect(meza_get_site_manager_aios_two_factor_url());
+        exit;
+    }
+
+    if ($page === 'meza-site-manager-security-password-strength') {
+        wp_safe_redirect(admin_url('admin.php?page=aiowpsec_tools'));
+        exit;
+    }
+
     if (!meza_is_site_manager_user(wp_get_current_user()) || !meza_is_aios_plugin_active()) {
         return;
     }
@@ -951,7 +947,6 @@ add_action('admin_init', function (): void {
         exit;
     }
 
-    $page = sanitize_key((string) ($_GET['page'] ?? ''));
     if ($page === 'aiowpsec' && sanitize_key((string) ($_GET['tab'] ?? '')) !== 'locked-ip') {
         wp_safe_redirect(meza_get_site_manager_aios_dashboard_url());
         exit;
@@ -1141,10 +1136,6 @@ add_filter('submenu_file', function ($submenu_file) {
         && meza_is_aios_user_two_factor_request()
         && meza_can_access_limited_aios_security_menu(wp_get_current_user())
     ) {
-        if (meza_is_site_manager_user(wp_get_current_user())) {
-            return meza_get_site_manager_aios_two_factor_redirect_menu_slug();
-        }
-
         if (!meza_is_administrator_user(wp_get_current_user())) {
             return meza_get_limited_aios_two_factor_menu_slug();
         }
@@ -1153,10 +1144,6 @@ add_filter('submenu_file', function ($submenu_file) {
     }
 
     if (meza_is_aios_tools_request() && meza_can_access_aios_password_strength_tool(wp_get_current_user())) {
-        if (meza_is_site_manager_user(wp_get_current_user())) {
-            return meza_get_site_manager_aios_password_strength_menu_slug();
-        }
-
         if (!meza_is_administrator_user(wp_get_current_user()) && !meza_is_seo_manager_user(wp_get_current_user())) {
             return meza_get_limited_aios_password_strength_menu_slug();
         }
@@ -1181,16 +1168,14 @@ add_filter('submenu_file', function ($submenu_file) {
     if (in_array($page, [
         'aiowpsec_two_factor_auth_user',
         meza_get_site_manager_aios_two_factor_menu_slug(),
-        meza_get_site_manager_aios_two_factor_redirect_menu_slug(),
     ], true)) {
-        return meza_get_site_manager_aios_two_factor_redirect_menu_slug();
+        return 'aiowpsec_two_factor_auth_user';
     }
 
     if (in_array($page, [
         'aiowpsec_tools',
-        meza_get_site_manager_aios_password_strength_menu_slug(),
     ], true)) {
-        return meza_get_site_manager_aios_password_strength_menu_slug();
+        return 'aiowpsec_tools';
     }
 
     return meza_get_site_manager_aios_security_menu_slug();
@@ -1677,165 +1662,6 @@ function meza_should_grant_site_manager_utility_submenu_access(string $parent_sl
     return in_array($utility_label, ['Import', 'Export', 'Import/Export', 'Tools', 'Settings', 'Two Factor Authentication'], true);
 }
 
-function meza_render_site_manager_aios_two_factor_page(): void
-{
-    if (!meza_is_site_manager_user(wp_get_current_user())) {
-        wp_die(esc_html__('Sorry, you are not allowed to access this page.'));
-    }
-
-    $two_factor = $GLOBALS['simba_two_factor_authentication'] ?? null;
-
-    if (!is_object($two_factor) || !method_exists($two_factor, 'show_dashboard_user_settings_page')) {
-        wp_die(esc_html__('Two Factor Authentication is not available right now.'));
-    }
-
-    $two_factor->show_dashboard_user_settings_page();
-}
-
-function meza_enqueue_site_manager_security_base_assets(): void
-{
-    if (function_exists('wp_scripts')) {
-        $scripts = wp_scripts();
-        if (function_exists('wp_default_scripts') && $scripts instanceof WP_Scripts && !wp_script_is('jquery', 'registered')) {
-            wp_default_scripts($scripts);
-        }
-    }
-
-    if (function_exists('wp_styles')) {
-        $styles = wp_styles();
-        if (function_exists('wp_default_styles') && $styles instanceof WP_Styles && !wp_style_is('global', 'registered')) {
-            wp_default_styles($styles);
-        }
-    }
-
-    foreach (['jquery', 'common', 'postbox', 'dashboard'] as $handle) {
-        if (wp_script_is($handle, 'registered')) {
-            wp_enqueue_script($handle);
-        }
-    }
-
-    foreach (['common', 'forms', 'admin-menu', 'dashboard', 'global', 'wp-admin'] as $handle) {
-        if (wp_style_is($handle, 'registered')) {
-            wp_enqueue_style($handle);
-        }
-    }
-}
-
-function meza_enqueue_site_manager_aios_two_factor_assets(): void
-{
-    if (
-        !meza_is_site_manager_user(wp_get_current_user())
-        || sanitize_key((string) ($_GET['page'] ?? '')) !== meza_get_site_manager_aios_two_factor_redirect_menu_slug()
-    ) {
-        return;
-    }
-
-    meza_enqueue_site_manager_security_base_assets();
-
-    $two_factor = $GLOBALS['simba_two_factor_authentication'] ?? null;
-    if (is_object($two_factor) && method_exists($two_factor, 'load_users_css')) {
-        $two_factor->load_users_css();
-    }
-
-    $totp_controller = is_object($two_factor) && method_exists($two_factor, 'get_controller')
-        ? $two_factor->get_controller('totp')
-        : null;
-    if (is_object($totp_controller) && method_exists($totp_controller, 'add_footer')) {
-        $totp_controller->add_footer();
-    }
-}
-add_action('admin_enqueue_scripts', 'meza_enqueue_site_manager_aios_two_factor_assets', 20);
-
-function meza_render_site_manager_aios_two_factor_redirect_page(): void
-{
-    if (!meza_is_site_manager_user(wp_get_current_user())) {
-        wp_die(esc_html__('Sorry, you are not allowed to access this page.'));
-    }
-
-    wp_safe_redirect(meza_get_site_manager_aios_two_factor_url());
-    exit;
-}
-
-function meza_render_site_manager_aios_password_strength_redirect_page(): void
-{
-    if (!meza_is_site_manager_user(wp_get_current_user())) {
-        wp_die(esc_html__('Sorry, you are not allowed to access this page.'));
-    }
-
-    if (!class_exists('AIOWPSecurity_Admin_Menu')) {
-        $admin_menu_file = WP_PLUGIN_DIR . '/all-in-one-wp-security-and-firewall/admin/wp-security-admin-menu.php';
-        if (file_exists($admin_menu_file)) {
-            require_once $admin_menu_file;
-        }
-    }
-
-    global $aio_wp_security;
-    if (
-        !class_exists('AIOWPSecurity_Admin_Menu')
-        || !is_object($aio_wp_security)
-        || !method_exists($aio_wp_security, 'include_template')
-    ) {
-        wp_die(esc_html__('Password Strength is not available right now.'));
-    }
-
-    if (!class_exists('Meza_Site_Manager_AIOS_Password_Strength_Menu')) {
-        class Meza_Site_Manager_AIOS_Password_Strength_Menu extends AIOWPSecurity_Admin_Menu
-        {
-            protected $menu_page_slug = 'meza-site-manager-security-password-strength';
-
-            protected function setup_menu_tabs()
-            {
-                $this->menu_tabs = [
-                    'password-tool' => [
-                        'title' => __('Password tool', 'all-in-one-wp-security-and-firewall'),
-                        'render_callback' => [$this, 'render_password_tool'],
-                    ],
-                ];
-            }
-
-            protected function render_password_tool()
-            {
-                global $aio_wp_security;
-
-                wp_enqueue_script('aiowpsec-pw-tool-js');
-                $aio_wp_security->include_template('wp-admin/tools/password-tool.php');
-            }
-        }
-    }
-
-    new Meza_Site_Manager_AIOS_Password_Strength_Menu(__('Tools', 'all-in-one-wp-security-and-firewall'));
-}
-
-function meza_enqueue_site_manager_aios_password_strength_assets(): void
-{
-    if (
-        !meza_is_site_manager_user(wp_get_current_user())
-        || sanitize_key((string) ($_GET['page'] ?? '')) !== meza_get_site_manager_aios_password_strength_menu_slug()
-    ) {
-        return;
-    }
-
-    meza_enqueue_site_manager_security_base_assets();
-
-    if (defined('AIO_WP_SECURITY_PATH') && defined('AIO_WP_SECURITY_URL')) {
-        $admin_css_version = (defined('WP_DEBUG') && WP_DEBUG) ? time() : @filemtime(AIO_WP_SECURITY_PATH . '/css/wp-security-admin-styles.css');
-        wp_enqueue_style('aiowpsec-admin-css', AIO_WP_SECURITY_URL . '/css/wp-security-admin-styles.css', [], $admin_css_version ?: null);
-
-        wp_register_script('aiowpsec-pw-tool-js', AIO_WP_SECURITY_URL . '/js/password-strength-tool.js', ['jquery'], defined('AIO_WP_SECURITY_VERSION') ? AIO_WP_SECURITY_VERSION : null, true);
-        wp_localize_script('aiowpsec-pw-tool-js', 'aios_pwtool_trans', [
-            'years' => __('year(s)', 'all-in-one-wp-security-and-firewall'),
-            'months' => __('month(s)', 'all-in-one-wp-security-and-firewall'),
-            'days' => __('day(s)', 'all-in-one-wp-security-and-firewall'),
-            'hours' => __('hour(s)', 'all-in-one-wp-security-and-firewall'),
-            'minutes' => __('minute(s)', 'all-in-one-wp-security-and-firewall'),
-            'seconds' => __('second(s)', 'all-in-one-wp-security-and-firewall'),
-            'less_than_one_second' => __('less than one second', 'all-in-one-wp-security-and-firewall'),
-        ]);
-        wp_enqueue_script('aiowpsec-pw-tool-js');
-    }
-}
-add_action('admin_enqueue_scripts', 'meza_enqueue_site_manager_aios_password_strength_assets', 20);
-
 function meza_render_site_manager_aios_security_page(): void
 {
     if (!meza_is_site_manager_user(wp_get_current_user())) {
@@ -1904,23 +1730,6 @@ function meza_force_site_manager_aios_menu_access(): void
         );
     }
 
-    add_submenu_page(
-        meza_get_site_manager_aios_security_menu_slug(),
-        'Two Factor Authentication',
-        'Two Factor Authentication',
-        'read',
-        meza_get_site_manager_aios_two_factor_redirect_menu_slug(),
-        'meza_render_site_manager_aios_two_factor_page'
-    );
-
-    add_submenu_page(
-        meza_get_site_manager_aios_security_menu_slug(),
-        'Password Strength',
-        'Password Strength',
-        'read',
-        meza_get_site_manager_aios_password_strength_menu_slug(),
-        'meza_render_site_manager_aios_password_strength_redirect_page'
-    );
 }
 add_action('admin_menu', 'meza_force_site_manager_aios_menu_access', PHP_INT_MAX);
 add_action('admin_menu_editor-menu_replaced', 'meza_force_site_manager_aios_menu_access', PHP_INT_MAX);
@@ -2009,7 +1818,6 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
             if (in_array($slug, [
                 'aiowpsec_two_factor_auth_user',
                 meza_get_aios_two_factor_menu_slug(),
-                meza_get_site_manager_aios_two_factor_redirect_menu_slug(),
                 meza_get_limited_aios_two_factor_menu_slug(),
             ], true)) {
                 $has_two_factor = true;
@@ -2018,7 +1826,7 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
                 if ($parent_slug === 'aiowpsec') {
                     $item[2] = 'aiowpsec_two_factor_auth_user';
                 } elseif ($parent_slug === meza_get_site_manager_aios_security_menu_slug()) {
-                    $item[2] = meza_get_site_manager_aios_two_factor_redirect_menu_slug();
+                    $item[2] = 'aiowpsec_two_factor_auth_user';
                 } else {
                     $item[2] = meza_get_limited_aios_two_factor_menu_slug();
                 }
@@ -2034,7 +1842,6 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
                 'aiowpsec_tools',
                 meza_get_aios_tools_menu_slug(),
                 meza_get_aios_password_strength_menu_slug(),
-                meza_get_site_manager_aios_password_strength_menu_slug(),
                 meza_get_limited_aios_password_strength_menu_slug(),
             ], true)) {
                 $has_password_strength = true;
@@ -2047,7 +1854,7 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
                 if ($parent_slug === 'aiowpsec') {
                     $item[2] = 'aiowpsec_tools';
                 } elseif ($parent_slug === meza_get_site_manager_aios_security_menu_slug()) {
-                    $item[2] = meza_get_site_manager_aios_password_strength_menu_slug();
+                    $item[2] = 'aiowpsec_tools';
                 } else {
                     $item[2] = meza_get_limited_aios_password_strength_menu_slug();
                 }
@@ -2080,11 +1887,11 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
             }
         } elseif ($parent_slug === meza_get_site_manager_aios_security_menu_slug()) {
             if (!$has_two_factor) {
-                $normalized_items[] = ['Two Factor Authentication', 'read', meza_get_site_manager_aios_two_factor_redirect_menu_slug(), 'Two Factor Authentication'];
+                $normalized_items[] = ['Two Factor Authentication', 'read', 'aiowpsec_two_factor_auth_user', 'Two Factor Authentication'];
             }
 
             if (!$has_password_strength) {
-                $normalized_items[] = ['Password Strength', 'read', meza_get_site_manager_aios_password_strength_menu_slug(), 'Password Strength'];
+                $normalized_items[] = ['Password Strength', 'read', 'aiowpsec_tools', 'Password Strength'];
             }
         } elseif ($parent_slug === meza_get_limited_aios_password_strength_parent_slug()) {
             if (!$has_two_factor) {
@@ -6651,8 +6458,6 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         if (in_array($page, [
             meza_get_site_manager_aios_security_menu_slug(),
             meza_get_site_manager_aios_two_factor_menu_slug(),
-            meza_get_site_manager_aios_two_factor_redirect_menu_slug(),
-            meza_get_site_manager_aios_password_strength_menu_slug(),
         ], true)) {
             return true;
         }
@@ -9224,8 +9029,8 @@ function meza_enforce_site_manager_security_submenu(): void
     global $submenu;
 
     $submenu[meza_get_site_manager_aios_security_menu_slug()] = [
-        ['Two Factor Authentication', 'read', meza_get_site_manager_aios_two_factor_redirect_menu_slug(), 'Two Factor Authentication'],
-        ['Password Strength', 'read', meza_get_site_manager_aios_password_strength_menu_slug(), 'Password Strength'],
+        ['Two Factor Authentication', 'read', 'aiowpsec_two_factor_auth_user', 'Two Factor Authentication'],
+        ['Password Strength', 'read', 'aiowpsec_tools', 'Password Strength'],
     ];
 }
 
@@ -9611,6 +9416,7 @@ function meza_should_keep_top_level_menu_item(array $item): bool
         'upload.php',
         'edit.php?post_type=page',
         'edit-comments.php',
+        'profile.php',
         'themes.php',
         'plugins.php',
         'users.php',
@@ -11739,6 +11545,68 @@ function meza_restore_locked_users_users_submenu_for_site_managers(): void
     ];
 }
 
+function meza_restore_profile_admin_menu_items(): void
+{
+    global $menu, $submenu;
+
+    $user = wp_get_current_user();
+    if (!($user instanceof WP_User) || !$user->exists() || !user_can($user, 'read')) {
+        return;
+    }
+
+    if (!isset($submenu['users.php']) || !is_array($submenu['users.php'])) {
+        $submenu['users.php'] = [];
+    }
+
+    $has_users_parent = false;
+    if (is_array($menu)) {
+        foreach ($menu as $item) {
+            if (is_array($item) && ((string) ($item[2] ?? '')) === 'users.php') {
+                $has_users_parent = true;
+                break;
+            }
+        }
+    }
+
+    $has_profile_submenu = false;
+    foreach ($submenu['users.php'] as $item) {
+        if (is_array($item) && ((string) ($item[2] ?? '')) === 'profile.php') {
+            $has_profile_submenu = true;
+            break;
+        }
+    }
+
+    if ($has_users_parent && !$has_profile_submenu) {
+        $submenu['users.php'][] = [
+            'Profile',
+            'read',
+            'profile.php',
+            'Profile',
+        ];
+    }
+
+    if ($has_users_parent) {
+        return;
+    }
+
+    if (!isset($submenu['profile.php']) || !is_array($submenu['profile.php'])) {
+        $submenu['profile.php'] = [];
+    }
+
+    foreach ($submenu['profile.php'] as $item) {
+        if (is_array($item) && ((string) ($item[2] ?? '')) === 'profile.php') {
+            return;
+        }
+    }
+
+    $submenu['profile.php'][] = [
+        'Profile',
+        'read',
+        'profile.php',
+        'Profile',
+    ];
+}
+
 function meza_apply_tail_admin_menu_mutations(): void
 {
     meza_move_site_health_tools_submenu_to_dashboard();
@@ -11751,6 +11619,7 @@ function meza_apply_tail_admin_menu_mutations(): void
     meza_alphabetize_fallback_plugin_submenus();
     meza_finalize_tools_submenu_order();
     meza_restore_locked_users_users_submenu_for_site_managers();
+    meza_restore_profile_admin_menu_items();
 }
 
 // Apply the late dashboard/tools/submenu cleanup as a single ordered pass.
