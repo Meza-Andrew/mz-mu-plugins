@@ -1446,10 +1446,10 @@ function meza_enforce_yoast_admin_menu_state(): void
         'wpseo_tools' => 'Tools',
         'admin.php?page=wpseo_tools' => 'Tools',
     ];
+    $ordered_labels = ['Tools', 'Settings'];
 
     if (isset($submenu[$parent_slug]) && is_array($submenu[$parent_slug])) {
-        $normalized_items = [];
-        $seen_targets = [];
+        $normalized_items_by_label = [];
 
         foreach ($submenu[$parent_slug] as $item) {
             if (!is_array($item)) {
@@ -1468,16 +1468,16 @@ function meza_enforce_yoast_admin_menu_state(): void
                 $item[3] = $label;
             }
 
-            $normalized_items[] = $item;
-            $seen_targets[$label] = true;
+            $normalized_items_by_label[$label] = $item;
         }
 
-        if (!isset($seen_targets['Settings'])) {
-            $normalized_items[] = ['Settings', 'read', 'wpseo_page_settings', 'Settings'];
-        }
-
-        if (!isset($seen_targets['Tools'])) {
-            $normalized_items[] = ['Tools', 'read', 'wpseo_tools', 'Tools'];
+        $default_items = [
+            'Tools' => ['Tools', 'read', 'wpseo_tools', 'Tools'],
+            'Settings' => ['Settings', 'read', 'wpseo_page_settings', 'Settings'],
+        ];
+        $normalized_items = [];
+        foreach ($ordered_labels as $label) {
+            $normalized_items[] = $normalized_items_by_label[$label] ?? $default_items[$label];
         }
 
         $submenu[$parent_slug] = array_values($normalized_items);
@@ -1492,7 +1492,7 @@ function meza_enforce_yoast_admin_menu_state(): void
             continue;
         }
 
-        $item[2] = 'admin.php?page=wpseo_page_settings';
+        $item[2] = $parent_slug;
         $item[0] = 'SEO';
         if (isset($item[3])) {
             $item[3] = 'SEO';
@@ -2086,6 +2086,7 @@ function meza_normalize_limited_tools_submenu(): void
             }
 
             if ($slug === 'import.php' || $slug === 'admin.php?import=wordpress') {
+                $item[2] = 'admin.php?import=wordpress';
                 $item[0] = 'Import';
                 $item[1] = 'read';
                 if (isset($item[3])) {
@@ -2097,11 +2098,11 @@ function meza_normalize_limited_tools_submenu(): void
         }
 
         if ($normalized_items === [] && $parent_slug === 'tools.php' && current_user_can('import')) {
-            $normalized_items[] = ['Import', 'read', 'import.php', 'Import'];
+            $normalized_items[] = ['Import', 'read', 'admin.php?import=wordpress', 'Import'];
         }
 
         if ($normalized_items === [] && meza_can_access_limited_tools_menu(wp_get_current_user())) {
-            $normalized_items[] = ['Import', 'read', 'import.php', 'Import'];
+            $normalized_items[] = ['Import', 'read', 'admin.php?import=wordpress', 'Import'];
         }
 
         $submenu[$parent_slug] = array_values($normalized_items);
@@ -2383,7 +2384,7 @@ function meza_ensure_seo_manager_required_admin_menus(): void
     }
 
     if (!$has_import) {
-        $submenu['tools.php'][] = ['Import', 'read', 'import.php', 'Import'];
+        $submenu['tools.php'][] = ['Import', 'read', 'admin.php?import=wordpress', 'Import'];
     }
 
     meza_pin_seo_manager_dashboard_utility_order();
@@ -8975,6 +8976,7 @@ function meza_enforce_seo_manager_limited_admin_menus(): void
             continue;
         }
 
+        $item[2] = 'admin.php?import=wordpress';
         $item[0] = 'Import';
         $item[1] = 'read';
         if (isset($item[3])) {
@@ -8985,7 +8987,7 @@ function meza_enforce_seo_manager_limited_admin_menus(): void
     }
 
     if ($tools_items === [] && current_user_can('import')) {
-        $tools_items[] = ['Import', 'read', 'import.php', 'Import'];
+        $tools_items[] = ['Import', 'read', 'admin.php?import=wordpress', 'Import'];
     }
 
     if ($tools_items !== []) {
@@ -10559,8 +10561,8 @@ add_action('admin_init', function (): void {
         exit;
     }
 
-    if ($pagenow === 'tools.php') {
-        wp_safe_redirect(admin_url('import.php'));
+    if ($pagenow === 'tools.php' || ($pagenow === 'import.php' && !isset($_GET['import']))) {
+        wp_safe_redirect(admin_url('admin.php?import=wordpress'));
         exit;
     }
 }, 1);
