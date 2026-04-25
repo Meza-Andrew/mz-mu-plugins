@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.489
+ * Version: 1.1.498
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1913,14 +1913,47 @@ if (!function_exists('meza_get_yoast_management_caps')) {
     }
 }
 
-if (!function_exists('meza_can_manage_yoast')) {
-    function meza_can_manage_yoast($user = null): bool
+if (!function_exists('meza_can_access_yoast_capabilities')) {
+    function meza_can_access_yoast_capabilities($user = null): bool
     {
-        return meza_user_has_any_role($user, [
+        if ($user === null) {
+            $user = wp_get_current_user();
+        } elseif (is_numeric($user)) {
+            $user = get_userdata((int) $user);
+        }
+
+        if (!($user instanceof WP_User) || $user->ID <= 0) {
+            return false;
+        }
+
+        if (is_multisite() && is_super_admin($user->ID)) {
+            return true;
+        }
+
+        if (meza_user_has_any_role($user, [
             'administrator',
             meza_site_manager_role_key(),
             meza_seo_manager_role_key(),
-        ]);
+        ])) {
+            return true;
+        }
+
+        $user->get_role_caps();
+
+        foreach (meza_get_yoast_management_caps() as $cap) {
+            if (!empty($user->allcaps[$cap])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_can_manage_yoast')) {
+    function meza_can_manage_yoast($user = null): bool
+    {
+        return meza_can_access_yoast_capabilities($user);
     }
 }
 
@@ -2488,11 +2521,7 @@ if (!function_exists('meza_should_hide_yoast_admin_menu_for_user')) {
             return false;
         }
 
-        return !meza_user_has_any_role($user, [
-            'administrator',
-            meza_site_manager_role_key(),
-            meza_seo_manager_role_key(),
-        ]);
+        return !meza_can_access_yoast_capabilities($user);
     }
 }
 

@@ -338,12 +338,13 @@ function meza_can_access_limited_aios_security_menu($user = null): bool
 {
     return meza_is_aios_plugin_active()
         && meza_is_logged_in_wordpress_user($user)
+        && !meza_is_seo_manager_user($user)
         && !meza_is_administrator_user($user);
 }
 
 function meza_can_access_limited_tools_menu($user = null): bool
 {
-    return meza_is_seo_manager_user($user);
+    return false;
 }
 
 function meza_should_limit_aios_tools_tabs($user = null): bool
@@ -438,7 +439,7 @@ function meza_is_site_manager_allowed_settings_submenu_item(array $item): bool
 
 function meza_get_site_manager_aios_security_menu_slug(): string
 {
-    return 'admin.php?page=aiowpsec&tab=locked-ip&mz_nav=security';
+    return 'meza-site-manager-security';
 }
 
 function meza_get_site_manager_aios_two_factor_menu_slug(): string
@@ -470,11 +471,7 @@ function meza_get_aios_dashboard_url(): string
 
 function meza_get_site_manager_aios_dashboard_url(): string
 {
-    return add_query_arg([
-        'page' => 'aiowpsec',
-        'tab' => 'locked-ip',
-        'mz_nav' => 'security',
-    ], admin_url('admin.php'));
+    return admin_url('admin.php?page=' . meza_get_site_manager_aios_security_menu_slug());
 }
 
 function meza_get_site_manager_aios_two_factor_url(): string
@@ -780,19 +777,7 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
         return $allcaps;
     }
 
-    $requested_cap = strtolower((string) ($args[0] ?? ''));
-    if ($requested_cap !== '') {
-        $allcaps[$requested_cap] = true;
-    }
-
-    foreach ($caps as $cap) {
-        $cap = strtolower((string) $cap);
-        if ($cap !== '') {
-            $allcaps[$cap] = true;
-        }
-    }
-
-    $allcaps['manage_options'] = true;
+    $allcaps['read'] = true;
 
     return $allcaps;
 }, 20, 4);
@@ -806,19 +791,7 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, W
         return $allcaps;
     }
 
-    $requested_cap = strtolower((string) ($args[0] ?? ''));
-    if ($requested_cap !== '') {
-        $allcaps[$requested_cap] = true;
-    }
-
-    foreach ($caps as $cap) {
-        $cap = strtolower((string) $cap);
-        if ($cap !== '') {
-            $allcaps[$cap] = true;
-        }
-    }
-
-    $allcaps['manage_options'] = true;
+    $allcaps['read'] = true;
 
     return $allcaps;
 }, 20, 4);
@@ -987,6 +960,14 @@ add_filter('parent_file', function ($parent_file) {
     if (
         function_exists('meza_is_aios_user_two_factor_request')
         && meza_is_aios_user_two_factor_request()
+        && meza_is_seo_manager_user(wp_get_current_user())
+    ) {
+        return 'aiowpsec';
+    }
+
+    if (
+        function_exists('meza_is_aios_user_two_factor_request')
+        && meza_is_aios_user_two_factor_request()
         && meza_can_access_limited_aios_security_menu(wp_get_current_user())
     ) {
         if (meza_is_site_manager_user(wp_get_current_user())) {
@@ -997,6 +978,10 @@ add_filter('parent_file', function ($parent_file) {
     }
 
     if (meza_is_aios_tools_request() && meza_can_access_aios_password_strength_tool(wp_get_current_user())) {
+        if (meza_is_seo_manager_user(wp_get_current_user())) {
+            return 'aiowpsec';
+        }
+
         if (meza_is_site_manager_user(wp_get_current_user())) {
             return meza_get_site_manager_aios_security_menu_slug();
         }
@@ -1028,6 +1013,14 @@ add_filter('submenu_file', function ($submenu_file) {
         && meza_get_aios_navigation_context() === 'users'
     ) {
         return meza_get_aios_locked_users_menu_slug();
+    }
+
+    if (
+        function_exists('meza_is_aios_user_two_factor_request')
+        && meza_is_aios_user_two_factor_request()
+        && meza_is_seo_manager_user(wp_get_current_user())
+    ) {
+        return 'aiowpsec_two_factor_auth_user';
     }
 
     if (
@@ -1212,11 +1205,21 @@ add_action('admin_menu', 'meza_customize_yoast_admin_menu', 20);
 
 function meza_can_access_yoast_admin_menu($user = null): bool
 {
-    return meza_user_has_any_role($user, [
-        'administrator',
-        meza_site_manager_role_key(),
-        meza_seo_manager_role_key(),
-    ]);
+    return function_exists('meza_can_access_yoast_capabilities')
+        && meza_can_access_yoast_capabilities($user);
+}
+
+function meza_get_default_yoast_settings_url($user = null): string
+{
+    if (!($user instanceof WP_User)) {
+        $user = wp_get_current_user();
+    }
+
+    $target = (meza_is_site_manager_user($user) || meza_is_seo_manager_user($user))
+        ? '#/site-representation'
+        : '#/site-features';
+
+    return admin_url('admin.php?page=wpseo_page_settings' . $target);
 }
 
 function meza_get_yoast_admin_capabilities(): array
@@ -1261,36 +1264,33 @@ add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $
     }
 
     $requested_cap = strtolower((string) ($args[0] ?? ''));
+    $allowed_caps = array_merge(meza_get_yoast_admin_capabilities(), ['read']);
 
-    foreach (meza_get_yoast_admin_capabilities() as $cap) {
+    foreach ($allowed_caps as $cap) {
         $allcaps[$cap] = true;
     }
 
-    if ($requested_cap !== '') {
+    if ($requested_cap !== '' && in_array($requested_cap, $allowed_caps, true)) {
         $allcaps[$requested_cap] = true;
     }
 
     foreach ($caps as $cap) {
         $cap = strtolower((string) $cap);
-        if ($cap !== '') {
+        if ($cap !== '' && in_array($cap, $allowed_caps, true)) {
             $allcaps[$cap] = true;
         }
     }
-
-    $allcaps['manage_options'] = true;
 
     return $allcaps;
 }, 101, 4);
 
 add_action('admin_head', function (): void {
     $user = wp_get_current_user();
-    if (!($user instanceof WP_User) || !meza_is_seo_manager_user($user) || !meza_can_access_yoast_admin_menu($user)) {
+    if (!($user instanceof WP_User) || !meza_can_access_yoast_admin_menu($user)) {
         return;
     }
 
-    $target_url = meza_is_site_manager_user($user)
-        ? esc_url(admin_url('admin.php?page=wpseo_page_settings#/site-representation'))
-        : esc_url(admin_url('admin.php?page=wpseo_page_settings'));
+    $target_url = esc_url(meza_get_default_yoast_settings_url($user));
 ?>
     <style id="meza-yoast-dashboard-submenu-hide">
         #toplevel_page_wpseo_dashboard .wp-submenu a[href="admin.php?page=wpseo_dashboard"],
@@ -1301,7 +1301,6 @@ add_action('admin_head', function (): void {
     <script id="meza-yoast-settings-submenu-link">
         (() => {
             const targetHref = <?php echo wp_json_encode($target_url); ?>;
-            const isSiteManager = <?php echo meza_is_site_manager_user($user) ? 'true' : 'false'; ?>;
 
             const updateSettingsLink = () => {
                 const topLevelLink = document.querySelector('#toplevel_page_wpseo_dashboard > a');
@@ -1316,7 +1315,7 @@ add_action('admin_head', function (): void {
 
                     try {
                         const url = new URL(link.href, window.location.origin);
-                        if (!isSiteManager || url.searchParams.get('page') !== 'wpseo_page_settings') {
+                        if (url.searchParams.get('page') !== 'wpseo_page_settings') {
                             return;
                         }
 
@@ -1339,7 +1338,7 @@ add_action('admin_head', function (): void {
 function meza_enforce_yoast_admin_menu_state(): void
 {
     $user = wp_get_current_user();
-    if (!($user instanceof WP_User) || !meza_is_seo_manager_user($user) || !meza_can_access_yoast_admin_menu($user)) {
+    if (!($user instanceof WP_User) || !meza_can_access_yoast_admin_menu($user)) {
         return;
     }
 
@@ -1407,6 +1406,25 @@ function meza_enforce_yoast_admin_menu_state(): void
     }
     unset($item);
 }
+
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $user = wp_get_current_user();
+    if (!($user instanceof WP_User) || !meza_can_access_yoast_admin_menu($user)) {
+        return;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page !== 'wpseo_dashboard') {
+        return;
+    }
+
+    wp_safe_redirect(meza_get_default_yoast_settings_url($user));
+    exit;
+}, 2);
 
 function meza_site_manager_is_utility_admin_request(): bool
 {
@@ -1528,6 +1546,16 @@ function meza_render_site_manager_aios_two_factor_page(): void
     $two_factor->show_dashboard_user_settings_page();
 }
 
+function meza_render_site_manager_aios_security_page(): void
+{
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        wp_die(esc_html__('Sorry, you are not allowed to access this page.'));
+    }
+
+    wp_safe_redirect(meza_get_site_manager_aios_two_factor_url());
+    exit;
+}
+
 function meza_render_limited_aios_security_page(): void
 {
     if (!meza_can_access_limited_aios_security_menu(wp_get_current_user())) {
@@ -1569,7 +1597,7 @@ function meza_force_site_manager_aios_menu_access(): void
         'Security',
         'read',
         meza_get_site_manager_aios_security_menu_slug(),
-        '',
+        'meza_render_site_manager_aios_security_page',
         'dashicons-shield',
         81
     );
@@ -1637,37 +1665,8 @@ add_action('admin_menu_editor-menu_replaced', 'meza_force_limited_aios_password_
 
 function meza_force_limited_tools_menu_access(): void
 {
-    if (
-        !meza_can_access_limited_tools_menu(wp_get_current_user())
-    ) {
-        return;
-    }
-
-    if (meza_admin_menu_has_top_level_slug('tools.php')) {
-        return;
-    }
-
-    add_menu_page(
-        'Tools',
-        'Tools',
-        'read',
-        meza_get_limited_tools_parent_slug(),
-        'meza_render_limited_tools_page',
-        'dashicons-admin-tools',
-        76
-    );
-
-    add_submenu_page(
-        meza_get_limited_tools_parent_slug(),
-        'Import',
-        'Import',
-        'read',
-        'import.php',
-        ''
-    );
+    // Intentionally left unused: SEO Manager now uses the native Tools menu.
 }
-add_action('admin_menu', 'meza_force_limited_tools_menu_access', PHP_INT_MAX);
-add_action('admin_menu_editor-menu_replaced', 'meza_force_limited_tools_menu_access', PHP_INT_MAX);
 
 function meza_normalize_aios_password_strength_submenu_labels(): void
 {
@@ -1683,13 +1682,21 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
         }
 
         $normalized_items = [];
+        $is_seo_manager_native_security_menu = $parent_slug === 'aiowpsec' && meza_is_seo_manager_user(wp_get_current_user());
+        $has_two_factor = false;
+        $has_password_strength = false;
         foreach ($submenu[$parent_slug] as $item) {
             if (!is_array($item)) {
                 continue;
             }
 
             $slug = (string) ($item[2] ?? '');
+            if ($slug === $parent_slug) {
+                continue;
+            }
+
             if ($slug === 'aiowpsec_two_factor_auth_user') {
+                $has_two_factor = true;
                 $item[0] = 'Two Factor Authentication';
                 $item[1] = 'read';
                 if (isset($item[3])) {
@@ -1701,6 +1708,7 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
             }
 
             if ($slug === 'aiowpsec_tools') {
+                $has_password_strength = true;
                 $label = ($parent_slug === 'aiowpsec' && meza_is_administrator_user(wp_get_current_user()))
                     ? 'Tools'
                     : 'Password Strength';
@@ -1715,11 +1723,25 @@ function meza_normalize_aios_password_strength_submenu_labels(): void
                 continue;
             }
 
+            if ($is_seo_manager_native_security_menu) {
+                continue;
+            }
+
             if (in_array($parent_slug, [meza_get_limited_aios_password_strength_parent_slug(), meza_get_limited_tools_parent_slug()], true)) {
                 continue;
             }
 
             $normalized_items[] = $item;
+        }
+
+        if ($is_seo_manager_native_security_menu) {
+            if (!$has_two_factor) {
+                $normalized_items[] = ['Two Factor Authentication', 'read', 'aiowpsec_two_factor_auth_user', 'Two Factor Authentication'];
+            }
+
+            if (!$has_password_strength) {
+                $normalized_items[] = ['Password Strength', 'read', 'aiowpsec_tools', 'Password Strength'];
+            }
         }
 
         $submenu[$parent_slug] = array_values($normalized_items);
@@ -1773,6 +1795,10 @@ function meza_normalize_limited_tools_submenu(): void
             $normalized_items[] = $item;
         }
 
+        if ($normalized_items === [] && $parent_slug === 'tools.php' && current_user_can('import')) {
+            $normalized_items[] = ['Import', 'read', 'import.php', 'Import'];
+        }
+
         if ($normalized_items === [] && meza_can_access_limited_tools_menu(wp_get_current_user())) {
             $normalized_items[] = ['Import', 'read', 'import.php', 'Import'];
         }
@@ -1782,6 +1808,273 @@ function meza_normalize_limited_tools_submenu(): void
 }
 add_action('admin_menu', 'meza_normalize_limited_tools_submenu', PHP_INT_MAX);
 add_action('admin_menu_editor-menu_replaced', 'meza_normalize_limited_tools_submenu', PHP_INT_MAX);
+
+function meza_remove_native_aios_menu_for_seo_managers(): void
+{
+    if (!meza_is_seo_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $menu, $submenu;
+
+    if (is_array($menu)) {
+        foreach ($menu as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            if (in_array($slug, [meza_get_limited_aios_password_strength_parent_slug(), meza_get_limited_tools_parent_slug()], true)) {
+                unset($menu[$index]);
+            }
+        }
+
+        $menu = array_values($menu);
+    }
+
+    if (!is_array($submenu)) {
+        return;
+    }
+
+    foreach ($submenu as $parent_slug => &$items) {
+        $parent_slug = (string) $parent_slug;
+
+        if (in_array($parent_slug, [meza_get_limited_aios_password_strength_parent_slug(), meza_get_limited_tools_parent_slug()], true)) {
+            unset($submenu[$parent_slug]);
+            continue;
+        }
+
+        if (!is_array($items)) {
+            continue;
+        }
+
+        foreach ($items as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            if (in_array($slug, [meza_get_limited_aios_password_strength_parent_slug(), meza_get_limited_tools_parent_slug()], true)) {
+                unset($items[$index]);
+            }
+        }
+
+        $items = array_values($items);
+    }
+    unset($items);
+
+    foreach ($submenu as $parent_slug => $items) {
+        if (is_array($items) && $items === []) {
+            unset($submenu[$parent_slug]);
+        }
+    }
+}
+
+function meza_insert_missing_seo_manager_top_level_menu_item(array $new_item, array $after_slugs = [], array $before_slugs = []): void
+{
+    global $menu;
+
+    if (!is_array($menu)) {
+        $menu = [];
+    }
+
+    $new_slug = (string) ($new_item[2] ?? '');
+    if ($new_slug === '') {
+        return;
+    }
+
+    foreach ($menu as $item) {
+        if (is_array($item) && ((string) ($item[2] ?? '')) === $new_slug) {
+            return;
+        }
+    }
+
+    $insert_at = count($menu);
+
+    foreach ($before_slugs as $before_slug) {
+        foreach ($menu as $index => $item) {
+            if (is_array($item) && ((string) ($item[2] ?? '')) === $before_slug) {
+                $insert_at = (int) $index;
+                break 2;
+            }
+        }
+    }
+
+    if ($insert_at === count($menu)) {
+        foreach ($after_slugs as $after_slug) {
+            foreach ($menu as $index => $item) {
+                if (is_array($item) && ((string) ($item[2] ?? '')) === $after_slug) {
+                    $insert_at = (int) $index + 1;
+                    break 2;
+                }
+            }
+        }
+    }
+
+    array_splice($menu, $insert_at, 0, [$new_item]);
+}
+
+function meza_pin_seo_manager_dashboard_utility_order(): void
+{
+    if (!meza_is_seo_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $menu;
+
+    if (!is_array($menu) || $menu === []) {
+        return;
+    }
+
+    $dashboard_index = null;
+    $web_analytics_item = null;
+    $seo_item = null;
+    $indexes_to_remove = [];
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $title = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+        if ($slug === 'index.php' && $dashboard_index === null) {
+            $dashboard_index = (int) $index;
+            continue;
+        }
+
+        $is_web_analytics = str_contains($slug, 'googlesitekit')
+            || str_contains($slug, 'google-site-kit')
+            || str_contains($slug, 'site-kit')
+            || in_array($title, ['web analytics', 'site kit', 'site kit by google'], true);
+
+        $is_seo = str_contains($slug, 'wpseo')
+            || str_contains($slug, 'wordpress-seo')
+            || str_contains($title, 'yoast seo')
+            || $title === 'seo';
+
+        if ($is_web_analytics) {
+            if ($web_analytics_item === null) {
+                $web_analytics_item = $item;
+            }
+            $indexes_to_remove[] = (int) $index;
+            continue;
+        }
+
+        if ($is_seo) {
+            if ($seo_item === null) {
+                $seo_item = $item;
+            }
+            $indexes_to_remove[] = (int) $index;
+        }
+    }
+
+    if ($dashboard_index === null || ($web_analytics_item === null && $seo_item === null)) {
+        return;
+    }
+
+    if ($indexes_to_remove !== []) {
+        rsort($indexes_to_remove, SORT_NUMERIC);
+        foreach ($indexes_to_remove as $index) {
+            array_splice($menu, $index, 1);
+        }
+
+        foreach ($menu as $index => $item) {
+            if (is_array($item) && ((string) ($item[2] ?? '')) === 'index.php') {
+                $dashboard_index = (int) $index;
+                break;
+            }
+        }
+    }
+
+    $items_to_insert = [];
+    if (is_array($web_analytics_item)) {
+        $items_to_insert[] = $web_analytics_item;
+    }
+    if (is_array($seo_item)) {
+        $items_to_insert[] = $seo_item;
+    }
+
+    if ($items_to_insert !== []) {
+        array_splice($menu, $dashboard_index + 1, 0, $items_to_insert);
+    }
+}
+
+function meza_ensure_seo_manager_required_admin_menus(): void
+{
+    if (!meza_is_seo_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $submenu;
+
+    meza_insert_missing_seo_manager_top_level_menu_item(
+        ['SEO', 'read', 'wpseo_dashboard', 'SEO', 'menu-top toplevel_page_wpseo_dashboard', 'toplevel_page_wpseo_dashboard', 'dashicons-search'],
+        ['admin.php?page=googlesitekit-dashboard', 'meza-web-analytics', 'mz-web-analytics', 'index.php']
+    );
+
+    if (!isset($submenu['wpseo_dashboard']) || !is_array($submenu['wpseo_dashboard'])) {
+        $submenu['wpseo_dashboard'] = [];
+    }
+
+    $has_yoast_settings = false;
+    $has_yoast_tools = false;
+    foreach ($submenu['wpseo_dashboard'] as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $slug = (string) ($item[2] ?? '');
+        if (in_array($slug, ['wpseo_page_settings', 'admin.php?page=wpseo_page_settings'], true)) {
+            $has_yoast_settings = true;
+        }
+
+        if (in_array($slug, ['wpseo_tools', 'admin.php?page=wpseo_tools'], true)) {
+            $has_yoast_tools = true;
+        }
+    }
+
+    if (!$has_yoast_settings) {
+        $submenu['wpseo_dashboard'][] = ['Settings', 'read', 'wpseo_page_settings', 'Settings'];
+    }
+
+    if (!$has_yoast_tools) {
+        $submenu['wpseo_dashboard'][] = ['Tools', 'read', 'wpseo_tools', 'Tools'];
+    }
+
+    meza_insert_missing_seo_manager_top_level_menu_item(
+        ['Tools', 'read', 'tools.php', 'Tools', 'menu-top menu-icon-tools', 'menu-tools', 'dashicons-admin-tools'],
+        ['themes.php'],
+        ['aiowpsec', meza_get_site_manager_aios_security_menu_slug()]
+    );
+
+    if (!isset($submenu['tools.php']) || !is_array($submenu['tools.php'])) {
+        $submenu['tools.php'] = [];
+    }
+
+    $has_import = false;
+    foreach ($submenu['tools.php'] as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        if (in_array((string) ($item[2] ?? ''), ['import.php', 'admin.php?import=wordpress'], true)) {
+            $has_import = true;
+            break;
+        }
+    }
+
+    if (!$has_import) {
+        $submenu['tools.php'][] = ['Import', 'read', 'import.php', 'Import'];
+    }
+
+    meza_pin_seo_manager_dashboard_utility_order();
+    meza_enforce_yoast_admin_menu_state();
+    meza_normalize_limited_tools_submenu();
+    meza_normalize_aios_password_strength_submenu_labels();
+    meza_remove_native_aios_menu_for_seo_managers();
+}
 
 add_action('admin_head', function (): void {
     if (
@@ -4147,11 +4440,6 @@ function meza_reorder_dashboard_utility_items(): void
     }));
 
     if (!empty($items_to_insert)) {
-        usort($items_to_insert, static function (array $a, array $b): int {
-            $label_a = strtolower(trim(wp_strip_all_tags((string) ($a[0] ?? ''))));
-            $label_b = strtolower(trim(wp_strip_all_tags((string) ($b[0] ?? ''))));
-            return strnatcasecmp($label_a, $label_b);
-        });
         array_splice($menu, $dashboard_index + 1, 0, $items_to_insert);
     }
 
@@ -9845,6 +10133,7 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_enforce_site_manager_settings_submenu();
     meza_reorder_site_manager_admin_preferences_group();
     meza_group_site_manager_appearance_and_fallback_menus();
+    meza_ensure_seo_manager_required_admin_menus();
     meza_cleanup_menu_separators();
 }
 
@@ -9861,6 +10150,7 @@ function meza_apply_missing_late_admin_menu_mutations(): void
     meza_enforce_site_manager_settings_submenu();
     meza_reorder_site_manager_admin_preferences_group();
     meza_group_site_manager_appearance_and_fallback_menus();
+    meza_ensure_seo_manager_required_admin_menus();
     meza_cleanup_menu_separators();
 }
 
