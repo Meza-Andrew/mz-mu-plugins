@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.500
+ * Version: 1.1.501
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -875,12 +875,25 @@ if (!function_exists('meza_is_aios_user_two_factor_request')) {
 add_filter('aios_management_permission', function ($capability) {
     $current_user = wp_get_current_user();
     $page = isset($_GET['page']) ? sanitize_key(wp_unslash((string) $_GET['page'])) : '';
+    $tab = isset($_GET['tab']) ? sanitize_key(wp_unslash((string) $_GET['tab'])) : '';
+    $nav_context = isset($_GET['mz_nav']) ? sanitize_key(wp_unslash((string) $_GET['mz_nav'])) : '';
 
     if (
         in_array($page, ['aiowpsec_tools', 'aiowpsec_two_factor_auth_user'], true)
         && $current_user instanceof WP_User
         && $current_user->exists()
         && !in_array('administrator', (array) $current_user->roles, true)
+    ) {
+        return 'read';
+    }
+
+    if (
+        $page === 'aiowpsec'
+        && $tab === 'locked-ip'
+        && in_array($nav_context, ['users', 'security'], true)
+        && $current_user instanceof WP_User
+        && function_exists('meza_site_manager_role_key')
+        && in_array(meza_site_manager_role_key(), (array) $current_user->roles, true)
     ) {
         return 'read';
     }

@@ -438,6 +438,22 @@ function meza_get_site_manager_allowed_settings_page_slugs(): array
     return $allowed_slugs;
 }
 
+function meza_get_site_manager_default_settings_page_slug(): string
+{
+    $allowed_slugs = meza_get_site_manager_allowed_settings_page_slugs();
+
+    return sanitize_key((string) ($allowed_slugs[0] ?? ''));
+}
+
+function meza_get_site_manager_default_settings_menu_slug(): string
+{
+    $default_slug = meza_get_site_manager_default_settings_page_slug();
+
+    return $default_slug !== ''
+        ? 'options-general.php?page=' . $default_slug
+        : 'options-general.php';
+}
+
 function meza_is_site_manager_allowed_settings_submenu_item(array $item): bool
 {
     $slug = meza_get_settings_admin_page_slug((string) ($item[2] ?? ''));
@@ -8796,6 +8812,37 @@ function meza_enforce_site_manager_settings_submenu(): void
     $submenu['options-general.php'] = meza_reorder_settings_submenu_items(array_values($filtered_items));
 }
 
+function meza_enforce_site_manager_settings_top_level_target(): void
+{
+    if (!meza_is_site_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $menu;
+
+    if (!is_array($menu)) {
+        return;
+    }
+
+    $default_menu_slug = meza_get_site_manager_default_settings_menu_slug();
+
+    foreach ($menu as &$item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $slug = (string) ($item[2] ?? '');
+        if (!in_array($slug, ['options-general.php', $default_menu_slug], true)) {
+            continue;
+        }
+
+        $item[1] = 'read';
+        $item[2] = $default_menu_slug;
+        break;
+    }
+    unset($item);
+}
+
 function meza_reorder_site_manager_admin_preferences_group(): void
 {
     if (!meza_can_view_settings_tools_submenu_items(wp_get_current_user())) {
@@ -10191,6 +10238,7 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_enforce_site_manager_settings_submenu();
     meza_reorder_site_manager_admin_preferences_group();
     meza_group_site_manager_appearance_and_fallback_menus();
+    meza_enforce_site_manager_settings_top_level_target();
     meza_ensure_seo_manager_required_admin_menus();
     meza_cleanup_menu_separators();
 }
@@ -10210,6 +10258,7 @@ function meza_apply_missing_late_admin_menu_mutations(): void
     meza_enforce_site_manager_settings_submenu();
     meza_reorder_site_manager_admin_preferences_group();
     meza_group_site_manager_appearance_and_fallback_menus();
+    meza_enforce_site_manager_settings_top_level_target();
     meza_ensure_seo_manager_required_admin_menus();
     meza_cleanup_menu_separators();
 }
