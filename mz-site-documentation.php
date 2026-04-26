@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Shared site documentation data, ACF options, and resolver helpers.
+ * Shared documentation data, ACF options, and resolver helpers.
  */
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) {
@@ -256,6 +256,26 @@ if (!function_exists('meza_site_documentation_find_first_user_for_role')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_users_for_role')) {
+    function meza_site_documentation_users_for_role(string $role_key): array
+    {
+        $users = get_users([
+            'role' => $role_key,
+            'number' => 0,
+            'orderby' => 'ID',
+            'order' => 'ASC',
+        ]);
+
+        if (empty($users)) {
+            return [];
+        }
+
+        return array_values(array_filter($users, static function ($user): bool {
+            return $user instanceof WP_User;
+        }));
+    }
+}
+
 if (!function_exists('meza_site_documentation_get_role_contacts')) {
     function meza_site_documentation_user_full_name(WP_User $user): string
     {
@@ -271,12 +291,34 @@ if (!function_exists('meza_site_documentation_get_role_contacts')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_user_first_name')) {
+    function meza_site_documentation_user_first_name(WP_User $user): string
+    {
+        $first_name = trim((string) get_user_meta($user->ID, 'first_name', true));
+
+        if ($first_name !== '') {
+            return $first_name;
+        }
+
+        $full_name = meza_site_documentation_user_full_name($user);
+        if ($full_name === '') {
+            return trim((string) $user->user_login);
+        }
+
+        $parts = preg_split('/\s+/', $full_name);
+
+        return trim((string) ($parts[0] ?? $full_name));
+    }
+}
+
 if (!function_exists('meza_site_documentation_get_role_contacts')) {
     function meza_site_documentation_get_role_contacts(): array
     {
         $rows = [];
+        $primary_user_ids = [];
+        $additional_rows = [];
 
-        foreach (meza_site_documentation_active_access_roles() as $role_key => $role_label) {
+        foreach (meza_site_documentation_contact_roles() as $role_key => $role_label) {
             $user = meza_site_documentation_find_first_user_for_role($role_key);
 
             $name = $user instanceof WP_User
@@ -293,6 +335,10 @@ if (!function_exists('meza_site_documentation_get_role_contacts')) {
                 continue;
             }
 
+            if ($user instanceof WP_User) {
+                $primary_user_ids[$user->ID] = true;
+            }
+
             $rows[] = [
                 'role' => $role_label,
                 'name' => $name,
@@ -300,6 +346,39 @@ if (!function_exists('meza_site_documentation_get_role_contacts')) {
                 'email' => $email,
                 'note' => '',
             ];
+
+            foreach (meza_site_documentation_users_for_role($role_key) as $role_user) {
+                if (isset($primary_user_ids[$role_user->ID])) {
+                    continue;
+                }
+
+                $additional_rows[] = [
+                    'role' => $role_label,
+                    'name' => meza_site_documentation_user_full_name($role_user),
+                    'user_login' => trim((string) $role_user->user_login),
+                    'email' => sanitize_email((string) $role_user->user_email),
+                    'note' => '',
+                    'sort_first_name' => meza_site_documentation_user_first_name($role_user),
+                ];
+            }
+        }
+
+        usort($additional_rows, static function (array $left, array $right): int {
+            $first_name_compare = strnatcasecmp(
+                (string) ($left['sort_first_name'] ?? ''),
+                (string) ($right['sort_first_name'] ?? '')
+            );
+
+            if ($first_name_compare !== 0) {
+                return $first_name_compare;
+            }
+
+            return strnatcasecmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
+        });
+
+        foreach ($additional_rows as $row) {
+            unset($row['sort_first_name']);
+            $rows[] = $row;
         }
 
         return $rows;
@@ -307,23 +386,13 @@ if (!function_exists('meza_site_documentation_get_role_contacts')) {
 }
 
 if (!function_exists('meza_site_documentation_style_guide_url')) {
-    function meza_site_documentation_style_guide_url(): string
+    function meza_site_documentation_find_page_url_by_template(string $template_file): string
     {
-        $page = get_page_by_path('styles');
-
-        if ($page instanceof WP_Post) {
-            $url = get_permalink($page);
-            return is_string($url) ? $url : '';
+        if ($template_file === '') {
+            return '';
         }
 
-        return '';
-    }
-}
-
-if (!function_exists('meza_site_documentation_url')) {
-    function meza_site_documentation_url(): string
-    {
-        if (is_page_template('page-site-documentation.php')) {
+        if (is_page_template($template_file)) {
             $url = get_permalink();
             return is_string($url) ? $url : '';
         }
@@ -333,7 +402,7 @@ if (!function_exists('meza_site_documentation_url')) {
             'post_status' => 'publish',
             'posts_per_page' => 1,
             'meta_key' => '_wp_page_template',
-            'meta_value' => 'page-site-documentation.php',
+            'meta_value' => $template_file,
             'fields' => 'ids',
         ]);
 
@@ -343,6 +412,35 @@ if (!function_exists('meza_site_documentation_url')) {
         }
 
         return '';
+    }
+}
+
+if (!function_exists('meza_site_documentation_is_plugin_active')) {
+    function meza_site_documentation_is_plugin_active(string $plugin_basename): bool
+    {
+        $plugin_basename = trim($plugin_basename);
+
+        if ($plugin_basename === '') {
+            return false;
+        }
+
+        return function_exists('meza_is_plugin_basename_active')
+            ? meza_is_plugin_basename_active($plugin_basename)
+            : false;
+    }
+}
+
+if (!function_exists('meza_site_documentation_style_guide_url')) {
+    function meza_site_documentation_style_guide_url(): string
+    {
+        return meza_site_documentation_find_page_url_by_template('page-style.php');
+    }
+}
+
+if (!function_exists('meza_site_documentation_url')) {
+    function meza_site_documentation_url(): string
+    {
+        return meza_site_documentation_find_page_url_by_template('page-site-documentation.php');
     }
 }
 
@@ -383,7 +481,9 @@ if (!function_exists('meza_site_documentation_get_key_links')) {
             ],
             'sitemaps' => [
                 'label' => 'Sitemaps',
-                'url' => home_url('/sitemap.xml'),
+                'url' => meza_site_documentation_is_plugin_active('wordpress-seo/wp-seo.php')
+                    ? home_url('/sitemap.xml')
+                    : '',
             ],
             'style_guide' => [
                 'label' => 'Style Guide',
@@ -665,11 +765,30 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
 if (!function_exists('meza_site_documentation_page_group_label')) {
     function meza_site_documentation_is_documentation_page(WP_Post $page): bool
     {
-        $slug = sanitize_title((string) $page->post_name);
         $template = (string) get_page_template_slug($page->ID);
 
-        return $slug === 'styles'
-            || $template === 'page-site-documentation.php';
+        return in_array($template, ['page-site-documentation.php', 'page-style.php'], true);
+    }
+}
+
+if (!function_exists('meza_site_documentation_page_group_label')) {
+    function meza_site_documentation_page_has_attached_form(WP_Post $page): bool
+    {
+        if (function_exists('get_field')) {
+            $section_form = get_field('section_form', $page->ID);
+
+            if (is_array($section_form) && !empty($section_form['form'])) {
+                return true;
+            }
+        }
+
+        $meta_value = get_post_meta($page->ID, 'section_form_form', true);
+
+        if (is_array($meta_value)) {
+            return !empty($meta_value);
+        }
+
+        return trim((string) $meta_value) !== '';
     }
 }
 
@@ -685,17 +804,28 @@ if (!function_exists('meza_site_documentation_page_group_label')) {
 
         foreach (['privacy', 'cookie', 'terms', 'conditions', 'legal', 'accessibility', 'disclaimer'] as $needle) {
             if (str_contains($slug, $needle) || str_contains($title, $needle)) {
-                return 'Pages (Legal)';
+                return 'Legal';
             }
         }
 
-        foreach (['contact', 'estimate', 'booking', 'book', 'apply', 'provider', 'form', 'consultation'] as $needle) {
-            if (str_contains($slug, $needle) || str_contains($title, $needle)) {
-                return 'Pages (Form)';
-            }
+        if (meza_site_documentation_page_has_attached_form($page)) {
+            return 'Pages (Form)';
         }
 
         return 'Pages';
+    }
+}
+
+if (!function_exists('meza_site_documentation_page_group_sort_key')) {
+    function meza_site_documentation_page_group_sort_key(WP_Post $page): string
+    {
+        $group_label = meza_site_documentation_page_group_label($page);
+
+        if ($group_label === 'Pages (Form)') {
+            return 'Pages';
+        }
+
+        return $group_label;
     }
 }
 
@@ -763,8 +893,7 @@ if (!function_exists('meza_site_documentation_page_group_weight')) {
     {
         $weights = [
             'Pages' => 10,
-            'Pages (Form)' => 20,
-            'Pages (Legal)' => 30,
+            'Legal' => 998,
             'Documentation' => 999,
         ];
 
@@ -1068,7 +1197,7 @@ if (!function_exists('meza_site_documentation_get_page_rows')) {
                 'key' => $page->post_name !== '' ? sanitize_key((string) $page->post_name) : 'page_' . (int) $page->ID,
                 'post_id' => (int) $page->ID,
                 'group' => meza_site_documentation_page_group_label($page),
-                'group_sort' => meza_site_documentation_page_group_label($page),
+                'group_sort' => meza_site_documentation_page_group_sort_key($page),
                 'archive_family' => '',
                 'title' => trim((string) $page->post_title),
                 'slug' => sanitize_title((string) $page->post_name),
@@ -1101,7 +1230,7 @@ if (!function_exists('meza_site_documentation_get_page_rows')) {
             $left_group_sort = (string) ($left['group_sort'] ?? '');
             $right_group_sort = (string) ($right['group_sort'] ?? '');
 
-            if ($left_group_label !== $right_group_label) {
+            if ($left_group_label !== $right_group_label && $left_group_sort !== $right_group_sort) {
                 return strnatcasecmp(
                     meza_site_documentation_page_group_sort_label($left_group_label),
                     meza_site_documentation_page_group_sort_label($right_group_label)
@@ -1198,12 +1327,34 @@ if (!function_exists('meza_site_documentation_taxonomy_has_public_permalink')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_content_type_is_public_by_default')) {
+    function meza_site_documentation_content_type_is_public_by_default(
+        bool $has_public_permalink,
+        bool $yoast_active = false
+    ): bool {
+        if (!$has_public_permalink) {
+            return false;
+        }
+
+        return $yoast_active;
+    }
+}
+
 if (!function_exists('meza_site_documentation_content_type_visibility_label')) {
-    function meza_site_documentation_content_type_visibility_label(bool $has_public_permalink): string
+    function meza_site_documentation_content_type_visibility_label(
+        bool $has_public_permalink,
+        bool $is_public_by_default
+    ): string
     {
-        return $has_public_permalink
-            ? 'Public and Indexable by Default'
-            : 'Content Only';
+        if ($is_public_by_default) {
+            return 'Public and Indexable by Default';
+        }
+
+        if ($has_public_permalink) {
+            return 'Content Only by Default';
+        }
+
+        return 'Content Only';
     }
 }
 
@@ -1212,6 +1363,7 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
     {
         $post_type_objects = get_post_types([], 'objects');
         $rows = [];
+        $yoast_active = meza_site_documentation_is_plugin_active('wordpress-seo/wp-seo.php');
 
         foreach ($post_type_objects as $post_type_object) {
             if (!($post_type_object instanceof WP_Post_Type) || !meza_site_documentation_is_documented_post_type($post_type_object)) {
@@ -1223,13 +1375,18 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                 ? (string) $post_type_object->cap->edit_posts
                 : '';
             $post_type_has_public_permalink = meza_site_documentation_post_type_has_public_permalink($post_type_object);
+            $post_type_is_public_by_default = $post_type_has_public_permalink;
 
             $post_type_row = [
                 'key' => sanitize_key($post_type),
                 'group' => (string) ($post_type_object->labels->name ?? ucfirst($post_type)),
                 'item' => (string) ($post_type_object->labels->name ?? ucfirst($post_type)),
-                'visibility' => meza_site_documentation_content_type_visibility_label($post_type_has_public_permalink),
+                'visibility' => meza_site_documentation_content_type_visibility_label(
+                    $post_type_has_public_permalink,
+                    $post_type_is_public_by_default
+                ),
                 'has_public_permalink' => $post_type_has_public_permalink,
+                'is_public_by_default' => $post_type_is_public_by_default,
                 'roles_text' => meza_site_documentation_format_role_labels(
                     meza_site_documentation_role_labels_for_capability($edit_capability)
                 ),
@@ -1253,13 +1410,21 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                     ? $taxonomy->cap->manage_terms
                     : (string) ($taxonomy->cap->edit_terms ?? '');
                 $taxonomy_has_public_permalink = meza_site_documentation_taxonomy_has_public_permalink($taxonomy);
+                $taxonomy_is_public_by_default = meza_site_documentation_content_type_is_public_by_default(
+                    $taxonomy_has_public_permalink,
+                    $yoast_active
+                );
 
                 $taxonomy_row = [
                     'key' => sanitize_key($post_type . '_' . (string) $taxonomy->name),
                     'group' => (string) ($post_type_object->labels->name ?? ucfirst($post_type)),
                     'item' => (string) ($taxonomy->labels->name ?? ucfirst((string) $taxonomy->name)),
-                    'visibility' => meza_site_documentation_content_type_visibility_label($taxonomy_has_public_permalink),
+                    'visibility' => meza_site_documentation_content_type_visibility_label(
+                        $taxonomy_has_public_permalink,
+                        $taxonomy_is_public_by_default
+                    ),
                     'has_public_permalink' => $taxonomy_has_public_permalink,
+                    'is_public_by_default' => $taxonomy_is_public_by_default,
                     'roles_text' => meza_site_documentation_format_role_labels(
                         meza_site_documentation_role_labels_for_capability($taxonomy_capability)
                     ),
@@ -1275,17 +1440,45 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
             }
         }
 
-        usort($rows, static function (array $left, array $right): int {
-            $left_permalink_weight = !empty($left['has_public_permalink']) ? 0 : 1;
-            $right_permalink_weight = !empty($right['has_public_permalink']) ? 0 : 1;
+        $group_has_public_permalink = [];
+
+        foreach ($rows as $row) {
+            $group_label = trim((string) ($row['group'] ?? ''));
+
+            if ($group_label === '') {
+                continue;
+            }
+
+            if (!array_key_exists($group_label, $group_has_public_permalink)) {
+                $group_has_public_permalink[$group_label] = false;
+            }
+
+            if (!empty($row['is_public_by_default'])) {
+                $group_has_public_permalink[$group_label] = true;
+            }
+        }
+
+        usort($rows, static function (array $left, array $right) use ($group_has_public_permalink): int {
+            $left_group = trim((string) ($left['group'] ?? ''));
+            $right_group = trim((string) ($right['group'] ?? ''));
+
+            $left_group_weight = !empty($group_has_public_permalink[$left_group]) ? 0 : 1;
+            $right_group_weight = !empty($group_has_public_permalink[$right_group]) ? 0 : 1;
+
+            if ($left_group_weight !== $right_group_weight) {
+                return $left_group_weight <=> $right_group_weight;
+            }
+
+            $group_compare = strnatcasecmp($left_group, $right_group);
+            if ($group_compare !== 0) {
+                return $group_compare;
+            }
+
+            $left_permalink_weight = !empty($left['is_public_by_default']) ? 0 : 1;
+            $right_permalink_weight = !empty($right['is_public_by_default']) ? 0 : 1;
 
             if ($left_permalink_weight !== $right_permalink_weight) {
                 return $left_permalink_weight <=> $right_permalink_weight;
-            }
-
-            $group_compare = strnatcasecmp((string) ($left['group'] ?? ''), (string) ($right['group'] ?? ''));
-            if ($group_compare !== 0) {
-                return $group_compare;
             }
 
             $left_kind_weight = (string) ($left['kind'] ?? '') === 'post_type' ? 0 : 1;
@@ -1297,6 +1490,32 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
 
             return strnatcasecmp((string) ($left['item'] ?? ''), (string) ($right['item'] ?? ''));
         });
+
+        $group_counts = [];
+
+        foreach ($rows as $row) {
+            $group_label = trim((string) ($row['group'] ?? ''));
+
+            if ($group_label === '') {
+                continue;
+            }
+
+            $group_counts[$group_label] = ($group_counts[$group_label] ?? 0) + 1;
+        }
+
+        foreach ($rows as &$row) {
+            $group_label = trim((string) ($row['group'] ?? ''));
+            $item_label = trim((string) ($row['item'] ?? ''));
+
+            if ($group_label === '' || ($group_counts[$group_label] ?? 0) !== 1) {
+                continue;
+            }
+
+            if (strcasecmp($group_label, $item_label) === 0) {
+                $row['group'] = '';
+            }
+        }
+        unset($row);
 
         return $rows;
     }
@@ -1961,7 +2180,8 @@ if (!function_exists('meza_site_documentation_themes_registry')) {
                 continue;
             }
 
-            if ($stylesheet === $active_stylesheet && $theme->parent()) {
+            $theme_name = trim((string) $theme->get('Name'));
+            if ($stylesheet === 'meza-starter-child' || strcasecmp($theme_name, 'Meza Child Theme') === 0) {
                 continue;
             }
 
@@ -2144,12 +2364,17 @@ if (!function_exists('meza_site_documentation_get_resolved_rows')) {
                 if (array_key_exists('description', $analytics_override)) {
                     $row['description'] = trim((string) $analytics_override['description']);
                 }
-                $row['access_entity'] = $dynamic_access_email !== ''
-                    ? $dynamic_access_email
-                    : trim((string) ($analytics_override['access_entity'] ?? $row['default_access_entity'] ?? ''));
-                $row['access_email'] = $dynamic_access_email !== ''
-                    ? $dynamic_access_email
-                    : '';
+                if ($row['key'] === 'pagespeed_insights') {
+                    $row['access_entity'] = 'Public';
+                    $row['access_email'] = '';
+                } else {
+                    $row['access_entity'] = $dynamic_access_email !== ''
+                        ? $dynamic_access_email
+                        : trim((string) ($analytics_override['access_entity'] ?? $row['default_access_entity'] ?? ''));
+                    $row['access_email'] = $dynamic_access_email !== ''
+                        ? $dynamic_access_email
+                        : '';
+                }
                 if (array_key_exists('note', $analytics_override)) {
                     $row['note'] = trim((string) $analytics_override['note']);
                 }
@@ -2223,14 +2448,14 @@ if (!function_exists('meza_site_documentation_get_options_page_definition')) {
     function meza_site_documentation_get_options_page_definition(): array
     {
         return [
-            'page_title' => 'Site Documentation Settings',
-            'menu_title' => 'Site Documentation',
+            'page_title' => 'Documentation Settings',
+            'menu_title' => 'Documentation',
             'menu_slug' => meza_site_documentation_option_page_slug(),
             'parent_slug' => 'options-general.php',
             'capability' => 'manage_options',
             'redirect' => false,
             'update_button' => 'Update',
-            'updated_message' => 'Site Documentation Updated',
+            'updated_message' => 'Documentation Updated',
             'autoload' => false,
         ];
     }
@@ -2264,7 +2489,7 @@ if (!function_exists('meza_site_documentation_section_copy_fields')) {
                 'name' => $field_name,
                 'aria-label' => '',
                 'type' => 'textarea',
-                'instructions' => 'Optional copy shown above this section of the site documentation page.',
+                        'instructions' => 'Optional copy shown above this section of the documentation page.',
                 'required' => 0,
                 'conditional_logic' => 0,
                 'wrapper' => [
