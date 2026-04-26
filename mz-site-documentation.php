@@ -11,7 +11,7 @@ if (defined('WP_INSTALLING') && WP_INSTALLING) {
 if (!function_exists('meza_site_documentation_option_page_slug')) {
     function meza_site_documentation_option_page_slug(): string
     {
-        return 'site-documentation';
+        return 'documentation';
     }
 }
 
@@ -794,7 +794,8 @@ if (!function_exists('meza_site_documentation_auto_template_files')) {
     function meza_site_documentation_auto_template_files(): array
     {
         return [
-            'page-site-documentation.php',
+            'page-cookie-policy.php',
+            'page-documentation.php',
             'page-style.php',
         ];
     }
@@ -810,7 +811,7 @@ if (!function_exists('meza_site_documentation_style_guide_url')) {
 if (!function_exists('meza_site_documentation_url')) {
     function meza_site_documentation_url(): string
     {
-        return meza_site_documentation_find_page_url_by_template('page-site-documentation.php');
+        return meza_site_documentation_find_page_url_by_template('page-documentation.php');
     }
 }
 
@@ -1153,7 +1154,7 @@ if (!function_exists('meza_site_documentation_page_group_label')) {
 
         $template = (string) get_page_template_slug($page->ID);
 
-        return in_array($template, ['page-site-documentation.php', 'page-style.php'], true);
+        return in_array($template, ['page-documentation.php', 'page-style.php'], true);
     }
 }
 
@@ -1782,8 +1783,10 @@ if (!function_exists('meza_site_documentation_get_page_template_rows')) {
             $row_label = '';
 
             if ($special_page_label !== '') {
-                if ($special_page_label === 'Documentation Page') {
-                    $row_key = $template_map['page-site-documentation.php'] ?? sanitize_key('template_page-site-documentation.php');
+                if ($special_page_label === 'Cookie Policy Page') {
+                    $row_key = $template_map['page-cookie-policy.php'] ?? sanitize_key('template_page-cookie-policy.php');
+                } elseif ($special_page_label === 'Documentation Page') {
+                    $row_key = $template_map['page-documentation.php'] ?? sanitize_key('template_page-documentation.php');
                 } elseif ($special_page_label === 'Style Guide Page') {
                     $row_key = $template_map['page-style.php'] ?? sanitize_key('template_page-style.php');
                 } else {
