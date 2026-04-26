@@ -145,6 +145,36 @@ if (!function_exists('meza_site_documentation_support_email')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_option_exists')) {
+    function meza_site_documentation_option_exists(string $field_name): bool
+    {
+        return get_option('options_' . $field_name, null) !== null;
+    }
+}
+
+if (!function_exists('meza_site_documentation_default_section_copy')) {
+    function meza_site_documentation_default_section_copy(): array
+    {
+        return [
+            'site_documentation_overview_intro' => 'This private page documents the website tools, maintenance responsibilities, and core platform components used on the site.',
+            'site_documentation_support_note' => sprintf(
+                'Technical administrative issues can be sent to %s for Meza support.',
+                meza_site_documentation_support_email()
+            ),
+            'site_documentation_quick_access_intro' => 'Use these links and role assignments to find the website, sign in, and confirm who owns each website-facing responsibility.',
+            'site_documentation_content_management_intro' => 'This section outlines the core public-facing content that lives in WordPress and which primary roles can maintain it.',
+            'site_documentation_pages_intro' => 'Published pages are pulled directly from WordPress and grouped into a documentation-friendly structure.',
+            'site_documentation_content_types_intro' => 'Post types and taxonomies are pulled from the registered WordPress content model and mapped to role access from real capabilities.',
+            'site_documentation_capabilities_intro' => 'These are the maintenance capabilities available on the website and the level of access each primary role has to them.',
+            'site_documentation_dashboards_intro' => 'These dashboards provide day-to-day visibility into the website, SEO, performance, and security posture.',
+            'site_documentation_tools_intro' => 'These tools are used to manage content imports and exports, SEO workflows, and security-related account tasks.',
+            'site_documentation_analytics_intro' => 'These analytics platforms measure traffic, search visibility, and performance signals connected to the website.',
+            'site_documentation_plugins_intro' => 'These are the preferred plugins currently powering the website, along with their relative importance to the stack.',
+            'site_documentation_themes_intro' => 'These themes make up the active front-end stack and any supporting themes kept available for maintenance or debugging.',
+        ];
+    }
+}
+
 if (!function_exists('meza_site_documentation_field_text')) {
     function meza_site_documentation_field_text(string $field_name, string $default = ''): string
     {
@@ -152,10 +182,14 @@ if (!function_exists('meza_site_documentation_field_text')) {
             return $default;
         }
 
+        if (!meza_site_documentation_option_exists($field_name)) {
+            return $default;
+        }
+
         $value = get_field($field_name, 'option');
         $value = is_scalar($value) ? trim((string) $value) : '';
 
-        return $value !== '' ? $value : $default;
+        return $value;
     }
 }
 
@@ -300,57 +334,56 @@ if (!function_exists('meza_site_documentation_get_key_links')) {
 if (!function_exists('meza_site_documentation_get_section_copy')) {
     function meza_site_documentation_get_section_copy(): array
     {
+        $defaults = meza_site_documentation_default_section_copy();
+
         return [
             'overview_intro' => meza_site_documentation_field_text(
                 'site_documentation_overview_intro',
-                'This private page documents the website tools, maintenance responsibilities, and core platform components used on the site.'
+                (string) ($defaults['site_documentation_overview_intro'] ?? '')
             ),
             'support_note' => meza_site_documentation_field_text(
                 'site_documentation_support_note',
-                sprintf(
-                    'Technical administrative issues can be sent to %s for Meza support.',
-                    meza_site_documentation_support_email()
-                )
+                (string) ($defaults['site_documentation_support_note'] ?? '')
             ),
             'quick_access_intro' => meza_site_documentation_field_text(
                 'site_documentation_quick_access_intro',
-                'Use these links and role assignments to find the website, sign in, and confirm who owns each website-facing responsibility.'
+                (string) ($defaults['site_documentation_quick_access_intro'] ?? '')
             ),
             'content_management_intro' => meza_site_documentation_field_text(
                 'site_documentation_content_management_intro',
-                'This section outlines the core public-facing content that lives in WordPress and which primary roles can maintain it.'
+                (string) ($defaults['site_documentation_content_management_intro'] ?? '')
             ),
             'pages_intro' => meza_site_documentation_field_text(
                 'site_documentation_pages_intro',
-                'Published pages are pulled directly from WordPress and grouped into a documentation-friendly structure.'
+                (string) ($defaults['site_documentation_pages_intro'] ?? '')
             ),
             'content_types_intro' => meza_site_documentation_field_text(
                 'site_documentation_content_types_intro',
-                'Post types and taxonomies are pulled from the registered WordPress content model and mapped to role access from real capabilities.'
+                (string) ($defaults['site_documentation_content_types_intro'] ?? '')
             ),
             'capabilities_intro' => meza_site_documentation_field_text(
                 'site_documentation_capabilities_intro',
-                'These are the maintenance capabilities available on the website and the level of access each primary role has to them.'
+                (string) ($defaults['site_documentation_capabilities_intro'] ?? '')
             ),
             'dashboards_intro' => meza_site_documentation_field_text(
                 'site_documentation_dashboards_intro',
-                'These dashboards provide day-to-day visibility into the website, SEO, performance, and security posture.'
+                (string) ($defaults['site_documentation_dashboards_intro'] ?? '')
             ),
             'tools_intro' => meza_site_documentation_field_text(
                 'site_documentation_tools_intro',
-                'These tools are used to manage content imports and exports, SEO workflows, and security-related account tasks.'
+                (string) ($defaults['site_documentation_tools_intro'] ?? '')
             ),
             'analytics_intro' => meza_site_documentation_field_text(
                 'site_documentation_analytics_intro',
-                'These analytics platforms measure traffic, search visibility, and performance signals connected to the website.'
+                (string) ($defaults['site_documentation_analytics_intro'] ?? '')
             ),
             'plugins_intro' => meza_site_documentation_field_text(
                 'site_documentation_plugins_intro',
-                'These are the preferred plugins currently powering the website, along with their relative importance to the stack.'
+                (string) ($defaults['site_documentation_plugins_intro'] ?? '')
             ),
             'themes_intro' => meza_site_documentation_field_text(
                 'site_documentation_themes_intro',
-                'These themes make up the active front-end stack and any supporting themes kept available for maintenance or debugging.'
+                (string) ($defaults['site_documentation_themes_intro'] ?? '')
             ),
         ];
     }
@@ -363,10 +396,13 @@ if (!function_exists('meza_site_documentation_get_row_overrides')) {
             return [];
         }
 
-        $rows = get_field('site_documentation_row_overrides', 'option');
-        if (!is_array($rows)) {
-            return [];
-        }
+        $rows = meza_site_documentation_merge_repeater_rows(
+            meza_site_documentation_default_row_override_rows(),
+            get_field('site_documentation_row_overrides', 'option'),
+            static function (array $row): string {
+                return sanitize_key((string) ($row['section_key'] ?? '')) . ':' . sanitize_key((string) ($row['row_key'] ?? ''));
+            }
+        );
 
         $overrides = [];
 
@@ -384,6 +420,8 @@ if (!function_exists('meza_site_documentation_get_row_overrides')) {
 
             $overrides[$section_key][$row_key] = [
                 'visibility' => sanitize_key((string) ($row['visibility'] ?? 'default')),
+                'description' => trim((string) ($row['description'] ?? '')),
+                'type' => trim((string) ($row['type'] ?? '')),
                 'note' => trim((string) ($row['note'] ?? '')),
                 'importance' => sanitize_key((string) ($row['importance'] ?? '')),
             ];
@@ -400,10 +438,13 @@ if (!function_exists('meza_site_documentation_get_analytics_account_overrides'))
             return [];
         }
 
-        $rows = get_field('site_documentation_analytics_accounts', 'option');
-        if (!is_array($rows)) {
-            return [];
-        }
+        $rows = meza_site_documentation_merge_repeater_rows(
+            meza_site_documentation_default_analytics_field_rows(),
+            get_field('site_documentation_analytics_accounts', 'option'),
+            static function (array $row): string {
+                return sanitize_key((string) ($row['item_key'] ?? ''));
+            }
+        );
 
         $overrides = [];
 
@@ -418,6 +459,7 @@ if (!function_exists('meza_site_documentation_get_analytics_account_overrides'))
             }
 
             $overrides[$item_key] = [
+                'description' => trim((string) ($row['description'] ?? '')),
                 'access_entity' => trim((string) ($row['access_entity'] ?? '')),
                 'note' => trim((string) ($row['note'] ?? '')),
                 'importance' => sanitize_key((string) ($row['importance'] ?? '')),
@@ -1510,6 +1552,119 @@ if (!function_exists('meza_site_documentation_themes_registry')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_merge_repeater_rows')) {
+    function meza_site_documentation_merge_repeater_rows(array $defaults, $saved_rows, callable $key_builder): array
+    {
+        $merged = [];
+        $seen = [];
+
+        foreach ($defaults as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $key = (string) $key_builder($row);
+            if ($key === '') {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $saved_row = null;
+
+            if (is_array($saved_rows)) {
+                foreach ($saved_rows as $candidate) {
+                    if (!is_array($candidate)) {
+                        continue;
+                    }
+
+                    if ((string) $key_builder($candidate) === $key) {
+                        $saved_row = $candidate;
+                        break;
+                    }
+                }
+            }
+
+            $merged[] = is_array($saved_row)
+                ? array_merge($row, $saved_row)
+                : $row;
+        }
+
+        if (is_array($saved_rows)) {
+            foreach ($saved_rows as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+
+                $key = (string) $key_builder($row);
+                if ($key === '' || isset($seen[$key])) {
+                    continue;
+                }
+
+                $merged[] = $row;
+            }
+        }
+
+        return $merged;
+    }
+}
+
+if (!function_exists('meza_site_documentation_default_row_override_rows')) {
+    function meza_site_documentation_default_row_override_rows(): array
+    {
+        $defaults = [];
+        $sections = [
+            'capabilities' => meza_site_documentation_capabilities_registry(),
+            'dashboards' => meza_site_documentation_dashboards_registry(),
+            'tools' => meza_site_documentation_tools_registry(),
+            'plugins' => meza_site_documentation_plugins_registry(),
+            'themes' => meza_site_documentation_themes_registry(),
+        ];
+
+        foreach ($sections as $section_key => $rows) {
+            foreach ($rows as $row_key => $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+
+                $defaults[] = [
+                    'section_key' => $section_key,
+                    'row_key' => sanitize_key((string) $row_key),
+                    'visibility' => 'default',
+                    'description' => trim((string) ($row['description'] ?? '')),
+                    'type' => trim((string) ($row['type'] ?? '')),
+                    'note' => trim((string) ($row['note'] ?? '')),
+                    'importance' => '',
+                ];
+            }
+        }
+
+        return $defaults;
+    }
+}
+
+if (!function_exists('meza_site_documentation_default_analytics_field_rows')) {
+    function meza_site_documentation_default_analytics_field_rows(): array
+    {
+        $defaults = [];
+
+        foreach (meza_site_documentation_analytics_registry() as $row_key => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $defaults[] = [
+                'item_key' => sanitize_key((string) $row_key),
+                'description' => trim((string) ($row['description'] ?? '')),
+                'access_entity' => trim((string) ($row['default_access_entity'] ?? '')),
+                'importance' => sanitize_key(str_replace(' ', '_', strtolower(trim((string) ($row['importance'] ?? ''))))),
+                'note' => trim((string) ($row['note'] ?? '')),
+            ];
+        }
+
+        return $defaults;
+    }
+}
+
 if (!function_exists('meza_site_documentation_registry')) {
     function meza_site_documentation_registry(): array
     {
@@ -1562,7 +1717,15 @@ if (!function_exists('meza_site_documentation_apply_row_override')) {
             return $row;
         }
 
-        if (!empty($override['note'])) {
+        if (array_key_exists('description', $override)) {
+            $row['description'] = $override['description'];
+        }
+
+        if (array_key_exists('type', $override)) {
+            $row['type'] = $override['type'];
+        }
+
+        if (array_key_exists('note', $override)) {
             $row['note'] = $override['note'];
         }
 
@@ -1636,8 +1799,11 @@ if (!function_exists('meza_site_documentation_get_resolved_rows')) {
             if ($section_key === 'analytics') {
                 $analytics_override = $analytics_overrides[$row['key']] ?? [];
 
+                if (array_key_exists('description', $analytics_override)) {
+                    $row['description'] = trim((string) $analytics_override['description']);
+                }
                 $row['access_entity'] = trim((string) ($analytics_override['access_entity'] ?? $row['default_access_entity'] ?? ''));
-                if (!empty($analytics_override['note'])) {
+                if (array_key_exists('note', $analytics_override)) {
                     $row['note'] = trim((string) $analytics_override['note']);
                 }
                 if (!empty($analytics_override['importance'])) {
@@ -1726,6 +1892,7 @@ if (!function_exists('meza_site_documentation_get_options_page_definition')) {
 if (!function_exists('meza_site_documentation_section_copy_fields')) {
     function meza_site_documentation_section_copy_fields(): array
     {
+        $defaults = meza_site_documentation_default_section_copy();
         $field_names = [
             'site_documentation_overview_intro' => 'Overview Intro',
             'site_documentation_support_note' => 'Support Note',
@@ -1758,7 +1925,7 @@ if (!function_exists('meza_site_documentation_section_copy_fields')) {
                     'class' => '',
                     'id' => '',
                 ],
-                'default_value' => '',
+                'default_value' => (string) ($defaults[$field_name] ?? ''),
                 'maxlength' => '',
                 'allow_in_bindings' => 0,
                 'rows' => 3,
@@ -1927,7 +2094,7 @@ if (!function_exists('meza_site_documentation_analytics_fields')) {
                 'name' => 'site_documentation_analytics_accounts',
                 'aria-label' => '',
                 'type' => 'repeater',
-                'instructions' => 'Optional owner or access details for analytics rows. Leave blank to use built-in defaults.',
+                'instructions' => 'Edit analytics descriptions and access details here. Clearing a field omits that value on the front-end.',
                 'required' => 0,
                 'conditional_logic' => 0,
                 'wrapper' => [
@@ -1972,6 +2139,28 @@ if (!function_exists('meza_site_documentation_analytics_fields')) {
                         'placeholder' => '',
                         'create_options' => 0,
                         'save_options' => 0,
+                        'parent_repeater' => 'field_' . md5('site_documentation_analytics_accounts'),
+                    ],
+                    [
+                        'key' => 'field_' . md5('site_documentation_analytics_accounts_description'),
+                        'label' => 'Description',
+                        'name' => 'description',
+                        'aria-label' => '',
+                        'type' => 'textarea',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'maxlength' => '',
+                        'allow_in_bindings' => 0,
+                        'rows' => 2,
+                        'placeholder' => '',
+                        'new_lines' => '',
                         'parent_repeater' => 'field_' . md5('site_documentation_analytics_accounts'),
                     ],
                     [
@@ -2062,11 +2251,11 @@ if (!function_exists('meza_site_documentation_override_fields')) {
         return [
             [
                 'key' => 'field_' . md5('site_documentation_row_overrides'),
-                'label' => 'Row Overrides',
+                'label' => 'Table Content',
                 'name' => 'site_documentation_row_overrides',
                 'aria-label' => '',
                 'type' => 'repeater',
-                'instructions' => 'Use this only for client-specific visibility, note, or importance adjustments to the shared documentation tables.',
+                'instructions' => 'Edit shared table descriptions and optional notes here. Clearing a field omits that value on the front-end.',
                 'required' => 0,
                 'conditional_logic' => 0,
                 'wrapper' => [
@@ -2079,7 +2268,7 @@ if (!function_exists('meza_site_documentation_override_fields')) {
                 'min' => 0,
                 'max' => 0,
                 'collapsed' => 'field_' . md5('site_documentation_row_overrides_row_key'),
-                'button_label' => 'Add Row Override',
+                'button_label' => 'Add Table Row',
                 'rows_per_page' => 20,
                 'sub_fields' => [
                     [
@@ -2172,6 +2361,50 @@ if (!function_exists('meza_site_documentation_override_fields')) {
                         'parent_repeater' => 'field_' . md5('site_documentation_row_overrides'),
                     ],
                     [
+                        'key' => 'field_' . md5('site_documentation_row_overrides_description'),
+                        'label' => 'Description',
+                        'name' => 'description',
+                        'aria-label' => '',
+                        'type' => 'textarea',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'maxlength' => '',
+                        'allow_in_bindings' => 0,
+                        'rows' => 2,
+                        'placeholder' => '',
+                        'new_lines' => '',
+                        'parent_repeater' => 'field_' . md5('site_documentation_row_overrides'),
+                    ],
+                    [
+                        'key' => 'field_' . md5('site_documentation_row_overrides_type'),
+                        'label' => 'Type',
+                        'name' => 'type',
+                        'aria-label' => '',
+                        'type' => 'text',
+                        'instructions' => 'Primarily used for the Themes table.',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '20',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'maxlength' => '',
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                        'parent_repeater' => 'field_' . md5('site_documentation_row_overrides'),
+                    ],
+                    [
                         'key' => 'field_' . md5('site_documentation_row_overrides_importance'),
                         'label' => 'Importance Override',
                         'name' => 'importance',
@@ -2255,7 +2488,7 @@ if (!function_exists('meza_site_documentation_options_groups')) {
                             'class' => '',
                             'id' => '',
                         ],
-                        'default_value' => '',
+                        'default_value' => 'wordpress@meza.design',
                         'allow_in_bindings' => 0,
                         'placeholder' => '',
                         'prepend' => '',
@@ -2275,7 +2508,7 @@ if (!function_exists('meza_site_documentation_options_groups')) {
                             'class' => '',
                             'id' => '',
                         ],
-                        'default_value' => '',
+                        'default_value' => home_url('/'),
                         'placeholder' => '',
                     ],
                     [
@@ -2292,7 +2525,7 @@ if (!function_exists('meza_site_documentation_options_groups')) {
                             'class' => '',
                             'id' => '',
                         ],
-                        'default_value' => '',
+                        'default_value' => admin_url(),
                         'placeholder' => '',
                     ],
                     [
@@ -2309,7 +2542,7 @@ if (!function_exists('meza_site_documentation_options_groups')) {
                             'class' => '',
                             'id' => '',
                         ],
-                        'default_value' => '',
+                        'default_value' => home_url('/sitemap.xml'),
                         'placeholder' => '',
                     ],
                     [
@@ -2326,7 +2559,7 @@ if (!function_exists('meza_site_documentation_options_groups')) {
                             'class' => '',
                             'id' => '',
                         ],
-                        'default_value' => '',
+                        'default_value' => meza_site_documentation_style_guide_url(),
                         'placeholder' => '',
                     ],
                     ...meza_site_documentation_section_copy_fields(),
@@ -2401,7 +2634,7 @@ if (!function_exists('meza_site_documentation_options_groups')) {
             ],
             [
                 'key' => 'group_' . md5('site_documentation_overrides'),
-                'title' => 'Shared Row Overrides',
+                'title' => 'Table Content',
                 'fields' => meza_site_documentation_override_fields(),
                 'location' => [
                     [
@@ -2426,6 +2659,34 @@ if (!function_exists('meza_site_documentation_options_groups')) {
         ];
     }
 }
+
+add_filter('acf/load_value/name=site_documentation_row_overrides', static function ($value, $post_id, array $field) {
+    if ($post_id !== 'option' && $post_id !== 'options') {
+        return $value;
+    }
+
+    return meza_site_documentation_merge_repeater_rows(
+        meza_site_documentation_default_row_override_rows(),
+        is_array($value) ? $value : [],
+        static function (array $row): string {
+            return sanitize_key((string) ($row['section_key'] ?? '')) . ':' . sanitize_key((string) ($row['row_key'] ?? ''));
+        }
+    );
+}, 20, 3);
+
+add_filter('acf/load_value/name=site_documentation_analytics_accounts', static function ($value, $post_id, array $field) {
+    if ($post_id !== 'option' && $post_id !== 'options') {
+        return $value;
+    }
+
+    return meza_site_documentation_merge_repeater_rows(
+        meza_site_documentation_default_analytics_field_rows(),
+        is_array($value) ? $value : [],
+        static function (array $row): string {
+            return sanitize_key((string) ($row['item_key'] ?? ''));
+        }
+    );
+}, 20, 3);
 
 add_filter('meza_shared_project_acf_options_pages', static function (array $pages): array {
     $pages[] = meza_site_documentation_get_options_page_definition();
