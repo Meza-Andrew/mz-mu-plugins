@@ -8063,6 +8063,18 @@ function meza_get_special_page_definitions(): array
             'capability' => 'manage_options',
         ],
         [
+            'option_key' => 'meza_page_for_documentation',
+            'label' => __('Documentation Page'),
+            'settings_url' => admin_url('options-reading.php'),
+            'capability' => 'manage_options',
+        ],
+        [
+            'option_key' => 'meza_page_for_style_guide',
+            'label' => __('Style Guide Page'),
+            'settings_url' => admin_url('options-reading.php'),
+            'capability' => 'manage_options',
+        ],
+        [
             'option_key' => 'wp_page_for_privacy_policy',
             'label' => __('Privacy Policy Page'),
             'settings_url' => admin_url('options-privacy.php'),
@@ -8085,6 +8097,7 @@ function meza_get_page_type_dashicon_class(string $label): string
     if ($normalized === '') return 'dashicons-media-document';
     if (str_contains($normalized, 'front page') || str_contains($normalized, 'home')) return 'dashicons-admin-home';
     if (str_contains($normalized, 'posts page') || str_contains($normalized, 'blog')) return 'dashicons-admin-post';
+    if (str_contains($normalized, 'documentation')) return 'dashicons-media-document';
     if (str_contains($normalized, 'privacy')) return 'dashicons-privacy';
     if (str_contains($normalized, 'cookie')) return 'dashicons-hidden';
     if (str_contains($normalized, 'about')) return 'dashicons-id';
@@ -8243,6 +8256,87 @@ function meza_get_cookie_policy_page_id(): int
     return (int) get_option('meza_page_for_cookie_policy');
 }
 
+function meza_get_special_page_settings_row_html(array $definition): string
+{
+    $option_key = trim((string) ($definition['option_key'] ?? ''));
+    $label = trim((string) ($definition['label'] ?? ''));
+    $action = trim((string) ($definition['action'] ?? ''));
+    $capability = trim((string) ($definition['capability'] ?? ''));
+    $row_class = trim((string) ($definition['row_class'] ?? ''));
+
+    if ($option_key === '' || $label === '' || $action === '' || $capability === '') return '';
+    if (!current_user_can($capability)) return '';
+
+    $has_pages = (bool) get_posts([
+        'post_type' => 'page',
+        'posts_per_page' => 1,
+        'post_status' => ['publish', 'private', 'draft'],
+    ]);
+    if (!$has_pages) return '';
+
+    $page_id = (int) get_option($option_key);
+    $page = $page_id > 0 ? get_post($page_id) : null;
+    $page_exists = ($page instanceof WP_Post) && $page->post_type === 'page' && $page->post_status !== 'trash';
+    $field_id = esc_attr($option_key);
+    $button_id = esc_attr($action);
+    $row_class_attr = trim('meza-special-page-setting ' . $row_class);
+
+    ob_start();
+    ?>
+    <tr class="<?php echo esc_attr($row_class_attr); ?>">
+        <th scope="row">
+            <label for="<?php echo $field_id; ?>">
+                <?php
+                echo $page_exists
+                    ? esc_html(sprintf(__('Change your %s'), $label))
+                    : esc_html(sprintf(__('Select a %s'), $label));
+                ?>
+            </label>
+        </th>
+        <td>
+            <form method="post">
+                <input type="hidden" name="action" value="<?php echo esc_attr($action); ?>" />
+                <?php
+                wp_dropdown_pages([
+                    'name' => $option_key,
+                    'show_option_none' => __('&mdash; Select &mdash;'),
+                    'option_none_value' => '0',
+                    'selected' => $page_id,
+                    'post_status' => ['draft', 'publish', 'private'],
+                ]);
+
+                wp_nonce_field($action);
+
+                submit_button(__('Use This Page'), 'primary', 'submit', false, ['id' => $button_id]);
+                ?>
+            </form>
+        </td>
+    </tr>
+    <?php
+
+    return trim((string) ob_get_clean());
+}
+
+function meza_get_reading_special_page_definitions(): array
+{
+    return [
+        [
+            'option_key' => 'meza_page_for_documentation',
+            'label' => __('Documentation Page'),
+            'action' => 'set-documentation-page',
+            'capability' => 'manage_options',
+            'row_class' => 'meza-documentation-page-setting',
+        ],
+        [
+            'option_key' => 'meza_page_for_style_guide',
+            'label' => __('Style Guide Page'),
+            'action' => 'set-style-guide-page',
+            'capability' => 'manage_options',
+            'row_class' => 'meza-style-guide-page-setting',
+        ],
+    ];
+}
+
 function meza_get_cookie_policy_settings_row_html(): string
 {
     if (!current_user_can('manage_privacy_options')) return '';
@@ -8289,6 +8383,95 @@ function meza_get_cookie_policy_settings_row_html(): string
 
     return trim((string) ob_get_clean());
 }
+
+add_action('load-options-reading.php', function (): void {
+    if (!current_user_can('manage_options')) return;
+
+    $action = isset($_POST['action']) ? sanitize_key(wp_unslash((string) $_POST['action'])) : '';
+    if ($action === '') return;
+
+    $definition_by_action = [];
+    foreach (meza_get_reading_special_page_definitions() as $definition) {
+        $definition_action = trim((string) ($definition['action'] ?? ''));
+        if ($definition_action === '') continue;
+        $definition_by_action[$definition_action] = $definition;
+    }
+
+    if (!isset($definition_by_action[$action])) return;
+
+    $definition = $definition_by_action[$action];
+    $option_key = trim((string) ($definition['option_key'] ?? ''));
+    $label = trim((string) ($definition['label'] ?? ''));
+
+    if ($option_key === '' || $label === '') return;
+
+    check_admin_referer($action);
+
+    $page_id = isset($_POST[$option_key]) ? (int) $_POST[$option_key] : 0;
+    update_option($option_key, $page_id);
+
+    add_settings_error(
+        $option_key,
+        $option_key,
+        sprintf(__('%s updated successfully.'), $label),
+        'success'
+    );
+});
+
+add_action('admin_footer-options-reading.php', function (): void {
+    $rows = [];
+
+    foreach (meza_get_reading_special_page_definitions() as $definition) {
+        $row_html = meza_get_special_page_settings_row_html($definition);
+        if ($row_html !== '') {
+            $rows[] = $row_html;
+        }
+    }
+
+    if ($rows === []) return;
+
+    $row_html = implode('', $rows);
+    ?>
+    <style id="meza-reading-special-page-settings-spacing">
+        .form-table .meza-special-page-setting th,
+        .form-table .meza-special-page-setting td {
+            padding-top: 12px;
+            padding-bottom: 12px;
+        }
+
+        .form-table .meza-special-page-setting form {
+            margin-bottom: 0;
+        }
+
+        @media screen and (max-width: 782px) {
+            .form-table .meza-special-page-setting input.button,
+            .form-table .meza-special-page-setting select {
+                margin: 10px 0 0;
+            }
+        }
+    </style>
+    <script id="meza-reading-special-page-settings">
+        document.addEventListener('DOMContentLoaded', function() {
+            var postsSelect = document.getElementById('page_for_posts');
+            if (!postsSelect) {
+                return;
+            }
+
+            var postsRow = postsSelect.closest('tr');
+            if (!postsRow) {
+                return;
+            }
+
+            var table = postsRow.closest('table');
+            if (!table || table.querySelector('.meza-special-page-setting')) {
+                return;
+            }
+
+            postsRow.insertAdjacentHTML('afterend', <?php echo wp_json_encode($row_html); ?>);
+        });
+    </script>
+    <?php
+});
 
 add_action('load-options-privacy.php', function (): void {
     if (!current_user_can('manage_privacy_options')) return;
@@ -8687,10 +8870,17 @@ add_filter('posts_clauses', function (array $clauses, WP_Query $q): array {
     $order = strtoupper((string) $q->get('order'));
     $order = in_array($order, ['ASC', 'DESC'], true) ? $order : 'ASC';
 
-    $front_page_id = (int) get_option('page_on_front');
-    $posts_page_id = (int) get_option('page_for_posts');
-    $privacy_page_id = (int) get_option('wp_page_for_privacy_policy');
-    $cookie_page_id = meza_get_cookie_policy_page_id();
+    $special_page_cases = [];
+    foreach (meza_get_special_page_definitions() as $definition) {
+        $option_key = trim((string) ($definition['option_key'] ?? ''));
+        $label = trim((string) ($definition['label'] ?? ''));
+        if ($option_key === '' || $label === '') continue;
+
+        $page_id = (int) get_option($option_key);
+        if ($page_id <= 0) continue;
+
+        $special_page_cases[] = "WHEN {$wpdb->posts}.ID = {$page_id} THEN '" . esc_sql($label) . "'";
+    }
 
     $page_type_meta_expr = "NULL";
     $page_type_choices = meza_get_page_type_sort_map();
@@ -8717,23 +8907,18 @@ add_filter('posts_clauses', function (array $clauses, WP_Query $q): array {
         $template_cases[] = "WHEN meza_tpl_meta.meta_value = '" . esc_sql($file) . "' THEN '" . esc_sql($label) . "'";
     }
     $template_label_expr = "(CASE " . implode(' ', $template_cases) . " ELSE '' END)";
+    $special_page_case_sql = implode(' ', $special_page_cases);
 
     $sort_label_expr =
         "(CASE " .
-        "WHEN {$wpdb->posts}.ID = {$front_page_id} THEN 'Front Page' " .
-        "WHEN {$wpdb->posts}.ID = {$posts_page_id} THEN 'Posts Page' " .
-        "WHEN {$wpdb->posts}.ID = {$privacy_page_id} THEN 'Privacy Policy Page' " .
-        "WHEN {$wpdb->posts}.ID = {$cookie_page_id} THEN 'Cookie Policy Page' " .
+        $special_page_case_sql . ' ' .
         "WHEN {$page_type_meta_expr} IS NOT NULL THEN {$page_type_meta_expr} " .
         "WHEN {$page_type_terms_expr} IS NOT NULL THEN {$page_type_terms_expr} " .
         "ELSE {$template_label_expr} END)";
 
     $filter_label_expr =
         "(CASE " .
-        "WHEN {$wpdb->posts}.ID = {$front_page_id} THEN 'Front Page' " .
-        "WHEN {$wpdb->posts}.ID = {$posts_page_id} THEN 'Posts Page' " .
-        "WHEN {$wpdb->posts}.ID = {$privacy_page_id} THEN 'Privacy Policy Page' " .
-        "WHEN {$wpdb->posts}.ID = {$cookie_page_id} THEN 'Cookie Policy Page' " .
+        $special_page_case_sql . ' ' .
         "WHEN {$page_type_meta_expr} IS NOT NULL THEN {$page_type_meta_expr} " .
         "WHEN {$page_type_terms_filter_expr} IS NOT NULL THEN {$page_type_terms_filter_expr} " .
         "ELSE {$template_label_expr} END)";
