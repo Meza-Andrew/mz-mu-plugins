@@ -456,6 +456,25 @@ if (!function_exists('meza_site_documentation_cookie_policy_slug')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_template_directories')) {
+    function meza_site_documentation_template_directories(): array
+    {
+        $directories = [
+            get_stylesheet_directory(),
+        ];
+
+        if (get_template_directory() !== get_stylesheet_directory()) {
+            $directories[] = get_template_directory();
+        }
+
+        $directories = array_values(array_unique(array_filter(array_map(static function ($directory): string {
+            return is_string($directory) ? trim($directory) : '';
+        }, $directories))));
+
+        return $directories;
+    }
+}
+
 if (!function_exists('meza_site_documentation_page_template_file_path')) {
     function meza_site_documentation_page_template_file_path(string $template_file): string
     {
@@ -465,15 +484,9 @@ if (!function_exists('meza_site_documentation_page_template_file_path')) {
             return '';
         }
 
-        $paths = [
-            trailingslashit(get_stylesheet_directory()) . $template_file,
-        ];
+        foreach (meza_site_documentation_template_directories() as $directory) {
+            $path = trailingslashit($directory) . $template_file;
 
-        if (get_template_directory() !== get_stylesheet_directory()) {
-            $paths[] = trailingslashit(get_template_directory()) . $template_file;
-        }
-
-        foreach ($paths as $path) {
             if (file_exists($path)) {
                 return $path;
             }
@@ -487,13 +500,8 @@ if (!function_exists('meza_site_documentation_discover_page_templates')) {
     function meza_site_documentation_discover_page_templates(): array
     {
         $templates = [];
-        $directories = [get_stylesheet_directory()];
 
-        if (get_template_directory() !== get_stylesheet_directory()) {
-            $directories[] = get_template_directory();
-        }
-
-        foreach ($directories as $directory) {
+        foreach (meza_site_documentation_template_directories() as $directory) {
             if (!is_string($directory) || $directory === '') {
                 continue;
             }
@@ -692,13 +700,8 @@ if (!function_exists('meza_site_documentation_single_template_rows')) {
     function meza_site_documentation_single_template_rows(): array
     {
         $rows = [];
-        $directories = [get_stylesheet_directory()];
 
-        if (get_template_directory() !== get_stylesheet_directory()) {
-            $directories[] = get_template_directory();
-        }
-
-        foreach ($directories as $directory) {
+        foreach (meza_site_documentation_template_directories() as $directory) {
             if (!is_string($directory) || $directory === '') {
                 continue;
             }
@@ -789,7 +792,6 @@ if (!function_exists('meza_site_documentation_auto_template_files')) {
     function meza_site_documentation_auto_template_files(): array
     {
         return [
-            'page-faq.php',
             'page-site-documentation.php',
             'page-style.php',
         ];
@@ -1628,7 +1630,48 @@ if (!function_exists('meza_site_documentation_get_page_rows')) {
     }
 }
 
-if (!function_exists('meza_site_documentation_is_documented_post_type')) {
+if (!function_exists('meza_site_documentation_page_template_roles_text')) {
+    function meza_site_documentation_page_template_roles_text(string $group, string $template_label): string
+    {
+        if ($group === 'Auto Template') {
+            return '';
+        }
+
+        if (in_array($template_label, ['Front Page', 'Posts Page'], true)) {
+            return meza_site_documentation_format_role_labels(['Administrator']);
+        }
+
+        return meza_site_documentation_format_role_labels(
+            meza_site_documentation_role_labels_for_capability('edit_pages')
+        );
+    }
+}
+
+if (!function_exists('meza_site_documentation_page_template_action_links')) {
+    function meza_site_documentation_page_template_action_links(string $template_label): array
+    {
+        $settings_url = '';
+
+        if (in_array($template_label, ['Front Page', 'Posts Page'], true)) {
+            $settings_url = admin_url('options-reading.php');
+        } elseif (in_array($template_label, ['Privacy Policy Page', 'Cookie Policy Page'], true)) {
+            $settings_url = admin_url('options-privacy.php');
+        }
+
+        if ($settings_url === '') {
+            return [];
+        }
+
+        return [
+            [
+                'label' => 'Change',
+                'url' => $settings_url,
+            ],
+        ];
+    }
+}
+
+if (!function_exists('meza_site_documentation_get_page_template_rows')) {
     function meza_site_documentation_get_page_template_rows(): array
     {
         $pages = get_posts([
@@ -1641,9 +1684,6 @@ if (!function_exists('meza_site_documentation_is_documented_post_type')) {
             ],
         ]);
 
-        $roles_text = meza_site_documentation_format_role_labels(
-            meza_site_documentation_role_labels_for_capability('edit_pages')
-        );
         $rows = [];
         $template_map = [];
 
@@ -1665,7 +1705,13 @@ if (!function_exists('meza_site_documentation_is_documented_post_type')) {
                     : 'Custom Template',
                 'template_label' => $template_label,
                 'page_references' => [],
-                'roles_text' => $roles_text,
+                'roles_text' => meza_site_documentation_page_template_roles_text(
+                    in_array($template_file, meza_site_documentation_auto_template_files(), true)
+                        ? 'Auto Template'
+                        : 'Custom Template',
+                    $template_label
+                ),
+                'action_links' => meza_site_documentation_page_template_action_links($template_label),
             ];
         }
 
@@ -1722,11 +1768,19 @@ if (!function_exists('meza_site_documentation_is_documented_post_type')) {
                     'group' => $row_group,
                     'template_label' => $row_label,
                     'page_references' => [],
-                    'roles_text' => $roles_text,
+                    'roles_text' => meza_site_documentation_page_template_roles_text($row_group, $row_label),
+                    'action_links' => meza_site_documentation_page_template_action_links($row_label),
                 ];
             }
 
             $rows[$row_key]['page_references'][] = $page_reference;
+            $rows[$row_key]['roles_text'] = meza_site_documentation_page_template_roles_text(
+                (string) ($rows[$row_key]['group'] ?? ''),
+                (string) ($rows[$row_key]['template_label'] ?? '')
+            );
+            $rows[$row_key]['action_links'] = meza_site_documentation_page_template_action_links(
+                (string) ($rows[$row_key]['template_label'] ?? '')
+            );
         }
 
         foreach (meza_site_documentation_single_template_rows() as $single_template_row) {
@@ -1736,7 +1790,13 @@ if (!function_exists('meza_site_documentation_is_documented_post_type')) {
                 continue;
             }
 
-            $single_template_row['roles_text'] = $roles_text;
+            $single_template_row['roles_text'] = meza_site_documentation_page_template_roles_text(
+                (string) ($single_template_row['group'] ?? ''),
+                (string) ($single_template_row['template_label'] ?? '')
+            );
+            $single_template_row['action_links'] = meza_site_documentation_page_template_action_links(
+                (string) ($single_template_row['template_label'] ?? '')
+            );
             $rows[$single_template_key] = $single_template_row;
         }
 
