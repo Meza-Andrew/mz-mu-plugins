@@ -416,6 +416,27 @@ if (!function_exists('meza_site_documentation_style_guide_url')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_find_page_url_by_option')) {
+    function meza_site_documentation_find_page_url_by_option(string $option_key): string
+    {
+        $option_key = trim($option_key);
+
+        if ($option_key === '') {
+            return '';
+        }
+
+        $page_id = (int) get_option($option_key);
+
+        if ($page_id <= 0) {
+            return '';
+        }
+
+        $url = get_permalink($page_id);
+
+        return is_string($url) ? $url : '';
+    }
+}
+
 if (!function_exists('meza_site_documentation_is_plugin_active')) {
     function meza_site_documentation_is_plugin_active(string $plugin_basename): bool
     {
@@ -804,6 +825,12 @@ if (!function_exists('meza_site_documentation_auto_template_files')) {
 if (!function_exists('meza_site_documentation_style_guide_url')) {
     function meza_site_documentation_style_guide_url(): string
     {
+        $selected_url = meza_site_documentation_find_page_url_by_option('meza_page_for_style_guide');
+
+        if ($selected_url !== '') {
+            return $selected_url;
+        }
+
         return meza_site_documentation_find_page_url_by_template('page-style.php');
     }
 }
@@ -811,6 +838,12 @@ if (!function_exists('meza_site_documentation_style_guide_url')) {
 if (!function_exists('meza_site_documentation_url')) {
     function meza_site_documentation_url(): string
     {
+        $selected_url = meza_site_documentation_find_page_url_by_option('meza_page_for_documentation');
+
+        if ($selected_url !== '') {
+            return $selected_url;
+        }
+
         return meza_site_documentation_find_page_url_by_template('page-documentation.php');
     }
 }
@@ -856,13 +889,13 @@ if (!function_exists('meza_site_documentation_get_key_links')) {
                     ? home_url('/sitemap.xml')
                     : '',
             ],
-            'style_guide' => [
-                'label' => 'Style Guide',
-                'url' => meza_site_documentation_style_guide_url(),
-            ],
             'documentation' => [
                 'label' => 'Documentation',
                 'url' => meza_site_documentation_url(),
+            ],
+            'style_guide' => [
+                'label' => 'Style Guide',
+                'url' => meza_site_documentation_style_guide_url(),
             ],
         ];
 
