@@ -667,7 +667,7 @@ if (!function_exists('meza_site_documentation_page_group_label')) {
         $title = strtolower(trim((string) $page->post_title));
 
         if (meza_site_documentation_is_documentation_page($page)) {
-            return 'Pages (Documentation)';
+            return 'Documentation';
         }
 
         foreach (['privacy', 'cookie', 'terms', 'conditions', 'legal', 'accessibility', 'disclaimer'] as $needle) {
@@ -752,7 +752,7 @@ if (!function_exists('meza_site_documentation_page_group_weight')) {
             'Pages' => 10,
             'Pages (Form)' => 20,
             'Pages (Legal)' => 30,
-            'Pages (Documentation)' => 40,
+            'Documentation' => 999,
         ];
 
         return $weights[$group_label] ?? 50;
