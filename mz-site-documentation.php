@@ -134,6 +134,19 @@ if (!function_exists('meza_site_documentation_format_role_labels')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_format_access_label')) {
+    function meza_site_documentation_format_access_label(string $label): string
+    {
+        $label = trim($label);
+
+        if ($label === '') {
+            return '';
+        }
+
+        return ucwords(strtolower($label));
+    }
+}
+
 if (!function_exists('meza_site_documentation_support_email')) {
     function meza_site_documentation_support_email(): string
     {
@@ -1163,6 +1176,37 @@ if (!function_exists('meza_site_documentation_is_documented_taxonomy')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_post_type_has_public_permalink')) {
+    function meza_site_documentation_post_type_has_public_permalink(WP_Post_Type $post_type_object): bool
+    {
+        if (in_array((string) $post_type_object->name, ['post', 'page'], true)) {
+            return true;
+        }
+
+        if (!$post_type_object->public || !$post_type_object->publicly_queryable) {
+            return false;
+        }
+
+        return !empty($post_type_object->rewrite) || !empty($post_type_object->has_archive);
+    }
+}
+
+if (!function_exists('meza_site_documentation_taxonomy_has_public_permalink')) {
+    function meza_site_documentation_taxonomy_has_public_permalink(WP_Taxonomy $taxonomy): bool
+    {
+        return $taxonomy->public && (!empty($taxonomy->rewrite) || !empty($taxonomy->query_var));
+    }
+}
+
+if (!function_exists('meza_site_documentation_content_type_visibility_label')) {
+    function meza_site_documentation_content_type_visibility_label(bool $has_public_permalink): string
+    {
+        return $has_public_permalink
+            ? 'Public and Indexable by Default'
+            : 'Content Only';
+    }
+}
+
 if (!function_exists('meza_site_documentation_get_content_type_rows')) {
     function meza_site_documentation_get_content_type_rows(): array
     {
@@ -1178,11 +1222,14 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
             $edit_capability = isset($post_type_object->cap->edit_posts)
                 ? (string) $post_type_object->cap->edit_posts
                 : '';
+            $post_type_has_public_permalink = meza_site_documentation_post_type_has_public_permalink($post_type_object);
 
             $post_type_row = [
                 'key' => sanitize_key($post_type),
                 'group' => (string) ($post_type_object->labels->name ?? ucfirst($post_type)),
                 'item' => (string) ($post_type_object->labels->name ?? ucfirst($post_type)),
+                'visibility' => meza_site_documentation_content_type_visibility_label($post_type_has_public_permalink),
+                'has_public_permalink' => $post_type_has_public_permalink,
                 'roles_text' => meza_site_documentation_format_role_labels(
                     meza_site_documentation_role_labels_for_capability($edit_capability)
                 ),
@@ -1205,11 +1252,14 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                 $taxonomy_capability = isset($taxonomy->cap->manage_terms) && is_string($taxonomy->cap->manage_terms) && $taxonomy->cap->manage_terms !== ''
                     ? $taxonomy->cap->manage_terms
                     : (string) ($taxonomy->cap->edit_terms ?? '');
+                $taxonomy_has_public_permalink = meza_site_documentation_taxonomy_has_public_permalink($taxonomy);
 
                 $taxonomy_row = [
                     'key' => sanitize_key($post_type . '_' . (string) $taxonomy->name),
                     'group' => (string) ($post_type_object->labels->name ?? ucfirst($post_type)),
                     'item' => (string) ($taxonomy->labels->name ?? ucfirst((string) $taxonomy->name)),
+                    'visibility' => meza_site_documentation_content_type_visibility_label($taxonomy_has_public_permalink),
+                    'has_public_permalink' => $taxonomy_has_public_permalink,
                     'roles_text' => meza_site_documentation_format_role_labels(
                         meza_site_documentation_role_labels_for_capability($taxonomy_capability)
                     ),
@@ -1226,14 +1276,23 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
         }
 
         usort($rows, static function (array $left, array $right): int {
+            $left_permalink_weight = !empty($left['has_public_permalink']) ? 0 : 1;
+            $right_permalink_weight = !empty($right['has_public_permalink']) ? 0 : 1;
+
+            if ($left_permalink_weight !== $right_permalink_weight) {
+                return $left_permalink_weight <=> $right_permalink_weight;
+            }
+
             $group_compare = strnatcasecmp((string) ($left['group'] ?? ''), (string) ($right['group'] ?? ''));
             if ($group_compare !== 0) {
                 return $group_compare;
             }
 
-            $kind_compare = strnatcasecmp((string) ($left['kind'] ?? ''), (string) ($right['kind'] ?? ''));
-            if ($kind_compare !== 0) {
-                return $kind_compare;
+            $left_kind_weight = (string) ($left['kind'] ?? '') === 'post_type' ? 0 : 1;
+            $right_kind_weight = (string) ($right['kind'] ?? '') === 'post_type' ? 0 : 1;
+
+            if ($left_kind_weight !== $right_kind_weight) {
+                return $left_kind_weight <=> $right_kind_weight;
             }
 
             return strnatcasecmp((string) ($left['item'] ?? ''), (string) ($right['item'] ?? ''));
@@ -2073,6 +2132,9 @@ if (!function_exists('meza_site_documentation_get_resolved_rows')) {
             $row['is_available'] = meza_site_documentation_is_dependency_available($row);
             $row['role_labels'] = meza_site_documentation_resolve_role_list($row);
             $row['roles_text'] = implode(', ', array_values($row['role_labels']));
+            $row['access'] = array_map(static function ($label): string {
+                return meza_site_documentation_format_access_label((string) $label);
+            }, (array) ($row['access'] ?? []));
             $row['action_links'] = meza_site_documentation_get_row_action_links($section_key, $row);
 
             if ($section_key === 'analytics') {
