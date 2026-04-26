@@ -1031,11 +1031,16 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
 
         if ($section_key === 'pages') {
             $post_id = (int) ($row['post_id'] ?? 0);
-
-            return meza_site_documentation_filter_links([
+            $page = $post_id > 0 ? get_post($post_id) : null;
+            $links = [
                 meza_site_documentation_make_link('View', (string) ($row['url'] ?? '')),
-                meza_site_documentation_make_link('Edit', $post_id > 0 ? admin_url('post.php?post=' . $post_id . '&action=edit') : ''),
-            ]);
+            ];
+
+            if ($page instanceof WP_Post && !meza_site_documentation_is_auto_template_page($page)) {
+                $links[] = meza_site_documentation_make_link('Edit', admin_url('post.php?post=' . $post_id . '&action=edit'));
+            }
+
+            return meza_site_documentation_filter_links($links);
         }
 
         if ($section_key === 'content_types') {
@@ -1147,6 +1152,17 @@ if (!function_exists('meza_site_documentation_page_group_label')) {
         $template = (string) get_page_template_slug($page->ID);
 
         return in_array($template, ['page-site-documentation.php', 'page-style.php'], true);
+    }
+}
+
+if (!function_exists('meza_site_documentation_is_auto_template_page')) {
+    function meza_site_documentation_is_auto_template_page(WP_Post $page): bool
+    {
+        if (meza_site_documentation_is_documentation_page($page)) {
+            return true;
+        }
+
+        return meza_site_documentation_special_page_label((int) $page->ID) === 'Cookie Policy Page';
     }
 }
 
