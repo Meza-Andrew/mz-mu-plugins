@@ -190,18 +190,56 @@ if (!function_exists('meza_site_documentation_field_text')) {
 }
 
 if (!function_exists('meza_site_documentation_find_first_user_for_role')) {
+    function meza_site_documentation_handoff_excluded_role_logins(): array
+    {
+        return ['smeza', 'ameza'];
+    }
+}
+
+if (!function_exists('meza_site_documentation_role_uses_handoff_filter')) {
+    function meza_site_documentation_role_uses_handoff_filter(string $role_key): bool
+    {
+        return in_array($role_key, [
+            'administrator',
+            meza_site_documentation_site_manager_role_key(),
+        ], true);
+    }
+}
+
+if (!function_exists('meza_site_documentation_find_first_user_for_role')) {
     function meza_site_documentation_find_first_user_for_role(string $role_key): ?WP_User
     {
         $users = get_users([
             'role' => $role_key,
-            'number' => 1,
+            'number' => 0,
             'orderby' => 'ID',
             'order' => 'ASC',
         ]);
 
-        return !empty($users[0]) && $users[0] instanceof WP_User
-            ? $users[0]
-            : null;
+        if (empty($users)) {
+            return null;
+        }
+
+        $users = array_values(array_filter($users, static function ($user): bool {
+            return $user instanceof WP_User;
+        }));
+
+        if ($users === []) {
+            return null;
+        }
+
+        if (count($users) > 1 && meza_site_documentation_role_uses_handoff_filter($role_key)) {
+            $excluded_logins = array_fill_keys(meza_site_documentation_handoff_excluded_role_logins(), true);
+            $handoff_users = array_values(array_filter($users, static function (WP_User $user) use ($excluded_logins): bool {
+                return !isset($excluded_logins[(string) $user->user_login]);
+            }));
+
+            if ($handoff_users !== []) {
+                return $handoff_users[0];
+            }
+        }
+
+        return $users[0];
     }
 }
 
