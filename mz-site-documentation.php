@@ -600,6 +600,202 @@ if (!function_exists('meza_site_documentation_page_reference_data')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_page_type_choice_map')) {
+    function meza_site_documentation_page_type_choice_map(): array
+    {
+        if (!function_exists('get_field_object')) {
+            return [];
+        }
+
+        $field = get_field_object('page_type', 0, false, false);
+        if (!is_array($field) || !isset($field['choices']) || !is_array($field['choices'])) {
+            return [];
+        }
+
+        $choices = [];
+
+        foreach ($field['choices'] as $value => $label) {
+            $value = is_scalar($value) ? trim((string) $value) : '';
+            $label = is_scalar($label) ? trim((string) $label) : '';
+
+            if ($value === '' || $label === '') {
+                continue;
+            }
+
+            $choices[strtolower($value)] = $label;
+        }
+
+        return $choices;
+    }
+}
+
+if (!function_exists('meza_site_documentation_special_page_label')) {
+    function meza_site_documentation_special_page_label(int $post_id): string
+    {
+        $special_pages = [
+            (int) get_option('page_on_front') => 'Front Page',
+            (int) get_option('page_for_posts') => 'Posts Page',
+            (int) get_option('wp_page_for_privacy_policy') => 'Privacy Policy Page',
+            (int) get_option('meza_page_for_cookie_policy') => 'Cookie Policy Page',
+        ];
+
+        return $special_pages[$post_id] ?? '';
+    }
+}
+
+if (!function_exists('meza_site_documentation_page_type_meta_label')) {
+    function meza_site_documentation_page_type_meta_label(int $post_id): string
+    {
+        $raw_value = trim((string) get_post_meta($post_id, 'page_type', true));
+
+        if ($raw_value === '') {
+            return '';
+        }
+
+        $choices = meza_site_documentation_page_type_choice_map();
+        $normalized_value = strtolower($raw_value);
+
+        return $choices[$normalized_value] ?? $raw_value;
+    }
+}
+
+if (!function_exists('meza_site_documentation_page_type_term_label')) {
+    function meza_site_documentation_page_type_term_label(int $post_id): string
+    {
+        $terms = get_the_terms($post_id, 'page_type');
+
+        if (!is_array($terms) || $terms === []) {
+            return '';
+        }
+
+        $labels = [];
+
+        foreach ($terms as $term) {
+            if (!($term instanceof WP_Term)) {
+                continue;
+            }
+
+            $label = trim((string) $term->name);
+
+            if ($label !== '') {
+                $labels[] = $label;
+            }
+        }
+
+        $labels = array_values(array_unique($labels));
+
+        return $labels !== [] ? implode(', ', $labels) : '';
+    }
+}
+
+if (!function_exists('meza_site_documentation_single_template_rows')) {
+    function meza_site_documentation_single_template_rows(): array
+    {
+        $rows = [];
+        $directories = [get_stylesheet_directory()];
+
+        if (get_template_directory() !== get_stylesheet_directory()) {
+            $directories[] = get_template_directory();
+        }
+
+        foreach ($directories as $directory) {
+            if (!is_string($directory) || $directory === '') {
+                continue;
+            }
+
+            $paths = glob(trailingslashit($directory) . 'single-*.php');
+
+            if (!is_array($paths)) {
+                continue;
+            }
+
+            foreach ($paths as $path) {
+                if (!is_string($path) || !file_exists($path)) {
+                    continue;
+                }
+
+                $file = basename($path);
+                $post_type = preg_replace('/^single-/', '', (string) pathinfo($file, PATHINFO_FILENAME));
+                $post_type = is_string($post_type) ? trim($post_type) : '';
+
+                if ($post_type === '') {
+                    continue;
+                }
+
+                $post_type_object = get_post_type_object($post_type);
+                $singular_label = $post_type_object instanceof WP_Post_Type
+                    ? trim((string) ($post_type_object->labels->singular_name ?? $post_type))
+                    : ucwords(str_replace(['_', '-'], ' ', $post_type));
+                $plural_label = $post_type_object instanceof WP_Post_Type
+                    ? trim((string) ($post_type_object->labels->name ?? $singular_label))
+                    : $singular_label;
+                $page_references = [];
+
+                $posts = get_posts([
+                    'post_type' => $post_type,
+                    'post_status' => ['publish', 'private'],
+                    'posts_per_page' => -1,
+                    'orderby' => 'title',
+                    'order' => 'ASC',
+                ]);
+
+                foreach ($posts as $post) {
+                    if (!($post instanceof WP_Post)) {
+                        continue;
+                    }
+
+                    $post_url = get_permalink($post);
+
+                    if (!is_string($post_url) || !meza_site_documentation_has_public_permalink($post_url)) {
+                        continue;
+                    }
+
+                    $page_references[] = [
+                        'title' => trim((string) $post->post_title),
+                        'url' => $post_url,
+                        'edit_url' => admin_url('post.php?post=' . (int) $post->ID . '&action=edit'),
+                    ];
+                }
+
+                if ($page_references === []) {
+                    $page_references[] = [
+                        'title' => $plural_label,
+                        'url' => '',
+                        'edit_url' => '',
+                    ];
+                }
+
+                $rows[$file] = [
+                    'key' => sanitize_key('single_' . $post_type),
+                    'group' => 'Custom Template',
+                    'template_label' => 'Single ' . $singular_label . ' Page',
+                    'page_references' => $page_references,
+                ];
+            }
+        }
+
+        uasort($rows, static function (array $left, array $right): int {
+            return strnatcasecmp(
+                (string) ($left['template_label'] ?? ''),
+                (string) ($right['template_label'] ?? '')
+            );
+        });
+
+        return array_values($rows);
+    }
+}
+
+if (!function_exists('meza_site_documentation_auto_template_files')) {
+    function meza_site_documentation_auto_template_files(): array
+    {
+        return [
+            'page-faq.php',
+            'page-site-documentation.php',
+            'page-style.php',
+        ];
+    }
+}
+
 if (!function_exists('meza_site_documentation_style_guide_url')) {
     function meza_site_documentation_style_guide_url(): string
     {
@@ -1464,12 +1660,12 @@ if (!function_exists('meza_site_documentation_is_documented_post_type')) {
             $template_map[$template_file] = $template_key;
             $rows[$template_key] = [
                 'key' => $template_key,
-                'group' => 'Custom Templates',
+                'group' => in_array($template_file, meza_site_documentation_auto_template_files(), true)
+                    ? 'Auto Template'
+                    : 'Custom Template',
                 'template_label' => $template_label,
-                'page_types' => meza_site_documentation_template_supported_page_types($template_file),
                 'page_references' => [],
                 'roles_text' => $roles_text,
-                'action' => 'Edit Pages',
             ];
         }
 
@@ -1483,74 +1679,70 @@ if (!function_exists('meza_site_documentation_is_documented_post_type')) {
             }
 
             $page_reference = meza_site_documentation_page_reference_data($page);
-            $page_type_label = meza_site_documentation_page_template_type_label($page);
+            $special_page_label = meza_site_documentation_special_page_label((int) $page->ID);
+            $page_type_meta_label = meza_site_documentation_page_type_meta_label((int) $page->ID);
+            $page_type_term_label = meza_site_documentation_page_type_term_label((int) $page->ID);
             $template_slug = trim((string) get_page_template_slug($page->ID));
 
-            if ($template_slug === '') {
-                $default_key = 'default_template';
+            $row_key = '';
+            $row_group = '';
+            $row_label = '';
 
-                if (!isset($rows[$default_key])) {
-                    $rows[$default_key] = [
-                        'key' => $default_key,
-                        'group' => 'Default Templates',
-                        'template_label' => 'Default Template',
-                        'page_types' => [],
-                        'page_references' => [],
-                        'roles_text' => $roles_text,
-                        'action' => 'Edit Pages',
-                    ];
-                }
-
-                if (!in_array($page_type_label, $rows[$default_key]['page_types'], true)) {
-                    $rows[$default_key]['page_types'][] = $page_type_label;
-                }
-
-                $rows[$default_key]['page_references'][] = $page_reference;
+            if ($special_page_label !== '') {
+                $row_key = sanitize_key('page_type_' . $special_page_label);
+                $row_group = $special_page_label === 'Cookie Policy Page'
+                    ? 'Auto Template'
+                    : 'Core Template';
+                $row_label = $special_page_label;
+            } elseif ($page_type_meta_label !== '') {
+                $row_key = sanitize_key('page_type_' . $page_type_meta_label);
+                $row_group = 'Core Template';
+                $row_label = $page_type_meta_label;
+            } elseif ($page_type_term_label !== '') {
+                $row_key = sanitize_key('page_type_' . $page_type_term_label);
+                $row_group = 'Core Template';
+                $row_label = $page_type_term_label;
+            } elseif ($template_slug !== '') {
+                $row_key = $template_map[$template_slug] ?? sanitize_key('template_' . $template_slug);
+                $row_group = in_array($template_slug, meza_site_documentation_auto_template_files(), true)
+                    ? 'Auto Template'
+                    : 'Custom Template';
+                $row_label = isset($rows[$row_key]['template_label'])
+                    ? (string) $rows[$row_key]['template_label']
+                    : ucwords(str_replace(['page-', '.php', '-'], ['', '', ' '], $template_slug));
             } else {
-                $template_key = $template_map[$template_slug] ?? sanitize_key('template_' . $template_slug);
-
-                if (!isset($rows[$template_key])) {
-                    $rows[$template_key] = [
-                        'key' => $template_key,
-                        'group' => 'Custom Templates',
-                        'template_label' => ucwords(str_replace(['page-', '.php', '-'], ['', '', ' '], $template_slug)),
-                        'page_types' => meza_site_documentation_template_supported_page_types($template_slug),
-                        'page_references' => [],
-                        'roles_text' => $roles_text,
-                        'action' => 'Edit Pages',
-                    ];
-                }
-
-                if (!in_array($page_type_label, $rows[$template_key]['page_types'], true)) {
-                    $rows[$template_key]['page_types'][] = $page_type_label;
-                }
-
-                $rows[$template_key]['page_references'][] = $page_reference;
+                $row_key = 'basic_page';
+                $row_group = 'Core Template';
+                $row_label = 'Basic Page';
             }
 
-            if (sanitize_title((string) $page->post_name) === meza_site_documentation_cookie_policy_slug()) {
-                $cookie_key = 'cookie_policy';
-
-                if (!isset($rows[$cookie_key])) {
-                    $rows[$cookie_key] = [
-                        'key' => $cookie_key,
-                        'group' => 'Special Pages',
-                        'template_label' => 'Cookie Policy',
-                        'page_types' => ['Cookie Policy'],
-                        'page_references' => [],
-                        'roles_text' => $roles_text,
-                        'action' => 'View / Edit',
-                    ];
-                }
-
-                $rows[$cookie_key]['page_references'][] = $page_reference;
+            if (!isset($rows[$row_key])) {
+                $rows[$row_key] = [
+                    'key' => $row_key,
+                    'group' => $row_group,
+                    'template_label' => $row_label,
+                    'page_references' => [],
+                    'roles_text' => $roles_text,
+                ];
             }
+
+            $rows[$row_key]['page_references'][] = $page_reference;
         }
 
-        foreach ($rows as &$row) {
-            $row['page_types'] = array_values(array_unique(array_filter(array_map('strval', (array) ($row['page_types'] ?? [])))));
+        foreach (meza_site_documentation_single_template_rows() as $single_template_row) {
+            $single_template_key = sanitize_key((string) ($single_template_row['key'] ?? ''));
 
+            if ($single_template_key === '' || isset($rows[$single_template_key])) {
+                continue;
+            }
+
+            $single_template_row['roles_text'] = $roles_text;
+            $rows[$single_template_key] = $single_template_row;
+        }
+
+        foreach ($rows as $row_key => &$row) {
             if (!meza_site_documentation_should_include_row($row, 'page_templates')) {
+                unset($rows[$row_key]);
                 continue;
             }
 
@@ -1558,18 +1750,6 @@ if (!function_exists('meza_site_documentation_is_documented_post_type')) {
                 return is_array($page_reference);
             }));
             $row['page_references'] = $page_references;
-
-            if (count($page_references) === 1) {
-                $page_reference = $page_references[0];
-                $row['action_links'] = meza_site_documentation_filter_links([
-                    meza_site_documentation_make_link('View', (string) ($page_reference['url'] ?? '')),
-                    meza_site_documentation_make_link('Edit', (string) ($page_reference['edit_url'] ?? '')),
-                ]);
-            } else {
-                $row['action_links'] = meza_site_documentation_filter_links([
-                    meza_site_documentation_make_link('Edit Pages', admin_url('edit.php?post_type=page')),
-                ]);
-            }
         }
         unset($row);
 
@@ -1580,9 +1760,21 @@ if (!function_exists('meza_site_documentation_is_documented_post_type')) {
 
         usort($rows, static function (array $left, array $right): int {
             $weights = [
-                'Default Templates' => 10,
-                'Custom Templates' => 20,
-                'Special Pages' => 30,
+                'Core Template' => 10,
+                'Custom Template' => 20,
+                'Auto Template' => 30,
+            ];
+            $core_template_order = [
+                'Front Page' => 10,
+                'Posts Page' => 20,
+                'Basic Page' => 30,
+                'Privacy Policy Page' => 40,
+            ];
+            $auto_template_order = [
+                'FAQ Page' => 10,
+                'Cookie Policy Page' => 20,
+                'Documentation Page' => 30,
+                'Style Guide Page' => 40,
             ];
 
             $left_group = (string) ($left['group'] ?? '');
@@ -1594,8 +1786,26 @@ if (!function_exists('meza_site_documentation_is_documented_post_type')) {
                 return $left_weight <=> $right_weight;
             }
 
-            if ($left_group === 'Default Templates' && $right_group === 'Default Templates') {
-                return 0;
+            if ($left_group === 'Core Template' && $right_group === 'Core Template') {
+                $left_label = (string) ($left['template_label'] ?? '');
+                $right_label = (string) ($right['template_label'] ?? '');
+                $left_core_weight = $core_template_order[$left_label] ?? 1000;
+                $right_core_weight = $core_template_order[$right_label] ?? 1000;
+
+                if ($left_core_weight !== $right_core_weight) {
+                    return $left_core_weight <=> $right_core_weight;
+                }
+            }
+
+            if ($left_group === 'Auto Template' && $right_group === 'Auto Template') {
+                $left_label = (string) ($left['template_label'] ?? '');
+                $right_label = (string) ($right['template_label'] ?? '');
+                $left_auto_weight = $auto_template_order[$left_label] ?? 1000;
+                $right_auto_weight = $auto_template_order[$right_label] ?? 1000;
+
+                if ($left_auto_weight !== $right_auto_weight) {
+                    return $left_auto_weight <=> $right_auto_weight;
+                }
             }
 
             return strnatcasecmp(
