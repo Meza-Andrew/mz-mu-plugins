@@ -875,6 +875,21 @@ if (!function_exists('meza_site_documentation_is_dependency_available')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_is_plugin_row_active')) {
+    function meza_site_documentation_is_plugin_row_active(array $row): bool
+    {
+        $plugin_file = trim((string) ($row['plugin_installed'] ?? ''));
+
+        if ($plugin_file === '') {
+            return false;
+        }
+
+        return function_exists('meza_is_plugin_basename_active')
+            ? meza_is_plugin_basename_active($plugin_file)
+            : false;
+    }
+}
+
 if (!function_exists('meza_site_documentation_capabilities_registry')) {
     function meza_site_documentation_capabilities_registry(): array
     {
@@ -1457,6 +1472,10 @@ if (!function_exists('meza_site_documentation_should_include_row')) {
 
         if ($visibility === 'show') {
             return true;
+        }
+
+        if ($section_key === 'plugins') {
+            return meza_site_documentation_is_plugin_row_active($row);
         }
 
         if ($section_key !== '' && meza_site_documentation_uses_document_baseline($section_key)) {
