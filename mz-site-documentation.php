@@ -1113,7 +1113,7 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
                     'site_kit' => admin_url('admin.php?page=googlesitekit-dashboard'),
                     'sqlite_object_cache' => admin_url('plugins.php'),
                     'updraftplus' => admin_url('options-general.php?page=updraftplus'),
-                    'wordpress_importer' => admin_url('import.php'),
+                    'wordpress_importer' => admin_url('admin.php?import=wordpress'),
                     'yoast_seo' => admin_url('admin.php?page=wpseo_dashboard'),
                 ];
 
@@ -1137,6 +1137,13 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
 if (!function_exists('meza_site_documentation_page_group_label')) {
     function meza_site_documentation_is_documentation_page(WP_Post $page): bool
     {
+        $documentation_page_id = (int) get_option('meza_page_for_documentation');
+        $style_guide_page_id = (int) get_option('meza_page_for_style_guide');
+
+        if (in_array((int) $page->ID, [$documentation_page_id, $style_guide_page_id], true)) {
+            return true;
+        }
+
         $template = (string) get_page_template_slug($page->ID);
 
         return in_array($template, ['page-site-documentation.php', 'page-style.php'], true);
@@ -2650,7 +2657,10 @@ if (!function_exists('meza_site_documentation_plugins_registry')) {
                 'description' => 'Adds the WordPress import feature to the admin.',
                 'capability' => 'meza_doc_plugin_wordpress_importer',
                 'plugin_installed' => 'wordpress-importer/wordpress-importer.php',
-                'roles' => [],
+                'roles' => [
+                    meza_site_documentation_site_manager_role_key(),
+                    'administrator',
+                ],
                 'importance' => 'Nice to have',
                 'action' => '',
             ],

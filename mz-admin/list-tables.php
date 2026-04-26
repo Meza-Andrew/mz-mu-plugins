@@ -8260,11 +8260,10 @@ function meza_get_special_page_settings_row_html(array $definition): string
 {
     $option_key = trim((string) ($definition['option_key'] ?? ''));
     $label = trim((string) ($definition['label'] ?? ''));
-    $action = trim((string) ($definition['action'] ?? ''));
     $capability = trim((string) ($definition['capability'] ?? ''));
     $row_class = trim((string) ($definition['row_class'] ?? ''));
 
-    if ($option_key === '' || $label === '' || $action === '' || $capability === '') return '';
+    if ($option_key === '' || $label === '' || $capability === '') return '';
     if (!current_user_can($capability)) return '';
 
     $has_pages = (bool) get_posts([
@@ -8275,41 +8274,26 @@ function meza_get_special_page_settings_row_html(array $definition): string
     if (!$has_pages) return '';
 
     $page_id = (int) get_option($option_key);
-    $page = $page_id > 0 ? get_post($page_id) : null;
-    $page_exists = ($page instanceof WP_Post) && $page->post_type === 'page' && $page->post_status !== 'trash';
     $field_id = esc_attr($option_key);
-    $button_id = esc_attr($action);
     $row_class_attr = trim('meza-special-page-setting ' . $row_class);
 
     ob_start();
     ?>
     <tr class="<?php echo esc_attr($row_class_attr); ?>">
         <th scope="row">
-            <label for="<?php echo $field_id; ?>">
-                <?php
-                echo $page_exists
-                    ? esc_html(sprintf(__('Change your %s'), $label))
-                    : esc_html(sprintf(__('Select a %s'), $label));
-                ?>
-            </label>
+            <label for="<?php echo $field_id; ?>"><?php echo esc_html($label); ?></label>
         </th>
         <td>
-            <form method="post">
-                <input type="hidden" name="action" value="<?php echo esc_attr($action); ?>" />
-                <?php
-                wp_dropdown_pages([
-                    'name' => $option_key,
-                    'show_option_none' => __('&mdash; Select &mdash;'),
-                    'option_none_value' => '0',
-                    'selected' => $page_id,
-                    'post_status' => ['draft', 'publish', 'private'],
-                ]);
-
-                wp_nonce_field($action);
-
-                submit_button(__('Use This Page'), 'primary', 'submit', false, ['id' => $button_id]);
-                ?>
-            </form>
+            <?php
+            wp_dropdown_pages([
+                'name' => $option_key,
+                'id' => $field_id,
+                'show_option_none' => __('&mdash; Select &mdash;'),
+                'option_none_value' => '0',
+                'selected' => $page_id,
+                'post_status' => ['draft', 'publish', 'private'],
+            ]);
+            ?>
         </td>
     </tr>
     <?php
@@ -8323,14 +8307,12 @@ function meza_get_reading_special_page_definitions(): array
         [
             'option_key' => 'meza_page_for_documentation',
             'label' => __('Documentation Page'),
-            'action' => 'set-documentation-page',
             'capability' => 'manage_options',
             'row_class' => 'meza-documentation-page-setting',
         ],
         [
             'option_key' => 'meza_page_for_style_guide',
             'label' => __('Style Guide Page'),
-            'action' => 'set-style-guide-page',
             'capability' => 'manage_options',
             'row_class' => 'meza-style-guide-page-setting',
         ],
@@ -8384,38 +8366,23 @@ function meza_get_cookie_policy_settings_row_html(): string
     return trim((string) ob_get_clean());
 }
 
-add_action('load-options-reading.php', function (): void {
-    if (!current_user_can('manage_options')) return;
-
-    $action = isset($_POST['action']) ? sanitize_key(wp_unslash((string) $_POST['action'])) : '';
-    if ($action === '') return;
-
-    $definition_by_action = [];
+add_action('admin_init', function (): void {
     foreach (meza_get_reading_special_page_definitions() as $definition) {
-        $definition_action = trim((string) ($definition['action'] ?? ''));
-        if ($definition_action === '') continue;
-        $definition_by_action[$definition_action] = $definition;
+        $option_key = trim((string) ($definition['option_key'] ?? ''));
+
+        if ($option_key === '') {
+            continue;
+        }
+
+        register_setting('reading', $option_key, [
+            'type' => 'integer',
+            'sanitize_callback' => static function ($value): int {
+                return max(0, (int) $value);
+            },
+            'default' => 0,
+            'show_in_rest' => false,
+        ]);
     }
-
-    if (!isset($definition_by_action[$action])) return;
-
-    $definition = $definition_by_action[$action];
-    $option_key = trim((string) ($definition['option_key'] ?? ''));
-    $label = trim((string) ($definition['label'] ?? ''));
-
-    if ($option_key === '' || $label === '') return;
-
-    check_admin_referer($action);
-
-    $page_id = isset($_POST[$option_key]) ? (int) $_POST[$option_key] : 0;
-    update_option($option_key, $page_id);
-
-    add_settings_error(
-        $option_key,
-        $option_key,
-        sprintf(__('%s updated successfully.'), $label),
-        'success'
-    );
 });
 
 add_action('admin_footer-options-reading.php', function (): void {
@@ -8439,12 +8406,7 @@ add_action('admin_footer-options-reading.php', function (): void {
             padding-bottom: 12px;
         }
 
-        .form-table .meza-special-page-setting form {
-            margin-bottom: 0;
-        }
-
         @media screen and (max-width: 782px) {
-            .form-table .meza-special-page-setting input.button,
             .form-table .meza-special-page-setting select {
                 margin: 10px 0 0;
             }
