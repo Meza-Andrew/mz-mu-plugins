@@ -437,7 +437,6 @@ if (!function_exists('meza_site_documentation_document_baseline_sections')) {
             'tools',
             'analytics',
             'plugins',
-            'themes',
         ];
     }
 }
@@ -1343,54 +1342,171 @@ if (!function_exists('meza_site_documentation_plugins_registry')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_theme_roles')) {
+    function meza_site_documentation_theme_roles(): array
+    {
+        return [
+            meza_site_documentation_site_manager_role_key(),
+            'administrator',
+        ];
+    }
+}
+
+if (!function_exists('meza_site_documentation_theme_defaults')) {
+    function meza_site_documentation_theme_defaults(): array
+    {
+        return [
+            'meza-starter' => [
+                'description' => 'Loads the shared framework used to build performant and SEO-friendly websites.',
+                'importance' => 'Essential',
+                'type' => 'Starter',
+            ],
+            'twentytwentyfive' => [
+                'description' => 'Installed with WordPress and kept available for maintenance or debugging when needed.',
+                'importance' => 'Nice to have',
+                'type' => 'Default',
+            ],
+        ];
+    }
+}
+
+if (!function_exists('meza_site_documentation_theme_type')) {
+    function meza_site_documentation_theme_type(WP_Theme $theme, string $active_stylesheet, string $active_template): string
+    {
+        $stylesheet = (string) $theme->get_stylesheet();
+
+        if ($stylesheet === $active_stylesheet) {
+            return $theme->parent() ? 'Child' : 'Active';
+        }
+
+        if ($stylesheet === $active_template) {
+            return $stylesheet === 'meza-starter' ? 'Starter' : 'Parent';
+        }
+
+        if (str_starts_with($stylesheet, 'twenty')) {
+            return 'Default';
+        }
+
+        return 'Installed';
+    }
+}
+
+if (!function_exists('meza_site_documentation_theme_description')) {
+    function meza_site_documentation_theme_description(
+        WP_Theme $theme,
+        string $stylesheet,
+        string $active_stylesheet,
+        string $active_template
+    ): string {
+        $defaults = meza_site_documentation_theme_defaults();
+
+        if (!empty($defaults[$stylesheet]['description'])) {
+            return (string) $defaults[$stylesheet]['description'];
+        }
+
+        if ($stylesheet === $active_stylesheet) {
+            return 'Loads the active front-end templates, styles, and functionality used on the website.';
+        }
+
+        if ($stylesheet === $active_template) {
+            return 'Supports the active website theme with shared templates, styles, and functionality.';
+        }
+
+        return 'Installed in WordPress and available for maintenance, debugging, or future use when needed.';
+    }
+}
+
+if (!function_exists('meza_site_documentation_theme_importance')) {
+    function meza_site_documentation_theme_importance(
+        string $stylesheet,
+        string $active_stylesheet,
+        string $active_template
+    ): string {
+        $defaults = meza_site_documentation_theme_defaults();
+
+        if (!empty($defaults[$stylesheet]['importance'])) {
+            return (string) $defaults[$stylesheet]['importance'];
+        }
+
+        if ($stylesheet === $active_stylesheet || $stylesheet === $active_template) {
+            return 'Essential';
+        }
+
+        return 'Nice to have';
+    }
+}
+
+if (!function_exists('meza_site_documentation_build_theme_row')) {
+    function meza_site_documentation_build_theme_row(
+        WP_Theme $theme,
+        string $active_stylesheet,
+        string $active_template
+    ): array {
+        $stylesheet = (string) $theme->get_stylesheet();
+        $type = meza_site_documentation_theme_type($theme, $active_stylesheet, $active_template);
+
+        return [
+            'label' => (string) $theme->get('Name'),
+            'description' => meza_site_documentation_theme_description(
+                $theme,
+                $stylesheet,
+                $active_stylesheet,
+                $active_template
+            ),
+            'capability' => 'meza_doc_theme_' . sanitize_key($stylesheet),
+            'theme' => $stylesheet,
+            'roles' => meza_site_documentation_theme_roles(),
+            'type' => $type,
+            'importance' => meza_site_documentation_theme_importance(
+                $stylesheet,
+                $active_stylesheet,
+                $active_template
+            ),
+            'action' => 'View',
+        ];
+    }
+}
+
 if (!function_exists('meza_site_documentation_themes_registry')) {
     function meza_site_documentation_themes_registry(): array
     {
         $active_theme = wp_get_theme();
-        $active_stylesheet = $active_theme instanceof WP_Theme ? (string) $active_theme->get_stylesheet() : '';
-        $active_name = $active_theme instanceof WP_Theme ? (string) $active_theme->get('Name') : 'Client Theme';
+        if (!$active_theme instanceof WP_Theme || !$active_theme->exists()) {
+            return [];
+        }
 
-        return [
-            'active_child_theme' => [
-                'label' => $active_name,
-                'description' => 'Loads the client-specific templates, styles, and functionality used on the website.',
-                'capability' => 'meza_doc_theme_client',
-                'theme' => $active_stylesheet,
-                'roles' => [
-                    meza_site_documentation_site_manager_role_key(),
-                    'administrator',
-                ],
-                'type' => 'Child',
-                'importance' => 'Essential',
-                'action' => 'View',
-            ],
-            'meza_starter' => [
-                'label' => 'Meza Starter',
-                'description' => 'Loads the shared framework used to build performant and SEO-friendly websites.',
-                'capability' => 'meza_doc_theme_meza_starter',
-                'theme' => 'meza-starter',
-                'roles' => [
-                    meza_site_documentation_site_manager_role_key(),
-                    'administrator',
-                ],
-                'type' => 'Starter',
-                'importance' => 'Essential',
-                'action' => 'View',
-            ],
-            'twentytwentyfive' => [
-                'label' => 'Twenty Twenty-Five',
-                'description' => 'Installed with WordPress and kept available for maintenance or debugging when needed.',
-                'capability' => 'meza_doc_theme_twenty_twenty_five',
-                'theme' => 'twentytwentyfive',
-                'roles' => [
-                    meza_site_documentation_site_manager_role_key(),
-                    'administrator',
-                ],
-                'type' => 'Default',
-                'importance' => 'Nice to have',
-                'action' => 'View',
-            ],
-        ];
+        $active_stylesheet = (string) $active_theme->get_stylesheet();
+        $active_template = (string) $active_theme->get_template();
+        $installed_themes = wp_get_themes();
+        $rows = [];
+
+        $ordered_stylesheets = [$active_stylesheet];
+
+        if ($active_template !== '' && $active_template !== $active_stylesheet) {
+            $ordered_stylesheets[] = $active_template;
+        }
+
+        foreach (array_keys($installed_themes) as $stylesheet) {
+            if (!in_array($stylesheet, $ordered_stylesheets, true)) {
+                $ordered_stylesheets[] = $stylesheet;
+            }
+        }
+
+        foreach ($ordered_stylesheets as $stylesheet) {
+            $theme = $installed_themes[$stylesheet] ?? null;
+
+            if (!$theme instanceof WP_Theme || !$theme->exists()) {
+                continue;
+            }
+
+            $rows[sanitize_key($stylesheet)] = meza_site_documentation_build_theme_row(
+                $theme,
+                $active_stylesheet,
+                $active_template
+            );
+        }
+
+        return $rows;
     }
 }
 
