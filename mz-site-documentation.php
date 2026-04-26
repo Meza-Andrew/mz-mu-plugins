@@ -920,6 +920,7 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                 'description' => 'View and unlock users who have been locked out from the website admin.',
                 'capability' => 'meza_doc_unlock_users',
                 'plugin' => 'all-in-one-wp-security-and-firewall/wp-security.php',
+                'hide_when_dependency_missing' => true,
                 'access' => [
                     $seo => '',
                     $site => 'Full access',
@@ -965,6 +966,7 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                 'description' => 'Add, remove, and update page redirections.',
                 'capability' => 'meza_doc_manage_redirects',
                 'plugin' => 'redirection/redirection.php',
+                'hide_when_dependency_missing' => true,
                 'access' => [
                     $seo => 'Full access',
                     $site => 'Full access',
@@ -977,6 +979,7 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                 'description' => 'Manage sitemaps, indexing settings, schema defaults, and other SEO-related options.',
                 'capability' => 'meza_doc_manage_seo_settings',
                 'plugin' => 'wordpress-seo/wp-seo.php',
+                'hide_when_dependency_missing' => true,
                 'access' => [
                     $seo => 'Full access',
                     $site => 'Full access',
@@ -989,6 +992,7 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                 'description' => 'Manage analytics account connections and dashboard access settings.',
                 'capability' => 'meza_doc_manage_analytics_settings',
                 'plugin' => 'google-site-kit/google-site-kit.php',
+                'hide_when_dependency_missing' => true,
                 'access' => [
                     $seo => '',
                     $site => 'Full access',
@@ -1001,6 +1005,7 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                 'description' => 'Manage settings related to user, file, database, spam, and firewall security.',
                 'capability' => 'meza_doc_manage_security_settings',
                 'plugin' => 'all-in-one-wp-security-and-firewall/wp-security.php',
+                'hide_when_dependency_missing' => true,
                 'access' => [
                     $seo => '',
                     $site => 'Full access',
@@ -1013,6 +1018,7 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                 'description' => 'Create and delete backups. Automatic backups are enabled where supported.',
                 'capability' => 'meza_doc_manage_backups',
                 'plugin' => 'updraftplus/updraftplus.php',
+                'hide_when_dependency_missing' => true,
                 'access' => [
                     $seo => '',
                     $site => 'Full access',
@@ -1035,6 +1041,7 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                 'label' => 'Manage Maintenance Mode',
                 'description' => 'Activate and deactivate visitor lockout or maintenance mode when the site needs to be temporarily closed.',
                 'capability' => 'meza_doc_manage_maintenance_mode',
+                'hide_when_dependency_missing' => true,
                 'callback' => static function (): bool {
                     foreach ([
                         'all-in-one-wp-security-and-firewall/wp-security.php',
@@ -1075,6 +1082,7 @@ if (!function_exists('meza_site_documentation_dashboards_registry')) {
                 'description' => 'View dashboards related to website, SEO, and performance analytics.',
                 'capability' => 'meza_doc_dashboard_google_site_kit',
                 'plugin' => 'google-site-kit/google-site-kit.php',
+                'hide_when_dependency_missing' => true,
                 'roles' => array_keys(meza_site_documentation_access_roles()),
                 'action' => 'View',
             ],
@@ -1083,6 +1091,7 @@ if (!function_exists('meza_site_documentation_dashboards_registry')) {
                 'description' => 'View security settings, critical features, logs, and login history.',
                 'capability' => 'meza_doc_dashboard_security',
                 'plugin' => 'all-in-one-wp-security-and-firewall/wp-security.php',
+                'hide_when_dependency_missing' => true,
                 'roles' => ['administrator'],
                 'action' => 'View',
             ],
@@ -1116,6 +1125,7 @@ if (!function_exists('meza_site_documentation_tools_registry')) {
                 'description' => 'Edit meta titles and descriptions in bulk.',
                 'capability' => 'meza_doc_tool_seo_bulk_edit',
                 'plugin' => 'wordpress-seo/wp-seo.php',
+                'hide_when_dependency_missing' => true,
                 'roles' => array_keys(meza_site_documentation_access_roles()),
                 'action' => 'Use',
             ],
@@ -1124,6 +1134,7 @@ if (!function_exists('meza_site_documentation_tools_registry')) {
                 'description' => 'Set up two-factor authentication for WordPress login.',
                 'capability' => 'meza_doc_tool_two_factor',
                 'plugin' => 'all-in-one-wp-security-and-firewall/wp-security.php',
+                'hide_when_dependency_missing' => true,
                 'roles' => array_keys(meza_site_documentation_access_roles()),
                 'action' => 'Use',
             ],
@@ -1131,6 +1142,8 @@ if (!function_exists('meza_site_documentation_tools_registry')) {
                 'label' => 'Password Strength',
                 'description' => 'Generate stronger passwords for WordPress accounts.',
                 'capability' => 'meza_doc_tool_password_strength',
+                'plugin' => 'all-in-one-wp-security-and-firewall/wp-security.php',
+                'hide_when_dependency_missing' => true,
                 'roles' => array_keys(meza_site_documentation_access_roles()),
                 'action' => 'Use',
             ],
@@ -1139,6 +1152,7 @@ if (!function_exists('meza_site_documentation_tools_registry')) {
                 'description' => 'Scan for abnormal file changes. Automatic scanning is enabled where supported.',
                 'capability' => 'meza_doc_tool_file_scan',
                 'plugin' => 'all-in-one-wp-security-and-firewall/wp-security.php',
+                'hide_when_dependency_missing' => true,
                 'roles' => ['administrator'],
                 'action' => 'Use',
             ],
@@ -1446,6 +1460,10 @@ if (!function_exists('meza_site_documentation_should_include_row')) {
         }
 
         if ($section_key !== '' && meza_site_documentation_uses_document_baseline($section_key)) {
+            if (!empty($row['hide_when_dependency_missing'])) {
+                return $is_available;
+            }
+
             return true;
         }
 
