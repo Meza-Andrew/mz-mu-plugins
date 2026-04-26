@@ -8240,11 +8240,20 @@ function meza_get_special_page_update_link(int $post_id): string
 {
     foreach (meza_get_special_page_definitions() as $definition) {
         $option_key = (string) ($definition['option_key'] ?? '');
+        $label = trim((string) ($definition['label'] ?? ''));
         $settings_url = (string) ($definition['settings_url'] ?? '');
         $capability = (string) ($definition['capability'] ?? '');
         if ($option_key === '' || $settings_url === '' || $capability === '') continue;
         if ((int) get_option($option_key) !== $post_id) continue;
         if (!current_user_can($capability)) return '';
+        if (
+            $label !== ''
+            && function_exists('meza_is_site_manager_user')
+            && meza_is_site_manager_user(wp_get_current_user())
+            && in_array($label, ['Front Page', 'Posts Page', 'Documentation Page', 'Style Guide Page'], true)
+        ) {
+            return '';
+        }
         return $settings_url;
     }
 
