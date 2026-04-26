@@ -643,6 +643,8 @@ if (!function_exists('meza_site_documentation_special_page_label')) {
         $special_pages = [
             (int) get_option('page_on_front') => 'Front Page',
             (int) get_option('page_for_posts') => 'Posts Page',
+            (int) get_option('meza_page_for_documentation') => 'Documentation Page',
+            (int) get_option('meza_page_for_style_guide') => 'Style Guide Page',
             (int) get_option('wp_page_for_privacy_policy') => 'Privacy Policy Page',
             (int) get_option('meza_page_for_cookie_policy') => 'Cookie Policy Page',
         ];
@@ -1780,8 +1782,15 @@ if (!function_exists('meza_site_documentation_get_page_template_rows')) {
             $row_label = '';
 
             if ($special_page_label !== '') {
-                $row_key = sanitize_key('page_type_' . $special_page_label);
-                $row_group = $special_page_label === 'Cookie Policy Page'
+                if ($special_page_label === 'Documentation Page') {
+                    $row_key = $template_map['page-site-documentation.php'] ?? sanitize_key('template_page-site-documentation.php');
+                } elseif ($special_page_label === 'Style Guide Page') {
+                    $row_key = $template_map['page-style.php'] ?? sanitize_key('template_page-style.php');
+                } else {
+                    $row_key = sanitize_key('page_type_' . $special_page_label);
+                }
+
+                $row_group = in_array($special_page_label, ['Cookie Policy Page', 'Documentation Page', 'Style Guide Page'], true)
                     ? 'Auto Template'
                     : 'Core Template';
                 $row_label = $special_page_label;
