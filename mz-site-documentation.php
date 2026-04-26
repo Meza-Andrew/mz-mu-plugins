@@ -137,11 +137,7 @@ if (!function_exists('meza_site_documentation_format_role_labels')) {
 if (!function_exists('meza_site_documentation_support_email')) {
     function meza_site_documentation_support_email(): string
     {
-        $email = function_exists('get_field')
-            ? sanitize_email((string) get_field('site_documentation_support_email', 'option'))
-            : '';
-
-        return $email !== '' ? $email : 'wordpress@meza.design';
+        return 'wordpress@meza.design';
     }
 }
 
@@ -209,70 +205,25 @@ if (!function_exists('meza_site_documentation_find_first_user_for_role')) {
     }
 }
 
-if (!function_exists('meza_site_documentation_get_role_contact_overrides')) {
-    function meza_site_documentation_get_role_contact_overrides(): array
-    {
-        if (!function_exists('get_field')) {
-            return [];
-        }
-
-        $rows = get_field('site_documentation_role_contacts', 'option');
-        if (!is_array($rows)) {
-            return [];
-        }
-
-        $overrides = [];
-
-        foreach ($rows as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-
-            $role_key = sanitize_key((string) ($row['role'] ?? ''));
-            if ($role_key === '') {
-                continue;
-            }
-
-            $overrides[$role_key] = [
-                'name' => trim((string) ($row['name'] ?? '')),
-                'user_login' => trim((string) ($row['username'] ?? '')),
-                'email' => sanitize_email((string) ($row['email'] ?? '')),
-                'note' => trim((string) ($row['note'] ?? '')),
-            ];
-        }
-
-        return $overrides;
-    }
-}
-
 if (!function_exists('meza_site_documentation_get_role_contacts')) {
     function meza_site_documentation_get_role_contacts(): array
     {
-        $overrides = meza_site_documentation_get_role_contact_overrides();
         $rows = [];
 
         foreach (meza_site_documentation_active_access_roles() as $role_key => $role_label) {
-            $override = $overrides[$role_key] ?? [];
             $user = meza_site_documentation_find_first_user_for_role($role_key);
 
-            $name = trim((string) ($override['name'] ?? ''));
-            if ($name === '' && $user instanceof WP_User) {
-                $name = trim((string) ($user->display_name ?: $user->user_nicename));
-            }
+            $name = $user instanceof WP_User
+                ? trim((string) ($user->display_name ?: $user->user_nicename))
+                : '';
+            $user_login = $user instanceof WP_User
+                ? trim((string) $user->user_login)
+                : '';
+            $email = $user instanceof WP_User
+                ? sanitize_email((string) $user->user_email)
+                : '';
 
-            $user_login = trim((string) ($override['user_login'] ?? ''));
-            if ($user_login === '' && $user instanceof WP_User) {
-                $user_login = trim((string) $user->user_login);
-            }
-
-            $email = sanitize_email((string) ($override['email'] ?? ''));
-            if ($email === '' && $user instanceof WP_User) {
-                $email = sanitize_email((string) $user->user_email);
-            }
-
-            $note = trim((string) ($override['note'] ?? ''));
-
-            if ($name === '' && $user_login === '' && $email === '' && $note === '') {
+            if ($name === '' && $user_login === '' && $email === '') {
                 continue;
             }
 
@@ -281,7 +232,7 @@ if (!function_exists('meza_site_documentation_get_role_contacts')) {
                 'name' => $name,
                 'user_login' => $user_login,
                 'email' => $email,
-                'note' => $note,
+                'note' => '',
             ];
         }
 
@@ -303,25 +254,55 @@ if (!function_exists('meza_site_documentation_style_guide_url')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_url')) {
+    function meza_site_documentation_url(): string
+    {
+        if (is_singular()) {
+            $url = get_permalink();
+            return is_string($url) ? $url : '';
+        }
+
+        $pages = get_posts([
+            'post_type' => 'page',
+            'post_status' => 'publish',
+            'posts_per_page' => 1,
+            'meta_key' => '_wp_page_template',
+            'meta_value' => 'page-site-documentation.php',
+            'fields' => 'ids',
+        ]);
+
+        if (!empty($pages[0])) {
+            $url = get_permalink((int) $pages[0]);
+            return is_string($url) ? $url : '';
+        }
+
+        return '';
+    }
+}
+
 if (!function_exists('meza_site_documentation_get_key_links')) {
     function meza_site_documentation_get_key_links(): array
     {
         $links = [
             'live_url' => [
                 'label' => 'Live URL',
-                'url' => meza_site_documentation_field_text('site_documentation_live_url', home_url('/')),
+                'url' => home_url('/'),
             ],
             'admin_login' => [
                 'label' => 'Admin Login',
-                'url' => meza_site_documentation_field_text('site_documentation_admin_url', admin_url()),
+                'url' => admin_url(),
             ],
             'sitemaps' => [
                 'label' => 'Sitemaps',
-                'url' => meza_site_documentation_field_text('site_documentation_sitemap_url', home_url('/sitemap.xml')),
+                'url' => home_url('/sitemap.xml'),
             ],
             'style_guide' => [
                 'label' => 'Style Guide',
-                'url' => meza_site_documentation_field_text('site_documentation_style_guide_url', meza_site_documentation_style_guide_url()),
+                'url' => meza_site_documentation_style_guide_url(),
+            ],
+            'documentation' => [
+                'label' => 'Documentation',
+                'url' => meza_site_documentation_url(),
             ],
         ];
 
@@ -389,48 +370,6 @@ if (!function_exists('meza_site_documentation_get_section_copy')) {
     }
 }
 
-if (!function_exists('meza_site_documentation_get_row_overrides')) {
-    function meza_site_documentation_get_row_overrides(): array
-    {
-        if (!function_exists('get_field')) {
-            return [];
-        }
-
-        $rows = meza_site_documentation_merge_repeater_rows(
-            meza_site_documentation_default_row_override_rows(),
-            get_field('site_documentation_row_overrides', 'option'),
-            static function (array $row): string {
-                return sanitize_key((string) ($row['section_key'] ?? '')) . ':' . sanitize_key((string) ($row['row_key'] ?? ''));
-            }
-        );
-
-        $overrides = [];
-
-        foreach ($rows as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-
-            $section_key = sanitize_key((string) ($row['section_key'] ?? ''));
-            $row_key = sanitize_key((string) ($row['row_key'] ?? ''));
-
-            if ($section_key === '' || $row_key === '') {
-                continue;
-            }
-
-            $overrides[$section_key][$row_key] = [
-                'visibility' => sanitize_key((string) ($row['visibility'] ?? 'default')),
-                'description' => trim((string) ($row['description'] ?? '')),
-                'type' => trim((string) ($row['type'] ?? '')),
-                'note' => trim((string) ($row['note'] ?? '')),
-                'importance' => sanitize_key((string) ($row['importance'] ?? '')),
-            ];
-        }
-
-        return $overrides;
-    }
-}
-
 if (!function_exists('meza_site_documentation_get_analytics_account_overrides')) {
     function meza_site_documentation_get_analytics_account_overrides(): array
     {
@@ -438,12 +377,9 @@ if (!function_exists('meza_site_documentation_get_analytics_account_overrides'))
             return [];
         }
 
-        $rows = meza_site_documentation_merge_repeater_rows(
+        $rows = meza_site_documentation_merge_analytics_rows(
             meza_site_documentation_default_analytics_field_rows(),
-            get_field('site_documentation_analytics_accounts', 'option'),
-            static function (array $row): string {
-                return sanitize_key((string) ($row['item_key'] ?? ''));
-            }
+            get_field('site_documentation_analytics_accounts', 'option')
         );
 
         $overrides = [];
@@ -719,8 +655,6 @@ if (!function_exists('meza_site_documentation_get_page_rows')) {
                 'menu_order' => (int) $page->menu_order,
             ];
 
-            $row = meza_site_documentation_apply_row_override('pages', $row['key'], $row);
-
             if (!meza_site_documentation_should_include_row($row, 'pages')) {
                 continue;
             }
@@ -826,8 +760,6 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                 'action_url' => admin_url('edit.php?post_type=' . $post_type),
             ];
 
-            $post_type_row = meza_site_documentation_apply_row_override('content_types', $post_type_row['key'], $post_type_row);
-
             if (meza_site_documentation_should_include_row($post_type_row, 'content_types')) {
                 $post_type_row['action_links'] = meza_site_documentation_get_row_action_links('content_types', $post_type_row);
                 $rows[] = $post_type_row;
@@ -854,8 +786,6 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                     'kind' => 'taxonomy',
                     'action_url' => admin_url('edit-tags.php?taxonomy=' . (string) $taxonomy->name . '&post_type=' . $post_type),
                 ];
-
-                $taxonomy_row = meza_site_documentation_apply_row_override('content_types', $taxonomy_row['key'], $taxonomy_row);
 
                 if (meza_site_documentation_should_include_row($taxonomy_row, 'content_types')) {
                     $taxonomy_row['action_links'] = meza_site_documentation_get_row_action_links('content_types', $taxonomy_row);
@@ -1552,96 +1482,6 @@ if (!function_exists('meza_site_documentation_themes_registry')) {
     }
 }
 
-if (!function_exists('meza_site_documentation_merge_repeater_rows')) {
-    function meza_site_documentation_merge_repeater_rows(array $defaults, $saved_rows, callable $key_builder): array
-    {
-        $merged = [];
-        $seen = [];
-
-        foreach ($defaults as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-
-            $key = (string) $key_builder($row);
-            if ($key === '') {
-                continue;
-            }
-
-            $seen[$key] = true;
-            $saved_row = null;
-
-            if (is_array($saved_rows)) {
-                foreach ($saved_rows as $candidate) {
-                    if (!is_array($candidate)) {
-                        continue;
-                    }
-
-                    if ((string) $key_builder($candidate) === $key) {
-                        $saved_row = $candidate;
-                        break;
-                    }
-                }
-            }
-
-            $merged[] = is_array($saved_row)
-                ? array_merge($row, $saved_row)
-                : $row;
-        }
-
-        if (is_array($saved_rows)) {
-            foreach ($saved_rows as $row) {
-                if (!is_array($row)) {
-                    continue;
-                }
-
-                $key = (string) $key_builder($row);
-                if ($key === '' || isset($seen[$key])) {
-                    continue;
-                }
-
-                $merged[] = $row;
-            }
-        }
-
-        return $merged;
-    }
-}
-
-if (!function_exists('meza_site_documentation_default_row_override_rows')) {
-    function meza_site_documentation_default_row_override_rows(): array
-    {
-        $defaults = [];
-        $sections = [
-            'capabilities' => meza_site_documentation_capabilities_registry(),
-            'dashboards' => meza_site_documentation_dashboards_registry(),
-            'tools' => meza_site_documentation_tools_registry(),
-            'plugins' => meza_site_documentation_plugins_registry(),
-            'themes' => meza_site_documentation_themes_registry(),
-        ];
-
-        foreach ($sections as $section_key => $rows) {
-            foreach ($rows as $row_key => $row) {
-                if (!is_array($row)) {
-                    continue;
-                }
-
-                $defaults[] = [
-                    'section_key' => $section_key,
-                    'row_key' => sanitize_key((string) $row_key),
-                    'visibility' => 'default',
-                    'description' => trim((string) ($row['description'] ?? '')),
-                    'type' => trim((string) ($row['type'] ?? '')),
-                    'note' => trim((string) ($row['note'] ?? '')),
-                    'importance' => '',
-                ];
-            }
-        }
-
-        return $defaults;
-    }
-}
-
 if (!function_exists('meza_site_documentation_default_analytics_field_rows')) {
     function meza_site_documentation_default_analytics_field_rows(): array
     {
@@ -1662,6 +1502,52 @@ if (!function_exists('meza_site_documentation_default_analytics_field_rows')) {
         }
 
         return $defaults;
+    }
+}
+
+if (!function_exists('meza_site_documentation_merge_analytics_rows')) {
+    function meza_site_documentation_merge_analytics_rows(array $defaults, $saved_rows): array
+    {
+        $merged = [];
+        $saved_lookup = [];
+
+        if (is_array($saved_rows)) {
+            foreach ($saved_rows as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+
+                $key = sanitize_key((string) ($row['item_key'] ?? ''));
+                if ($key !== '') {
+                    $saved_lookup[$key] = $row;
+                }
+            }
+        }
+
+        foreach ($defaults as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $key = sanitize_key((string) ($row['item_key'] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+
+            $merged[] = isset($saved_lookup[$key]) && is_array($saved_lookup[$key])
+                ? array_merge($row, $saved_lookup[$key])
+                : $row;
+
+            unset($saved_lookup[$key]);
+        }
+
+        foreach ($saved_lookup as $row) {
+            if (is_array($row)) {
+                $merged[] = $row;
+            }
+        }
+
+        return $merged;
     }
 }
 
@@ -1707,51 +1593,10 @@ if (!function_exists('meza_site_documentation_resolve_role_list')) {
     }
 }
 
-if (!function_exists('meza_site_documentation_apply_row_override')) {
-    function meza_site_documentation_apply_row_override(string $section_key, string $row_key, array $row): array
-    {
-        $overrides = meza_site_documentation_get_row_overrides();
-        $override = $overrides[$section_key][$row_key] ?? null;
-
-        if (!is_array($override)) {
-            return $row;
-        }
-
-        if (array_key_exists('description', $override)) {
-            $row['description'] = $override['description'];
-        }
-
-        if (array_key_exists('type', $override)) {
-            $row['type'] = $override['type'];
-        }
-
-        if (array_key_exists('note', $override)) {
-            $row['note'] = $override['note'];
-        }
-
-        if (!empty($override['importance'])) {
-            $row['importance'] = ucwords(str_replace('_', ' ', (string) $override['importance']));
-        }
-
-        $row['_override_visibility'] = $override['visibility'] ?? 'default';
-
-        return $row;
-    }
-}
-
 if (!function_exists('meza_site_documentation_should_include_row')) {
     function meza_site_documentation_should_include_row(array $row, string $section_key = ''): bool
     {
-        $visibility = sanitize_key((string) ($row['_override_visibility'] ?? 'default'));
         $is_available = meza_site_documentation_is_dependency_available($row);
-
-        if ($visibility === 'hide') {
-            return false;
-        }
-
-        if ($visibility === 'show') {
-            return true;
-        }
 
         if ($section_key === 'plugins') {
             return meza_site_documentation_is_plugin_row_active($row);
@@ -1785,7 +1630,6 @@ if (!function_exists('meza_site_documentation_get_resolved_rows')) {
             }
 
             $row['key'] = sanitize_key((string) $row_key);
-            $row = meza_site_documentation_apply_row_override($section_key, (string) $row_key, $row);
 
             if (!meza_site_documentation_should_include_row($row, $section_key)) {
                 continue;
@@ -1935,152 +1779,6 @@ if (!function_exists('meza_site_documentation_section_copy_fields')) {
         }
 
         return $fields;
-    }
-}
-
-if (!function_exists('meza_site_documentation_role_contact_fields')) {
-    function meza_site_documentation_role_contact_fields(): array
-    {
-        return [
-            [
-                'key' => 'field_' . md5('site_documentation_role_contacts'),
-                'label' => 'Role Contacts',
-                'name' => 'site_documentation_role_contacts',
-                'aria-label' => '',
-                'type' => 'repeater',
-                'instructions' => 'Optional overrides for the role contact table. Leave blank to let WordPress user data populate each role automatically.',
-                'required' => 0,
-                'conditional_logic' => 0,
-                'wrapper' => [
-                    'width' => '',
-                    'class' => '',
-                    'id' => '',
-                ],
-                'layout' => 'row',
-                'pagination' => 0,
-                'min' => 0,
-                'max' => 0,
-                'collapsed' => 'field_' . md5('site_documentation_role_contacts_role'),
-                'button_label' => 'Add Role Contact',
-                'rows_per_page' => 20,
-                'sub_fields' => [
-                    [
-                        'key' => 'field_' . md5('site_documentation_role_contacts_role'),
-                        'label' => 'Role',
-                        'name' => 'role',
-                        'aria-label' => '',
-                        'type' => 'select',
-                        'instructions' => '',
-                        'required' => 1,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '25',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'choices' => meza_site_documentation_role_choices(),
-                        'default_value' => false,
-                        'return_format' => 'value',
-                        'multiple' => 0,
-                        'allow_null' => 0,
-                        'allow_in_bindings' => 0,
-                        'ui' => 0,
-                        'ajax' => 0,
-                        'placeholder' => '',
-                        'create_options' => 0,
-                        'save_options' => 0,
-                        'parent_repeater' => 'field_' . md5('site_documentation_role_contacts'),
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_role_contacts_name'),
-                        'label' => 'Name',
-                        'name' => 'name',
-                        'aria-label' => '',
-                        'type' => 'text',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '25',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'maxlength' => '',
-                        'allow_in_bindings' => 0,
-                        'placeholder' => '',
-                        'prepend' => '',
-                        'append' => '',
-                        'parent_repeater' => 'field_' . md5('site_documentation_role_contacts'),
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_role_contacts_username'),
-                        'label' => 'Username',
-                        'name' => 'username',
-                        'aria-label' => '',
-                        'type' => 'text',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '25',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'maxlength' => '',
-                        'allow_in_bindings' => 0,
-                        'placeholder' => '',
-                        'prepend' => '',
-                        'append' => '',
-                        'parent_repeater' => 'field_' . md5('site_documentation_role_contacts'),
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_role_contacts_email'),
-                        'label' => 'Email',
-                        'name' => 'email',
-                        'aria-label' => '',
-                        'type' => 'email',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '25',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'allow_in_bindings' => 0,
-                        'placeholder' => '',
-                        'prepend' => '',
-                        'append' => '',
-                        'parent_repeater' => 'field_' . md5('site_documentation_role_contacts'),
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_role_contacts_note'),
-                        'label' => 'Note',
-                        'name' => 'note',
-                        'aria-label' => '',
-                        'type' => 'textarea',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'maxlength' => '',
-                        'allow_in_bindings' => 0,
-                        'rows' => 2,
-                        'placeholder' => '',
-                        'new_lines' => '',
-                        'parent_repeater' => 'field_' . md5('site_documentation_role_contacts'),
-                    ],
-                ],
-            ],
-        ];
     }
 }
 
@@ -2245,225 +1943,6 @@ if (!function_exists('meza_site_documentation_analytics_fields')) {
     }
 }
 
-if (!function_exists('meza_site_documentation_override_fields')) {
-    function meza_site_documentation_override_fields(): array
-    {
-        return [
-            [
-                'key' => 'field_' . md5('site_documentation_row_overrides'),
-                'label' => 'Table Content',
-                'name' => 'site_documentation_row_overrides',
-                'aria-label' => '',
-                'type' => 'repeater',
-                'instructions' => 'Edit shared table descriptions and optional notes here. Clearing a field omits that value on the front-end.',
-                'required' => 0,
-                'conditional_logic' => 0,
-                'wrapper' => [
-                    'width' => '',
-                    'class' => '',
-                    'id' => '',
-                ],
-                'layout' => 'row',
-                'pagination' => 0,
-                'min' => 0,
-                'max' => 0,
-                'collapsed' => 'field_' . md5('site_documentation_row_overrides_row_key'),
-                'button_label' => 'Add Table Row',
-                'rows_per_page' => 20,
-                'sub_fields' => [
-                    [
-                        'key' => 'field_' . md5('site_documentation_row_overrides_section_key'),
-                        'label' => 'Section',
-                        'name' => 'section_key',
-                        'aria-label' => '',
-                        'type' => 'select',
-                        'instructions' => '',
-                        'required' => 1,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '20',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'choices' => [
-                            'pages' => 'Pages',
-                            'content_types' => 'Content Types',
-                            'capabilities' => 'Capabilities',
-                            'dashboards' => 'Dashboards',
-                            'tools' => 'Tools',
-                            'analytics' => 'Analytics',
-                            'plugins' => 'Plugins',
-                            'themes' => 'Themes',
-                        ],
-                        'default_value' => false,
-                        'return_format' => 'value',
-                        'multiple' => 0,
-                        'allow_null' => 0,
-                        'allow_in_bindings' => 0,
-                        'ui' => 0,
-                        'ajax' => 0,
-                        'placeholder' => '',
-                        'create_options' => 0,
-                        'save_options' => 0,
-                        'parent_repeater' => 'field_' . md5('site_documentation_row_overrides'),
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_row_overrides_row_key'),
-                        'label' => 'Row Key',
-                        'name' => 'row_key',
-                        'aria-label' => '',
-                        'type' => 'text',
-                        'instructions' => 'Use the shared code row key, for example manage_plugins or yoast_seo.',
-                        'required' => 1,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '20',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'maxlength' => '',
-                        'allow_in_bindings' => 0,
-                        'placeholder' => '',
-                        'prepend' => '',
-                        'append' => '',
-                        'parent_repeater' => 'field_' . md5('site_documentation_row_overrides'),
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_row_overrides_visibility'),
-                        'label' => 'Visibility',
-                        'name' => 'visibility',
-                        'aria-label' => '',
-                        'type' => 'select',
-                        'instructions' => '',
-                        'required' => 1,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '20',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'choices' => [
-                            'default' => 'Default',
-                            'show' => 'Force Show',
-                            'hide' => 'Hide',
-                        ],
-                        'default_value' => 'default',
-                        'return_format' => 'value',
-                        'multiple' => 0,
-                        'allow_null' => 0,
-                        'allow_in_bindings' => 0,
-                        'ui' => 0,
-                        'ajax' => 0,
-                        'placeholder' => '',
-                        'create_options' => 0,
-                        'save_options' => 0,
-                        'parent_repeater' => 'field_' . md5('site_documentation_row_overrides'),
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_row_overrides_description'),
-                        'label' => 'Description',
-                        'name' => 'description',
-                        'aria-label' => '',
-                        'type' => 'textarea',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'maxlength' => '',
-                        'allow_in_bindings' => 0,
-                        'rows' => 2,
-                        'placeholder' => '',
-                        'new_lines' => '',
-                        'parent_repeater' => 'field_' . md5('site_documentation_row_overrides'),
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_row_overrides_type'),
-                        'label' => 'Type',
-                        'name' => 'type',
-                        'aria-label' => '',
-                        'type' => 'text',
-                        'instructions' => 'Primarily used for the Themes table.',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '20',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'maxlength' => '',
-                        'allow_in_bindings' => 0,
-                        'placeholder' => '',
-                        'prepend' => '',
-                        'append' => '',
-                        'parent_repeater' => 'field_' . md5('site_documentation_row_overrides'),
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_row_overrides_importance'),
-                        'label' => 'Importance Override',
-                        'name' => 'importance',
-                        'aria-label' => '',
-                        'type' => 'select',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '20',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'choices' => [
-                            '' => 'Use Default',
-                            'essential' => 'Essential',
-                            'important' => 'Important',
-                            'nice_to_have' => 'Nice to have',
-                        ],
-                        'default_value' => false,
-                        'return_format' => 'value',
-                        'multiple' => 0,
-                        'allow_null' => 0,
-                        'allow_in_bindings' => 0,
-                        'ui' => 0,
-                        'ajax' => 0,
-                        'placeholder' => '',
-                        'create_options' => 0,
-                        'save_options' => 0,
-                        'parent_repeater' => 'field_' . md5('site_documentation_row_overrides'),
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_row_overrides_note'),
-                        'label' => 'Note',
-                        'name' => 'note',
-                        'aria-label' => '',
-                        'type' => 'textarea',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'maxlength' => '',
-                        'allow_in_bindings' => 0,
-                        'rows' => 2,
-                        'placeholder' => '',
-                        'new_lines' => '',
-                        'parent_repeater' => 'field_' . md5('site_documentation_row_overrides'),
-                    ],
-                ],
-            ],
-        ];
-    }
-}
-
 if (!function_exists('meza_site_documentation_options_groups')) {
     function meza_site_documentation_options_groups(): array
     {
@@ -2472,96 +1951,8 @@ if (!function_exists('meza_site_documentation_options_groups')) {
         return [
             [
                 'key' => 'group_' . md5('site_documentation_general'),
-                'title' => 'Overview and Links',
+                'title' => 'Overview Copy',
                 'fields' => [
-                    [
-                        'key' => 'field_' . md5('site_documentation_support_email'),
-                        'label' => 'Support Email',
-                        'name' => 'site_documentation_support_email',
-                        'aria-label' => '',
-                        'type' => 'email',
-                        'instructions' => 'Used in the default support note shown on the Site Documentation page.',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '50',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => 'wordpress@meza.design',
-                        'allow_in_bindings' => 0,
-                        'placeholder' => '',
-                        'prepend' => '',
-                        'append' => '',
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_live_url'),
-                        'label' => 'Live URL',
-                        'name' => 'site_documentation_live_url',
-                        'aria-label' => '',
-                        'type' => 'url',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '50',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => home_url('/'),
-                        'placeholder' => '',
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_admin_url'),
-                        'label' => 'Admin Login URL',
-                        'name' => 'site_documentation_admin_url',
-                        'aria-label' => '',
-                        'type' => 'url',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '50',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => admin_url(),
-                        'placeholder' => '',
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_sitemap_url'),
-                        'label' => 'Sitemap URL',
-                        'name' => 'site_documentation_sitemap_url',
-                        'aria-label' => '',
-                        'type' => 'url',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '50',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => home_url('/sitemap.xml'),
-                        'placeholder' => '',
-                    ],
-                    [
-                        'key' => 'field_' . md5('site_documentation_style_guide_url'),
-                        'label' => 'Style Guide URL',
-                        'name' => 'site_documentation_style_guide_url',
-                        'aria-label' => '',
-                        'type' => 'url',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '50',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => meza_site_documentation_style_guide_url(),
-                        'placeholder' => '',
-                    ],
                     ...meza_site_documentation_section_copy_fields(),
                 ],
                 'location' => [
@@ -2585,9 +1976,9 @@ if (!function_exists('meza_site_documentation_options_groups')) {
                 'display_title' => '',
             ],
             [
-                'key' => 'group_' . md5('site_documentation_roles'),
-                'title' => 'Role Contacts',
-                'fields' => meza_site_documentation_role_contact_fields(),
+                'key' => 'group_' . md5('site_documentation_analytics'),
+                'title' => 'Analytics Access',
+                'fields' => meza_site_documentation_analytics_fields(),
                 'location' => [
                     [
                         [
@@ -2608,83 +1999,18 @@ if (!function_exists('meza_site_documentation_options_groups')) {
                 'show_in_rest' => 0,
                 'display_title' => '',
             ],
-            [
-                'key' => 'group_' . md5('site_documentation_analytics'),
-                'title' => 'Analytics Access',
-                'fields' => meza_site_documentation_analytics_fields(),
-                'location' => [
-                    [
-                        [
-                            'param' => 'options_page',
-                            'operator' => '==',
-                            'value' => $slug,
-                        ],
-                    ],
-                ],
-                'menu_order' => 20,
-                'position' => 'normal',
-                'style' => 'default',
-                'label_placement' => 'left',
-                'instruction_placement' => 'label',
-                'hide_on_screen' => '',
-                'active' => true,
-                'description' => '',
-                'show_in_rest' => 0,
-                'display_title' => '',
-            ],
-            [
-                'key' => 'group_' . md5('site_documentation_overrides'),
-                'title' => 'Table Content',
-                'fields' => meza_site_documentation_override_fields(),
-                'location' => [
-                    [
-                        [
-                            'param' => 'options_page',
-                            'operator' => '==',
-                            'value' => $slug,
-                        ],
-                    ],
-                ],
-                'menu_order' => 30,
-                'position' => 'normal',
-                'style' => 'default',
-                'label_placement' => 'left',
-                'instruction_placement' => 'label',
-                'hide_on_screen' => '',
-                'active' => true,
-                'description' => '',
-                'show_in_rest' => 0,
-                'display_title' => '',
-            ],
         ];
     }
 }
-
-add_filter('acf/load_value/name=site_documentation_row_overrides', static function ($value, $post_id, array $field) {
-    if ($post_id !== 'option' && $post_id !== 'options') {
-        return $value;
-    }
-
-    return meza_site_documentation_merge_repeater_rows(
-        meza_site_documentation_default_row_override_rows(),
-        is_array($value) ? $value : [],
-        static function (array $row): string {
-            return sanitize_key((string) ($row['section_key'] ?? '')) . ':' . sanitize_key((string) ($row['row_key'] ?? ''));
-        }
-    );
-}, 20, 3);
 
 add_filter('acf/load_value/name=site_documentation_analytics_accounts', static function ($value, $post_id, array $field) {
     if ($post_id !== 'option' && $post_id !== 'options') {
         return $value;
     }
 
-    return meza_site_documentation_merge_repeater_rows(
+    return meza_site_documentation_merge_analytics_rows(
         meza_site_documentation_default_analytics_field_rows(),
-        is_array($value) ? $value : [],
-        static function (array $row): string {
-            return sanitize_key((string) ($row['item_key'] ?? ''));
-        }
+        is_array($value) ? $value : []
     );
 }, 20, 3);
 
