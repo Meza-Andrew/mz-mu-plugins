@@ -55,6 +55,40 @@ if (!function_exists('meza_site_documentation_access_roles')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_active_role_keys')) {
+    function meza_site_documentation_active_role_keys(): array
+    {
+        $active = [];
+
+        foreach (meza_site_documentation_contact_roles() as $role_key => $role_label) {
+            $user = meza_site_documentation_find_first_user_for_role($role_key);
+            if ($user instanceof WP_User) {
+                $active[$role_key] = true;
+            }
+        }
+
+        return array_keys($active);
+    }
+}
+
+if (!function_exists('meza_site_documentation_active_access_roles')) {
+    function meza_site_documentation_active_access_roles(): array
+    {
+        $active_role_keys = array_fill_keys(meza_site_documentation_active_role_keys(), true);
+        $roles = [];
+
+        foreach (meza_site_documentation_access_roles() as $role_key => $role_label) {
+            if (!isset($active_role_keys[$role_key])) {
+                continue;
+            }
+
+            $roles[$role_key] = $role_label;
+        }
+
+        return $roles;
+    }
+}
+
 if (!function_exists('meza_site_documentation_role_choices')) {
     function meza_site_documentation_role_choices(): array
     {
@@ -83,7 +117,7 @@ if (!function_exists('meza_site_documentation_role_labels_for_capability')) {
     {
         $labels = [];
 
-        foreach (meza_site_documentation_access_roles() as $role_key => $role_label) {
+        foreach (meza_site_documentation_active_access_roles() as $role_key => $role_label) {
             if (meza_site_documentation_role_has_capability($role_key, $capability)) {
                 $labels[$role_key] = $role_label;
             }
@@ -183,7 +217,7 @@ if (!function_exists('meza_site_documentation_get_role_contacts')) {
         $overrides = meza_site_documentation_get_role_contact_overrides();
         $rows = [];
 
-        foreach (meza_site_documentation_contact_roles() as $role_key => $role_label) {
+        foreach (meza_site_documentation_active_access_roles() as $role_key => $role_label) {
             $override = $overrides[$role_key] ?? [];
             $user = meza_site_documentation_find_first_user_for_role($role_key);
 
@@ -1348,7 +1382,7 @@ if (!function_exists('meza_site_documentation_registry')) {
 if (!function_exists('meza_site_documentation_resolve_role_list')) {
     function meza_site_documentation_resolve_role_list(array $row): array
     {
-        $available_roles = meza_site_documentation_access_roles();
+        $available_roles = meza_site_documentation_active_access_roles();
         $resolved = [];
 
         foreach ((array) ($row['roles'] ?? []) as $role_key) {
