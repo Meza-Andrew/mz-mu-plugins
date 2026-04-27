@@ -144,17 +144,16 @@ if (!function_exists('meza_site_documentation_default_section_copy')) {
     function meza_site_documentation_default_section_copy(): array
     {
         return [
-            'site_documentation_quick_access_intro' => 'Use these links and role assignments to find the website, sign in, and confirm who owns each website-facing responsibility.',
-            'site_documentation_content_management_intro' => 'This section outlines the core public-facing content that lives in WordPress and which primary roles can maintain it.',
-            'site_documentation_pages_intro' => 'Published pages are pulled directly from WordPress and grouped into a documentation-friendly structure.',
-            'site_documentation_content_types_intro' => 'Post types and taxonomies are pulled from the registered WordPress content model and mapped to role access from real capabilities.',
-            'site_documentation_page_templates_intro' => 'Page templates are pulled from the active theme and paired with the page types and assigned pages that use them on the website.',
-            'site_documentation_capabilities_intro' => 'These are the maintenance capabilities available on the website and the level of access each primary role has to them.',
-            'site_documentation_dashboards_intro' => 'These dashboards provide day-to-day visibility into the website, SEO, performance, and security posture.',
-            'site_documentation_tools_intro' => 'These tools are used to manage content imports and exports, SEO workflows, and security-related account tasks.',
-            'site_documentation_analytics_intro' => 'These analytics platforms measure traffic, search visibility, and performance signals connected to the website.',
-            'site_documentation_plugins_intro' => 'These are the preferred plugins currently powering the website, along with their relative importance to the stack.',
-            'site_documentation_themes_intro' => 'These themes make up the active front-end stack and any supporting themes kept available for maintenance or debugging.',
+            'site_documentation_quick_access_intro' => 'Use these links to reach the live website and admin, then confirm the primary administrative users responsible for ongoing access and oversight.',
+            'site_documentation_user_roles_intro' => 'These are the active WordPress users assigned to the primary roles referenced throughout this documentation.',
+            'site_documentation_content_management_intro' => 'This section maps the public-facing content model, how content is organized in WordPress, and which roles are able to maintain it.',
+            'site_documentation_pages_intro' => 'These are all the published website pages managed directly in WordPress along with their visibility and role access.',
+            'site_documentation_content_types_intro' => 'These are the registered post types and taxonomies that support reusable website content, along with their default visibility and role-based management access.',
+            'site_documentation_page_templates_intro' => 'These are the core and custom templates currently available on the website, along with the pages that are assigned to each.',
+            'site_documentation_capabilities_intro' => 'These are the ongoing maintenance responsibilities on the website, mapped to the actual administrative access each primary role has.',
+            'site_documentation_tech_stack_intro' => 'This section outlines the active platforms, plugins, and themes that support the website. Importance indicates how critical each item is to core functionality, maintenance, and troubleshooting.',
+            'site_documentation_plugins_intro' => '',
+            'site_documentation_themes_intro' => '',
         ];
     }
 }
@@ -875,14 +874,13 @@ if (!function_exists('meza_site_documentation_get_section_copy')) {
 
         return [
             'quick_access_intro' => (string) ($defaults['site_documentation_quick_access_intro'] ?? ''),
+            'user_roles_intro' => (string) ($defaults['site_documentation_user_roles_intro'] ?? ''),
             'content_management_intro' => (string) ($defaults['site_documentation_content_management_intro'] ?? ''),
             'pages_intro' => (string) ($defaults['site_documentation_pages_intro'] ?? ''),
             'content_types_intro' => (string) ($defaults['site_documentation_content_types_intro'] ?? ''),
             'page_templates_intro' => (string) ($defaults['site_documentation_page_templates_intro'] ?? ''),
             'capabilities_intro' => (string) ($defaults['site_documentation_capabilities_intro'] ?? ''),
-            'dashboards_intro' => (string) ($defaults['site_documentation_dashboards_intro'] ?? ''),
-            'tools_intro' => (string) ($defaults['site_documentation_tools_intro'] ?? ''),
-            'analytics_intro' => (string) ($defaults['site_documentation_analytics_intro'] ?? ''),
+            'tech_stack_intro' => (string) ($defaults['site_documentation_tech_stack_intro'] ?? ''),
             'plugins_intro' => (string) ($defaults['site_documentation_plugins_intro'] ?? ''),
             'themes_intro' => (string) ($defaults['site_documentation_themes_intro'] ?? ''),
         ];
