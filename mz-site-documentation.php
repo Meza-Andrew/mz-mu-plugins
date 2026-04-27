@@ -147,13 +147,6 @@ if (!function_exists('meza_site_documentation_format_access_label')) {
     }
 }
 
-if (!function_exists('meza_site_documentation_support_email')) {
-    function meza_site_documentation_support_email(): string
-    {
-        return 'wordpress@meza.design';
-    }
-}
-
 if (!function_exists('meza_site_documentation_option_exists')) {
     function meza_site_documentation_option_exists(string $field_name): bool
     {
@@ -165,11 +158,6 @@ if (!function_exists('meza_site_documentation_default_section_copy')) {
     function meza_site_documentation_default_section_copy(): array
     {
         return [
-            'site_documentation_overview_intro' => 'This private page documents the website tools, maintenance responsibilities, and core platform components used on the site.',
-            'site_documentation_support_note' => sprintf(
-                'Technical administrative issues can be sent to %s for Meza support.',
-                meza_site_documentation_support_email()
-            ),
             'site_documentation_quick_access_intro' => 'Use these links and role assignments to find the website, sign in, and confirm who owns each website-facing responsibility.',
             'site_documentation_content_management_intro' => 'This section outlines the core public-facing content that lives in WordPress and which primary roles can maintain it.',
             'site_documentation_pages_intro' => 'Published pages are pulled directly from WordPress and grouped into a documentation-friendly structure.',
@@ -200,6 +188,13 @@ if (!function_exists('meza_site_documentation_field_text')) {
         $value = is_scalar($value) ? trim((string) $value) : '';
 
         return $value;
+    }
+}
+
+if (!function_exists('meza_site_documentation_hero_lead')) {
+    function meza_site_documentation_hero_lead(): string
+    {
+        return 'This private page documents the website tools, maintenance responsibilities, and core platform components used on the site.';
     }
 }
 
@@ -911,14 +906,6 @@ if (!function_exists('meza_site_documentation_get_section_copy')) {
         $defaults = meza_site_documentation_default_section_copy();
 
         return [
-            'overview_intro' => meza_site_documentation_field_text(
-                'site_documentation_overview_intro',
-                (string) ($defaults['site_documentation_overview_intro'] ?? '')
-            ),
-            'support_note' => meza_site_documentation_field_text(
-                'site_documentation_support_note',
-                (string) ($defaults['site_documentation_support_note'] ?? '')
-            ),
             'quick_access_intro' => meza_site_documentation_field_text(
                 'site_documentation_quick_access_intro',
                 (string) ($defaults['site_documentation_quick_access_intro'] ?? '')
@@ -2070,6 +2057,190 @@ if (!function_exists('meza_site_documentation_content_type_visibility_label')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_content_type_description')) {
+    function meza_site_documentation_content_type_description(object $object): string
+    {
+        $description = trim((string) ($object->description ?? ''));
+
+        if ($description !== '') {
+            return $description;
+        }
+
+        if ($object instanceof WP_Post_Type) {
+            $post_type = (string) $object->name;
+
+            if ($post_type === 'page') {
+                $examples = meza_site_documentation_random_page_template_examples();
+                $example_text = $examples !== []
+                    ? meza_site_documentation_format_example_list($examples)
+                    : 'custom landing pages, service pages, and evergreen website pages';
+
+                return 'Manage content for pages like ' . $example_text . '.';
+            }
+
+            if ($post_type === 'post') {
+                $examples = meza_site_documentation_random_post_examples();
+                $example_text = $examples !== []
+                    ? meza_site_documentation_format_example_list($examples)
+                    : 'recent website articles';
+
+                return 'Manage time-based article content like ' . $example_text . '.';
+            }
+
+            return '';
+        }
+
+        if ($object instanceof WP_Taxonomy) {
+            if ((string) $object->name === 'category') {
+                return 'Manage categorization of time-based article content.';
+            }
+
+            return '';
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('meza_site_documentation_randomize_examples')) {
+    function meza_site_documentation_randomize_examples(array $values, int $limit): array
+    {
+        $values = array_values(array_filter(array_map(static function ($value): string {
+            return trim((string) $value);
+        }, $values)));
+
+        if ($values === []) {
+            return [];
+        }
+
+        shuffle($values);
+
+        return array_slice(array_values(array_unique($values)), 0, $limit);
+    }
+}
+
+if (!function_exists('meza_site_documentation_format_example_list')) {
+    function meza_site_documentation_format_example_list(array $values): string
+    {
+        $values = array_values(array_filter(array_map(static function ($value): string {
+            return trim((string) $value);
+        }, $values)));
+
+        $count = count($values);
+
+        if ($count === 0) {
+            return '';
+        }
+
+        if ($count === 1) {
+            return $values[0];
+        }
+
+        if ($count === 2) {
+            return $values[0] . ' and ' . $values[1];
+        }
+
+        $last_value = array_pop($values);
+
+        return implode(', ', $values) . ', and ' . $last_value;
+    }
+}
+
+if (!function_exists('meza_site_documentation_random_page_template_examples')) {
+    function meza_site_documentation_random_page_template_examples(): array
+    {
+        $pages = get_posts([
+            'post_type' => 'page',
+            'post_status' => 'publish',
+            'posts_per_page' => -1,
+            'orderby' => 'title',
+            'order' => 'ASC',
+            'meta_query' => [
+                [
+                    'key' => '_wp_page_template',
+                    'value' => ['default', '', 'page-documentation.php', 'page-style.php', 'page-cookie-policy.php'],
+                    'compare' => 'NOT IN',
+                ],
+            ],
+            'fields' => 'ids',
+            'no_found_rows' => true,
+        ]);
+
+        if ($pages === []) {
+            return [];
+        }
+
+        $titles_by_template = [];
+
+        foreach ($pages as $page_id) {
+            $page_id = (int) $page_id;
+            $template = (string) get_page_template_slug($page_id);
+            $title = trim((string) get_the_title($page_id));
+
+            if ($template === '' || $title === '' || isset($titles_by_template[$template])) {
+                continue;
+            }
+
+            $titles_by_template[$template] = $title;
+        }
+
+        return meza_site_documentation_randomize_examples(array_values($titles_by_template), 3);
+    }
+}
+
+if (!function_exists('meza_site_documentation_random_post_examples')) {
+    function meza_site_documentation_random_post_examples(): array
+    {
+        $posts = get_posts([
+            'post_type' => 'post',
+            'post_status' => 'publish',
+            'posts_per_page' => 20,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'fields' => 'ids',
+            'no_found_rows' => true,
+        ]);
+
+        if ($posts === []) {
+            return [];
+        }
+
+        $titles = array_map(static function ($post_id): string {
+            return trim((string) get_the_title((int) $post_id));
+        }, $posts);
+
+        return meza_site_documentation_randomize_examples($titles, 2);
+    }
+}
+
+if (!function_exists('meza_site_documentation_should_include_category_taxonomy')) {
+    function meza_site_documentation_should_include_category_taxonomy(): bool
+    {
+        $terms = get_terms([
+            'taxonomy' => 'category',
+            'hide_empty' => false,
+        ]);
+
+        if (is_wp_error($terms) || count($terms) !== 1) {
+            return true;
+        }
+
+        $term = $terms[0];
+
+        if (!($term instanceof WP_Term)) {
+            return true;
+        }
+
+        $default_category_id = (int) get_option('default_category');
+
+        return !(
+            $default_category_id > 0
+            && (int) $term->term_id === $default_category_id
+            && sanitize_title((string) $term->slug) === 'uncategorized'
+        );
+    }
+}
+
 if (!function_exists('meza_site_documentation_get_content_type_rows')) {
     function meza_site_documentation_get_content_type_rows(): array
     {
@@ -2093,6 +2264,7 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                 'key' => sanitize_key($post_type),
                 'group' => (string) ($post_type_object->labels->name ?? ucfirst($post_type)),
                 'item' => (string) ($post_type_object->labels->name ?? ucfirst($post_type)),
+                'description' => meza_site_documentation_content_type_description($post_type_object),
                 'visibility' => meza_site_documentation_content_type_visibility_label(
                     $post_type_has_public_permalink,
                     $post_type_is_public_by_default
@@ -2118,6 +2290,10 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                     continue;
                 }
 
+                if ((string) $taxonomy->name === 'category' && !meza_site_documentation_should_include_category_taxonomy()) {
+                    continue;
+                }
+
                 $taxonomy_capability = isset($taxonomy->cap->manage_terms) && is_string($taxonomy->cap->manage_terms) && $taxonomy->cap->manage_terms !== ''
                     ? $taxonomy->cap->manage_terms
                     : (string) ($taxonomy->cap->edit_terms ?? '');
@@ -2131,6 +2307,7 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                     'key' => sanitize_key($post_type . '_' . (string) $taxonomy->name),
                     'group' => (string) ($post_type_object->labels->name ?? ucfirst($post_type)),
                     'item' => (string) ($taxonomy->labels->name ?? ucfirst((string) $taxonomy->name)),
+                    'description' => meza_site_documentation_content_type_description($taxonomy),
                     'visibility' => meza_site_documentation_content_type_visibility_label(
                         $taxonomy_has_public_permalink,
                         $taxonomy_is_public_by_default
@@ -3181,8 +3358,6 @@ if (!function_exists('meza_site_documentation_section_copy_fields')) {
     {
         $defaults = meza_site_documentation_default_section_copy();
         $field_names = [
-            'site_documentation_overview_intro' => 'Overview Intro',
-            'site_documentation_support_note' => 'Support Note',
             'site_documentation_quick_access_intro' => 'Quick Access Intro',
             'site_documentation_content_management_intro' => 'Content Management Intro',
             'site_documentation_pages_intro' => 'Pages Intro',
