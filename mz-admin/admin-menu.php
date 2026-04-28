@@ -11628,6 +11628,9 @@ function meza_alphabetize_fallback_plugin_submenus(): void
         'options-general.php',
         'woocommerce',
     ];
+    $conference_parent_slug = function_exists('meza_get_conference_admin_menu_slug')
+        ? meza_get_conference_admin_menu_slug()
+        : '';
 
     foreach ($submenu as $parent_slug => &$items) {
         if (!is_array($items) || in_array((string) $parent_slug, $core_parent_slugs, true)) {
@@ -11635,6 +11638,10 @@ function meza_alphabetize_fallback_plugin_submenus(): void
         }
 
         if (str_starts_with((string) $parent_slug, 'edit.php?post_type=')) {
+            continue;
+        }
+
+        if ($conference_parent_slug !== '' && (string) $parent_slug === $conference_parent_slug) {
             continue;
         }
 
