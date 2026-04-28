@@ -224,7 +224,44 @@ function mz_plugins_has_aios_settings(): bool
     return is_array($configs) && [] !== $configs;
 }
 
-function mz_plugins_import_updraftplus_settings_file(string $settings_path)
+function mz_plugins_get_updraft_settings_export_path(): string
+{
+    return __DIR__ . '/defaults/updraftplus-settings.json';
+}
+
+function mz_plugins_get_updraft_installed_version(): string
+{
+    global $updraftplus;
+
+    if (isset($updraftplus) && is_object($updraftplus) && isset($updraftplus->version) && is_string($updraftplus->version) && '' !== trim($updraftplus->version)) {
+        return trim($updraftplus->version);
+    }
+
+    $plugin_file = WP_PLUGIN_DIR . '/updraftplus/updraftplus.php';
+    if (!file_exists($plugin_file)) {
+        return '';
+    }
+
+    if (!function_exists('get_plugin_data')) {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    }
+
+    $plugin_data = get_plugin_data($plugin_file, false, false);
+    $version = isset($plugin_data['Version']) ? trim((string) $plugin_data['Version']) : '';
+
+    return $version;
+}
+
+function mz_plugins_get_updraft_option_value(string $option_name, $default = null)
+{
+    if (class_exists('UpdraftPlus_Options') && is_callable(['UpdraftPlus_Options', 'get_updraft_option'])) {
+        return UpdraftPlus_Options::get_updraft_option($option_name, $default);
+    }
+
+    return get_option($option_name, $default);
+}
+
+function mz_plugins_read_updraft_settings_payload(string $settings_path)
 {
     if (!file_exists($settings_path) || !is_readable($settings_path)) {
         return new WP_Error('mz_plugins_updraft_settings_missing', 'Settings file is missing or unreadable.');
@@ -238,6 +275,96 @@ function mz_plugins_import_updraftplus_settings_file(string $settings_path)
     $decoded = json_decode($raw_settings, true);
     if (!is_array($decoded) || !isset($decoded['data']) || !is_array($decoded['data'])) {
         return new WP_Error('mz_plugins_updraft_settings_invalid', 'Settings file is not a valid Updraft export.');
+    }
+
+    return $decoded;
+}
+
+function mz_plugins_build_updraft_settings_payload(array $existing_payload): array
+{
+    $data = isset($existing_payload['data']) && is_array($existing_payload['data']) ? $existing_payload['data'] : [];
+    $missing_option = '__mz_plugins_updraft_option_missing__';
+
+    foreach (array_keys($data) as $option_name) {
+        if (!is_string($option_name) || '' === trim($option_name)) {
+            continue;
+        }
+
+        $option_value = mz_plugins_get_updraft_option_value($option_name, $missing_option);
+        if ($option_value !== $missing_option) {
+            $data[$option_name] = $option_value;
+        }
+    }
+
+    $format_version = isset($existing_payload['version']) && is_string($existing_payload['version']) && '' !== trim($existing_payload['version'])
+        ? trim($existing_payload['version'])
+        : '1.12.40';
+
+    return [
+        'version' => $format_version,
+        'plugin_version' => mz_plugins_get_updraft_installed_version(),
+        'epoch_date' => (int) round(microtime(true) * 1000),
+        'local_date' => wp_date('n/j/Y, g:i:s A'),
+        'network_site_url' => untrailingslashit(network_site_url()),
+        'data' => $data,
+    ];
+}
+
+function mz_plugins_refresh_updraft_settings_export(bool $force = false)
+{
+    $env_name = defined('WP_ENV') ? strtolower((string) WP_ENV) : 'production';
+    if (!in_array($env_name, ['development', 'local', 'staging', 'qa'], true)) {
+        return false;
+    }
+
+    $settings_path = mz_plugins_get_updraft_settings_export_path();
+    $decoded = mz_plugins_read_updraft_settings_payload($settings_path);
+    if (is_wp_error($decoded)) {
+        return $decoded;
+    }
+
+    $installed_version = mz_plugins_get_updraft_installed_version();
+    if ('' === $installed_version) {
+        return new WP_Error('mz_plugins_updraft_version_missing', 'Installed UpdraftPlus version could not be determined.');
+    }
+
+    $stored_plugin_version = isset($decoded['plugin_version']) ? trim((string) $decoded['plugin_version']) : '';
+    if (!$force && $stored_plugin_version === $installed_version) {
+        return false;
+    }
+
+    if (!file_exists($settings_path) || !is_writable($settings_path)) {
+        return new WP_Error('mz_plugins_updraft_settings_not_writable', 'Bundled Updraft settings file is not writable.');
+    }
+
+    $payload = mz_plugins_build_updraft_settings_payload($decoded);
+    $encoded = wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+    if (!is_string($encoded) || '' === trim($encoded)) {
+        return new WP_Error('mz_plugins_updraft_settings_encode_failed', 'Bundled Updraft settings could not be encoded.');
+    }
+
+    $written = file_put_contents($settings_path, $encoded . PHP_EOL);
+
+    if (false === $written) {
+        return new WP_Error('mz_plugins_updraft_settings_write_failed', 'Bundled Updraft settings could not be updated.');
+    }
+
+    return true;
+}
+
+function mz_plugins_import_updraftplus_settings_file(string $settings_path)
+{
+    if ($settings_path === mz_plugins_get_updraft_settings_export_path()) {
+        $refresh_result = mz_plugins_refresh_updraft_settings_export();
+        if (is_wp_error($refresh_result) && $refresh_result->get_error_code() === 'mz_plugins_updraft_settings_missing') {
+            return $refresh_result;
+        }
+    }
+
+    $decoded = mz_plugins_read_updraft_settings_payload($settings_path);
+    if (is_wp_error($decoded)) {
+        return $decoded;
     }
 
     global $updraftplus_admin;
@@ -257,9 +384,14 @@ function mz_plugins_import_updraftplus_settings_file(string $settings_path)
         return new WP_Error('mz_plugins_updraft_permission_denied', 'Current user cannot manage Updraft settings.');
     }
 
+    $updraftplus_version = isset($decoded['plugin_version']) ? trim((string) $decoded['plugin_version']) : '';
+    if ('' === $updraftplus_version) {
+        $updraftplus_version = mz_plugins_get_updraft_installed_version();
+    }
+
     $payload = [
         'settings' => wp_json_encode($decoded['data']),
-        'updraftplus_version' => (string) ($decoded['version'] ?? ''),
+        'updraftplus_version' => $updraftplus_version,
     ];
 
     if (!is_string($payload['settings']) || '' === $payload['settings']) {
@@ -282,6 +414,14 @@ function mz_plugins_import_updraftplus_settings_file(string $settings_path)
 
     return $result;
 }
+
+add_action('updraftplus_newly_installed', function () {
+    mz_plugins_refresh_updraft_settings_export(true);
+}, 20);
+
+add_action('updraftplus_version_changed', function () {
+    mz_plugins_refresh_updraft_settings_export(true);
+}, 20);
 
 function mz_plugins_import_aios_settings_file(string $settings_path)
 {
