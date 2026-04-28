@@ -1357,23 +1357,12 @@ function meza_move_taxonomy_columns_before_meta_columns(array $columns, string $
     }
 
     $anchor_tokens = [
-        'mz_profile_link',
-        'mz_organization_url',
-        'wpseo-title',
-        'wpseo-metadesc',
-        'mz_share_title',
-        'mz_share_description',
-        'link',
-        'meta title',
-        'meta description',
-        'share title',
-        'share description',
+        'mz_modified',
+        'modified',
+        'mz_published',
+        'published',
+        'date',
     ];
-
-    if (meza_post_type_uses_share_image_admin_column($post_type)) {
-        $anchor_tokens[] = 'mz_thumbnail';
-        $anchor_tokens[] = meza_get_post_type_thumbnail_admin_column_label($post_type);
-    }
 
     $taxonomy_key_map = array_fill_keys($sorted_taxonomy_keys, true);
     $anchor_key = '';
@@ -1631,7 +1620,6 @@ function meza_apply_default_admin_column_order(array $columns, string $post_type
     }
     $append_first_match(['mz_profile_title']);
     $append_first_match(['mz_profile_link', 'mz_organization_url', 'mz_page_link', 'link']);
-    $append_taxonomy_columns();
     $append_first_match(['mz_page_headline', 'page headline (h1)']);
     $append_first_match(['mz_page_cta', 'page cta']);
     $append_first_match(['mz_page_form', 'page form']);
@@ -1640,6 +1628,7 @@ function meza_apply_default_admin_column_order(array $columns, string $post_type
     $append_first_match(['share image']);
     $append_first_match(['mz_share_title', 'share title']);
     $append_first_match(['mz_share_description', 'share description']);
+    $append_taxonomy_columns();
     $append_first_match(['mz_modified', 'modified']);
     $append_first_match(['mz_published', 'published', 'date']);
 
@@ -1840,14 +1829,6 @@ function meza_merge_seeded_taxonomy_admin_columns(array $defaults, string $post_
     $ordered = [];
     $inserted_taxonomies = false;
     $anchor_keys = [
-        'mz_page_headline',
-        'mz_page_cta',
-        'mz_page_form',
-        'wpseo-title',
-        'wpseo-metadesc',
-        'mz_thumbnail',
-        'mz_share_title',
-        'mz_share_description',
         'mz_modified',
         'mz_published',
     ];
@@ -2992,7 +2973,7 @@ function meza_run_acp_default_admin_column_order_migration(): void
         return;
     }
 
-    $target_version = '1.1.265';
+    $target_version = '1.1.266';
     if ((string) get_option('meza_acp_default_admin_column_order_migration') === $target_version) {
         return;
     }
