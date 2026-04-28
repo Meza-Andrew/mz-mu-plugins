@@ -3386,7 +3386,18 @@ function meza_get_event_admin_column_datetime_value(int $post_id, string $contex
 
     if ($context === 'start') {
         if ($start_date !== '') {
-            $time_start = $normalize_time(get_post_meta($post_id, 'times_0_time_start', true));
+            $time_start = '';
+
+            foreach ([
+                'time_start',
+                'times_0_time_start',
+            ] as $meta_key) {
+                $time_start = $normalize_time(get_post_meta($post_id, $meta_key, true));
+                if ($time_start !== '') {
+                    break;
+                }
+            }
+
             if ($time_start !== '') {
                 return $start_date . ' ' . $time_start;
             }
@@ -3400,6 +3411,7 @@ function meza_get_event_admin_column_datetime_value(int $post_id, string $contex
         $end_time = '';
 
         foreach ([
+            'end_time',
             'times_0_time_end',
             'time_end',
             'times_1_time_start',
