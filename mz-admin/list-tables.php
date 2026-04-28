@@ -2976,7 +2976,7 @@ function meza_run_acp_default_admin_column_order_migration(): void
         return;
     }
 
-    $target_version = '1.1.266';
+    $target_version = '1.1.267';
     if ((string) get_option('meza_acp_default_admin_column_order_migration') === $target_version) {
         return;
     }
