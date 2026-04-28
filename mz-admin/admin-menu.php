@@ -514,7 +514,7 @@ function meza_is_site_manager_allowed_settings_submenu_item(array $item): bool
     $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
 
     return in_array($slug, meza_get_site_manager_allowed_settings_page_slugs(), true)
-        || in_array($label, ['branding', 'business information', 'contact information', 'privacy'], true);
+        || in_array($label, ['branding', 'business information', 'nonprofit information', 'conference information', 'contact information', 'privacy'], true);
 }
 
 function meza_get_site_manager_aios_security_menu_slug(): string
@@ -3189,7 +3189,9 @@ function meza_reorder_settings_submenu_items(array $items): array
 {
     $top_labels = [
         'General',
-        'Business Information',
+        function_exists('meza_get_business_information_menu_label')
+            ? meza_get_business_information_menu_label()
+            : 'Business Information',
         'Branding',
         'CRM Integration',
     ];
@@ -9021,7 +9023,7 @@ function meza_enforce_site_manager_settings_submenu(): void
                 $slug = 'privacy';
             } elseif ($label === 'crm integration') {
                 $slug = 'crm';
-            } elseif (in_array($label, ['business information', 'contact information'], true)) {
+            } elseif (in_array($label, ['business information', 'nonprofit information', 'conference information', 'contact information'], true)) {
                 $slug = 'business-information';
             }
         }
@@ -9034,7 +9036,9 @@ function meza_enforce_site_manager_settings_submenu(): void
         $item[1] = 'read';
         $item[2] = meza_get_settings_admin_page_menu_slug($slug);
         if (isset($item[3])) {
-            $item[3] = $allowed_settings_pages[$slug] . ' Settings';
+            $item[3] = $slug === 'business-information' && function_exists('meza_get_business_information_page_title')
+                ? meza_get_business_information_page_title()
+                : $allowed_settings_pages[$slug] . ' Settings';
         }
 
         $filtered_items[] = $item;
@@ -9050,7 +9054,9 @@ function meza_enforce_site_manager_settings_submenu(): void
             $label,
             'read',
             meza_get_settings_admin_page_menu_slug($slug),
-            $label . ' Settings',
+            $slug === 'business-information' && function_exists('meza_get_business_information_page_title')
+                ? meza_get_business_information_page_title()
+                : $label . ' Settings',
         ];
     }
 

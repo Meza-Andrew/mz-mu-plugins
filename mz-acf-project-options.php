@@ -16,23 +16,33 @@ if (!function_exists('meza_get_business_information_type')) {
 
         $value = sanitize_key($value);
 
-        return in_array($value, ['business', 'nonprofit'], true) ? $value : 'business';
+        return in_array($value, ['business', 'nonprofit', 'conference'], true) ? $value : 'business';
     }
 }
 
 if (!function_exists('meza_get_business_information_menu_label')) {
     function meza_get_business_information_menu_label(): string
     {
-        return meza_get_business_information_type() === 'nonprofit'
-            ? 'Nonprofit Information'
-            : 'Business Information';
+        $label_map = [
+            'business' => 'Business Information',
+            'nonprofit' => 'Nonprofit Information',
+            'conference' => 'Conference Information',
+        ];
+
+        return $label_map[meza_get_business_information_type()] ?? $label_map['business'];
     }
 }
 
 if (!function_exists('meza_get_business_information_page_title')) {
     function meza_get_business_information_page_title(): string
     {
-        return meza_get_business_information_menu_label() . ' Settings';
+        $title_map = [
+            'business' => 'Business Information Settings',
+            'nonprofit' => 'Nonprofit Information Settings',
+            'conference' => 'Conference Information',
+        ];
+
+        return $title_map[meza_get_business_information_type()] ?? $title_map['business'];
     }
 }
 
@@ -450,6 +460,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'choices' => [
                     'business' => 'Business',
                     'nonprofit' => 'Nonprofit',
+                    'conference' => 'Conference',
                 ],
                 'default_value' => 'business',
                 'return_format' => 'value',
