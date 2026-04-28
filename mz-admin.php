@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.543
+ * Version: 1.1.545
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -600,6 +600,38 @@ if (!function_exists('meza_get_conference_admin_menu_slug')) {
     }
 }
 
+if (!function_exists('meza_get_conference_schedule_admin_menu_slug')) {
+    function meza_get_conference_schedule_admin_menu_slug(): string
+    {
+        return sanitize_key((string) apply_filters('meza_conference_schedule_admin_menu_slug', 'conference-schedule'));
+    }
+}
+
+if (!function_exists('meza_can_access_conference_admin_menu')) {
+    function meza_can_access_conference_admin_menu($user = null): bool
+    {
+        return meza_user_has_any_role($user, ['administrator', meza_site_manager_role_key()]);
+    }
+}
+
+if (!function_exists('meza_should_show_conference_admin_menu')) {
+    function meza_should_show_conference_admin_menu(): bool
+    {
+        if (!meza_can_access_conference_admin_menu(wp_get_current_user())) {
+            return false;
+        }
+
+        if (function_exists('meza_is_conference_business_type')) {
+            return meza_is_conference_business_type();
+        }
+
+        $option_value = get_option('options_type');
+        $value = is_scalar($option_value) ? sanitize_key(trim((string) $option_value)) : '';
+
+        return $value === 'conference';
+    }
+}
+
 if (!function_exists('meza_get_conference_admin_menu_slug_aliases')) {
     function meza_get_conference_admin_menu_slug_aliases(): array
     {
@@ -614,6 +646,338 @@ if (!function_exists('meza_get_conference_admin_menu_slug_aliases')) {
         }, $aliases))));
     }
 }
+
+if (!function_exists('meza_build_conference_admin_menu_item')) {
+    function meza_build_conference_admin_menu_item(): array
+    {
+        $parent_slug = meza_get_conference_admin_menu_slug();
+        $css_class = 'menu-top toplevel_page_' . $parent_slug;
+        $hookname = 'toplevel_page_' . $parent_slug;
+
+        return [
+            __('Conference'),
+            'manage_options',
+            $parent_slug,
+            __('Conference'),
+            $css_class,
+            $hookname,
+            'dashicons-tickets-alt',
+        ];
+    }
+}
+
+if (!function_exists('meza_normalize_conference_admin_menu_item')) {
+    function meza_normalize_conference_admin_menu_item(array $item): array
+    {
+        $defaults = meza_build_conference_admin_menu_item();
+
+        $item[0] = $defaults[0];
+        $item[1] = (string) ($item[1] ?? $defaults[1]);
+        if ($item[1] === '') {
+            $item[1] = $defaults[1];
+        }
+        $item[2] = $defaults[2];
+        $item[3] = $defaults[3];
+        $item[4] = $defaults[4];
+        $item[5] = $defaults[5];
+        $item[6] = $defaults[6];
+
+        return $item;
+    }
+}
+
+if (!function_exists('meza_maybe_move_legacy_conference_submenu')) {
+    function meza_maybe_move_legacy_conference_submenu(): void
+    {
+        global $submenu;
+
+        if (!is_array($submenu)) {
+            return;
+        }
+
+        $parent_slug = meza_get_conference_admin_menu_slug();
+        if ($parent_slug === '' || $parent_slug === 'event-info' || !isset($submenu['event-info'])) {
+            return;
+        }
+
+        $legacy_items = is_array($submenu['event-info']) ? $submenu['event-info'] : [];
+        $current_items = isset($submenu[$parent_slug]) && is_array($submenu[$parent_slug]) ? $submenu[$parent_slug] : [];
+
+        $submenu[$parent_slug] = array_values(array_merge($legacy_items, $current_items));
+        unset($submenu['event-info']);
+    }
+}
+
+if (!function_exists('meza_ensure_conference_admin_menu_exists')) {
+    function meza_ensure_conference_admin_menu_exists(): void
+    {
+        global $menu, $submenu;
+
+        $parent_slug = meza_get_conference_admin_menu_slug();
+        if ($parent_slug === '') {
+            return;
+        }
+
+        if (!meza_should_show_conference_admin_menu()) {
+            remove_menu_page($parent_slug);
+            remove_menu_page('event-info');
+            if (is_array($submenu)) {
+                unset($submenu[$parent_slug], $submenu['event-info']);
+            }
+            return;
+        }
+
+        if (!is_array($menu)) {
+            $menu = [];
+        }
+
+        meza_maybe_move_legacy_conference_submenu();
+
+        $aliases = meza_get_conference_admin_menu_slug_aliases();
+        $menu_index = null;
+
+        foreach ($menu as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = sanitize_key((string) ($item[2] ?? ''));
+            if ($slug === '' || !in_array($slug, $aliases, true)) {
+                continue;
+            }
+
+            $menu[$index] = meza_normalize_conference_admin_menu_item($item);
+            $menu_index = (int) $index;
+            break;
+        }
+
+        if ($menu_index === null) {
+            $conference_item = meza_build_conference_admin_menu_item();
+            $insert_at = count($menu);
+
+            foreach ($menu as $index => $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $slug = (string) ($item[2] ?? '');
+                if (in_array($slug, ['edit.php?post_type=cta', 'edit.php?post_type=event'], true)) {
+                    $insert_at = (int) $index;
+                    break;
+                }
+            }
+
+            array_splice($menu, $insert_at, 0, [$conference_item]);
+        }
+
+        if (!is_array($submenu)) {
+            $submenu = [];
+        }
+
+        if (!isset($submenu[$parent_slug]) || !is_array($submenu[$parent_slug])) {
+            $submenu[$parent_slug] = [];
+        }
+    }
+}
+
+if (!function_exists('meza_sync_admin_menu_editor_conference_menu_items')) {
+    function meza_sync_admin_menu_editor_conference_menu_items(): void
+    {
+        if (!is_admin()) {
+            return;
+        }
+
+        $parent_slug = meza_get_conference_admin_menu_slug();
+        $schedule_slug = meza_get_conference_schedule_admin_menu_slug();
+        if ($parent_slug === '' || $parent_slug === 'event-info') {
+            return;
+        }
+
+        $menu_editor_settings = get_option('ws_menu_editor');
+        if (
+            !is_array($menu_editor_settings)
+            || !isset($menu_editor_settings['custom_menu']['tree'])
+            || !is_array($menu_editor_settings['custom_menu']['tree'])
+        ) {
+            return;
+        }
+
+        $tree = $menu_editor_settings['custom_menu']['tree'];
+        $did_update = false;
+
+        if (isset($tree['event-info']) && is_array($tree['event-info']) && !isset($tree[$parent_slug])) {
+            $tree[$parent_slug] = $tree['event-info'];
+            unset($tree['event-info']);
+            $did_update = true;
+        }
+
+        if (!isset($tree[$parent_slug]) || !is_array($tree[$parent_slug])) {
+            return;
+        }
+
+        $conference_node = $tree[$parent_slug];
+        $conference_node['template_id'] = '>' . $parent_slug;
+        $conference_node['menu_title'] = 'Conference';
+
+        $defaults = isset($conference_node['defaults']) && is_array($conference_node['defaults']) ? $conference_node['defaults'] : [];
+        $defaults['menu_title'] = 'Conference';
+        $defaults['page_title'] = 'Conference';
+        $defaults['access_level'] = 'edit_posts';
+        $defaults['file'] = $parent_slug;
+        $defaults['css_class'] = 'menu-top toplevel_page_' . $parent_slug;
+        $defaults['hookname'] = 'toplevel_page_' . $parent_slug;
+        $defaults['icon_url'] = 'dashicons-tickets-alt';
+        $defaults['is_plugin_page'] = true;
+        $defaults['url'] = 'admin.php?page=' . $parent_slug;
+        $conference_node['defaults'] = $defaults;
+
+        $existing_items = isset($conference_node['items']) && is_array($conference_node['items']) ? $conference_node['items'] : [];
+        $normalized_items = [];
+        $information_item = null;
+        $schedule_item = null;
+        $segments_item = null;
+        $segment_taxonomy_items = [];
+        $other_items = [];
+        $expected_segment_taxonomy_items = meza_get_segment_taxonomy_admin_menu_editor_items($parent_slug);
+
+        foreach ($existing_items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $item_defaults = isset($item['defaults']) && is_array($item['defaults']) ? $item['defaults'] : [];
+            $file = (string) ($item_defaults['file'] ?? $item['file'] ?? '');
+            $url = (string) ($item_defaults['url'] ?? '');
+            $normalized_slug = sanitize_key((string) preg_replace('/^admin\.php\?page=/', '', html_entity_decode($file, ENT_QUOTES, get_bloginfo('charset') ?: 'UTF-8')));
+
+            if (in_array($normalized_slug, meza_get_conference_admin_menu_slug_aliases(), true)) {
+                $item['template_id'] = $parent_slug . '>' . $parent_slug;
+                $item_defaults['menu_title'] = 'Information';
+                $item_defaults['page_title'] = 'Conference';
+                $item_defaults['access_level'] = 'edit_posts';
+                $item_defaults['file'] = $parent_slug;
+                $item_defaults['is_plugin_page'] = true;
+                $item_defaults['url'] = 'admin.php?page=' . $parent_slug;
+                $item['defaults'] = $item_defaults;
+                $information_item = $item;
+                continue;
+            }
+
+            if ($schedule_slug !== '' && ($normalized_slug === $schedule_slug || $url === 'admin.php?page=' . $schedule_slug)) {
+                $item['template_id'] = $parent_slug . '>' . $schedule_slug;
+                $item_defaults['menu_title'] = 'Schedule';
+                $item_defaults['page_title'] = 'Schedule';
+                $item_defaults['access_level'] = 'edit_posts';
+                $item_defaults['file'] = $schedule_slug;
+                $item_defaults['is_plugin_page'] = true;
+                $item_defaults['url'] = 'admin.php?page=' . $schedule_slug;
+                $item['defaults'] = $item_defaults;
+                $schedule_item = $item;
+                continue;
+            }
+
+            if ($file === 'edit.php?post_type=segment') {
+                $item['menu_title'] = 'Segments';
+                $item['template_id'] = $parent_slug . '>edit.php?post_type=segment';
+                $item_defaults['menu_title'] = 'Segments';
+                $item_defaults['access_level'] = 'edit_posts';
+                $item_defaults['file'] = 'edit.php?post_type=segment';
+                $item_defaults['url'] = 'edit.php?post_type=segment';
+                $item['defaults'] = $item_defaults;
+                $segments_item = $item;
+                continue;
+            }
+
+            if (isset($expected_segment_taxonomy_items[$url])) {
+                $segment_taxonomy_items[$url] = $item;
+                continue;
+            }
+
+            if ($file === 'post-new.php?post_type=segment') {
+                $did_update = true;
+                continue;
+            }
+
+            $other_items[] = $item;
+        }
+
+        if ($information_item === null) {
+            $information_item = [
+                'template_id' => $parent_slug . '>' . $parent_slug,
+                'defaults' => [
+                    'menu_title' => 'Information',
+                    'page_title' => 'Conference',
+                    'access_level' => 'edit_posts',
+                    'file' => $parent_slug,
+                    'is_plugin_page' => true,
+                    'url' => 'admin.php?page=' . $parent_slug,
+                ],
+                'f' => 'ip',
+            ];
+            $did_update = true;
+        }
+
+        if ($schedule_slug !== '' && $schedule_item === null) {
+            $schedule_item = [
+                'template_id' => $parent_slug . '>' . $schedule_slug,
+                'defaults' => [
+                    'menu_title' => 'Schedule',
+                    'page_title' => 'Schedule',
+                    'access_level' => 'edit_posts',
+                    'file' => $schedule_slug,
+                    'is_plugin_page' => true,
+                    'url' => 'admin.php?page=' . $schedule_slug,
+                ],
+                'f' => 'ip',
+            ];
+            $did_update = true;
+        }
+
+        if ($segments_item === null) {
+            $segments_item = [
+                'template_id' => $parent_slug . '>edit.php?post_type=segment',
+                'defaults' => [
+                    'menu_title' => 'Segments',
+                    'access_level' => 'edit_posts',
+                    'file' => 'edit.php?post_type=segment',
+                    'url' => 'edit.php?post_type=segment',
+                ],
+                'f' => 'ip',
+            ];
+            $did_update = true;
+        }
+
+        foreach ($expected_segment_taxonomy_items as $slug => $item) {
+            if (!isset($segment_taxonomy_items[$slug])) {
+                $segment_taxonomy_items[$slug] = $item;
+                $did_update = true;
+            }
+        }
+
+        $normalized_items = array_values(array_filter([
+            $information_item,
+            $schedule_item,
+            $segments_item,
+            ...array_values($segment_taxonomy_items),
+            ...$other_items,
+        ]));
+
+        if ($normalized_items !== $existing_items) {
+            $conference_node['items'] = $normalized_items;
+            $did_update = true;
+        }
+
+        $tree[$parent_slug] = $conference_node;
+
+        if (!$did_update) {
+            return;
+        }
+
+        $menu_editor_settings['custom_menu']['tree'] = $tree;
+        update_option('ws_menu_editor', $menu_editor_settings);
+    }
+}
+add_action('admin_init', 'meza_sync_admin_menu_editor_conference_menu_items', 20);
 
 if (!function_exists('meza_is_conference_information_admin_page')) {
     function meza_is_conference_information_admin_page(): bool
@@ -638,6 +1002,36 @@ if (!function_exists('meza_is_conference_information_admin_page')) {
 
         $screen_id = sanitize_key((string) $screen->id);
         return $screen_id !== '' && in_array($screen_id, meza_get_conference_admin_menu_slug_aliases(), true);
+    }
+}
+
+if (!function_exists('meza_is_conference_schedule_admin_page')) {
+    function meza_is_conference_schedule_admin_page(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        $schedule_slug = meza_get_conference_schedule_admin_menu_slug();
+        if ($schedule_slug === '') {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        if ($page === $schedule_slug) {
+            return true;
+        }
+
+        if (!function_exists('get_current_screen')) {
+            return false;
+        }
+
+        $screen = get_current_screen();
+        if (!($screen instanceof WP_Screen)) {
+            return false;
+        }
+
+        return sanitize_key((string) $screen->id) === $schedule_slug;
     }
 }
 
@@ -688,19 +1082,88 @@ if (!function_exists('meza_get_segment_post_type_args')) {
             'public' => true,
             'publicly_queryable' => false,
             'show_ui' => true,
-            'show_in_menu' => $parent_slug !== '' ? $parent_slug : true,
+            'show_in_menu' => meza_should_show_conference_admin_menu() && $parent_slug !== '' ? $parent_slug : false,
             'show_in_admin_bar' => true,
             'show_in_nav_menus' => false,
             'show_in_rest' => true,
             'exclude_from_search' => true,
             'hierarchical' => false,
             'can_export' => true,
-            'menu_icon' => 'dashicons-index-card',
-            'supports' => ['title', 'editor', 'excerpt', 'thumbnail', 'custom-fields'],
+            'menu_icon' => 'dashicons-admin-post',
+            'supports' => ['title', 'thumbnail', 'custom-fields', 'excerpt', 'page-attributes'],
             'rewrite' => false,
             'has_archive' => false,
             'query_var' => true,
         ];
+    }
+}
+
+if (!function_exists('meza_get_segment_taxonomy_menu_items')) {
+    function meza_get_segment_taxonomy_menu_items(): array
+    {
+        $items = [];
+
+        foreach (meza_get_cached_object_taxonomies('segment', 'objects') as $taxonomy) {
+            if (!($taxonomy instanceof WP_Taxonomy) || empty($taxonomy->show_ui)) {
+                continue;
+            }
+
+            $taxonomy_name = sanitize_key((string) $taxonomy->name);
+            if ($taxonomy_name === '') {
+                continue;
+            }
+
+            $label = trim((string) ($taxonomy->labels->menu_name ?? $taxonomy->label ?? $taxonomy_name));
+            $label = $label !== '' ? $label : $taxonomy_name;
+            $capability = (string) ($taxonomy->cap->manage_terms ?? 'manage_categories');
+            $slug = 'edit-tags.php?taxonomy=' . $taxonomy_name . '&post_type=segment';
+
+            $items[$slug] = [
+                $label,
+                $capability,
+                $slug,
+                $label,
+            ];
+        }
+
+        return $items;
+    }
+}
+
+if (!function_exists('meza_get_segment_taxonomy_admin_menu_editor_items')) {
+    function meza_get_segment_taxonomy_admin_menu_editor_items(string $parent_slug): array
+    {
+        $items = [];
+
+        foreach (meza_get_cached_object_taxonomies('segment', 'objects') as $taxonomy) {
+            if (!($taxonomy instanceof WP_Taxonomy) || empty($taxonomy->show_ui)) {
+                continue;
+            }
+
+            $taxonomy_name = sanitize_key((string) $taxonomy->name);
+            if ($taxonomy_name === '') {
+                continue;
+            }
+
+            $label = trim((string) ($taxonomy->labels->menu_name ?? $taxonomy->label ?? $taxonomy_name));
+            $label = $label !== '' ? $label : $taxonomy_name;
+            $capability = (string) ($taxonomy->cap->manage_terms ?? 'manage_categories');
+            $slug = 'edit-tags.php?taxonomy=' . $taxonomy_name . '&post_type=segment';
+            $escaped_slug = str_replace('&', '&amp;', $slug);
+
+            $items[$slug] = [
+                'template_id' => $parent_slug . '>' . $escaped_slug,
+                'defaults' => [
+                    'menu_title' => $label,
+                    'access_level' => $capability,
+                    'file' => $escaped_slug,
+                    'url' => $slug,
+                ],
+                'f' => 'ip',
+            ];
+        }
+
+        return $items;
     }
 }
 
@@ -722,14 +1185,22 @@ if (!function_exists('meza_normalize_conference_admin_submenu')) {
             return;
         }
 
+        if (!meza_should_show_conference_admin_menu()) {
+            unset($submenu[$parent_slug]);
+            return;
+        }
+
         if (!isset($submenu[$parent_slug]) || !is_array($submenu[$parent_slug])) {
             $submenu[$parent_slug] = [];
         }
 
         $information_item = null;
+        $schedule_item = null;
         $segments_item = null;
-        $add_segment_item = null;
+        $segment_taxonomy_items = [];
         $other_items = [];
+        $expected_segment_taxonomy_items = meza_get_segment_taxonomy_menu_items();
+        $schedule_slug = meza_get_conference_schedule_admin_menu_slug();
 
         foreach ((array) $submenu[$parent_slug] as $item) {
             if (!is_array($item) || count($item) < 3) {
@@ -746,15 +1217,34 @@ if (!function_exists('meza_normalize_conference_admin_submenu')) {
                 continue;
             }
 
+            if (
+                $schedule_slug !== ''
+                && ($slug === $schedule_slug || $normalized_slug === $schedule_slug)
+            ) {
+                $item[0] = __('Schedule');
+                $item[2] = $schedule_slug;
+                if (isset($item[3])) {
+                    $item[3] = __('Schedule');
+                }
+                $schedule_item = $item;
+                continue;
+            }
+
             if ($slug === 'edit.php?post_type=segment') {
                 $item[0] = __('Segments');
+                if (isset($item[3])) {
+                    $item[3] = __('Segments');
+                }
                 $segments_item = $item;
                 continue;
             }
 
+            if (isset($expected_segment_taxonomy_items[$slug])) {
+                $segment_taxonomy_items[$slug] = $item;
+                continue;
+            }
+
             if ($slug === 'post-new.php?post_type=segment') {
-                $item[0] = __('Add Segment');
-                $add_segment_item = $item;
                 continue;
             }
 
@@ -764,9 +1254,18 @@ if (!function_exists('meza_normalize_conference_admin_submenu')) {
         if ($information_item === null) {
             $information_item = [
                 __('Information'),
-                'edit_posts',
+                'manage_options',
                 $parent_slug,
                 __('Information'),
+            ];
+        }
+
+        if ($schedule_slug !== '' && $schedule_item === null) {
+            $schedule_item = [
+                __('Schedule'),
+                'manage_options',
+                $schedule_slug,
+                __('Schedule'),
             ];
         }
 
@@ -780,20 +1279,19 @@ if (!function_exists('meza_normalize_conference_admin_submenu')) {
                 ];
             }
 
-            if ($add_segment_item === null) {
-                $add_segment_item = [
-                    __('Add Segment'),
-                    'edit_posts',
-                    'post-new.php?post_type=segment',
-                    __('Add Segment'),
-                ];
+        }
+
+        foreach ($expected_segment_taxonomy_items as $slug => $item) {
+            if (!isset($segment_taxonomy_items[$slug])) {
+                $segment_taxonomy_items[$slug] = $item;
             }
         }
 
         $submenu[$parent_slug] = array_values(array_filter([
             $information_item,
+            $schedule_item,
             $segments_item,
-            $add_segment_item,
+            ...array_values($segment_taxonomy_items),
             ...$other_items,
         ]));
     }
@@ -803,15 +1301,33 @@ add_action('admin_menu', 'meza_normalize_conference_admin_submenu', PHP_INT_MAX 
 add_action('admin_menu_editor-menu_replaced', 'meza_normalize_conference_admin_submenu', PHP_INT_MAX - 5);
 
 add_action('admin_menu', function (): void {
+    if (!meza_should_show_conference_admin_menu()) {
+        remove_menu_page(meza_get_conference_admin_menu_slug());
+    }
+
     if (post_type_exists('segment')) {
         remove_menu_page('edit.php?post_type=segment');
     }
 }, PHP_INT_MAX);
 add_action('admin_menu_editor-menu_replaced', function (): void {
+    if (!meza_should_show_conference_admin_menu()) {
+        remove_menu_page(meza_get_conference_admin_menu_slug());
+    }
+
     if (post_type_exists('segment')) {
         remove_menu_page('edit.php?post_type=segment');
     }
 }, PHP_INT_MAX);
+
+if (!function_exists('meza_finalize_conference_admin_menu')) {
+    function meza_finalize_conference_admin_menu(): void
+    {
+        meza_ensure_conference_admin_menu_exists();
+        meza_normalize_conference_admin_submenu();
+    }
+}
+add_action('admin_menu', 'meza_finalize_conference_admin_menu', PHP_INT_MAX);
+add_action('admin_menu_editor-menu_replaced', 'meza_finalize_conference_admin_menu', PHP_INT_MAX);
 
 if (!function_exists('meza_is_segment_admin_screen')) {
     function meza_is_segment_admin_screen(): bool
@@ -849,15 +1365,34 @@ add_filter('register_post_type_args', function ($args, $post_type) {
         return $args;
     }
 
-    $parent_slug = meza_get_conference_admin_menu_slug();
-    if ($parent_slug === '') {
-        return $args;
+    return array_merge($args, meza_get_segment_post_type_args());
+}, 1000, 2);
+
+add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $user): array {
+    if (!is_admin() || !meza_can_access_conference_admin_menu($user)) {
+        return $allcaps;
     }
 
-    $args['show_in_menu'] = $parent_slug;
+    if (!meza_is_conference_information_admin_page() && !meza_is_conference_schedule_admin_page()) {
+        return $allcaps;
+    }
 
-    return $args;
-}, 1000, 2);
+    $requested_cap = strtolower((string) ($args[0] ?? ''));
+    if ($requested_cap !== '') {
+        $allcaps[$requested_cap] = true;
+    }
+
+    foreach ($caps as $cap) {
+        $cap = strtolower((string) $cap);
+        if ($cap !== '') {
+            $allcaps[$cap] = true;
+        }
+    }
+
+    $allcaps['manage_options'] = true;
+
+    return $allcaps;
+}, 21, 4);
 
 // Keep the correct WooCommerce menu highlighted on coupon screens.
 add_action('admin_head', function (): void {
@@ -876,6 +1411,10 @@ add_filter('parent_file', function ($parent_file) {
         return meza_get_conference_admin_menu_slug();
     }
 
+    if (meza_is_conference_schedule_admin_page()) {
+        return meza_get_conference_admin_menu_slug();
+    }
+
     if (!meza_is_segment_admin_screen()) {
         return $parent_file;
     }
@@ -888,6 +1427,10 @@ add_filter('parent_file', function ($parent_file) {
 add_filter('submenu_file', function ($submenu_file) {
     if (meza_is_conference_information_admin_page()) {
         return meza_get_conference_admin_menu_slug();
+    }
+
+    if (meza_is_conference_schedule_admin_page()) {
+        return meza_get_conference_schedule_admin_menu_slug();
     }
 
     if (!meza_is_segment_admin_screen()) {

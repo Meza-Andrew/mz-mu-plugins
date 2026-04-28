@@ -2579,6 +2579,7 @@ add_action('admin_init', function (): void {
         && $page !== ''
         && function_exists('meza_get_shared_project_acf_options_page_slugs')
         && in_array($page, meza_get_shared_project_acf_options_page_slugs(), true)
+        && !in_array($page, ['conference', 'conference-schedule'], true)
     ) {
         wp_safe_redirect(admin_url('options-general.php?page=' . $page));
         exit;

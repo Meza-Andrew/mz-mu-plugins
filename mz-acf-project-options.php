@@ -11,12 +11,31 @@ if (defined('WP_INSTALLING') && WP_INSTALLING) {
 if (!function_exists('meza_get_business_information_type')) {
     function meza_get_business_information_type(): string
     {
+        if (
+            is_admin()
+            && isset($_POST['acf'])
+            && is_array($_POST['acf'])
+            && array_key_exists('field_meza_business_type', $_POST['acf'])
+        ) {
+            $posted_value = sanitize_key(trim((string) wp_unslash($_POST['acf']['field_meza_business_type'])));
+            if (in_array($posted_value, ['business', 'nonprofit', 'conference'], true)) {
+                return $posted_value;
+            }
+        }
+
         $option_value = get_option('options_type');
         $value = is_scalar($option_value) ? trim((string) $option_value) : '';
 
         $value = sanitize_key($value);
 
         return in_array($value, ['business', 'nonprofit', 'conference'], true) ? $value : 'business';
+    }
+}
+
+if (!function_exists('meza_is_conference_business_type')) {
+    function meza_is_conference_business_type(): bool
+    {
+        return meza_get_business_information_type() === 'conference';
     }
 }
 
@@ -344,6 +363,32 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
             ],
         ];
 
+        $pages[] = [
+            'page_title'      => 'Conference',
+            'menu_title'      => 'Conference',
+            'menu_slug'       => 'conference',
+            'parent_slug'     => 'none',
+            'capability'      => 'manage_options',
+            'redirect'        => false,
+            'icon_url'        => 'dashicons-tickets-alt',
+            'update_button'   => 'Update Conference',
+            'updated_message' => 'Conference Updated',
+            'autoload'        => false,
+        ];
+
+        $pages[] = [
+            'page_title'      => 'Schedule',
+            'menu_title'      => 'Schedule',
+            'menu_slug'       => 'conference-schedule',
+            'parent_slug'     => 'conference',
+            'capability'      => 'manage_options',
+            'position'        => 2,
+            'redirect'        => false,
+            'update_button'   => 'Update Schedule',
+            'updated_message' => 'Schedule Updated',
+            'autoload'        => false,
+        ];
+
         $pages = apply_filters('meza_shared_project_acf_options_pages', $pages);
 
         return is_array($pages) ? array_values($pages) : [];
@@ -372,6 +417,7 @@ if (!function_exists('meza_get_legacy_shared_project_acf_options_page_slug_map')
         return [
             'business-info' => 'business-information',
             'organization-info' => 'business-information',
+            'event-info' => 'conference',
         ];
     }
 }
@@ -821,6 +867,269 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         ];
     }
 
+    function meza_get_conference_information_fields(): array
+    {
+        return [
+            [
+                'key' => 'field_688f802239c77',
+                'label' => 'Date',
+                'name' => 'event_date',
+                'aria-label' => '',
+                'type' => 'date_picker',
+                'instructions' => '',
+                'required' => 1,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'display_format' => 'F j, Y',
+                'return_format' => 'F j, Y',
+                'first_day' => 1,
+                'default_to_current_date' => 0,
+                'allow_in_bindings' => 0,
+            ],
+            [
+                'key' => 'field_688f809439c78',
+                'label' => 'Start Time',
+                'name' => 'event_start_time',
+                'aria-label' => '',
+                'type' => 'time_picker',
+                'instructions' => '',
+                'required' => 1,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'display_format' => 'g:i a',
+                'return_format' => 'g:i a',
+                'allow_in_bindings' => 0,
+            ],
+            [
+                'key' => 'field_688f80fe66ecc',
+                'label' => 'End Time',
+                'name' => 'event_end_time',
+                'aria-label' => '',
+                'type' => 'time_picker',
+                'instructions' => '',
+                'required' => 1,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'display_format' => 'g:i a',
+                'return_format' => 'g:i a',
+                'allow_in_bindings' => 0,
+            ],
+            [
+                'key' => 'field_688f81259766f',
+                'label' => 'Location',
+                'name' => 'event_location',
+                'aria-label' => '',
+                'type' => 'google_map',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'center_lat' => '',
+                'center_lng' => '',
+                'zoom' => '',
+                'height' => '',
+                'allow_in_bindings' => 0,
+            ],
+        ];
+    }
+
+    function meza_get_conference_schedule_fields(): array
+    {
+        return [
+            [
+                'key' => 'field_69f04bae33353',
+                'label' => 'Segments',
+                'name' => 'event_schedule',
+                'aria-label' => '',
+                'type' => 'repeater',
+                'instructions' => '',
+                'required' => 1,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'layout' => 'row',
+                'pagination' => 0,
+                'min' => 1,
+                'max' => 0,
+                'collapsed' => 'field_69f04bfb33356',
+                'button_label' => 'Add Segment',
+                'rows_per_page' => 20,
+                'sub_fields' => [
+                    [
+                        'key' => 'field_69f04bcc33354',
+                        'label' => 'Start Time',
+                        'name' => 'start_time',
+                        'aria-label' => '',
+                        'type' => 'time_picker',
+                        'instructions' => '',
+                        'required' => 1,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'display_format' => 'g:i a',
+                        'return_format' => 'g:i a',
+                        'allow_in_bindings' => 0,
+                        'parent_repeater' => 'field_69f04bae33353',
+                    ],
+                    [
+                        'key' => 'field_69f04be833355',
+                        'label' => 'End Time',
+                        'name' => 'end_time',
+                        'aria-label' => '',
+                        'type' => 'time_picker',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'display_format' => 'g:i a',
+                        'return_format' => 'g:i a',
+                        'allow_in_bindings' => 0,
+                        'parent_repeater' => 'field_69f04bae33353',
+                    ],
+                    [
+                        'key' => 'field_69f04bfb33356',
+                        'label' => 'Segment',
+                        'name' => 'segment',
+                        'aria-label' => '',
+                        'type' => 'relationship',
+                        'instructions' => '',
+                        'required' => 1,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'post_type' => [
+                            'segment',
+                        ],
+                        'post_status' => [
+                            'publish',
+                        ],
+                        'taxonomy' => '',
+                        'filters' => [
+                            'search',
+                        ],
+                        'return_format' => 'id',
+                        'min' => 1,
+                        'max' => 1,
+                        'allow_in_bindings' => 0,
+                        'elements' => [
+                            'featured_image',
+                        ],
+                        'bidirectional' => 0,
+                        'bidirectional_target' => [],
+                        'parent_repeater' => 'field_69f04bae33353',
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    function meza_get_segment_fields(): array
+    {
+        return [
+            [
+                'key' => 'field_69f04ade6d1e4',
+                'label' => 'Speakers',
+                'name' => 'speakers',
+                'aria-label' => '',
+                'type' => 'relationship',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'post_type' => [
+                    'profile',
+                ],
+                'post_status' => [
+                    'publish',
+                ],
+                'taxonomy' => [
+                    'profile-type:speaker',
+                ],
+                'filters' => [
+                    'search',
+                ],
+                'return_format' => 'id',
+                'min' => '',
+                'max' => 1,
+                'allow_in_bindings' => 0,
+                'elements' => [
+                    'featured_image',
+                ],
+                'bidirectional' => 0,
+                'bidirectional_target' => [],
+            ],
+            [
+                'key' => 'field_69f04ade6d1e7',
+                'label' => 'Sponsors',
+                'name' => 'sponsors',
+                'aria-label' => '',
+                'type' => 'relationship',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'post_type' => [
+                    'organization',
+                ],
+                'post_status' => [
+                    'publish',
+                ],
+                'taxonomy' => [
+                    'organization-type:sponsors',
+                ],
+                'filters' => [
+                    'search',
+                ],
+                'return_format' => 'id',
+                'min' => '',
+                'max' => 3,
+                'allow_in_bindings' => 0,
+                'elements' => [
+                    'featured_image',
+                ],
+                'bidirectional' => 0,
+                'bidirectional_target' => [],
+            ],
+        ];
+    }
+
     function meza_get_shared_project_acf_field_groups(): array
     {
         $groups = [
@@ -882,6 +1191,78 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                             'param' => 'options_page',
                             'operator' => '==',
                             'value' => 'crm',
+                        ],
+                    ],
+                ],
+                'menu_order' => 0,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'top',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
+                'key' => 'group_688f8020b16f8',
+                'title' => 'Information',
+                'fields' => meza_get_conference_information_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'conference',
+                        ],
+                    ],
+                ],
+                'menu_order' => 0,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'top',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
+                'key' => 'group_69f04f931a834',
+                'title' => 'Schedule',
+                'fields' => meza_get_conference_schedule_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'conference-schedule',
+                        ],
+                    ],
+                ],
+                'menu_order' => 0,
+                'position' => 'normal',
+                'style' => 'seamless',
+                'label_placement' => 'top',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
+                'key' => 'group_69f04ade6c91c',
+                'title' => 'Segment',
+                'fields' => meza_get_segment_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'post_type',
+                            'operator' => '==',
+                            'value' => 'segment',
                         ],
                     ],
                 ],
@@ -1687,6 +2068,26 @@ add_filter('acf/ui_options_page/registration_args', function (array $args, array
         return $args;
     }
 
+    if ($menu_slug === 'conference') {
+        $args['page_title'] = 'Conference';
+        $args['menu_title'] = 'Conference';
+        $args['menu_slug'] = 'conference';
+        $args['capability'] = 'manage_options';
+        $args['parent_slug'] = 'none';
+
+        return $args;
+    }
+
+    if ($menu_slug === 'conference-schedule') {
+        $args['page_title'] = 'Schedule';
+        $args['menu_title'] = 'Schedule';
+        $args['menu_slug'] = 'conference-schedule';
+        $args['capability'] = 'manage_options';
+        $args['parent_slug'] = 'conference';
+
+        return $args;
+    }
+
     return $args;
 }, 20, 2);
 
@@ -1714,6 +2115,18 @@ add_filter('acf/get_options_page', function ($page, $slug) {
         $page['menu_title'] = 'CRM Integration';
         $page['menu_slug'] = 'crm';
         $page['capability'] = 'manage_options';
+    } elseif ($slug === 'conference') {
+        $page['page_title'] = 'Conference';
+        $page['menu_title'] = 'Conference';
+        $page['menu_slug'] = 'conference';
+        $page['capability'] = 'manage_options';
+        $page['parent_slug'] = 'none';
+    } elseif ($slug === 'conference-schedule') {
+        $page['page_title'] = 'Schedule';
+        $page['menu_title'] = 'Schedule';
+        $page['menu_slug'] = 'conference-schedule';
+        $page['capability'] = 'manage_options';
+        $page['parent_slug'] = 'conference';
     }
 
     return $page;
