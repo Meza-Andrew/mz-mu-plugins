@@ -10667,6 +10667,7 @@ function meza_apply_late_admin_menu_mutations(): void
         // Admin Menu Editor can merge newly activated preferred plugins with their raw labels,
         // so reapply the safe normalization pass after the saved custom menu replaces core's menu.
         meza_normalize_admin_plugin_menus();
+        meza_run_tail_admin_menu_mutations();
         meza_apply_missing_late_admin_menu_mutations();
         return;
     }
@@ -10710,6 +10711,7 @@ function meza_apply_missing_late_admin_menu_mutations(): void
 {
     meza_enforce_yoast_admin_menu_state();
     meza_remove_site_manager_restricted_top_level_menus();
+    meza_rebuild_content_menu_group();
     meza_enforce_seo_manager_limited_admin_menus();
     meza_enforce_restricted_top_level_utility_menus();
     meza_remove_media_performance_menu_for_site_managers();
@@ -11778,12 +11780,8 @@ function meza_restore_profile_admin_menu_items(): void
     ];
 }
 
-function meza_apply_tail_admin_menu_mutations(): void
+function meza_run_tail_admin_menu_mutations(): void
 {
-    if (meza_admin_menu_editor_has_active_custom_menu()) {
-        return;
-    }
-
     meza_move_site_health_tools_submenu_to_dashboard();
     meza_filter_dashboard_submenu_items();
     meza_streamline_tools_submenu_items();
@@ -11795,6 +11793,15 @@ function meza_apply_tail_admin_menu_mutations(): void
     meza_finalize_tools_submenu_order();
     meza_restore_locked_users_users_submenu_for_site_managers();
     meza_restore_profile_admin_menu_items();
+}
+
+function meza_apply_tail_admin_menu_mutations(): void
+{
+    if (meza_admin_menu_editor_has_active_custom_menu()) {
+        return;
+    }
+
+    meza_run_tail_admin_menu_mutations();
 }
 
 // Apply the late dashboard/tools/submenu cleanup as a single ordered pass.

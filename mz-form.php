@@ -4,7 +4,7 @@
  * Plugin Name: MZ Form (MU)
  * Description: AJAX form intake + admin/user emailer with DS-compatible defaults.
  * Author: Meza
- * Version: 1.1.6
+ * Version: 1.1.7
  */
 
 if (!defined('ABSPATH')) {
@@ -25,6 +25,7 @@ $mzf_require = static function (string $path, bool $required = true): bool {
 
 $mzf_core_ok = true;
 $mzf_core_ok = $mzf_require($mzf_base . '/slug-registry.php', true) && $mzf_core_ok;
+$mzf_core_ok = $mzf_require($mzf_base . '/acf-local.php', true) && $mzf_core_ok;
 $mzf_core_ok = $mzf_require($mzf_base . '/config.php', true) && $mzf_core_ok;
 $mzf_core_ok = $mzf_require($mzf_base . '/helpers.php', true) && $mzf_core_ok;
 $mzf_core_ok = $mzf_require($mzf_base . '/submissions-log.php', true) && $mzf_core_ok;

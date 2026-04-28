@@ -453,6 +453,10 @@ function meza_post_type_has_permalink(string $post_type): bool
 
     if ($post_type === 'post' || $post_type === 'page') return true;
 
+    if (empty($post_type_object->publicly_queryable)) {
+        return false;
+    }
+
     return !empty($post_type_object->rewrite) || !empty($post_type_object->query_var);
 }
 
