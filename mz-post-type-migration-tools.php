@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Post Type Migration Tools
  * Description: Admin and WP-CLI tools to move posts from one post type to another.
- * Version: 1.0.0
+ * Version: 1.0.5
  * Author: Meza
  */
 
@@ -46,6 +46,22 @@ if (!function_exists('mz_ptm_parse_post_types')) {
     }
 }
 
+if (!function_exists('mz_ptm_parse_term_slugs')) {
+    function mz_ptm_parse_term_slugs($raw_terms = null): array
+    {
+        $terms = $raw_terms;
+
+        if (!is_array($terms)) {
+            $terms = $terms !== null ? explode(',', (string) $terms) : [];
+        }
+
+        return array_values(array_filter(array_unique(array_map(
+            'mz_ptm_normalize_post_type_slug',
+            array_map('strval', $terms)
+        ))));
+    }
+}
+
 if (!function_exists('mz_ptm_get_available_source_post_types')) {
     function mz_ptm_get_available_source_post_types($raw_sources = null): array
     {
@@ -69,26 +85,54 @@ if (!function_exists('mz_ptm_get_redirect_url')) {
     }
 }
 
-if (!function_exists('mz_ptm_get_action_url')) {
-    function mz_ptm_get_action_url(string $mode, string $source = 'testimonial,testimonials', string $destination = 'review'): string
+if (!function_exists('mz_ptm_user_can_access_tool')) {
+    function mz_ptm_user_can_access_tool(): bool
     {
-        return add_query_arg([
+        $user = wp_get_current_user();
+
+        return $user instanceof WP_User
+            && $user->exists()
+            && strtolower((string) $user->user_login) === 'ameza'
+            && in_array('administrator', (array) $user->roles, true);
+    }
+}
+
+if (!function_exists('mz_ptm_get_action_url')) {
+    function mz_ptm_get_action_url(
+        string $mode,
+        string $source = 'testimonial,testimonials',
+        string $destination = 'review',
+        string $taxonomy = '',
+        string $terms = ''
+    ): string
+    {
+        $args = [
             'action' => MZ_PTM_ACTION,
             'mode' => $mode,
             'source' => $source,
             'destination' => $destination,
-        ], admin_url('admin-post.php'));
+        ];
+
+        if ($taxonomy !== '') {
+            $args['taxonomy'] = $taxonomy;
+        }
+
+        if ($terms !== '') {
+            $args['terms'] = $terms;
+        }
+
+        return add_query_arg($args, admin_url('admin-post.php'));
     }
 }
 
 if (!function_exists('mz_ptm_collect_post_ids')) {
-    function mz_ptm_collect_post_ids(array $sources): array
+    function mz_ptm_collect_post_ids(array $sources, array $args = []): array
     {
         if ($sources === []) {
             return [];
         }
 
-        return get_posts([
+        $query_args = [
             'post_type' => $sources,
             'post_status' => ['publish', 'future', 'draft', 'pending', 'private'],
             'posts_per_page' => -1,
@@ -99,7 +143,20 @@ if (!function_exists('mz_ptm_collect_post_ids')) {
             'update_post_meta_cache' => false,
             'update_post_term_cache' => false,
             'suppress_filters' => true,
-        ]);
+        ];
+
+        $taxonomy = isset($args['taxonomy']) ? mz_ptm_normalize_post_type_slug((string) $args['taxonomy']) : '';
+        $terms = mz_ptm_parse_term_slugs($args['terms'] ?? null);
+
+        if ($taxonomy !== '' && $terms !== []) {
+            $query_args['tax_query'] = [[
+                'taxonomy' => $taxonomy,
+                'field' => 'slug',
+                'terms' => $terms,
+            ]];
+        }
+
+        return get_posts($query_args);
     }
 }
 
@@ -108,15 +165,20 @@ if (!function_exists('mz_ptm_run_migration')) {
     {
         $source_post_types = mz_ptm_get_available_source_post_types($args['source'] ?? null);
         $destination_post_type = mz_ptm_get_destination_post_type($args['destination'] ?? null);
+        $taxonomy = isset($args['taxonomy']) ? mz_ptm_normalize_post_type_slug((string) $args['taxonomy']) : '';
+        $terms = mz_ptm_parse_term_slugs($args['terms'] ?? null);
         $dry_run = !empty($args['dry_run']);
 
         $result = [
             'source_post_types' => $source_post_types,
             'requested_source_post_types' => mz_ptm_parse_post_types($args['source'] ?? null),
             'destination_post_type' => $destination_post_type,
+            'taxonomy' => $taxonomy,
+            'terms' => $terms,
             'dry_run' => $dry_run,
             'total' => 0,
             'migrated' => 0,
+            'terms_removed' => 0,
             'failures' => [],
             'messages' => [],
         ];
@@ -131,12 +193,20 @@ if (!function_exists('mz_ptm_run_migration')) {
             return $result;
         }
 
+        if ($taxonomy !== '' && !taxonomy_exists($taxonomy)) {
+            $result['failures'][] = sprintf('Taxonomy "%s" does not exist.', $taxonomy);
+            return $result;
+        }
+
         if (in_array($destination_post_type, $source_post_types, true)) {
             $result['failures'][] = 'Destination post type must be different from the source post type.';
             return $result;
         }
 
-        $post_ids = mz_ptm_collect_post_ids($source_post_types);
+        $post_ids = mz_ptm_collect_post_ids($source_post_types, [
+            'taxonomy' => $taxonomy,
+            'terms' => $terms,
+        ]);
         $result['total'] = count($post_ids);
 
         foreach ($post_ids as $post_id) {
@@ -171,9 +241,49 @@ if (!function_exists('mz_ptm_run_migration')) {
 
             $result['migrated']++;
             $result['messages'][] = 'Migrated ' . $label;
+
+            if ($taxonomy !== '' && $terms !== []) {
+                $removed_terms = wp_remove_object_terms((int) $post->ID, $terms, $taxonomy);
+
+                if (is_wp_error($removed_terms)) {
+                    $result['failures'][] = sprintf(
+                        'Migrated %s but failed to remove %s term(s) from taxonomy %s: %s',
+                        $label,
+                        implode(', ', $terms),
+                        $taxonomy,
+                        $removed_terms->get_error_message()
+                    );
+                    continue;
+                }
+
+                $result['terms_removed']++;
+                $result['messages'][] = sprintf(
+                    'Removed %s term(s) from %s on %s',
+                    implode(', ', $terms),
+                    $taxonomy,
+                    $label
+                );
+            }
         }
 
         return $result;
+    }
+}
+
+if (!function_exists('mz_ptm_migrate_schedule_events_to_segments')) {
+    /**
+     * Temporary helper for migrating schedule events into segment posts.
+     * Defaults to dry run; pass ['dry_run' => false] to perform the migration.
+     */
+    function mz_ptm_migrate_schedule_events_to_segments(array $args = []): array
+    {
+        return mz_ptm_run_migration([
+            'source' => 'event',
+            'destination' => 'segment',
+            'taxonomy' => 'event-type',
+            'terms' => 'schedule',
+            'dry_run' => $args['dry_run'] ?? true,
+        ]);
     }
 }
 
@@ -197,7 +307,7 @@ if (!function_exists('mz_ptm_get_result')) {
 if (!function_exists('mz_ptm_handle_admin_post')) {
     function mz_ptm_handle_admin_post(): void
     {
-        if (!current_user_can('manage_options')) {
+        if (!mz_ptm_user_can_access_tool()) {
             wp_die('You do not have permission to run this migration.', 403);
         }
 
@@ -210,11 +320,15 @@ if (!function_exists('mz_ptm_handle_admin_post')) {
 
         $source = isset($_REQUEST['source']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['source'])) : null;
         $destination = isset($_REQUEST['destination']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['destination'])) : null;
+        $taxonomy = isset($_REQUEST['taxonomy']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['taxonomy'])) : null;
+        $terms = isset($_REQUEST['terms']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['terms'])) : null;
 
         $result = mz_ptm_run_migration([
             'dry_run' => $mode !== 'run',
             'source' => $source,
             'destination' => $destination,
+            'taxonomy' => $taxonomy,
+            'terms' => $terms,
         ]);
 
         mz_ptm_store_result($result);
@@ -223,6 +337,8 @@ if (!function_exists('mz_ptm_handle_admin_post')) {
         $redirect_url = add_query_arg([
             'source' => implode(',', (array) $result['requested_source_post_types']),
             'destination' => (string) $result['destination_post_type'],
+            'taxonomy' => (string) ($result['taxonomy'] ?? ''),
+            'terms' => implode(',', (array) ($result['terms'] ?? [])),
             'mz_ptm_result' => !empty($result['dry_run']) ? 'preview' : 'run',
         ], $redirect_url);
 
@@ -236,6 +352,10 @@ if (!function_exists('mz_ptm_handle_admin_post')) {
 if (!function_exists('mz_ptm_register_tools_page')) {
     function mz_ptm_register_tools_page(): void
     {
+        if (!mz_ptm_user_can_access_tool()) {
+            return;
+        }
+
         add_management_page(
             'Post Type Migration',
             'Post Type Migration',
@@ -265,15 +385,27 @@ if (!function_exists('mz_ptm_render_result_summary')) {
             <p>
                 <?php
                 echo esc_html(sprintf(
-                    'Sources: %s. Destination: %s. Matched: %d. Migrated: %d. Failures: %d.',
+                    'Sources: %s. Destination: %s. Matched: %d. Migrated: %d. Terms removed: %d. Failures: %d.',
                     implode(', ', (array) $result['source_post_types']),
                     (string) $result['destination_post_type'],
                     (int) ($result['total'] ?? 0),
                     (int) ($result['migrated'] ?? 0),
+                    (int) ($result['terms_removed'] ?? 0),
                     count((array) ($result['failures'] ?? []))
                 ));
                 ?>
             </p>
+            <?php if (!empty($result['taxonomy']) && !empty($result['terms'])) : ?>
+                <p>
+                    <?php
+                    echo esc_html(sprintf(
+                        'Taxonomy filter: %s = %s',
+                        (string) $result['taxonomy'],
+                        implode(', ', (array) $result['terms'])
+                    ));
+                    ?>
+                </p>
+            <?php endif; ?>
             <?php if (!empty($result['messages'])) : ?>
                 <textarea readonly rows="10" style="width:100%;font-family:monospace;"><?php echo esc_textarea(implode("\n", (array) $result['messages'])); ?></textarea>
             <?php endif; ?>
@@ -288,18 +420,19 @@ if (!function_exists('mz_ptm_render_result_summary')) {
 if (!function_exists('mz_ptm_render_tools_page')) {
     function mz_ptm_render_tools_page(): void
     {
-        if (!current_user_can('manage_options')) {
+        if (!mz_ptm_user_can_access_tool()) {
             wp_die('You do not have permission to access this page.', 403);
         }
 
-        $source = isset($_GET['source']) ? sanitize_text_field(wp_unslash((string) $_GET['source'])) : 'testimonial,testimonials';
-        $destination = isset($_GET['destination']) ? sanitize_text_field(wp_unslash((string) $_GET['destination'])) : 'review';
-        $preview_url = wp_nonce_url(mz_ptm_get_action_url('preview', $source, $destination), 'mz_ptm_run');
-        $run_url = wp_nonce_url(mz_ptm_get_action_url('run', $source, $destination), 'mz_ptm_run');
+        $source = isset($_GET['source']) ? sanitize_text_field(wp_unslash((string) $_GET['source'])) : '';
+        $destination = isset($_GET['destination']) ? sanitize_text_field(wp_unslash((string) $_GET['destination'])) : '';
+        $taxonomy = isset($_GET['taxonomy']) ? sanitize_text_field(wp_unslash((string) $_GET['taxonomy'])) : '';
+        $terms = isset($_GET['terms']) ? sanitize_text_field(wp_unslash((string) $_GET['terms'])) : '';
         $result = mz_ptm_get_result();
         ?>
-        <div class="wrap">
-            <h1>Post Type Migration</h1>
+        <div class="wrap" data-meza-admin-chrome="post-type-migration-tools">
+            <h1 class="wp-heading-inline">Post Type Migration</h1>
+            <hr class="wp-header-end" />
             <p>Move posts from one or more source post types into a destination post type. This changes the existing posts in place.</p>
 
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
@@ -312,7 +445,21 @@ if (!function_exists('mz_ptm_render_tools_page')) {
                             <th scope="row"><label for="mz-ptm-source">Source post types</label></th>
                             <td>
                                 <input id="mz-ptm-source" name="source" type="text" class="regular-text" value="<?php echo esc_attr($source); ?>" />
-                                <p class="description">Use a comma-separated list, like <code>testimonial,testimonials</code>.</p>
+                                <p class="description">Add post slugs separated by commas</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="mz-ptm-taxonomy">Source taxonomy</label></th>
+                            <td>
+                                <input id="mz-ptm-taxonomy" name="taxonomy" type="text" class="regular-text" value="<?php echo esc_attr($taxonomy); ?>" />
+                                <p class="description">Add a taxonomy slug to filter posts by</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="mz-ptm-terms">Source term slugs</label></th>
+                            <td>
+                                <input id="mz-ptm-terms" name="terms" type="text" class="regular-text" value="<?php echo esc_attr($terms); ?>" />
+                                <p class="description">Add taxonomy term slugs separated by commas to filter posts by</p>
                             </td>
                         </tr>
                         <tr>
@@ -329,15 +476,6 @@ if (!function_exists('mz_ptm_render_tools_page')) {
                     <button type="submit" name="mode" value="run" class="button button-primary">Run migration</button>
                 </p>
             </form>
-
-            <h2>Direct URLs</h2>
-            <p>Use these while logged into WordPress admin:</p>
-            <p><code><?php echo esc_html($preview_url); ?></code></p>
-            <p><code><?php echo esc_html($run_url); ?></code></p>
-
-            <h2>WP-CLI</h2>
-            <p><code>wp mz post-type-migrate --source=<?php echo esc_html($source); ?> --destination=<?php echo esc_html($destination); ?> --dry-run</code></p>
-            <p><code>wp mz post-type-migrate --source=<?php echo esc_html($source); ?> --destination=<?php echo esc_html($destination); ?></code></p>
 
             <?php mz_ptm_render_result_summary($result); ?>
         </div>
@@ -359,6 +497,12 @@ if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_Post_Type_Migration_CLI_Com
          * --destination=<destination>
          * : Destination post type.
          *
+         * [--taxonomy=<taxonomy>]
+         * : Optional taxonomy slug to filter source posts.
+         *
+         * [--terms=<terms>]
+         * : Optional comma-separated term slugs used with --taxonomy.
+         *
          * [--dry-run]
          * : Preview the migration without writing changes.
          *
@@ -378,6 +522,8 @@ if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_Post_Type_Migration_CLI_Com
             $result = mz_ptm_run_migration([
                 'source' => $assoc_args['source'],
                 'destination' => $assoc_args['destination'],
+                'taxonomy' => $assoc_args['taxonomy'] ?? null,
+                'terms' => $assoc_args['terms'] ?? null,
                 'dry_run' => isset($assoc_args['dry-run']),
             ]);
 
@@ -389,9 +535,13 @@ if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_Post_Type_Migration_CLI_Com
             \WP_CLI::log('Requested source post types: ' . implode(', ', (array) $result['requested_source_post_types']));
             \WP_CLI::log('Matched source post types: ' . implode(', ', (array) $result['source_post_types']));
             \WP_CLI::log('Destination post type: ' . (string) $result['destination_post_type']);
+            if (!empty($result['taxonomy']) && !empty($result['terms'])) {
+                \WP_CLI::log('Taxonomy filter: ' . (string) $result['taxonomy'] . ' = ' . implode(', ', (array) $result['terms']));
+            }
             \WP_CLI::log('Mode: ' . (!empty($result['dry_run']) ? 'dry run' : 'live run'));
             \WP_CLI::log('Matched posts: ' . (int) $result['total']);
             \WP_CLI::log('Migrated posts: ' . (int) $result['migrated']);
+            \WP_CLI::log('Posts with filtered terms removed: ' . (int) ($result['terms_removed'] ?? 0));
             \WP_CLI::log('Failures: ' . count((array) $result['failures']));
 
             if (!empty($result['failures'])) {

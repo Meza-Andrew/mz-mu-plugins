@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.534
+ * Version: 1.1.537
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -593,6 +593,272 @@ add_filter('woocommerce_register_post_type_shop_coupon', function ($args) {
     return $args;
 }, 1000);
 
+if (!function_exists('meza_get_conference_admin_menu_slug')) {
+    function meza_get_conference_admin_menu_slug(): string
+    {
+        return sanitize_key((string) apply_filters('meza_conference_admin_menu_slug', 'conference'));
+    }
+}
+
+if (!function_exists('meza_get_conference_admin_menu_slug_aliases')) {
+    function meza_get_conference_admin_menu_slug_aliases(): array
+    {
+        $aliases = [
+            meza_get_conference_admin_menu_slug(),
+            'conference',
+            'event-info',
+        ];
+
+        return array_values(array_unique(array_filter(array_map(static function ($value): string {
+            return sanitize_key((string) $value);
+        }, $aliases))));
+    }
+}
+
+if (!function_exists('meza_is_conference_information_admin_page')) {
+    function meza_is_conference_information_admin_page(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        if ($page !== '' && in_array($page, meza_get_conference_admin_menu_slug_aliases(), true)) {
+            return true;
+        }
+
+        if (!function_exists('get_current_screen')) {
+            return false;
+        }
+
+        $screen = get_current_screen();
+        if (!($screen instanceof WP_Screen)) {
+            return false;
+        }
+
+        $screen_id = sanitize_key((string) $screen->id);
+        return $screen_id !== '' && in_array($screen_id, meza_get_conference_admin_menu_slug_aliases(), true);
+    }
+}
+
+if (!function_exists('meza_get_segment_post_type_labels')) {
+    function meza_get_segment_post_type_labels(): array
+    {
+        return [
+            'name' => __('Segments'),
+            'singular_name' => __('Segment'),
+            'menu_name' => __('Segments'),
+            'all_items' => __('All Segments'),
+            'edit_item' => __('Edit Segment'),
+            'view_item' => __('View Segment'),
+            'view_items' => __('View Segments'),
+            'add_new_item' => __('Add New Segment'),
+            'add_new' => __('Add New Segment'),
+            'new_item' => __('New Segment'),
+            'search_items' => __('Search Segments'),
+            'not_found' => __('No segments found'),
+            'not_found_in_trash' => __('No segments found in Trash'),
+            'archives' => __('Segment Archives'),
+            'attributes' => __('Segment Attributes'),
+            'insert_into_item' => __('Insert into segment'),
+            'uploaded_to_this_item' => __('Uploaded to this segment'),
+            'filter_items_list' => __('Filter segments list'),
+            'filter_by_date' => __('Filter segments by date'),
+            'items_list_navigation' => __('Segments list navigation'),
+            'items_list' => __('Segments list'),
+            'item_published' => __('Segment published.'),
+            'item_published_privately' => __('Segment published privately.'),
+            'item_reverted_to_draft' => __('Segment reverted to draft.'),
+            'item_scheduled' => __('Segment scheduled.'),
+            'item_updated' => __('Segment updated.'),
+            'item_link' => __('Segment Link'),
+            'item_link_description' => __('A link to a segment.'),
+        ];
+    }
+}
+
+if (!function_exists('meza_get_segment_post_type_args')) {
+    function meza_get_segment_post_type_args(): array
+    {
+        $parent_slug = meza_get_conference_admin_menu_slug();
+
+        return [
+            'labels' => meza_get_segment_post_type_labels(),
+            'description' => '',
+            'public' => true,
+            'publicly_queryable' => false,
+            'show_ui' => true,
+            'show_in_menu' => $parent_slug !== '' ? $parent_slug : true,
+            'show_in_admin_bar' => true,
+            'show_in_nav_menus' => false,
+            'show_in_rest' => true,
+            'exclude_from_search' => true,
+            'hierarchical' => false,
+            'can_export' => true,
+            'menu_icon' => 'dashicons-index-card',
+            'supports' => ['title', 'editor', 'excerpt', 'thumbnail', 'custom-fields'],
+            'rewrite' => false,
+            'has_archive' => false,
+            'query_var' => true,
+        ];
+    }
+}
+
+add_action('init', function (): void {
+    if (post_type_exists('segment')) {
+        return;
+    }
+
+    register_post_type('segment', meza_get_segment_post_type_args());
+}, 1000);
+
+if (!function_exists('meza_normalize_conference_admin_submenu')) {
+    function meza_normalize_conference_admin_submenu(): void
+    {
+        global $submenu;
+
+        $parent_slug = meza_get_conference_admin_menu_slug();
+        if ($parent_slug === '') {
+            return;
+        }
+
+        if (!isset($submenu[$parent_slug]) || !is_array($submenu[$parent_slug])) {
+            $submenu[$parent_slug] = [];
+        }
+
+        $information_item = null;
+        $segments_item = null;
+        $add_segment_item = null;
+        $other_items = [];
+
+        foreach ((array) $submenu[$parent_slug] as $item) {
+            if (!is_array($item) || count($item) < 3) {
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            $normalized_slug = sanitize_key((string) preg_replace('/^admin\.php\?page=/', '', $slug));
+
+            if ($information_item === null && in_array($normalized_slug, meza_get_conference_admin_menu_slug_aliases(), true)) {
+                $item[0] = __('Information');
+                $item[2] = $parent_slug;
+                $information_item = $item;
+                continue;
+            }
+
+            if ($slug === 'edit.php?post_type=segment') {
+                $item[0] = __('Segments');
+                $segments_item = $item;
+                continue;
+            }
+
+            if ($slug === 'post-new.php?post_type=segment') {
+                $item[0] = __('Add Segment');
+                $add_segment_item = $item;
+                continue;
+            }
+
+            $other_items[] = $item;
+        }
+
+        if ($information_item === null) {
+            $information_item = [
+                __('Information'),
+                'edit_posts',
+                $parent_slug,
+                __('Information'),
+            ];
+        }
+
+        if (post_type_exists('segment')) {
+            if ($segments_item === null) {
+                $segments_item = [
+                    __('Segments'),
+                    'edit_posts',
+                    'edit.php?post_type=segment',
+                    __('Segments'),
+                ];
+            }
+
+            if ($add_segment_item === null) {
+                $add_segment_item = [
+                    __('Add Segment'),
+                    'edit_posts',
+                    'post-new.php?post_type=segment',
+                    __('Add Segment'),
+                ];
+            }
+        }
+
+        $submenu[$parent_slug] = array_values(array_filter([
+            $information_item,
+            $segments_item,
+            $add_segment_item,
+            ...$other_items,
+        ]));
+    }
+}
+
+add_action('admin_menu', 'meza_normalize_conference_admin_submenu', PHP_INT_MAX - 5);
+add_action('admin_menu_editor-menu_replaced', 'meza_normalize_conference_admin_submenu', PHP_INT_MAX - 5);
+
+add_action('admin_menu', function (): void {
+    if (post_type_exists('segment')) {
+        remove_menu_page('edit.php?post_type=segment');
+    }
+}, PHP_INT_MAX);
+add_action('admin_menu_editor-menu_replaced', function (): void {
+    if (post_type_exists('segment')) {
+        remove_menu_page('edit.php?post_type=segment');
+    }
+}, PHP_INT_MAX);
+
+if (!function_exists('meza_is_segment_admin_screen')) {
+    function meza_is_segment_admin_screen(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        $post_type = isset($_GET['post_type']) ? sanitize_key((string) wp_unslash($_GET['post_type'])) : '';
+        if ($post_type === '') {
+            $post_type = isset($_POST['post_type']) ? sanitize_key((string) wp_unslash($_POST['post_type'])) : '';
+        }
+
+        if ($post_type === '' && isset($_GET['post'])) {
+            $post_id = (int) $_GET['post'];
+            if ($post_id > 0) {
+                $post_type = (string) get_post_type($post_id);
+            }
+        }
+
+        if ($post_type === '' && function_exists('get_current_screen')) {
+            $screen = get_current_screen();
+            if ($screen instanceof WP_Screen) {
+                $post_type = (string) ($screen->post_type ?? '');
+            }
+        }
+
+        return $post_type === 'segment';
+    }
+}
+
+// Keep Segments nested under the Conference options page on every environment.
+add_filter('register_post_type_args', function ($args, $post_type) {
+    if ($post_type !== 'segment' || !is_array($args)) {
+        return $args;
+    }
+
+    $parent_slug = meza_get_conference_admin_menu_slug();
+    if ($parent_slug === '') {
+        return $args;
+    }
+
+    $args['show_in_menu'] = $parent_slug;
+
+    return $args;
+}, 1000, 2);
+
 // Keep the correct WooCommerce menu highlighted on coupon screens.
 add_action('admin_head', function (): void {
     global $parent_file, $submenu_file, $post_type;
@@ -603,6 +869,32 @@ add_action('admin_head', function (): void {
 
     $parent_file = 'woocommerce';
     $submenu_file = 'edit.php?post_type=shop_coupon';
+}, 1000);
+
+add_filter('parent_file', function ($parent_file) {
+    if (meza_is_conference_information_admin_page()) {
+        return meza_get_conference_admin_menu_slug();
+    }
+
+    if (!meza_is_segment_admin_screen()) {
+        return $parent_file;
+    }
+
+    $conference_slug = meza_get_conference_admin_menu_slug();
+
+    return $conference_slug !== '' ? $conference_slug : $parent_file;
+}, 1000);
+
+add_filter('submenu_file', function ($submenu_file) {
+    if (meza_is_conference_information_admin_page()) {
+        return meza_get_conference_admin_menu_slug();
+    }
+
+    if (!meza_is_segment_admin_screen()) {
+        return $submenu_file;
+    }
+
+    return 'edit.php?post_type=segment';
 }, 1000);
 
 if (!function_exists('meza_customer_sign_generator_capability')) {

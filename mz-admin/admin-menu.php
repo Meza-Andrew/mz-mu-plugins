@@ -1252,6 +1252,10 @@ function meza_is_native_plugin_admin_shell_page(): bool
         return false;
     }
 
+    if (str_starts_with($page, 'mz-') || str_starts_with($page, 'meza-')) {
+        return true;
+    }
+
     if (in_array($page, [
         'webpc_optimization_page',
         'webpc_admin_page',
@@ -1269,6 +1273,86 @@ function meza_is_native_plugin_admin_shell_page(): bool
 
     return false;
 }
+
+if (!function_exists('meza_is_meza_custom_admin_page')) {
+    function meza_is_meza_custom_admin_page(?WP_Screen $screen = null): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        if (str_starts_with($page, 'mz-') || str_starts_with($page, 'meza-')) {
+            return true;
+        }
+
+        if (!($screen instanceof WP_Screen) && function_exists('get_current_screen')) {
+            $screen = get_current_screen();
+        }
+
+        if (!($screen instanceof WP_Screen)) {
+            return false;
+        }
+
+        $screen_values = array_map('strtolower', array_filter([
+            (string) ($screen->id ?? ''),
+            (string) ($screen->base ?? ''),
+            (string) ($screen->parent_base ?? ''),
+            (string) ($screen->parent_file ?? ''),
+        ]));
+
+        foreach ($screen_values as $value) {
+            if (str_contains($value, '_page_mz-') || str_contains($value, '_page_meza-')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_ensure_core_admin_assets_registered')) {
+    function meza_ensure_core_admin_assets_registered(): void
+    {
+        if (!function_exists('wp_scripts') || !function_exists('wp_default_scripts')) {
+            require_once ABSPATH . WPINC . '/script-loader.php';
+        }
+
+        if (!function_exists('wp_styles') || !function_exists('wp_default_styles')) {
+            require_once ABSPATH . WPINC . '/script-loader.php';
+        }
+
+        $wp_scripts = wp_scripts();
+        if ($wp_scripts instanceof WP_Scripts && !isset($wp_scripts->registered['jquery'])) {
+            wp_default_scripts($wp_scripts);
+        }
+
+        $wp_styles = wp_styles();
+        if ($wp_styles instanceof WP_Styles && !isset($wp_styles->registered['common'])) {
+            wp_default_styles($wp_styles);
+        }
+    }
+}
+
+add_action('admin_enqueue_scripts', function (): void {
+    if (!meza_is_meza_custom_admin_page()) {
+        return;
+    }
+
+    meza_ensure_core_admin_assets_registered();
+
+    foreach (['dashicons', 'common', 'forms', 'admin-menu', 'list-tables', 'edit', 'buttons'] as $style_handle) {
+        if (wp_style_is($style_handle, 'registered')) {
+            wp_enqueue_style($style_handle);
+        }
+    }
+
+    foreach (['jquery', 'jquery-core', 'jquery-migrate', 'common', 'wp-hooks', 'wp-dom-ready', 'wp-a11y', 'wp-i18n', 'heartbeat', 'wp-auth-check', 'wp-lists', 'postbox'] as $script_handle) {
+        if (wp_script_is($script_handle, 'registered')) {
+            wp_enqueue_script($script_handle);
+        }
+    }
+}, 1);
 
 function meza_is_admin_only_media_performance_item(string $parent_slug, array $item): bool
 {
@@ -10244,9 +10328,44 @@ function meza_enforce_restricted_top_level_utility_menus(): void
     }
 }
 
-// Preserve the rebuilt top-level menu order after WooCommerce's menu_order filter runs.
+if (!function_exists('meza_admin_menu_editor_has_active_custom_menu')) {
+    function meza_admin_menu_editor_has_active_custom_menu(): bool
+    {
+        if (!meza_is_plugin_basename_active('admin-menu-editor/menu-editor.php')) {
+            return false;
+        }
+
+        $menu_editor_settings = get_option('ws_menu_editor');
+        if (!is_array($menu_editor_settings)) {
+            return false;
+        }
+
+        $custom_menu = $menu_editor_settings['custom_menu'] ?? null;
+        if (!is_array($custom_menu)) {
+            return false;
+        }
+
+        $tree = $custom_menu['tree'] ?? null;
+
+        return is_array($tree) && $tree !== [];
+    }
+}
+
+if (!function_exists('meza_is_building_admin_menu_editor_default_snapshot')) {
+    function meza_is_building_admin_menu_editor_default_snapshot(): bool
+    {
+        return !empty($GLOBALS['meza_admin_menu_editor_building_default_snapshot']);
+    }
+}
+
+// Preserve the rebuilt top-level menu order after WooCommerce's menu_order filter runs,
+// unless Admin Menu Editor already owns the saved admin menu structure.
 add_filter('custom_menu_order', '__return_true', PHP_INT_MAX);
 add_filter('menu_order', function ($menu_order) {
+    if (meza_admin_menu_editor_has_active_custom_menu()) {
+        return $menu_order;
+    }
+
     global $menu;
 
     if (!is_array($menu) || empty($menu)) {
@@ -10524,6 +10643,10 @@ add_action('admin_head-profile.php', function (): void {
 
 function meza_apply_late_admin_menu_mutations(): void
 {
+    if (meza_admin_menu_editor_has_active_custom_menu() && !meza_is_building_admin_menu_editor_default_snapshot()) {
+        return;
+    }
+
     meza_restore_site_kit_admin_menu();
     meza_normalize_admin_plugin_menus();
     meza_enforce_yoast_admin_menu_state();
@@ -10655,7 +10778,13 @@ function meza_build_admin_menu_editor_default_snapshot(array $default_menu, arra
     $menu = $default_menu;
     $submenu = $default_submenu;
     meza_set_collapsed_settings_menu_map([]);
-    meza_apply_late_admin_menu_mutations();
+    $GLOBALS['meza_admin_menu_editor_building_default_snapshot'] = true;
+
+    try {
+        meza_apply_late_admin_menu_mutations();
+    } finally {
+        unset($GLOBALS['meza_admin_menu_editor_building_default_snapshot']);
+    }
 
     $snapshot = [
         'menu' => is_array($menu) ? array_values($menu) : [],
@@ -11627,6 +11756,10 @@ function meza_restore_profile_admin_menu_items(): void
 
 function meza_apply_tail_admin_menu_mutations(): void
 {
+    if (meza_admin_menu_editor_has_active_custom_menu()) {
+        return;
+    }
+
     meza_move_site_health_tools_submenu_to_dashboard();
     meza_filter_dashboard_submenu_items();
     meza_streamline_tools_submenu_items();
