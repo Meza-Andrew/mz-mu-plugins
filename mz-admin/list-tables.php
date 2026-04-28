@@ -2970,6 +2970,56 @@ function meza_repair_taxonomy_acp_database_rows(): void
 
 add_action('admin_init', 'meza_repair_taxonomy_acp_database_rows', 1005);
 
+function meza_admin_columns_table_has_status_column(): bool
+{
+    global $wpdb;
+
+    if (!($wpdb instanceof wpdb)) {
+        return false;
+    }
+
+    $table = $wpdb->prefix . 'admin_columns';
+    $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+    if ($table_exists !== $table) {
+        return false;
+    }
+
+    $column = $wpdb->get_var($wpdb->prepare("SHOW COLUMNS FROM {$table} LIKE %s", 'status'));
+
+    return $column === 'status';
+}
+
+function meza_repair_admin_columns_status_column(): void
+{
+    global $wpdb;
+
+    if (!($wpdb instanceof wpdb)) {
+        return;
+    }
+
+    $target_version = '1.1.268';
+    if ((string) get_option('meza_admin_columns_status_column_migration') === $target_version) {
+        return;
+    }
+
+    $table = $wpdb->prefix . 'admin_columns';
+    $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+    if ($table_exists !== $table) {
+        return;
+    }
+
+    if (!meza_admin_columns_table_has_status_column()) {
+        $result = $wpdb->query("ALTER TABLE {$table} ADD COLUMN status varchar(20) NOT NULL default '' AFTER date_modified");
+        if ($result === false && !meza_admin_columns_table_has_status_column()) {
+            return;
+        }
+    }
+
+    update_option('meza_admin_columns_status_column_migration', $target_version, false);
+}
+
+add_action('admin_init', 'meza_repair_admin_columns_status_column', 995);
+
 function meza_run_acp_default_admin_column_order_migration(): void
 {
     if (!class_exists('AC\\Registry') || !class_exists('AC\\ListScreenRepository\\Storage')) {
@@ -2978,6 +3028,10 @@ function meza_run_acp_default_admin_column_order_migration(): void
 
     $target_version = '1.1.267';
     if ((string) get_option('meza_acp_default_admin_column_order_migration') === $target_version) {
+        return;
+    }
+
+    if (!meza_admin_columns_table_has_status_column()) {
         return;
     }
 
@@ -5794,6 +5848,9 @@ function meza_normalize_datetime_columns(array $columns): array
     }
     $supports_thumbnail = ($post_type !== '' && post_type_supports($post_type, 'thumbnail'));
     $show_menu_order_column = meza_post_type_supports_menu_order_admin_column($post_type);
+    $show_review_link_column = false;
+    $show_faq_count_column = false;
+    $show_review_columns = false;
     $show_page_columns = !meza_is_acf_admin_post_type($post_type) && meza_post_type_has_permalink($post_type);
     $show_cta_link_column = ($post_type === 'cta');
     $show_cta_secondary_link_column = ($post_type === 'cta');
