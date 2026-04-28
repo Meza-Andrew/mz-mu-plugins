@@ -7148,6 +7148,17 @@ function meza_render_posts_list_column(string $column, int $post_id): void
                 $acf_citer = get_field($field_name, (int) $post_id);
                 if (is_string($acf_citer)) {
                     $citer = trim(wp_strip_all_tags($acf_citer));
+                } elseif ($acf_citer instanceof WP_Post) {
+                    $citer = trim(wp_strip_all_tags((string) get_the_title($acf_citer)));
+                } elseif (is_numeric($acf_citer)) {
+                    $citer = trim(wp_strip_all_tags((string) get_the_title((int) $acf_citer)));
+                } elseif (is_array($acf_citer)) {
+                    $acf_citer = reset($acf_citer);
+                    if ($acf_citer instanceof WP_Post) {
+                        $citer = trim(wp_strip_all_tags((string) get_the_title($acf_citer)));
+                    } elseif (is_numeric($acf_citer)) {
+                        $citer = trim(wp_strip_all_tags((string) get_the_title((int) $acf_citer)));
+                    }
                 }
 
                 if ($citer !== '') {

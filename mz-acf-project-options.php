@@ -72,6 +72,131 @@ if (!function_exists('meza_shared_project_acf_options_are_available')) {
     }
 }
 
+if (!function_exists('meza_normalize_acf_field_group_location')) {
+    function meza_normalize_acf_field_group_location(array $location): array
+    {
+        $normalized = [];
+
+        foreach ($location as $group) {
+            if (!is_array($group)) {
+                continue;
+            }
+
+            $rules = [];
+            foreach ($group as $rule) {
+                if (!is_array($rule)) {
+                    continue;
+                }
+
+                $rules[] = [
+                    'param' => (string) ($rule['param'] ?? ''),
+                    'operator' => (string) ($rule['operator'] ?? ''),
+                    'value' => (string) ($rule['value'] ?? ''),
+                ];
+            }
+
+            usort($rules, static function (array $a, array $b): int {
+                return strcmp(wp_json_encode($a), wp_json_encode($b));
+            });
+
+            if (!empty($rules)) {
+                $normalized[] = $rules;
+            }
+        }
+
+        usort($normalized, static function (array $a, array $b): int {
+            return strcmp(wp_json_encode($a), wp_json_encode($b));
+        });
+
+        return $normalized;
+    }
+}
+
+if (!function_exists('meza_get_acf_field_group_merge_signature')) {
+    function meza_get_acf_field_group_merge_signature(array $field_group): string
+    {
+        $title = trim((string) ($field_group['title'] ?? ''));
+        $location = meza_normalize_acf_field_group_location((array) ($field_group['location'] ?? []));
+
+        if ($title === '' || empty($location)) {
+            return '';
+        }
+
+        return md5(wp_json_encode([
+            'title' => $title,
+            'location' => $location,
+        ]));
+    }
+}
+
+if (!function_exists('meza_is_hardcoded_acf_field_group')) {
+    function meza_is_hardcoded_acf_field_group(array $field_group): bool
+    {
+        $local = (string) ($field_group['local'] ?? '');
+        return $local === 'php';
+    }
+}
+
+if (!function_exists('meza_should_merge_acf_field_groups_for_current_screen')) {
+    function meza_should_merge_acf_field_groups_for_current_screen(): bool
+    {
+        if (!is_admin() || !function_exists('get_current_screen')) {
+            return false;
+        }
+
+        $screen = get_current_screen();
+        if (!$screen) {
+            return false;
+        }
+
+        $acf_admin_post_types = [
+            'acf-field-group',
+            'acf-post-type',
+            'acf-taxonomy',
+            'acf-ui-options-page',
+        ];
+
+        return !in_array((string) ($screen->post_type ?? ''), $acf_admin_post_types, true);
+    }
+}
+
+if (!function_exists('meza_get_mergeable_db_acf_field_groups_for_local_group')) {
+    function meza_get_mergeable_db_acf_field_groups_for_local_group(array $local_group): array
+    {
+        static $groups_by_signature = null;
+
+        $signature = meza_get_acf_field_group_merge_signature($local_group);
+        if ($signature === '') {
+            return [];
+        }
+
+        if ($groups_by_signature === null) {
+            $groups_by_signature = [];
+
+            if (function_exists('acf_get_raw_field_groups')) {
+                foreach ((array) acf_get_raw_field_groups() as $raw_group) {
+                    if (!is_array($raw_group)) {
+                        continue;
+                    }
+
+                    $raw_signature = meza_get_acf_field_group_merge_signature($raw_group);
+                    if ($raw_signature === '') {
+                        continue;
+                    }
+
+                    $groups_by_signature[$raw_signature][] = $raw_group;
+                }
+            }
+        }
+
+        $matches = $groups_by_signature[$signature] ?? [];
+
+        return array_values(array_filter($matches, static function (array $group) use ($local_group): bool {
+            return (string) ($group['key'] ?? '') !== (string) ($local_group['key'] ?? '');
+        }));
+    }
+}
+
 if (!function_exists('meza_get_theme_thumbnail_id')) {
     function meza_get_theme_thumbnail_id(): int
     {
@@ -1130,6 +1255,2111 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         ];
     }
 
+    function meza_get_cta_post_type_definition(): array
+    {
+        return [
+            'key' => 'post_type_697fe24b7fe3f',
+            'title' => 'CTAs',
+            'menu_order' => 0,
+            'active' => true,
+            'post_type' => 'cta',
+            'advanced_configuration' => true,
+            'import_source' => '',
+            'import_date' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+            'labels' => [
+                'name' => 'CTAs',
+                'singular_name' => 'CTA',
+                'menu_name' => 'CTAs',
+                'all_items' => 'All CTAs',
+                'edit_item' => 'Edit CTA',
+                'view_item' => 'View CTA',
+                'view_items' => 'View CTAs',
+                'add_new_item' => 'Add New CTA',
+                'add_new' => 'Add New CTA',
+                'new_item' => 'New CTA',
+                'parent_item_colon' => 'Parent CTA:',
+                'search_items' => 'Search CTAs',
+                'not_found' => 'No ctas found',
+                'not_found_in_trash' => 'No ctas found in Trash',
+                'archives' => 'CTA Archives',
+                'attributes' => 'CTA Attributes',
+                'featured_image' => '',
+                'set_featured_image' => '',
+                'remove_featured_image' => '',
+                'use_featured_image' => '',
+                'insert_into_item' => 'Insert into cta',
+                'uploaded_to_this_item' => 'Uploaded to this cta',
+                'filter_items_list' => 'Filter ctas list',
+                'filter_by_date' => 'Filter ctas by date',
+                'items_list_navigation' => 'CTAs list navigation',
+                'items_list' => 'CTAs list',
+                'item_published' => 'CTA published.',
+                'item_published_privately' => 'CTA published privately.',
+                'item_reverted_to_draft' => 'CTA reverted to draft.',
+                'item_scheduled' => 'CTA scheduled.',
+                'item_updated' => 'CTA updated.',
+                'item_link' => 'CTA Link',
+                'item_link_description' => 'A link to a cta.',
+            ],
+            'description' => '',
+            'public' => true,
+            'hierarchical' => false,
+            'exclude_from_search' => true,
+            'publicly_queryable' => false,
+            'show_ui' => true,
+            'show_in_menu' => true,
+            'admin_menu_parent' => '',
+            'show_in_admin_bar' => true,
+            'show_in_nav_menus' => false,
+            'show_in_rest' => true,
+            'rest_base' => '',
+            'rest_namespace' => 'wp/v2',
+            'rest_controller_class' => 'WP_REST_Posts_Controller',
+            'menu_position' => '',
+            'menu_icon' => [
+                'type' => 'dashicons',
+                'value' => 'dashicons-share-alt2',
+            ],
+            'rename_capabilities' => false,
+            'singular_capability_name' => 'post',
+            'plural_capability_name' => 'posts',
+            'supports' => [
+                'title',
+                'excerpt',
+                'custom-fields',
+            ],
+            'taxonomies' => '',
+            'has_archive' => false,
+            'has_archive_slug' => '',
+            'rewrite' => [
+                'permalink_rewrite' => 'no_permalink',
+            ],
+            'query_var' => 'post_type_key',
+            'query_var_name' => '',
+            'can_export' => true,
+            'delete_with_user' => false,
+            'register_meta_box_cb' => '',
+            'enter_title_here' => '',
+        ];
+    }
+
+    function meza_get_profile_post_type_definition(): array
+    {
+        return [
+            'key' => 'post_type_690298bf64b17',
+            'title' => 'Profiles',
+            'menu_order' => 0,
+            'active' => true,
+            'post_type' => 'profile',
+            'advanced_configuration' => true,
+            'import_source' => '',
+            'import_date' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+            'labels' => [
+                'name' => 'Profiles',
+                'singular_name' => 'Profile',
+                'menu_name' => 'Profiles',
+                'all_items' => 'All Profiles',
+                'edit_item' => 'Edit Profile',
+                'view_item' => 'View Profile',
+                'view_items' => 'View Profiles',
+                'add_new_item' => 'Add New Profile',
+                'add_new' => 'Add New Profile',
+                'new_item' => 'New Profile',
+                'parent_item_colon' => 'Parent Profile:',
+                'search_items' => 'Search Profiles',
+                'not_found' => 'No profiles found',
+                'not_found_in_trash' => 'No profiles found in Trash',
+                'archives' => 'Profile Archives',
+                'attributes' => 'Profile Attributes',
+                'featured_image' => '',
+                'set_featured_image' => '',
+                'remove_featured_image' => '',
+                'use_featured_image' => '',
+                'insert_into_item' => 'Insert into profile',
+                'uploaded_to_this_item' => 'Uploaded to this profile',
+                'filter_items_list' => 'Filter profiles list',
+                'filter_by_date' => 'Filter profiles by date',
+                'items_list_navigation' => 'Profiles list navigation',
+                'items_list' => 'Profiles list',
+                'item_published' => 'Profile published.',
+                'item_published_privately' => 'Profile published privately.',
+                'item_reverted_to_draft' => 'Profile reverted to draft.',
+                'item_scheduled' => 'Profile scheduled.',
+                'item_updated' => 'Profile updated.',
+                'item_link' => 'Profile Link',
+                'item_link_description' => 'A link to a profile.',
+            ],
+            'description' => '',
+            'public' => true,
+            'hierarchical' => false,
+            'exclude_from_search' => true,
+            'publicly_queryable' => false,
+            'show_ui' => true,
+            'show_in_menu' => true,
+            'admin_menu_parent' => '',
+            'show_in_admin_bar' => true,
+            'show_in_nav_menus' => false,
+            'show_in_rest' => true,
+            'rest_base' => '',
+            'rest_namespace' => 'wp/v2',
+            'rest_controller_class' => 'WP_REST_Posts_Controller',
+            'menu_position' => '',
+            'menu_icon' => [
+                'type' => 'dashicons',
+                'value' => 'dashicons-businesswoman',
+            ],
+            'rename_capabilities' => false,
+            'singular_capability_name' => 'post',
+            'plural_capability_name' => 'posts',
+            'supports' => [
+                'title',
+                'editor',
+                'excerpt',
+                'page-attributes',
+                'thumbnail',
+                'custom-fields',
+            ],
+            'taxonomies' => '',
+            'has_archive' => false,
+            'has_archive_slug' => '',
+            'rewrite' => [
+                'permalink_rewrite' => 'no_permalink',
+            ],
+            'query_var' => 'post_type_key',
+            'query_var_name' => '',
+            'can_export' => true,
+            'delete_with_user' => false,
+            'register_meta_box_cb' => '',
+            'enter_title_here' => '',
+        ];
+    }
+
+    function meza_get_organization_post_type_definition(): array
+    {
+        return [
+            'key' => 'post_type_69b07be51f9fd',
+            'title' => 'Organizations',
+            'menu_order' => 0,
+            'active' => true,
+            'post_type' => 'organization',
+            'advanced_configuration' => true,
+            'import_source' => '',
+            'import_date' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+            'labels' => [
+                'name' => 'Organizations',
+                'singular_name' => 'Organization',
+                'menu_name' => 'Organizations',
+                'all_items' => 'All Organizations',
+                'edit_item' => 'Edit Organization',
+                'view_item' => 'View Organization',
+                'view_items' => 'View Organizations',
+                'add_new_item' => 'Add New Organization',
+                'add_new' => 'Add New Organization',
+                'new_item' => 'New Organization',
+                'parent_item_colon' => 'Parent Organization:',
+                'search_items' => 'Search Organizations',
+                'not_found' => 'No organizations found',
+                'not_found_in_trash' => 'No organizations found in Trash',
+                'archives' => 'Organization Archives',
+                'attributes' => 'Organization Attributes',
+                'featured_image' => '',
+                'set_featured_image' => '',
+                'remove_featured_image' => '',
+                'use_featured_image' => '',
+                'insert_into_item' => 'Insert into organization',
+                'uploaded_to_this_item' => 'Uploaded to this organization',
+                'filter_items_list' => 'Filter organizations list',
+                'filter_by_date' => 'Filter organizations by date',
+                'items_list_navigation' => 'Organizations list navigation',
+                'items_list' => 'Organizations list',
+                'item_published' => 'Organization published.',
+                'item_published_privately' => 'Organization published privately.',
+                'item_reverted_to_draft' => 'Organization reverted to draft.',
+                'item_scheduled' => 'Organization scheduled.',
+                'item_updated' => 'Organization updated.',
+                'item_link' => 'Organization Link',
+                'item_link_description' => 'A link to a organization.',
+            ],
+            'description' => '',
+            'public' => true,
+            'hierarchical' => false,
+            'exclude_from_search' => false,
+            'publicly_queryable' => false,
+            'show_ui' => true,
+            'show_in_menu' => true,
+            'admin_menu_parent' => '',
+            'show_in_admin_bar' => true,
+            'show_in_nav_menus' => true,
+            'show_in_rest' => true,
+            'rest_base' => '',
+            'rest_namespace' => 'wp/v2',
+            'rest_controller_class' => 'WP_REST_Posts_Controller',
+            'menu_position' => '',
+            'menu_icon' => [
+                'type' => 'dashicons',
+                'value' => 'dashicons-groups',
+            ],
+            'rename_capabilities' => false,
+            'singular_capability_name' => 'post',
+            'plural_capability_name' => 'posts',
+            'supports' => [
+                'title',
+                'excerpt',
+                'page-attributes',
+                'thumbnail',
+                'custom-fields',
+            ],
+            'taxonomies' => '',
+            'has_archive' => false,
+            'has_archive_slug' => '',
+            'rewrite' => [
+                'permalink_rewrite' => 'no_permalink',
+            ],
+            'query_var' => 'post_type_key',
+            'query_var_name' => '',
+            'can_export' => true,
+            'delete_with_user' => false,
+            'register_meta_box_cb' => '',
+            'enter_title_here' => '',
+        ];
+    }
+
+    function meza_get_review_post_type_definition(): array
+    {
+        return [
+            'key' => 'post_type_697fdc6d18380',
+            'title' => 'Reviews',
+            'menu_order' => 0,
+            'active' => true,
+            'post_type' => 'review',
+            'advanced_configuration' => true,
+            'import_source' => '',
+            'import_date' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+            'labels' => [
+                'name' => 'Reviews',
+                'singular_name' => 'Review',
+                'menu_name' => 'Reviews',
+                'all_items' => 'All Reviews',
+                'edit_item' => 'Edit Review',
+                'view_item' => 'View Review',
+                'view_items' => 'View Reviews',
+                'add_new_item' => 'Add New Review',
+                'add_new' => 'Add New Review',
+                'new_item' => 'New Review',
+                'parent_item_colon' => 'Parent Review:',
+                'search_items' => 'Search Reviews',
+                'not_found' => 'No reviews found',
+                'not_found_in_trash' => 'No reviews found in Trash',
+                'archives' => 'Review Archives',
+                'attributes' => 'Review Attributes',
+                'featured_image' => '',
+                'set_featured_image' => '',
+                'remove_featured_image' => '',
+                'use_featured_image' => '',
+                'insert_into_item' => 'Insert into review',
+                'uploaded_to_this_item' => 'Uploaded to this review',
+                'filter_items_list' => 'Filter reviews list',
+                'filter_by_date' => 'Filter reviews by date',
+                'items_list_navigation' => 'Reviews list navigation',
+                'items_list' => 'Reviews list',
+                'item_published' => 'Review published.',
+                'item_published_privately' => 'Review published privately.',
+                'item_reverted_to_draft' => 'Review reverted to draft.',
+                'item_scheduled' => 'Review scheduled.',
+                'item_updated' => 'Review updated.',
+                'item_link' => 'Review Link',
+                'item_link_description' => 'A link to a review.',
+            ],
+            'description' => '',
+            'public' => true,
+            'hierarchical' => false,
+            'exclude_from_search' => true,
+            'publicly_queryable' => false,
+            'show_ui' => true,
+            'show_in_menu' => true,
+            'admin_menu_parent' => '',
+            'show_in_admin_bar' => true,
+            'show_in_nav_menus' => false,
+            'show_in_rest' => true,
+            'rest_base' => '',
+            'rest_namespace' => 'wp/v2',
+            'rest_controller_class' => 'WP_REST_Posts_Controller',
+            'menu_position' => '',
+            'menu_icon' => [
+                'type' => 'dashicons',
+                'value' => 'dashicons-star-half',
+            ],
+            'rename_capabilities' => false,
+            'singular_capability_name' => 'post',
+            'plural_capability_name' => 'posts',
+            'supports' => [
+                'title',
+                'editor',
+                'page-attributes',
+                'custom-fields',
+            ],
+            'taxonomies' => '',
+            'has_archive' => false,
+            'has_archive_slug' => '',
+            'rewrite' => [
+                'permalink_rewrite' => 'no_permalink',
+            ],
+            'query_var' => 'post_type_key',
+            'query_var_name' => '',
+            'can_export' => true,
+            'delete_with_user' => false,
+            'register_meta_box_cb' => '',
+            'enter_title_here' => '',
+        ];
+    }
+
+    function meza_get_faq_post_type_definition(): array
+    {
+        return [
+            'key' => 'post_type_697fdfac7eb87',
+            'title' => 'FAQs',
+            'menu_order' => 0,
+            'active' => true,
+            'post_type' => 'faq',
+            'advanced_configuration' => true,
+            'import_source' => '',
+            'import_date' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+            'labels' => [
+                'name' => 'FAQs',
+                'singular_name' => 'FAQ',
+                'menu_name' => 'FAQs',
+                'all_items' => 'All FAQs',
+                'edit_item' => 'Edit FAQ',
+                'view_item' => 'View FAQ',
+                'view_items' => 'View FAQs',
+                'add_new_item' => 'Add New FAQ',
+                'add_new' => 'Add New FAQ',
+                'new_item' => 'New FAQ',
+                'parent_item_colon' => 'Parent FAQ:',
+                'search_items' => 'Search FAQs',
+                'not_found' => 'No faqs found',
+                'not_found_in_trash' => 'No faqs found in Trash',
+                'archives' => 'FAQ Archives',
+                'attributes' => 'FAQ Attributes',
+                'featured_image' => '',
+                'set_featured_image' => '',
+                'remove_featured_image' => '',
+                'use_featured_image' => '',
+                'insert_into_item' => 'Insert into faq',
+                'uploaded_to_this_item' => 'Uploaded to this faq',
+                'filter_items_list' => 'Filter faqs list',
+                'filter_by_date' => 'Filter faqs by date',
+                'items_list_navigation' => 'FAQs list navigation',
+                'items_list' => 'FAQs list',
+                'item_published' => 'FAQ published.',
+                'item_published_privately' => 'FAQ published privately.',
+                'item_reverted_to_draft' => 'FAQ reverted to draft.',
+                'item_scheduled' => 'FAQ scheduled.',
+                'item_updated' => 'FAQ updated.',
+                'item_link' => 'FAQ Link',
+                'item_link_description' => 'A link to a faq.',
+            ],
+            'description' => '',
+            'public' => true,
+            'hierarchical' => false,
+            'exclude_from_search' => true,
+            'publicly_queryable' => false,
+            'show_ui' => true,
+            'show_in_menu' => true,
+            'admin_menu_parent' => '',
+            'show_in_admin_bar' => true,
+            'show_in_nav_menus' => false,
+            'show_in_rest' => true,
+            'rest_base' => '',
+            'rest_namespace' => 'wp/v2',
+            'rest_controller_class' => 'WP_REST_Posts_Controller',
+            'menu_position' => '',
+            'menu_icon' => [
+                'type' => 'dashicons',
+                'value' => 'dashicons-info',
+            ],
+            'rename_capabilities' => false,
+            'singular_capability_name' => 'post',
+            'plural_capability_name' => 'posts',
+            'supports' => [
+                'title',
+                'page-attributes',
+                'custom-fields',
+            ],
+            'taxonomies' => '',
+            'has_archive' => false,
+            'has_archive_slug' => '',
+            'rewrite' => [
+                'permalink_rewrite' => 'no_permalink',
+            ],
+            'query_var' => 'post_type_key',
+            'query_var_name' => '',
+            'can_export' => true,
+            'delete_with_user' => false,
+            'register_meta_box_cb' => '',
+            'enter_title_here' => '',
+        ];
+    }
+
+    function meza_get_hero_section_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_692cdbb4a0ff0',
+            'title' => 'Hero Section',
+            'fields' => [
+                [
+                    'key' => 'field_692cdbb570d1d',
+                    'label' => 'Section',
+                    'name' => 'section_hero',
+                    'aria-label' => '',
+                    'type' => 'group',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'layout' => 'block',
+                    'sub_fields' => [
+                        [
+                            'key' => 'field_692cdbd770d1e',
+                            'label' => 'Headline (H1)',
+                            'name' => 'headline',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_69b0793b330e0',
+                            'label' => 'Display',
+                            'name' => 'display',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => [
+                                [
+                                    [
+                                        'field' => 'field_692cdbd770d1e',
+                                        'operator' => '!=empty',
+                                    ],
+                                ],
+                            ],
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_692cdbdf70d1f',
+                            'label' => 'Subhead',
+                            'name' => 'subhead',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_692cdbeb70d20',
+                            'label' => 'Description',
+                            'name' => 'description',
+                            'aria-label' => '',
+                            'type' => 'textarea',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'rows' => 2,
+                            'placeholder' => '',
+                            'new_lines' => 'wpautop',
+                        ],
+                        [
+                            'key' => 'field_692cdc0270d21',
+                            'label' => 'Link',
+                            'name' => 'link',
+                            'aria-label' => '',
+                            'type' => 'link',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'return_format' => 'array',
+                            'allow_in_bindings' => 0,
+                        ],
+                        [
+                            'key' => 'field_697fe81bb6b38',
+                            'label' => 'Link (Secondary)',
+                            'name' => 'link_secondary',
+                            'aria-label' => '',
+                            'type' => 'link',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => [
+                                [
+                                    [
+                                        'field' => 'field_692cdc0270d21',
+                                        'operator' => '!=empty',
+                                    ],
+                                ],
+                            ],
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'return_format' => 'array',
+                            'allow_in_bindings' => 0,
+                        ],
+                        [
+                            'key' => 'field_69cfe961a379e',
+                            'label' => 'Icon',
+                            'name' => 'icon',
+                            'aria-label' => '',
+                            'type' => 'image',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'return_format' => 'id',
+                            'library' => 'all',
+                            'min_width' => '',
+                            'min_height' => '',
+                            'min_size' => '',
+                            'max_width' => '',
+                            'max_height' => '',
+                            'max_size' => '',
+                            'mime_types' => '',
+                            'allow_in_bindings' => 0,
+                            'preview_size' => 'thumbnail',
+                        ],
+                        [
+                            'key' => 'field_692cdc5a70d23',
+                            'label' => 'Image',
+                            'name' => 'image',
+                            'aria-label' => '',
+                            'type' => 'image',
+                            'instructions' => '',
+                            'required' => false,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'return_format' => 'id',
+                            'library' => 'all',
+                            'preview_size' => 'medium',
+                            'min_width' => 0,
+                            'min_height' => 0,
+                            'min_size' => 0,
+                            'max_width' => 0,
+                            'max_height' => 0,
+                            'max_size' => 0,
+                            'mime_types' => '',
+                        ],
+                        [
+                            'key' => 'field_692cdc8070d24',
+                            'label' => 'Video File',
+                            'name' => 'video',
+                            'aria-label' => '',
+                            'type' => 'file',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => [
+                                [
+                                    [
+                                        'field' => 'field_692cdc5a70d23',
+                                        'operator' => '!=empty',
+                                    ],
+                                ],
+                            ],
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'return_format' => 'array',
+                            'library' => 'all',
+                            'min_size' => '',
+                            'max_size' => '',
+                            'mime_types' => '',
+                            'allow_in_bindings' => 0,
+                        ],
+                        [
+                            'key' => 'field_692cdcb870d25',
+                            'label' => 'Video Embed',
+                            'name' => 'video_embed',
+                            'aria-label' => '',
+                            'type' => 'oembed',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => [
+                                [
+                                    [
+                                        'field' => 'field_692cdc5a70d23',
+                                        'operator' => '!=empty',
+                                    ],
+                                ],
+                            ],
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'width' => '',
+                            'height' => '',
+                            'allow_in_bindings' => 0,
+                        ],
+                        [
+                            'key' => 'field_692cdc4870d22',
+                            'label' => 'ID',
+                            'name' => 'id',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => 'top',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                    ],
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'page',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'post',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'resource',
+                    ],
+                ],
+            ],
+            'menu_order' => 1,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => [
+                'discussion',
+                'comments',
+                'revisions',
+                'author',
+                'format',
+                'tags',
+                'send-trackbacks',
+            ],
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_form_section_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_697ffe3780c87',
+            'title' => 'Form Section',
+            'fields' => [
+                [
+                    'key' => 'field_69b03fca31afa',
+                    'label' => 'Visibility',
+                    'name' => 'show_form',
+                    'aria-label' => '',
+                    'type' => 'true_false',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'message' => '',
+                    'default_value' => 0,
+                    'allow_in_bindings' => 0,
+                    'ui' => 0,
+                    'ui_on_text' => '',
+                    'ui_off_text' => '',
+                ],
+                [
+                    'key' => 'field_69b03fdc31afb',
+                    'label' => 'Section',
+                    'name' => 'section_form',
+                    'aria-label' => '',
+                    'type' => 'group',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => [
+                        [
+                            [
+                                'field' => 'field_69b03fca31afa',
+                                'operator' => '==',
+                                'value' => '1',
+                            ],
+                        ],
+                    ],
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'layout' => 'block',
+                    'sub_fields' => [
+                        [
+                            'key' => 'field_69b03fe631afc',
+                            'label' => 'Headline',
+                            'name' => 'headline',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 1,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_69b03ff131afd',
+                            'label' => 'Subhead',
+                            'name' => 'subhead',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_69b1272a3d536',
+                            'label' => 'Description',
+                            'name' => 'description',
+                            'aria-label' => '',
+                            'type' => 'textarea',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'rows' => 2,
+                            'placeholder' => '',
+                            'new_lines' => '',
+                        ],
+                        [
+                            'key' => 'field_697ffe37abb58',
+                            'label' => 'Form',
+                            'name' => 'form',
+                            'aria-label' => '',
+                            'type' => 'relationship',
+                            'instructions' => '',
+                            'required' => 1,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'post_type' => [
+                                'form',
+                            ],
+                            'post_status' => [
+                                'publish',
+                            ],
+                            'taxonomy' => '',
+                            'filters' => [
+                                'search',
+                            ],
+                            'return_format' => 'id',
+                            'min' => 1,
+                            'max' => 1,
+                            'allow_in_bindings' => 0,
+                            'elements' => '',
+                            'bidirectional' => 0,
+                            'bidirectional_target' => [],
+                        ],
+                        [
+                            'key' => 'field_69b03ff731afe',
+                            'label' => 'ID',
+                            'name' => 'id',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                    ],
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'page',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'resource',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'post',
+                    ],
+                ],
+            ],
+            'menu_order' => 18,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_cta_section_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_f7b16b48',
+            'title' => 'CTA Section',
+            'fields' => [
+                [
+                    'key' => 'field_232e234f',
+                    'label' => 'CTA',
+                    'name' => 'cta',
+                    'aria-label' => '',
+                    'type' => 'relationship',
+                    'instructions' => '',
+                    'required' => false,
+                    'conditional_logic' => false,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'post_type' => [
+                        'cta',
+                    ],
+                    'filters' => [
+                        'search',
+                    ],
+                    'return_format' => 'id',
+                    'taxonomy' => [],
+                    'min' => 0,
+                    'max' => 0,
+                    'elements' => [],
+                    'bidirectional_target' => [],
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'page',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'post',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'resource',
+                    ],
+                ],
+            ],
+            'menu_order' => 19,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_list_faqs_section_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_697feb01ec35f',
+            'title' => 'List FAQs Section',
+            'fields' => [
+                [
+                    'key' => 'field_69b03ef5673a1',
+                    'label' => 'Visibility',
+                    'name' => 'show_list-faqs',
+                    'aria-label' => '',
+                    'type' => 'true_false',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'message' => '',
+                    'default_value' => 0,
+                    'allow_in_bindings' => 0,
+                    'ui' => 0,
+                    'ui_on_text' => '',
+                    'ui_off_text' => '',
+                ],
+                [
+                    'key' => 'field_69b03f0e673a2',
+                    'label' => 'Section',
+                    'name' => 'section_faqs',
+                    'aria-label' => '',
+                    'type' => 'group',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => [
+                        [
+                            [
+                                'field' => 'field_69b03ef5673a1',
+                                'operator' => '==',
+                                'value' => '1',
+                            ],
+                        ],
+                    ],
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'layout' => 'block',
+                    'sub_fields' => [
+                        [
+                            'key' => 'field_69b03f37673a3',
+                            'label' => 'Headline (H2)',
+                            'name' => 'headline',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 1,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_69b03f46673a4',
+                            'label' => 'Subhead',
+                            'name' => 'subhead',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_69ce52d4d29eb',
+                            'label' => 'Image',
+                            'name' => 'image',
+                            'aria-label' => '',
+                            'type' => 'image',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'return_format' => 'id',
+                            'library' => 'all',
+                            'min_width' => '',
+                            'min_height' => '',
+                            'min_size' => '',
+                            'max_width' => '',
+                            'max_height' => '',
+                            'max_size' => '',
+                            'mime_types' => '',
+                            'allow_in_bindings' => 0,
+                            'preview_size' => 'medium',
+                        ],
+                        [
+                            'key' => 'field_69b11ab5d9e51',
+                            'label' => 'Description',
+                            'name' => 'description',
+                            'aria-label' => '',
+                            'type' => 'textarea',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'rows' => 2,
+                            'placeholder' => '',
+                            'new_lines' => '',
+                        ],
+                        [
+                            'key' => 'field_69b11ad6d9e52',
+                            'label' => 'Link',
+                            'name' => 'link',
+                            'aria-label' => '',
+                            'type' => 'link',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'return_format' => 'array',
+                            'allow_in_bindings' => 0,
+                        ],
+                        [
+                            'key' => 'field_697ffc2b176c2',
+                            'label' => 'FAQs',
+                            'name' => 'faqs',
+                            'aria-label' => '',
+                            'type' => 'relationship',
+                            'instructions' => '',
+                            'required' => 1,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'post_type' => [
+                                'faq',
+                            ],
+                            'post_status' => [
+                                'publish',
+                            ],
+                            'taxonomy' => '',
+                            'filters' => [
+                                'search',
+                            ],
+                            'return_format' => 'id',
+                            'min' => 1,
+                            'max' => '',
+                            'allow_in_bindings' => 0,
+                            'elements' => '',
+                            'bidirectional' => 0,
+                            'bidirectional_target' => [],
+                        ],
+                        [
+                            'key' => 'field_69b03f4e673a5',
+                            'label' => 'ID',
+                            'name' => 'id',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                    ],
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'page',
+                    ],
+                    [
+                        'param' => 'page',
+                        'operator' => '!=',
+                        'value' => '115',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'post',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'resource',
+                    ],
+                ],
+            ],
+            'menu_order' => 21,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_list_reviews_section_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_meza_list_reviews_section',
+            'title' => 'List Reviews Section',
+            'fields' => [
+                [
+                    'key' => 'field_meza_show_list_reviews',
+                    'label' => 'Visibility',
+                    'name' => 'show_list-reviews',
+                    'aria-label' => '',
+                    'type' => 'true_false',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'message' => '',
+                    'default_value' => 0,
+                    'allow_in_bindings' => 0,
+                    'ui' => 0,
+                    'ui_on_text' => '',
+                    'ui_off_text' => '',
+                ],
+                [
+                    'key' => 'field_meza_section_list_reviews',
+                    'label' => 'Section',
+                    'name' => 'section_list-reviews',
+                    'aria-label' => '',
+                    'type' => 'group',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => [
+                        [
+                            [
+                                'field' => 'field_meza_show_list_reviews',
+                                'operator' => '==',
+                                'value' => '1',
+                            ],
+                        ],
+                    ],
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'layout' => 'block',
+                    'sub_fields' => [
+                        [
+                            'key' => 'field_meza_list_reviews_headline',
+                            'label' => 'Headline (H2)',
+                            'name' => 'headline',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 1,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_meza_list_reviews_subhead',
+                            'label' => 'Subhead',
+                            'name' => 'subhead',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_meza_list_reviews_link',
+                            'label' => 'Link',
+                            'name' => 'link',
+                            'aria-label' => '',
+                            'type' => 'link',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'return_format' => 'array',
+                            'allow_in_bindings' => 0,
+                        ],
+                        [
+                            'key' => 'field_meza_list_reviews_id',
+                            'label' => 'ID',
+                            'name' => 'id',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                    ],
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'page',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'post',
+                    ],
+                ],
+            ],
+            'menu_order' => 3,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_list_posts_section_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_meza_list_posts_section',
+            'title' => 'List Posts Section',
+            'fields' => [
+                [
+                    'key' => 'field_meza_show_list_posts',
+                    'label' => 'Visibility',
+                    'name' => 'show_list-posts',
+                    'aria-label' => '',
+                    'type' => 'true_false',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'message' => '',
+                    'default_value' => 0,
+                    'allow_in_bindings' => 0,
+                    'ui' => 0,
+                    'ui_on_text' => '',
+                    'ui_off_text' => '',
+                ],
+                [
+                    'key' => 'field_meza_section_list_posts',
+                    'label' => 'Section',
+                    'name' => 'section_list-posts',
+                    'aria-label' => '',
+                    'type' => 'group',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => [
+                        [
+                            [
+                                'field' => 'field_meza_show_list_posts',
+                                'operator' => '==',
+                                'value' => '1',
+                            ],
+                        ],
+                    ],
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'layout' => 'block',
+                    'sub_fields' => [
+                        [
+                            'key' => 'field_meza_list_posts_headline',
+                            'label' => 'Headline (H2)',
+                            'name' => 'headline',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 1,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_meza_list_posts_subhead',
+                            'label' => 'Subhead',
+                            'name' => 'subhead',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_meza_list_posts_link',
+                            'label' => 'Link',
+                            'name' => 'link',
+                            'aria-label' => '',
+                            'type' => 'link',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'return_format' => 'array',
+                            'allow_in_bindings' => 0,
+                        ],
+                        [
+                            'key' => 'field_meza_list_posts_id',
+                            'label' => 'ID',
+                            'name' => 'id',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                    ],
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'page',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'post',
+                    ],
+                ],
+            ],
+            'menu_order' => 20,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_cta_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_697ff4f7482e6',
+            'title' => 'CTA',
+            'fields' => [
+                [
+                    'key' => 'field_69b07b3a68600',
+                    'label' => 'Description',
+                    'name' => 'description',
+                    'aria-label' => '',
+                    'type' => 'textarea',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'default_value' => '',
+                    'maxlength' => '',
+                    'allow_in_bindings' => 0,
+                    'rows' => 2,
+                    'placeholder' => '',
+                    'new_lines' => '',
+                ],
+                [
+                    'key' => 'field_697ff4f7c4120',
+                    'label' => 'Link',
+                    'name' => 'link',
+                    'aria-label' => '',
+                    'type' => 'link',
+                    'instructions' => '',
+                    'required' => 1,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'return_format' => 'array',
+                    'allow_in_bindings' => 0,
+                ],
+                [
+                    'key' => 'field_697ff50dc4122',
+                    'label' => 'Link (Secondary)',
+                    'name' => 'link_secondary',
+                    'aria-label' => '',
+                    'type' => 'link',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => [
+                        [
+                            [
+                                'field' => 'field_697ff4f7c4120',
+                                'operator' => '!=empty',
+                            ],
+                        ],
+                    ],
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'return_format' => 'array',
+                    'allow_in_bindings' => 0,
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'cta',
+                    ],
+                ],
+            ],
+            'menu_order' => 0,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_profile_uses_organization_field(): bool
+    {
+        return meza_is_conference_business_type();
+    }
+
+    function meza_review_uses_profile_citer(): bool
+    {
+        return meza_is_conference_business_type();
+    }
+
+    function meza_get_profile_field_group_definition(): array
+    {
+        $fields = [
+            [
+                'key' => 'field_6902a3bf958b8',
+                'label' => 'Title',
+                'name' => 'title',
+                'aria-label' => '',
+                'type' => 'text',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'default_value' => '',
+                'maxlength' => '',
+                'allow_in_bindings' => 0,
+                'placeholder' => '',
+                'prepend' => '',
+                'append' => '',
+            ],
+        ];
+
+        if (meza_profile_uses_organization_field()) {
+            $fields[] = [
+                'key' => 'field_6902c3cbe169b',
+                'label' => 'Organization',
+                'name' => 'organization',
+                'aria-label' => '',
+                'type' => 'relationship',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'post_type' => [
+                    'organization',
+                ],
+                'post_status' => [
+                    'publish',
+                ],
+                'taxonomy' => '',
+                'filters' => [
+                    'search',
+                ],
+                'return_format' => 'id',
+                'min' => '',
+                'max' => 1,
+                'allow_in_bindings' => 0,
+                'elements' => [
+                    'featured_image',
+                ],
+                'bidirectional' => 0,
+                'bidirectional_target' => [],
+            ];
+        }
+
+        $fields[] = [
+            'key' => 'field_68bb85c35a8e2',
+            'label' => 'URL',
+            'name' => 'url',
+            'aria-label' => '',
+            'type' => 'link',
+            'instructions' => '',
+            'required' => 0,
+            'conditional_logic' => meza_profile_uses_organization_field()
+                ? [
+                    [
+                        [
+                            'field' => 'field_6902c3cbe169b',
+                            'operator' => '==empty',
+                        ],
+                    ],
+                ]
+                : 0,
+            'wrapper' => [
+                'width' => '',
+                'class' => '',
+                'id' => '',
+            ],
+            'return_format' => 'url',
+            'allow_in_bindings' => 0,
+        ];
+
+        return [
+            'key' => 'group_68bb85c355957',
+            'title' => 'Profile',
+            'fields' => $fields,
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'profile',
+                    ],
+                ],
+            ],
+            'menu_order' => 0,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_organization_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_69b07c3129ab0',
+            'title' => 'Organization',
+            'fields' => [
+                [
+                    'key' => 'field_69b07c31cf5f1',
+                    'label' => 'URL',
+                    'name' => 'url',
+                    'aria-label' => '',
+                    'type' => 'url',
+                    'instructions' => '',
+                    'required' => 1,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'default_value' => '',
+                    'allow_in_bindings' => 1,
+                    'placeholder' => '',
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'organization',
+                    ],
+                ],
+            ],
+            'menu_order' => 0,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_review_field_group_definition(): array
+    {
+        $citer_field = meza_review_uses_profile_citer()
+            ? [
+                'key' => 'field_69f05fb0b9f36',
+                'label' => 'Citer',
+                'name' => 'citer',
+                'aria-label' => '',
+                'type' => 'relationship',
+                'instructions' => '',
+                'required' => 1,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'post_type' => [
+                    'profile',
+                ],
+                'post_status' => [
+                    'publish',
+                ],
+                'taxonomy' => '',
+                'filters' => [
+                    'search',
+                ],
+                'return_format' => 'object',
+                'min' => 1,
+                'max' => 1,
+                'allow_in_bindings' => 0,
+                'elements' => [
+                    'featured_image',
+                ],
+                'bidirectional' => 0,
+                'bidirectional_target' => [],
+            ]
+            : [
+                'key' => 'field_68f28d2cd3c79',
+                'label' => 'Citer',
+                'name' => 'citer',
+                'aria-label' => '',
+                'type' => 'text',
+                'instructions' => '',
+                'required' => 1,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'default_value' => '',
+                'maxlength' => '',
+                'allow_in_bindings' => 0,
+                'placeholder' => '',
+                'prepend' => '',
+                'append' => '',
+            ];
+
+        return [
+            'key' => 'group_68f28d05a8e4b',
+            'title' => 'Review',
+            'fields' => [
+                [
+                    'key' => 'field_68f28d05d3c78',
+                    'label' => 'Quote',
+                    'name' => 'quote',
+                    'aria-label' => '',
+                    'type' => 'textarea',
+                    'instructions' => 'Limited to 150 characters.',
+                    'required' => 1,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'default_value' => '',
+                    'maxlength' => 200,
+                    'allow_in_bindings' => 0,
+                    'rows' => 2,
+                    'placeholder' => '',
+                    'new_lines' => '',
+                ],
+                $citer_field,
+                [
+                    'key' => 'field_697ff1f193b2a',
+                    'label' => 'URL',
+                    'name' => 'url',
+                    'aria-label' => '',
+                    'type' => 'link',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'return_format' => 'url',
+                    'allow_in_bindings' => 0,
+                ],
+                [
+                    'key' => 'field_697ff1b893b29',
+                    'label' => 'Date',
+                    'name' => 'date',
+                    'aria-label' => '',
+                    'type' => 'date_picker',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'display_format' => 'F j, Y',
+                    'return_format' => 'Ymd',
+                    'first_day' => 1,
+                    'default_to_current_date' => 1,
+                    'allow_in_bindings' => 0,
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'review',
+                    ],
+                ],
+            ],
+            'menu_order' => 0,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_local_acf_post_type_definitions(): array
+    {
+        return [
+            meza_get_faq_post_type_definition(),
+            meza_get_cta_post_type_definition(),
+            meza_get_profile_post_type_definition(),
+            meza_get_organization_post_type_definition(),
+            meza_get_review_post_type_definition(),
+        ];
+    }
+
+    function meza_get_local_acf_post_type_args(array $definition): array
+    {
+        return [
+            'labels' => (array) ($definition['labels'] ?? []),
+            'description' => (string) ($definition['description'] ?? ''),
+            'public' => !empty($definition['public']),
+            'hierarchical' => !empty($definition['hierarchical']),
+            'exclude_from_search' => !empty($definition['exclude_from_search']),
+            'publicly_queryable' => !empty($definition['publicly_queryable']),
+            'show_ui' => !empty($definition['show_ui']),
+            'show_in_menu' => !empty($definition['show_in_menu']),
+            'show_in_admin_bar' => !empty($definition['show_in_admin_bar']),
+            'show_in_nav_menus' => !empty($definition['show_in_nav_menus']),
+            'show_in_rest' => !empty($definition['show_in_rest']),
+            'rest_namespace' => (string) ($definition['rest_namespace'] ?? 'wp/v2'),
+            'rest_controller_class' => (string) ($definition['rest_controller_class'] ?? 'WP_REST_Posts_Controller'),
+            'menu_icon' => (string) ($definition['menu_icon']['value'] ?? 'dashicons-admin-post'),
+            'supports' => (array) ($definition['supports'] ?? []),
+            'has_archive' => false,
+            'rewrite' => false,
+            'query_var' => false,
+            'can_export' => !empty($definition['can_export']),
+            'delete_with_user' => !empty($definition['delete_with_user']),
+            'map_meta_cap' => true,
+        ];
+    }
+
     function meza_get_shared_project_acf_field_groups(): array
     {
         $groups = [
@@ -1555,6 +3785,16 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'show_in_rest' => 0,
                 'display_title' => '',
             ],
+            meza_get_hero_section_field_group_definition(),
+            meza_get_form_section_field_group_definition(),
+            meza_get_cta_section_field_group_definition(),
+            meza_get_list_posts_section_field_group_definition(),
+            meza_get_list_faqs_section_field_group_definition(),
+            meza_get_list_reviews_section_field_group_definition(),
+            meza_get_cta_field_group_definition(),
+            meza_get_profile_field_group_definition(),
+            meza_get_organization_field_group_definition(),
+            meza_get_review_field_group_definition(),
         ];
 
         $groups = apply_filters('meza_shared_project_acf_field_groups', $groups);
@@ -1562,6 +3802,597 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         return is_array($groups) ? array_values($groups) : [];
     }
 }
+
+if (!function_exists('meza_register_local_acf_post_type_fallbacks')) {
+    function meza_register_local_acf_post_type_fallbacks(): void
+    {
+        foreach (meza_get_local_acf_post_type_definitions() as $definition) {
+            $post_type = sanitize_key((string) ($definition['post_type'] ?? ''));
+            if ($post_type === '' || post_type_exists($post_type)) {
+                continue;
+            }
+
+            register_post_type($post_type, meza_get_local_acf_post_type_args($definition));
+        }
+    }
+}
+add_action('init', 'meza_register_local_acf_post_type_fallbacks', 1);
+
+if (!function_exists('meza_should_seed_default_acf_field_groups')) {
+    function meza_should_seed_default_acf_field_groups(): bool
+    {
+        if (function_exists('mz_plugins_should_rerun')) {
+            return mz_plugins_should_rerun();
+        }
+
+        if (defined('MZ_FORCE_RERUN')) {
+            $value = MZ_FORCE_RERUN;
+
+            if (is_bool($value)) {
+                return $value;
+            }
+
+            if (is_numeric($value)) {
+                return ((int) $value) !== 0;
+            }
+
+            return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on'], true);
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
+    function meza_get_default_editable_acf_field_group_definitions(): array
+    {
+        return [
+            [
+                'key' => 'group_meza_list_profiles_section',
+                'title' => 'List Profiles Section',
+                'fields' => [
+                    [
+                        'key' => 'field_meza_show_list_profiles',
+                        'label' => 'Visibility',
+                        'name' => 'show_list-profiles',
+                        'aria-label' => '',
+                        'type' => 'true_false',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'message' => '',
+                        'default_value' => 0,
+                        'allow_in_bindings' => 0,
+                        'ui' => 0,
+                        'ui_on_text' => '',
+                        'ui_off_text' => '',
+                    ],
+                    [
+                        'key' => 'field_meza_section_list_profiles',
+                        'label' => 'Section',
+                        'name' => 'section_list-profiles',
+                        'aria-label' => '',
+                        'type' => 'group',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => [
+                            [
+                                [
+                                    'field' => 'field_meza_show_list_profiles',
+                                    'operator' => '==',
+                                    'value' => '1',
+                                ],
+                            ],
+                        ],
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'layout' => 'block',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_meza_list_profiles_headline',
+                                'label' => 'Headline (H2)',
+                                'name' => 'headline',
+                                'aria-label' => '',
+                                'type' => 'text',
+                                'instructions' => '',
+                                'required' => 1,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'default_value' => '',
+                                'maxlength' => '',
+                                'allow_in_bindings' => 0,
+                                'placeholder' => '',
+                                'prepend' => '',
+                                'append' => '',
+                            ],
+                            [
+                                'key' => 'field_meza_list_profiles_subhead',
+                                'label' => 'Subhead',
+                                'name' => 'subhead',
+                                'aria-label' => '',
+                                'type' => 'text',
+                                'instructions' => '',
+                                'required' => 0,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'default_value' => '',
+                                'maxlength' => '',
+                                'allow_in_bindings' => 0,
+                                'placeholder' => '',
+                                'prepend' => '',
+                                'append' => '',
+                            ],
+                            [
+                                'key' => 'field_meza_list_profiles_link',
+                                'label' => 'Link',
+                                'name' => 'link',
+                                'aria-label' => '',
+                                'type' => 'link',
+                                'instructions' => '',
+                                'required' => 0,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'return_format' => 'array',
+                                'allow_in_bindings' => 0,
+                            ],
+                            [
+                                'key' => 'field_meza_list_profiles_id',
+                                'label' => 'ID',
+                                'name' => 'id',
+                                'aria-label' => '',
+                                'type' => 'text',
+                                'instructions' => '',
+                                'required' => 0,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'default_value' => '',
+                                'maxlength' => '',
+                                'allow_in_bindings' => 0,
+                                'placeholder' => '',
+                                'prepend' => '',
+                                'append' => '',
+                            ],
+                        ],
+                    ],
+                ],
+                'location' => [
+                    [
+                        [
+                            'param' => 'post_type',
+                            'operator' => '==',
+                            'value' => 'page',
+                        ],
+                    ],
+                ],
+                'menu_order' => '',
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'top',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+                'allow_ai_access' => false,
+                'ai_description' => '',
+            ],
+            [
+                'key' => 'group_6901490e04b96',
+                'title' => 'Gallery Section',
+                'fields' => [
+                    [
+                        'key' => 'field_6901490e64a10',
+                        'label' => 'Visibility',
+                        'name' => 'show_gallery',
+                        'aria-label' => '',
+                        'type' => 'true_false',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'message' => 'Show the Gallery section on this page?',
+                        'default_value' => 0,
+                        'allow_in_bindings' => 0,
+                        'ui' => 0,
+                        'ui_on_text' => '',
+                        'ui_off_text' => '',
+                    ],
+                    [
+                        'key' => 'field_6901492764a11',
+                        'label' => 'Section',
+                        'name' => 'section_gallery',
+                        'aria-label' => '',
+                        'type' => 'group',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => [
+                            [
+                                [
+                                    'field' => 'field_6901490e64a10',
+                                    'operator' => '==',
+                                    'value' => '1',
+                                ],
+                            ],
+                        ],
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'layout' => 'block',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_6901493264a12',
+                                'label' => 'Headline (H2)',
+                                'name' => 'headline',
+                                'aria-label' => '',
+                                'type' => 'text',
+                                'instructions' => '',
+                                'required' => 1,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'default_value' => '',
+                                'maxlength' => '',
+                                'allow_in_bindings' => 0,
+                                'placeholder' => '',
+                                'prepend' => '',
+                                'append' => '',
+                            ],
+                            [
+                                'key' => 'field_6901493a64a13',
+                                'label' => 'Subhead',
+                                'name' => 'subhead',
+                                'aria-label' => '',
+                                'type' => 'text',
+                                'instructions' => '',
+                                'required' => 0,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'default_value' => '',
+                                'maxlength' => '',
+                                'allow_in_bindings' => 0,
+                                'placeholder' => '',
+                                'prepend' => '',
+                                'append' => '',
+                            ],
+                            [
+                                'key' => 'field_6901494264a14',
+                                'label' => 'Link',
+                                'name' => 'link',
+                                'aria-label' => '',
+                                'type' => 'link',
+                                'instructions' => '',
+                                'required' => 0,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'return_format' => 'array',
+                                'allow_in_bindings' => 0,
+                            ],
+                            [
+                                'key' => 'field_69028fd8fd533',
+                                'label' => 'Gallery',
+                                'name' => 'gallery',
+                                'aria-label' => '',
+                                'type' => 'repeater',
+                                'instructions' => '',
+                                'required' => 1,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'layout' => 'table',
+                                'pagination' => 0,
+                                'min' => 6,
+                                'max' => 0,
+                                'collapsed' => '',
+                                'button_label' => 'Add Media',
+                                'rows_per_page' => 20,
+                                'sub_fields' => [
+                                    [
+                                        'key' => 'field_69028febfd534',
+                                        'label' => 'Image',
+                                        'name' => 'image',
+                                        'aria-label' => '',
+                                        'type' => 'image',
+                                        'instructions' => '',
+                                        'required' => 1,
+                                        'conditional_logic' => 0,
+                                        'wrapper' => [
+                                            'width' => '',
+                                            'class' => '',
+                                            'id' => '',
+                                        ],
+                                        'return_format' => 'id',
+                                        'library' => 'all',
+                                        'min_width' => '',
+                                        'min_height' => '',
+                                        'min_size' => '',
+                                        'max_width' => '',
+                                        'max_height' => '',
+                                        'max_size' => '',
+                                        'mime_types' => '',
+                                        'allow_in_bindings' => 0,
+                                        'preview_size' => 'medium',
+                                        'parent_repeater' => 'field_69028fd8fd533',
+                                    ],
+                                    [
+                                        'key' => 'field_6902901cfd535',
+                                        'label' => 'Video',
+                                        'name' => 'video',
+                                        'aria-label' => '',
+                                        'type' => 'file',
+                                        'instructions' => '',
+                                        'required' => 0,
+                                        'conditional_logic' => [
+                                            [
+                                                [
+                                                    'field' => 'field_69028febfd534',
+                                                    'operator' => '!=empty',
+                                                ],
+                                            ],
+                                        ],
+                                        'wrapper' => [
+                                            'width' => '',
+                                            'class' => '',
+                                            'id' => '',
+                                        ],
+                                        'return_format' => 'id',
+                                        'library' => 'all',
+                                        'min_size' => '',
+                                        'max_size' => '',
+                                        'mime_types' => '.webm',
+                                        'allow_in_bindings' => 0,
+                                        'parent_repeater' => 'field_69028fd8fd533',
+                                    ],
+                                ],
+                            ],
+                            [
+                                'key' => 'field_6901494a64a15',
+                                'label' => 'ID',
+                                'name' => 'id',
+                                'aria-label' => '',
+                                'type' => 'text',
+                                'instructions' => '',
+                                'required' => 0,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'default_value' => '',
+                                'maxlength' => '',
+                                'allow_in_bindings' => 0,
+                                'placeholder' => '',
+                                'prepend' => '',
+                                'append' => '',
+                            ],
+                        ],
+                    ],
+                ],
+                'location' => [
+                    [
+                        [
+                            'param' => 'post_type',
+                            'operator' => '==',
+                            'value' => 'page',
+                        ],
+                    ],
+                ],
+                'menu_order' => '',
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'top',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+                'allow_ai_access' => false,
+                'ai_description' => '',
+            ],
+        ];
+    }
+}
+
+if (!function_exists('meza_get_existing_editable_acf_field_group_id')) {
+    function meza_get_existing_editable_acf_field_group_id(array $definition): int
+    {
+        if (!function_exists('acf_get_field_groups')) {
+            return 0;
+        }
+
+        $filters = function_exists('acf_disable_filters') ? acf_disable_filters() : null;
+        $field_groups = (array) acf_get_field_groups();
+        if (function_exists('acf_enable_filters')) {
+            acf_enable_filters($filters ?? []);
+        }
+
+        $target_key = (string) ($definition['key'] ?? '');
+        $target_title = trim((string) ($definition['title'] ?? ''));
+
+        foreach ($field_groups as $field_group) {
+            if (!is_array($field_group)) {
+                continue;
+            }
+
+            if ($target_key !== '' && (string) ($field_group['key'] ?? '') === $target_key) {
+                return (int) ($field_group['ID'] ?? 0);
+            }
+        }
+
+        foreach ($field_groups as $field_group) {
+            if (!is_array($field_group)) {
+                continue;
+            }
+
+            if ($target_title !== '' && trim((string) ($field_group['title'] ?? '')) === $target_title) {
+                return (int) ($field_group['ID'] ?? 0);
+            }
+        }
+
+        return 0;
+    }
+}
+
+if (!function_exists('meza_seed_default_editable_acf_field_groups')) {
+    function meza_seed_default_editable_acf_field_groups(): void
+    {
+        if (!function_exists('acf_import_field_group')) {
+            return;
+        }
+
+        $should_refresh_existing = meza_should_seed_default_acf_field_groups();
+
+        foreach (meza_get_default_editable_acf_field_group_definitions() as $definition) {
+            if (!is_array($definition) || empty($definition['key']) || empty($definition['title'])) {
+                continue;
+            }
+
+            $existing_id = meza_get_existing_editable_acf_field_group_id($definition);
+            if ($existing_id > 0 && !$should_refresh_existing) {
+                continue;
+            }
+
+            if ($existing_id > 0) {
+                $definition['ID'] = $existing_id;
+            }
+
+            acf_import_field_group($definition);
+        }
+
+        update_option('meza_default_acf_field_groups_initialized', 1, false);
+    }
+}
+
+add_filter('acf/load_field_groups', function (array $field_groups, string $post_type): array {
+    if (!meza_should_merge_acf_field_groups_for_current_screen()) {
+        return $field_groups;
+    }
+
+    $local_signatures = [];
+    foreach ($field_groups as $field_group) {
+        if (!is_array($field_group) || !meza_is_hardcoded_acf_field_group($field_group)) {
+            continue;
+        }
+
+        $signature = meza_get_acf_field_group_merge_signature($field_group);
+        if ($signature !== '') {
+            $local_signatures[$signature] = true;
+        }
+    }
+
+    if (empty($local_signatures)) {
+        return $field_groups;
+    }
+
+    return array_values(array_filter($field_groups, static function ($field_group) use ($local_signatures): bool {
+        if (!is_array($field_group) || meza_is_hardcoded_acf_field_group($field_group)) {
+            return true;
+        }
+
+        $signature = meza_get_acf_field_group_merge_signature($field_group);
+
+        return $signature === '' || empty($local_signatures[$signature]);
+    }));
+}, 25, 2);
+
+add_filter('acf/load_fields', function (array $fields, $parent): array {
+    if (!is_array($parent) || !meza_is_hardcoded_acf_field_group($parent)) {
+        return $fields;
+    }
+
+    $mergeable_groups = meza_get_mergeable_db_acf_field_groups_for_local_group($parent);
+    if (empty($mergeable_groups) || !function_exists('acf_get_raw_fields') || !function_exists('acf_get_field')) {
+        return $fields;
+    }
+
+    $existing_keys = [];
+    foreach ($fields as $field) {
+        if (is_array($field) && !empty($field['key'])) {
+            $existing_keys[(string) $field['key']] = true;
+        }
+    }
+
+    $next_menu_order = count($fields);
+
+    foreach ($mergeable_groups as $mergeable_group) {
+        $group_id = (int) ($mergeable_group['ID'] ?? 0);
+        if ($group_id <= 0) {
+            continue;
+        }
+
+        foreach ((array) acf_get_raw_fields($group_id) as $raw_field) {
+            $field_id = (int) ($raw_field['ID'] ?? 0);
+            if ($field_id <= 0) {
+                continue;
+            }
+
+            $field = acf_get_field($field_id);
+            if (!is_array($field)) {
+                continue;
+            }
+
+            $field_key = (string) ($field['key'] ?? '');
+            if ($field_key === '' || isset($existing_keys[$field_key])) {
+                continue;
+            }
+
+            $field['parent'] = (string) ($parent['key'] ?? $field['parent'] ?? '');
+            $field['menu_order'] = $next_menu_order;
+            $fields[] = $field;
+
+            $existing_keys[$field_key] = true;
+            $next_menu_order++;
+        }
+    }
+
+    return $fields;
+}, 20, 2);
 
 if (!function_exists('meza_get_business_information_branding_field_map')) {
     function meza_get_business_information_branding_field_map(): array
@@ -2637,6 +5468,16 @@ add_action('acf/init', function (): void {
         return;
     }
 
+    if (function_exists('acf_add_local_internal_post_type')) {
+        foreach (meza_get_local_acf_post_type_definitions() as $definition) {
+            if (!is_array($definition) || empty($definition['key'])) {
+                continue;
+            }
+
+            acf_add_local_internal_post_type($definition, 'acf-post-type');
+        }
+    }
+
     foreach (meza_get_shared_project_acf_options_pages() as $page) {
         if (!is_array($page)) {
             continue;
@@ -2658,3 +5499,5 @@ add_action('acf/init', function (): void {
         acf_add_local_field_group($group);
     }
 }, 15);
+
+add_action('acf/init', 'meza_seed_default_editable_acf_field_groups', 20);
