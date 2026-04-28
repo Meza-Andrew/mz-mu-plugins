@@ -452,12 +452,12 @@ if (!function_exists('mz_plugins_get_env_catalog')) {
     }
 }
 
-if (!function_exists('mz_plugins_get_env_plugin_signatures')) {
-    function mz_plugins_get_env_plugin_signatures(?string $env = null): array
+if (!function_exists('mz_plugins_get_catalog_signatures')) {
+    function mz_plugins_get_catalog_signatures(array $catalog): array
     {
         $signatures = [];
 
-        foreach (mz_plugins_get_env_catalog($env) as $plugin) {
+        foreach ($catalog as $plugin) {
             $file = strtolower(trim((string) ($plugin['file'] ?? '')));
             $slug = strtolower(trim((string) ($plugin['slug'] ?? '')));
 
@@ -485,6 +485,20 @@ if (!function_exists('mz_plugins_get_env_plugin_signatures')) {
         }
 
         return array_keys($signatures);
+    }
+}
+
+if (!function_exists('mz_plugins_get_catalog_plugin_signatures')) {
+    function mz_plugins_get_catalog_plugin_signatures(): array
+    {
+        return mz_plugins_get_catalog_signatures(mz_plugins_get_catalog());
+    }
+}
+
+if (!function_exists('mz_plugins_get_env_plugin_signatures')) {
+    function mz_plugins_get_env_plugin_signatures(?string $env = null): array
+    {
+        return mz_plugins_get_catalog_signatures(mz_plugins_get_env_catalog($env));
     }
 }
 

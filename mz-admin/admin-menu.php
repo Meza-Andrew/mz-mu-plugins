@@ -6971,9 +6971,15 @@ if (!function_exists('meza_admin_string_contains_any_token')) {
     }
 }
 
-if (!function_exists('meza_admin_get_env_preferred_plugin_signatures')) {
-    function meza_admin_get_env_preferred_plugin_signatures(): array
+if (!function_exists('meza_admin_get_preferred_plugin_signatures')) {
+    function meza_admin_get_preferred_plugin_signatures(): array
     {
+        if (function_exists('mz_plugins_get_catalog_plugin_signatures')) {
+            return array_values(array_filter(array_map('strtolower', mz_plugins_get_catalog_plugin_signatures()), static function ($signature): bool {
+                return is_string($signature) && $signature !== '';
+            }));
+        }
+
         if (!function_exists('mz_plugins_get_env_plugin_signatures')) {
             return [];
         }
@@ -6981,6 +6987,13 @@ if (!function_exists('meza_admin_get_env_preferred_plugin_signatures')) {
         return array_values(array_filter(array_map('strtolower', mz_plugins_get_env_plugin_signatures()), static function ($signature): bool {
             return is_string($signature) && $signature !== '';
         }));
+    }
+}
+
+if (!function_exists('meza_admin_get_env_preferred_plugin_signatures')) {
+    function meza_admin_get_env_preferred_plugin_signatures(): array
+    {
+        return meza_admin_get_preferred_plugin_signatures();
     }
 }
 
@@ -10650,6 +10663,10 @@ add_action('admin_head-profile.php', function (): void {
 function meza_apply_late_admin_menu_mutations(): void
 {
     if (meza_admin_menu_editor_has_active_custom_menu() && !meza_is_building_admin_menu_editor_default_snapshot()) {
+        // Admin Menu Editor can merge newly activated preferred plugins with their raw labels,
+        // so reapply the safe normalization pass after the saved custom menu replaces core's menu.
+        meza_normalize_admin_plugin_menus();
+        meza_apply_missing_late_admin_menu_mutations();
         return;
     }
 
