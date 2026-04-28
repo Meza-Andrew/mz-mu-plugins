@@ -1620,6 +1620,8 @@ function meza_apply_default_admin_column_order(array $columns, string $post_type
     }
     $append_first_match(['mz_profile_title']);
     $append_first_match(['mz_profile_link', 'mz_organization_url', 'mz_page_link', 'link']);
+    $append_first_match(['start-date', 'start_date', 'date']);
+    $append_first_match(['mz_venue', 'venue']);
     $append_first_match(['mz_page_headline', 'page headline (h1)']);
     $append_first_match(['mz_page_cta', 'page cta']);
     $append_first_match(['mz_page_form', 'page form']);
@@ -1989,7 +1991,8 @@ function meza_get_seeded_acp_default_admin_columns(): array
         '_ac_columns_default_event' => [
             'mz_id' => ['label' => 'ID'],
             'title' => ['label' => 'Title'],
-            'start-date' => ['label' => 'Start Date'],
+            'start-date' => ['label' => 'Date'],
+            'mz_venue' => ['label' => 'Venue'],
             'mz_summary' => ['label' => 'Summary'],
             'mz_page_headline' => ['label' => 'Page Headline (H1)'],
             'mz_page_cta' => ['label' => 'Page CTA'],
@@ -5420,9 +5423,10 @@ function meza_ensure_standard_admin_columns(array $columns, string $post_type): 
     }
 
     if (meza_is_event_post_type($post_type)) {
-        $columns = meza_insert_missing_admin_column($columns, ['title'], 'start-date', __('Start Date'));
+        $columns = meza_insert_missing_admin_column($columns, ['title'], 'start-date', __('Date'));
+        $columns = meza_insert_missing_admin_column($columns, ['start-date', 'start_date'], 'mz_venue', __('Venue'));
     } else {
-        unset($columns['start-date'], $columns['start_date'], $columns['end-date'], $columns['end_date']);
+        unset($columns['start-date'], $columns['start_date'], $columns['end-date'], $columns['end_date'], $columns['mz_venue']);
     }
 
     if ($show_faq_count_column) {
@@ -6835,6 +6839,55 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         $end_raw = meza_get_event_admin_column_datetime_value((int) $post_id, 'end');
         $date_html = meza_get_event_admin_datetime_range_html($start_raw, $end_raw);
         echo $date_html !== '' ? $date_html : '&mdash;';
+        return;
+    }
+    if ($column === 'mz_venue') {
+        $venue_id = 0;
+
+        if (function_exists('get_field')) {
+            $acf_venue = get_field('venue', (int) $post_id);
+            if (is_numeric($acf_venue)) {
+                $venue_id = (int) $acf_venue;
+            } elseif (is_array($acf_venue)) {
+                $candidate_id = $acf_venue['ID'] ?? $acf_venue['id'] ?? $acf_venue[0] ?? 0;
+                if (is_numeric($candidate_id)) {
+                    $venue_id = (int) $candidate_id;
+                }
+            } elseif ($acf_venue instanceof WP_Post) {
+                $venue_id = (int) $acf_venue->ID;
+            }
+        }
+
+        if ($venue_id <= 0) {
+            $raw_venue = get_post_meta((int) $post_id, 'venue', true);
+            if (is_numeric($raw_venue)) {
+                $venue_id = (int) $raw_venue;
+            } elseif (is_array($raw_venue)) {
+                $candidate_id = $raw_venue['ID'] ?? $raw_venue['id'] ?? $raw_venue[0] ?? 0;
+                if (is_numeric($candidate_id)) {
+                    $venue_id = (int) $candidate_id;
+                }
+            }
+        }
+
+        $venue = $venue_id > 0 ? get_post($venue_id) : null;
+        if (!($venue instanceof WP_Post)) {
+            echo '&mdash;';
+            return;
+        }
+
+        $edit_link = get_edit_post_link($venue->ID);
+        $label = get_the_title($venue);
+        if (!is_string($label) || trim($label) === '') {
+            $label = '(no title)';
+        }
+
+        if (is_string($edit_link) && $edit_link !== '') {
+            echo '<a href="' . esc_url($edit_link) . '">' . esc_html($label) . '</a>';
+            return;
+        }
+
+        echo esc_html($label);
         return;
     }
     if ($column === 'mz_review_date') {
