@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.40
+ * Version: 1.4.42
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -394,9 +394,8 @@ if (!function_exists('mz_plugins_get_catalog')) {
             ['name' => 'WP Mail SMTP', 'slug' => 'wp-mail-smtp', 'file' => 'wp-mail-smtp/wp_mail_smtp.php', 'envs' => ['development', 'staging', 'qa', 'production'], 'required_files' => ['wp-mail-smtp/wp-mail-smtp.php', 'wp-mail-smtp/src/Core.php']],
             ['name' => 'Error Log Monitor', 'slug' => 'error-log-monitor', 'file' => 'error-log-monitor/plugin.php', 'envs' => ['development', 'staging', 'qa', 'production']],
 
-            // All except development
-            ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['development'], 'activate' => false, 'signatures' => ['wpseo', 'wpseo_page_settings']],
-            ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['staging', 'qa', 'production'], 'signatures' => ['wpseo', 'wpseo_page_settings']],
+            // All
+            ['name' => 'Yoast SEO', 'slug' => 'wordpress-seo', 'file' => 'wordpress-seo/wp-seo.php', 'envs' => ['development', 'staging', 'qa', 'production'], 'signatures' => ['wpseo', 'wpseo_page_settings']],
             ['name' => 'ACF Content Analysis for Yoast SEO', 'slug' => 'acf-content-analysis-for-yoast-seo', 'file' => 'acf-content-analysis-for-yoast-seo/yoast-acf-analysis.php', 'envs' => ['staging', 'qa', 'production'], 'requires_active' => ['advanced-custom-fields-pro/acf.php', 'wordpress-seo/wp-seo.php'], 'requires_wp' => '6.6', 'requires_php' => '7.2.5'],
             ['name' => 'Admin Columns', 'slug' => 'codepress-admin-columns', 'file' => 'codepress-admin-columns/codepress-admin-columns.php', 'envs' => ['development', 'staging', 'qa', 'production']],
             ['name' => 'Admin Menu Editor', 'slug' => 'admin-menu-editor', 'file' => 'admin-menu-editor/menu-editor.php', 'envs' => ['staging', 'qa', 'production']],

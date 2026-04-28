@@ -8232,6 +8232,18 @@ function meza_get_special_page_definitions(): array
             'settings_url' => admin_url('options-privacy.php'),
             'capability' => 'manage_privacy_options',
         ],
+        [
+            'option_key' => 'meza_page_for_style_guide',
+            'label' => __('Style Guide Page'),
+            'settings_url' => admin_url('options-reading.php'),
+            'capability' => 'manage_options',
+        ],
+        [
+            'option_key' => 'meza_page_for_documentation',
+            'label' => __('Documentation Page'),
+            'settings_url' => admin_url('options-reading.php'),
+            'capability' => 'manage_options',
+        ],
     ];
 }
 
@@ -8248,6 +8260,7 @@ function meza_get_page_type_dashicon_class(string $label): string
     if (str_contains($normalized, 'posts page') || str_contains($normalized, 'blog')) return 'dashicons-admin-post';
     if (str_contains($normalized, 'privacy')) return 'dashicons-privacy';
     if (str_contains($normalized, 'cookie')) return 'dashicons-hidden';
+    if (str_contains($normalized, 'documentation')) return 'dashicons-media-text';
     if (str_contains($normalized, 'about')) return 'dashicons-id';
     if (str_contains($normalized, 'event')) return 'dashicons-calendar-alt';
     if (str_contains($normalized, 'service')) return 'dashicons-hammer';
@@ -8622,6 +8635,80 @@ function meza_page_state_store_get(int $post_id): array
         : [];
 }
 
+function meza_page_is_hidden_from_search(int $post_id): bool
+{
+    if ($post_id <= 0) return false;
+
+    $noindex = (string) get_post_meta($post_id, '_yoast_wpseo_meta-robots-noindex', true);
+    $nofollow = (string) get_post_meta($post_id, '_yoast_wpseo_meta-robots-nofollow', true);
+
+    return ($noindex === '1' && $nofollow === '1');
+}
+
+function meza_get_hidden_from_search_page_state_label(): string
+{
+    return __('Unlisted');
+}
+
+function meza_get_page_meta_title_column_override_value(int $post_id): string
+{
+    $meta_title = meza_get_post_yoast_title_value($post_id);
+    if ($meta_title !== '') {
+        return $meta_title;
+    }
+
+    $page_title = trim(wp_strip_all_tags((string) get_the_title($post_id)));
+    if ($page_title === '') {
+        return '';
+    }
+
+    $site_name = trim((string) get_option('blogname', ''));
+    if ($site_name === '') {
+        return $page_title;
+    }
+
+    return sprintf('%s | %s', $page_title, $site_name);
+}
+
+function meza_should_override_page_meta_title_column(string $column, int $post_id): bool
+{
+    if ($column !== 'wpseo-title' || $post_id <= 0) return false;
+
+    $post = get_post($post_id);
+    if (!($post instanceof WP_Post) || $post->post_type !== 'page') return false;
+
+    return (meza_get_post_yoast_title_value($post_id) !== '');
+}
+
+function meza_page_meta_title_column_buffer_start(string $column, int $post_id): void
+{
+    if (!meza_should_override_page_meta_title_column($column, $post_id)) return;
+
+    $buffered_posts = $GLOBALS['meza_page_meta_title_buffered_posts'] ?? [];
+    if (!is_array($buffered_posts)) $buffered_posts = [];
+    if (!empty($buffered_posts[$post_id])) return;
+
+    ob_start();
+    $buffered_posts[$post_id] = true;
+    $GLOBALS['meza_page_meta_title_buffered_posts'] = $buffered_posts;
+}
+
+function meza_page_meta_title_column_buffer_end(string $column, int $post_id): void
+{
+    $buffered_posts = $GLOBALS['meza_page_meta_title_buffered_posts'] ?? [];
+    if (!is_array($buffered_posts) || empty($buffered_posts[$post_id])) return;
+
+    unset($buffered_posts[$post_id]);
+    $GLOBALS['meza_page_meta_title_buffered_posts'] = $buffered_posts;
+
+    if (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    $meta_title = meza_get_page_meta_title_column_override_value($post_id);
+    echo ($meta_title !== '') ? esc_html($meta_title) : '&mdash;';
+}
+
 function meza_get_page_state_labels(int $post_id): array
 {
     $labels = meza_page_state_store_get($post_id);
@@ -8645,7 +8732,7 @@ function meza_is_front_page(int $post_id): bool
     return ((int) get_option('page_on_front') === $post_id);
 }
 
-// Keep draft status in the title column while suppressing the other page-state labels.
+// Keep core status suffixes we still want in the title column while suppressing the rest.
 add_filter('display_post_states', function ($states, $post) {
     if (!is_admin() || ($post->post_type ?? '') !== 'page') return $states;
 
@@ -8654,10 +8741,35 @@ add_filter('display_post_states', function ($states, $post) {
         $clean = trim(wp_strip_all_tags((string) $label));
         if ($clean !== '') $labels[] = $clean;
     }
-    meza_page_state_store_set((int) $post->ID, array_values(array_unique($labels)));
 
-    return (($post->post_status ?? '') === 'draft') ? [__('Draft')] : [];
+    $status = (string) ($post->post_status ?? '');
+    $display_states = [];
+
+    if ($status === 'draft') {
+        $display_states[] = __('Draft');
+    }
+
+    if ($status === 'private') {
+        $display_states[] = __('Private');
+    }
+
+    if (meza_page_is_hidden_from_search((int) $post->ID)) {
+        $display_states[] = meza_get_hidden_from_search_page_state_label();
+    }
+
+    $display_states = array_values(array_unique(array_filter($display_states, function ($value) {
+        return is_string($value) && trim($value) !== '';
+    })));
+
+    meza_page_state_store_set((int) $post->ID, array_values(array_unique(array_merge($labels, $display_states))));
+
+    return $display_states;
 }, 9999, 2);
+
+// Keep Yoast's column registration intact, but replace stale page meta-title output
+// with the saved page-level value when one exists.
+add_action('manage_page_posts_custom_column', 'meza_page_meta_title_column_buffer_start', 9, 2);
+add_action('manage_page_posts_custom_column', 'meza_page_meta_title_column_buffer_end', 11, 2);
 
 // Core list table renderer: show an em dash for front page slug.
 add_action('manage_page_posts_custom_column', function ($column, $post_id) {
