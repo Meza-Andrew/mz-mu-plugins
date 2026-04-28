@@ -8241,6 +8241,9 @@ function meza_get_page_type_dashicon_class(string $label): string
     $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
 
     if ($normalized === '') return 'dashicons-media-document';
+    if (str_contains($normalized, 'conference')) return 'dashicons-tickets-alt';
+    if (str_contains($normalized, 'faq')) return meza_get_post_type_dashicon_class('faq');
+    if (str_contains($normalized, 'sponsor')) return 'dashicons-awards';
     if (str_contains($normalized, 'front page') || str_contains($normalized, 'home')) return 'dashicons-admin-home';
     if (str_contains($normalized, 'posts page') || str_contains($normalized, 'blog')) return 'dashicons-admin-post';
     if (str_contains($normalized, 'privacy')) return 'dashicons-privacy';
@@ -8642,7 +8645,7 @@ function meza_is_front_page(int $post_id): bool
     return ((int) get_option('page_on_front') === $post_id);
 }
 
-// Remove all post-state labels from the title column on Pages admin list.
+// Keep draft status in the title column while suppressing the other page-state labels.
 add_filter('display_post_states', function ($states, $post) {
     if (!is_admin() || ($post->post_type ?? '') !== 'page') return $states;
 
@@ -8653,7 +8656,7 @@ add_filter('display_post_states', function ($states, $post) {
     }
     meza_page_state_store_set((int) $post->ID, array_values(array_unique($labels)));
 
-    return [];
+    return (($post->post_status ?? '') === 'draft') ? [__('Draft')] : [];
 }, 9999, 2);
 
 // Core list table renderer: show an em dash for front page slug.
