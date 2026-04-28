@@ -376,7 +376,7 @@ if (!function_exists('send_form_data')) :
             }
         }
 
-        // Support original DS field names while keeping a stable internal contract.
+        // Support legacy field names while keeping a stable internal contract.
         if (trim((string) ($data['Website'] ?? '')) === '') {
             $data['Website'] = trim((string) ($data['Honeypot'] ?? ''));
         }
@@ -947,7 +947,7 @@ if (!function_exists('send_form_data')) :
         $admin_headers = (array) apply_filters('mzf_admin_headers', $admin_headers, $data, $env, $to);
         $user_headers  = (array) apply_filters('mzf_user_headers', $user_headers, $data, $env, $to);
 
-        // Core default BCC support (replaces DS adapter BCC bridge behavior).
+        // Core default BCC support (replaces the legacy adapter BCC bridge behavior).
         $default_bcc = sanitize_email((string) mzf_get('admin_bcc_email', ''));
         $bcc_allowed_envs = ['production', 'qa'];
         if (in_array((string) $env, $bcc_allowed_envs, true) && $default_bcc && is_email($default_bcc)) {

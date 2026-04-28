@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Plugin Name: DS WooCommerce
+ * Plugin Name: MZ WooCommerce
  * Description: WooCommerce query rules, asset loading, and storefront behavior.
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: Meza LLC
  * Author URI: https://meza.design
  */

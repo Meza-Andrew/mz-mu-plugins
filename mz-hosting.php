@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Plugin Name: DS Hosting Detection
+ * Plugin Name: MZ Hosting Detection
  * Description: Hosting provider detection helpers.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Meza LLC
  * Author URI: https://meza.design
  */

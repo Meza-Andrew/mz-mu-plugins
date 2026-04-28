@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Plugin Name: DS Security
+ * Plugin Name: MZ Security
  * Description: Site-wide security restrictions and content access policies.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: Meza LLC
  * Author URI: https://meza.design
  */

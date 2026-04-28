@@ -13,7 +13,7 @@ if (!function_exists('ds_build_user_email')) {
             $email_data['site_domain'] = $site_domain;
         }
 
-        $sig_name = trim((string) ($form_cfg['email_signature'] ?? 'The Distinct Sign Solutions Team'));
+        $sig_name = trim((string) ($form_cfg['email_signature'] ?? 'The Meza Team'));
         $subject  = ds_replace_tokens((string) ($form_cfg['email_subject'] ?? 'Thank you'), $email_data);
 
         $content  = ds_replace_tokens((string) ($form_cfg['email_content'] ?? ''), $email_data);

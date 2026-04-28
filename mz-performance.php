@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Plugin Name: DS Performance
+ * Plugin Name: MZ Performance
  * Description: Front-end asset, markup, and performance optimizations.
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
