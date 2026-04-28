@@ -1495,6 +1495,12 @@ if (!function_exists('meza_site_manager_capabilities')) {
             $caps[$cap] = true;
         }
 
+        if (function_exists('meza_site_documentation_site_manager_caps')) {
+            foreach (meza_site_documentation_site_manager_caps() as $cap => $grant) {
+                $caps[(string) $cap] = (bool) $grant;
+            }
+        }
+
         return $caps;
     }
 }
@@ -1525,6 +1531,12 @@ if (!function_exists('meza_seo_manager_capabilities')) {
 
         foreach ($seo_manager_extras as $cap) {
             $caps[$cap] = true;
+        }
+
+        if (function_exists('meza_site_documentation_seo_manager_caps')) {
+            foreach (meza_site_documentation_seo_manager_caps() as $cap => $grant) {
+                $caps[(string) $cap] = (bool) $grant;
+            }
         }
 
         return $caps;
@@ -1566,6 +1578,14 @@ if (!function_exists('meza_sync_site_manager_role')) {
             'wpseo_edit_advanced_metadata',
             'wpseo_bulk_edit',
         ];
+
+        if (function_exists('meza_site_documentation_administrator_caps')) {
+            foreach (array_keys(meza_site_documentation_administrator_caps()) as $cap) {
+                $admin_required_caps[] = (string) $cap;
+            }
+        }
+
+        $admin_required_caps = array_values(array_unique($admin_required_caps));
         $sync_signature = meza_get_sync_signature([
             'role_key' => $role_key,
             'target_caps' => $target_caps,
@@ -1637,6 +1657,14 @@ if (!function_exists('meza_sync_site_manager_role')) {
             foreach ([meza_redirect_manager_capability(), 'wpseo_manage_options', 'wpseo_edit_advanced_metadata', 'wpseo_bulk_edit'] as $cap) {
                 if (!$administrator_role->has_cap($cap)) {
                     $administrator_role->add_cap($cap);
+                }
+            }
+
+            if (function_exists('meza_site_documentation_administrator_caps')) {
+                foreach (array_keys(meza_site_documentation_administrator_caps()) as $cap) {
+                    if (!$administrator_role->has_cap((string) $cap)) {
+                        $administrator_role->add_cap((string) $cap);
+                    }
                 }
             }
         }
