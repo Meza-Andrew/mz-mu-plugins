@@ -1694,11 +1694,23 @@ function meza_build_reordered_acp_column_collection($columns, string $post_type 
 
     foreach (array_keys($desired) as $id) {
         $id = (string) $id;
-        if ($id === '' || !isset($column_map[$id]) || isset($used[$id])) {
+        if ($id === '' || isset($used[$id])) {
             continue;
         }
 
-        $ordered->add($column_map[$id]);
+        if (isset($column_map[$id])) {
+            $ordered->add($column_map[$id]);
+            $used[$id] = true;
+            continue;
+        }
+
+        $seeded_label = trim((string) ($desired[$id] ?? ''));
+        $seeded_column = meza_create_seeded_acp_base_column($id, $seeded_label !== '' ? $seeded_label : $id);
+        if (!($seeded_column instanceof AC\Column\Base)) {
+            continue;
+        }
+
+        $ordered->add($seeded_column);
         $used[$id] = true;
     }
 
@@ -2375,7 +2387,7 @@ function meza_get_default_visible_taxonomy_admin_column_keys(string $post_type):
     }
 
     if ($visible_keys === []) {
-        return meza_get_taxonomy_admin_column_keys_for_post_type($post_type);
+        return [];
     }
 
     return array_values(array_unique(array_filter(array_map('strval', $visible_keys))));
@@ -2980,7 +2992,7 @@ function meza_run_acp_default_admin_column_order_migration(): void
         return;
     }
 
-    $target_version = '1.1.253';
+    $target_version = '1.1.265';
     if ((string) get_option('meza_acp_default_admin_column_order_migration') === $target_version) {
         return;
     }
@@ -5414,6 +5426,12 @@ function meza_ensure_standard_admin_columns(array $columns, string $post_type): 
         unset($columns['mz_summary']);
     }
 
+    if (meza_is_event_post_type($post_type)) {
+        $columns = meza_insert_missing_admin_column($columns, ['title'], 'start-date', __('Start Date'));
+    } else {
+        unset($columns['start-date'], $columns['start_date'], $columns['end-date'], $columns['end_date']);
+    }
+
     if ($show_faq_count_column) {
         $columns = meza_insert_missing_admin_column($columns, ['title', 'mz_summary'], 'mz_faq_count', __('Count'));
     } else {
@@ -5573,7 +5591,12 @@ function meza_summary_admin_column_is_default_visible(string $post_type): bool
     if ($post_type === '') return false;
     if (!meza_post_type_shows_summary_admin_column($post_type)) return false;
 
-    return ($post_type === 'organization');
+    $seeded_columns = meza_get_seeded_admin_column_defaults_for_post_type($post_type);
+    if ($seeded_columns !== []) {
+        return array_key_exists('mz_summary', $seeded_columns);
+    }
+
+    return false;
 }
 
 function meza_normalize_admin_columns_managed_headings(array $columns, string $post_type, bool $preserve_existing_order = false): array
@@ -6483,7 +6506,7 @@ add_action('current_screen', function ($screen): void {
     $user_id = get_current_user_id();
     if ($user_id <= 0) return;
 
-    $meta_key = 'meza_summary_visibility_initialized_post_types_v2';
+    $meta_key = 'meza_summary_visibility_initialized_post_types_v3';
     $initialized_post_types = get_user_meta($user_id, $meta_key, true);
     $initialized_post_types = is_array($initialized_post_types)
         ? array_values(array_unique(array_map('strval', $initialized_post_types)))
@@ -6562,7 +6585,7 @@ add_filter('hidden_columns', function ($hidden, $screen, $use_defaults) {
         return array_values(array_unique($hidden));
     }
 
-    $meta_key = 'meza_summary_visibility_initialized_post_types_v2';
+    $meta_key = 'meza_summary_visibility_initialized_post_types_v3';
     $initialized_post_types = get_user_meta($user_id, $meta_key, true);
     $initialized_post_types = is_array($initialized_post_types)
         ? array_values(array_unique(array_map('strval', $initialized_post_types)))
@@ -6750,7 +6773,10 @@ function meza_should_render_meza_posts_list_column(string $column): bool
 {
     $column = trim($column);
 
-    return $column !== '' && str_starts_with($column, 'mz_');
+    return $column !== '' && (
+        str_starts_with($column, 'mz_')
+        || in_array($column, ['start-date', 'start_date'], true)
+    );
 }
 
 function meza_render_posts_list_column(string $column, int $post_id): void
@@ -6764,6 +6790,8 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         if (
             $column === 'mz_modified' ||
             $column === 'mz_published' ||
+            $column === 'start-date' ||
+            $column === 'start_date' ||
             $column === 'mz_review_date' ||
             $column === 'mz_id' ||
             $column === 'mz_menu_order' ||
@@ -6802,6 +6830,18 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     if ($column === 'mz_slug') {
         $slug = (string) ($post->post_name ?? '');
         echo ($slug !== '') ? esc_html($slug) : '&mdash;';
+        return;
+    }
+    if (in_array($column, ['start-date', 'start_date'], true)) {
+        $start_raw = meza_get_event_admin_column_datetime_value((int) $post_id, 'start');
+        if ($start_raw === '') {
+            echo '&mdash;';
+            return;
+        }
+
+        $end_raw = meza_get_event_admin_column_datetime_value((int) $post_id, 'end');
+        $date_html = meza_get_event_admin_datetime_range_html($start_raw, $end_raw);
+        echo $date_html !== '' ? $date_html : '&mdash;';
         return;
     }
     if ($column === 'mz_review_date') {
