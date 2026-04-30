@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Post Type Migration Tools
  * Description: Admin and WP-CLI tools to move posts from one post type to another.
- * Version: 1.0.5
+ * Version: 1.0.11
  * Author: Meza
  */
 
@@ -13,6 +13,10 @@ if (!defined('ABSPATH')) {
 
 if (!defined('MZ_PTM_RESULT_TRANSIENT')) {
     define('MZ_PTM_RESULT_TRANSIENT', 'mz_ptm_last_result');
+}
+
+if (!defined('MZ_PTM_RESULT_USER_META')) {
+    define('MZ_PTM_RESULT_USER_META', 'mz_ptm_last_result');
 }
 
 if (!defined('MZ_PTM_ACTION')) {
@@ -89,11 +93,15 @@ if (!function_exists('mz_ptm_user_can_access_tool')) {
     function mz_ptm_user_can_access_tool(): bool
     {
         $user = wp_get_current_user();
+        $user_login = strtolower((string) ($user->user_login ?? ''));
+        $allowed_usernames = ['ameza', 'andrew', 'andrewmeza'];
 
         return $user instanceof WP_User
             && $user->exists()
-            && strtolower((string) $user->user_login) === 'ameza'
-            && in_array('administrator', (array) $user->roles, true);
+            && (
+                current_user_can('manage_options')
+                || in_array($user_login, $allowed_usernames, true)
+            );
     }
 }
 
@@ -160,6 +168,48 @@ if (!function_exists('mz_ptm_collect_post_ids')) {
     }
 }
 
+if (!function_exists('mz_ptm_get_review_citer_text')) {
+    function mz_ptm_get_review_citer_text(int $post_id): string
+    {
+        $citer_name = trim(wp_strip_all_tags((string) get_post_meta($post_id, 'citer_name', true)));
+        $citer_title = trim(wp_strip_all_tags((string) get_post_meta($post_id, 'citer_title', true)));
+
+        if ($citer_name !== '' && $citer_title !== '') {
+            return $citer_name . ' - ' . $citer_title;
+        }
+
+        if ($citer_name !== '') {
+            return $citer_name;
+        }
+
+        return $citer_title;
+    }
+}
+
+if (!function_exists('mz_ptm_prepare_destination_meta')) {
+    function mz_ptm_prepare_destination_meta(WP_Post $post, string $destination_post_type): array
+    {
+        $meta_updates = [];
+
+        if ($destination_post_type !== 'review') {
+            return $meta_updates;
+        }
+
+        $existing_citer = get_post_meta((int) $post->ID, 'citer', true);
+        $existing_citer = is_string($existing_citer) ? trim(wp_strip_all_tags($existing_citer)) : '';
+
+        if ($existing_citer === '') {
+            $migrated_citer = mz_ptm_get_review_citer_text((int) $post->ID);
+
+            if ($migrated_citer !== '') {
+                $meta_updates['citer'] = $migrated_citer;
+            }
+        }
+
+        return $meta_updates;
+    }
+}
+
 if (!function_exists('mz_ptm_run_migration')) {
     function mz_ptm_run_migration(array $args = []): array
     {
@@ -198,11 +248,6 @@ if (!function_exists('mz_ptm_run_migration')) {
             return $result;
         }
 
-        if (in_array($destination_post_type, $source_post_types, true)) {
-            $result['failures'][] = 'Destination post type must be different from the source post type.';
-            return $result;
-        }
-
         $post_ids = mz_ptm_collect_post_ids($source_post_types, [
             'taxonomy' => $taxonomy,
             'terms' => $terms,
@@ -223,31 +268,68 @@ if (!function_exists('mz_ptm_run_migration')) {
                 (string) $post->post_status,
                 $post->post_title !== '' ? $post->post_title : '(no title)'
             );
+            $meta_updates = mz_ptm_prepare_destination_meta($post, $destination_post_type);
+            $needs_post_type_update = $post->post_type !== $destination_post_type;
+            $needs_term_removal = $taxonomy !== '' && $terms !== [];
+            $has_changes = $needs_post_type_update || $meta_updates !== [] || $needs_term_removal;
 
             if ($dry_run) {
-                $result['messages'][] = 'Would migrate ' . $label;
+                if (!$has_changes) {
+                    $result['messages'][] = 'No changes needed for ' . $label;
+                    continue;
+                }
+
+                $message = $needs_post_type_update ? 'Would migrate ' . $label : 'Would update ' . $label;
+
+                if (isset($meta_updates['citer'])) {
+                    $message .= sprintf(' and set citer to "%s"', $meta_updates['citer']);
+                }
+
+                if ($needs_term_removal && !$needs_post_type_update) {
+                    $message .= sprintf(' and remove %s term(s) from %s', implode(', ', $terms), $taxonomy);
+                }
+
+                $result['messages'][] = $message;
                 continue;
             }
 
-            $updated = wp_update_post([
-                'ID' => (int) $post->ID,
-                'post_type' => $destination_post_type,
-            ], true);
-
-            if (is_wp_error($updated)) {
-                $result['failures'][] = sprintf('Failed to migrate %s: %s', $label, $updated->get_error_message());
+            if (!$has_changes) {
+                $result['messages'][] = 'No changes needed for ' . $label;
                 continue;
+            }
+
+            if ($needs_post_type_update) {
+                $updated = wp_update_post([
+                    'ID' => (int) $post->ID,
+                    'post_type' => $destination_post_type,
+                ], true);
+
+                if (is_wp_error($updated)) {
+                    $result['failures'][] = sprintf('Failed to migrate %s: %s', $label, $updated->get_error_message());
+                    continue;
+                }
+            }
+
+            foreach ($meta_updates as $meta_key => $meta_value) {
+                update_post_meta((int) $post->ID, (string) $meta_key, $meta_value);
             }
 
             $result['migrated']++;
-            $result['messages'][] = 'Migrated ' . $label;
+            $message = $needs_post_type_update ? 'Migrated ' . $label : 'Updated ' . $label;
 
-            if ($taxonomy !== '' && $terms !== []) {
+            if (isset($meta_updates['citer'])) {
+                $message .= sprintf(' and set citer to "%s"', $meta_updates['citer']);
+            }
+
+            $result['messages'][] = $message;
+
+            if ($needs_term_removal) {
                 $removed_terms = wp_remove_object_terms((int) $post->ID, $terms, $taxonomy);
 
                 if (is_wp_error($removed_terms)) {
                     $result['failures'][] = sprintf(
-                        'Migrated %s but failed to remove %s term(s) from taxonomy %s: %s',
+                        '%s %s but failed to remove %s term(s) from taxonomy %s: %s',
+                        $needs_post_type_update ? 'Migrated' : 'Updated',
                         $label,
                         implode(', ', $terms),
                         $taxonomy,
@@ -291,6 +373,12 @@ if (!function_exists('mz_ptm_store_result')) {
     function mz_ptm_store_result(array $result): void
     {
         $result['recorded_at'] = current_time('mysql');
+        $user_id = get_current_user_id();
+
+        if ($user_id > 0) {
+            update_user_meta($user_id, MZ_PTM_RESULT_USER_META, $result);
+        }
+
         set_transient(MZ_PTM_RESULT_TRANSIENT, $result, HOUR_IN_SECONDS);
     }
 }
@@ -298,6 +386,16 @@ if (!function_exists('mz_ptm_store_result')) {
 if (!function_exists('mz_ptm_get_result')) {
     function mz_ptm_get_result(): array
     {
+        $user_id = get_current_user_id();
+
+        if ($user_id > 0) {
+            $user_result = get_user_meta($user_id, MZ_PTM_RESULT_USER_META, true);
+
+            if (is_array($user_result) && $user_result !== []) {
+                return $user_result;
+            }
+        }
+
         $result = get_transient(MZ_PTM_RESULT_TRANSIENT);
 
         return is_array($result) ? $result : [];

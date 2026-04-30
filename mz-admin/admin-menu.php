@@ -8950,6 +8950,12 @@ function meza_enforce_seo_manager_limited_admin_menus(): void
     }
 
     $allowed_tools_submenu_slugs = ['import.php', 'admin.php?import=wordpress'];
+    if (current_user_can('manage_options') || in_array(strtolower((string) wp_get_current_user()->user_login), ['ameza', 'andrew', 'andrewmeza'], true)) {
+        $allowed_tools_submenu_slugs[] = 'mz-post-type-migration-tools';
+        $allowed_tools_submenu_slugs[] = 'tools.php?page=mz-post-type-migration-tools';
+        $allowed_tools_submenu_slugs[] = 'mz-faq-migration-tools';
+        $allowed_tools_submenu_slugs[] = 'tools.php?page=mz-faq-migration-tools';
+    }
     $tools_items = [];
 
     foreach ((array) ($submenu['tools.php'] ?? []) as $item) {
@@ -8962,11 +8968,13 @@ function meza_enforce_seo_manager_limited_admin_menus(): void
             continue;
         }
 
-        $item[2] = 'admin.php?import=wordpress';
-        $item[0] = 'Import';
-        $item[1] = 'read';
-        if (isset($item[3])) {
-            $item[3] = 'Import';
+        if (in_array($slug, ['import.php', 'admin.php?import=wordpress'], true)) {
+            $item[2] = 'admin.php?import=wordpress';
+            $item[0] = 'Import';
+            $item[1] = 'read';
+            if (isset($item[3])) {
+                $item[3] = 'Import';
+            }
         }
 
         $tools_items[] = $item;
@@ -10751,6 +10759,19 @@ add_action('admin_init', function (): void {
     if ($pagenow === 'themes.php') {
         wp_safe_redirect(admin_url('nav-menus.php'));
         exit;
+    }
+
+    $plugin_page = isset($_GET['page']) ? sanitize_key(wp_unslash((string) $_GET['page'])) : '';
+    $user_login = strtolower((string) wp_get_current_user()->user_login);
+    if (
+        $pagenow === 'tools.php'
+        && in_array($plugin_page, ['mz-post-type-migration-tools', 'mz-faq-migration-tools'], true)
+        && (
+            current_user_can('manage_options')
+            || in_array($user_login, ['ameza', 'andrew', 'andrewmeza'], true)
+        )
+    ) {
+        return;
     }
 
     if ($pagenow === 'tools.php' || ($pagenow === 'import.php' && !isset($_GET['import']))) {
