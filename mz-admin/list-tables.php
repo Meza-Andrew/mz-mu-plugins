@@ -6984,7 +6984,9 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         }
 
         echo meza_get_admin_email_column_html($recipients, [
-            'fallback_email' => function_exists('get_field') ? (string) get_field('email', 'option') : '',
+            'fallback_email' => function_exists('meza_get_business_information_email')
+                ? meza_get_business_information_email()
+                : (function_exists('get_field') ? (string) get_field('email', 'option') : ''),
             'fallback_label' => 'site email',
         ]);
         return;

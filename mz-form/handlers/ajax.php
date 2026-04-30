@@ -629,11 +629,15 @@ if (!function_exists('send_form_data')) :
         $site_name = get_bloginfo('name');
         $site_url  = home_url();
 
-        $org_email_raw     = function_exists('get_field') ? (string) get_field('email', 'option') : '';
+        $org_email_raw = function_exists('meza_get_business_information_email')
+            ? meza_get_business_information_email()
+            : (function_exists('get_field') ? (string) get_field('email', 'option') : '');
         $org_email_hdr     = sanitize_email($org_email_raw);
         $org_email_display = $org_email_raw ? antispambot($org_email_raw) : '';
 
-        $org_phone      = function_exists('get_field') ? (string) get_field('phone', 'option') : '';
+        $org_phone = function_exists('meza_get_business_information_phone')
+            ? meza_get_business_information_phone()
+            : (function_exists('get_field') ? (string) get_field('phone', 'option') : '');
         $org_phone_href = preg_replace('/[^\d\+]/', '', $org_phone);
 
         $full_name = trim($data['FirstName'] . ' ' . $data['LastName']);
@@ -747,7 +751,10 @@ if (!function_exists('send_form_data')) :
             return [$display ?: null, $display ?: null, null, null];
         };
 
-        $org_addr_raw = function_exists('get_field') ? get_field('address', 'option') : null;
+        $business_address = function_exists('meza_get_business_information_address')
+            ? meza_get_business_information_address()
+            : ['raw' => function_exists('get_field') ? get_field('address', 'option') : null];
+        $org_addr_raw = $business_address['raw'] ?? null;
         [$org_addr_display, $org_addr_query, $org_place_id, $org_place_name] = $format_acf_map_address($org_addr_raw);
         $org_has_maps_meta = false;
         if (is_array($org_addr_raw)) {

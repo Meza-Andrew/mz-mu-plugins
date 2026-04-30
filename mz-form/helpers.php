@@ -465,7 +465,10 @@ if (!function_exists('mzf_build_footer_html')) {
         $domain = trim((string) $domain);
         $domain_href = $domain !== '' ? ('https://' . $domain) : '';
         $site_href = mzf_ensure_absolute_url($site_url);
-        $option_addr_text = function_exists('get_field') ? trim((string) get_field('address_text', 'option')) : '';
+        $business_address = function_exists('meza_get_business_information_address')
+            ? meza_get_business_information_address()
+            : ['raw' => null, 'text' => function_exists('get_field') ? trim((string) get_field('address_text', 'option')) : ''];
+        $option_addr_text = trim((string) ($business_address['text'] ?? ''));
         $address_uses_maps = ($maps_url !== '');
         $using_address_text_fallback = false;
         if ($site_href === '') {
@@ -475,7 +478,7 @@ if (!function_exists('mzf_build_footer_html')) {
         if ($site_name === '') {
             $site_name = $site_href !== '' ? preg_replace('#^https?://#i', '', $site_href) : 'Website';
         }
-        $option_addr_raw = function_exists('get_field') ? get_field('address', 'option') : null;
+        $option_addr_raw = $business_address['raw'] ?? null;
         if (is_array($option_addr_raw)) {
             $street = trim((string) (($option_addr_raw['street_number'] ?? '') . ' ' . ($option_addr_raw['street_name'] ?? '')));
             $suite = trim((string) (
@@ -1673,7 +1676,9 @@ if (!function_exists('ds_resolve_office_email')) {
 
         // 3) Fallbacks
         // If no Store value (or none matched), default to option email
-        $opt_email = sanitize_email((string) get_field('email', 'option'));
+        $opt_email = function_exists('meza_get_business_information_email')
+            ? sanitize_email(meza_get_business_information_email())
+            : sanitize_email((string) get_field('email', 'option'));
         if (is_email($opt_email)) return $opt_email;
 
         return ''; // last resort
