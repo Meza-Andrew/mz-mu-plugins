@@ -4,7 +4,7 @@
  * Plugin Name: MZ Form Migration Tools (MU)
  * Description: Admin-only tools to migrate legacy page section_form data into form posts and clean/reset form records.
  * Author: Meza
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if (!defined('ABSPATH')) {
@@ -23,6 +23,7 @@ if (!function_exists('mzf_mt_map_legacy_section_form')) {
     {
         $headline = trim((string) ($legacy['headline'] ?? ''));
         $subhead = trim((string) ($legacy['subhead'] ?? ''));
+        $description = trim((string) ($legacy['description'] ?? ''));
         $disclaimer = (string) ($legacy['disclaimer'] ?? '');
 
         $submit = trim((string) ($legacy['text_submit'] ?? 'Send your message'));
@@ -41,8 +42,12 @@ if (!function_exists('mzf_mt_map_legacy_section_form')) {
         $email_recipients = trim((string) ($legacy['email_recipients'] ?? ''));
 
         return [
-            'headline' => $headline,
-            'subhead' => $subhead,
+            'section' => [
+                'headline' => $headline,
+                'subhead' => $subhead,
+                'description' => $description,
+                'id' => sanitize_title((string) ($legacy['id'] ?? '')),
+            ],
             'disclaimer' => $disclaimer,
             'button_text' => [
                 'submit' => $submit,
@@ -79,6 +84,62 @@ if (!function_exists('mzf_mt_map_legacy_section_form')) {
                 'email_recipients' => $email_recipients,
             ],
         ];
+    }
+}
+
+if (!function_exists('mzf_mt_source_show_form')) {
+    function mzf_mt_source_show_form(int $source_id): bool
+    {
+        if ($source_id <= 0) {
+            return true;
+        }
+
+        $show_form = get_post_meta($source_id, 'show_form', true);
+        if ($show_form !== '') {
+            return (bool) $show_form;
+        }
+
+        $legacy_visibility = get_post_meta($source_id, 'visibility_form', true);
+        if ($legacy_visibility !== '') {
+            return (bool) $legacy_visibility;
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('mzf_mt_source_form_family')) {
+    function mzf_mt_source_form_family(int $source_id, array $legacy = []): string
+    {
+        $family = apply_filters('mzf_mt_source_form_family', '', $source_id, $legacy);
+        $family = sanitize_key((string) $family);
+
+        if ($family !== '') {
+            return $family;
+        }
+
+        $source_slug = sanitize_key((string) get_post_field('post_name', $source_id));
+        return $source_slug !== '' ? $source_slug : 'contact';
+    }
+}
+
+if (!function_exists('mzf_mt_source_form_slug_base')) {
+    function mzf_mt_source_form_slug_base(int $source_id, string $family): string
+    {
+        $source_slug = sanitize_title((string) get_post_field('post_name', $source_id));
+        if ($source_slug === '') {
+            $source_slug = 'form-' . max(1, $source_id);
+        }
+
+        if ($family === '') {
+            return $source_slug;
+        }
+
+        if (function_exists('mzf_slug_matches_family') && mzf_slug_matches_family($source_slug, $family)) {
+            return $source_slug;
+        }
+
+        return sanitize_title($source_slug . '-' . $family);
     }
 }
 
@@ -277,9 +338,32 @@ if (!function_exists('mzf_mt_migrate_section_forms')) {
                 continue;
             }
 
-            // Migration skip criteria is based on section_form content, not visibility toggles.
-            // Keep include_hidden arg for backward-compatible tool output/CLI signatures.
+            $linked_form = $legacy['form'] ?? null;
+            $linked_form_id = 0;
+            if ($linked_form instanceof WP_Post) {
+                $linked_form_id = $linked_form->post_type === 'form' ? (int) $linked_form->ID : 0;
+            } elseif (is_numeric($linked_form)) {
+                $linked_form_id = get_post_type((int) $linked_form) === 'form' ? (int) $linked_form : 0;
+            } elseif (is_array($linked_form)) {
+                $linked_form_candidate = (int) ($linked_form['ID'] ?? $linked_form['id'] ?? reset($linked_form) ?: 0);
+                $linked_form_id = $linked_form_candidate > 0 && get_post_type($linked_form_candidate) === 'form'
+                    ? $linked_form_candidate
+                    : 0;
+            }
+
             $headline = trim((string) ($legacy['headline'] ?? ''));
+            if ($linked_form_id > 0 && $headline === '') {
+                $rows[] = [
+                    'source_id' => $page_id,
+                    'source_slug' => (string) get_post_field('post_name', $page_id),
+                    'status' => 'skipped',
+                    'reason' => 'already linked to form post',
+                    'form_id' => $linked_form_id,
+                    'form_slug' => (string) get_post_field('post_name', $linked_form_id),
+                ];
+                continue;
+            }
+
             if ($headline === '') {
                 $rows[] = ['source_id' => $page_id, 'source_slug' => (string) get_post_field('post_name', $page_id), 'status' => 'skipped', 'reason' => 'section_form.headline is empty', 'form_id' => 0, 'form_slug' => ''];
                 continue;
@@ -287,11 +371,13 @@ if (!function_exists('mzf_mt_migrate_section_forms')) {
 
             $mapped = mzf_mt_map_legacy_section_form($legacy);
             $source_slug = sanitize_title((string) get_post_field('post_name', $page_id));
-            $base_slug = $source_slug !== '' ? $source_slug : ('form-' . $page_id);
+            $family = mzf_mt_source_form_family($page_id, $legacy);
+            $base_slug = mzf_mt_source_form_slug_base($page_id, $family);
+            $show_form = mzf_mt_source_show_form($page_id);
 
             $existing_form_id = mzf_mt_find_existing_form($page_id);
             $final_slug = $existing_form_id > 0 ? (string) get_post_field('post_name', $existing_form_id) : mzf_mt_unique_form_slug($base_slug, $page_id);
-            $form_title = $mapped['headline'] !== '' ? $mapped['headline'] : (get_the_title($page_id) . ' Form');
+            $form_title = $mapped['section']['headline'] !== '' ? $mapped['section']['headline'] : (get_the_title($page_id) . ' Form');
 
             if (!$apply) {
                 $rows[] = [
@@ -328,8 +414,6 @@ if (!function_exists('mzf_mt_migrate_section_forms')) {
             $form_id = (int) $form_id;
 
             if (function_exists('update_field')) {
-                update_field('headline', $mapped['headline'], $form_id);
-                update_field('subhead', $mapped['subhead'], $form_id);
                 update_field('disclaimer', $mapped['disclaimer'], $form_id);
                 update_field('button_text', $mapped['button_text'], $form_id);
                 update_field('messages', $mapped['messages'], $form_id);
@@ -342,7 +426,26 @@ if (!function_exists('mzf_mt_migrate_section_forms')) {
             }
             update_post_meta($form_id, '_mzf_source_page_id', (int) $page_id);
             update_post_meta($form_id, '_mzf_source_page_slug', (string) $source_slug);
+            update_post_meta($form_id, '_mzf_form_family', (string) $family);
             update_post_meta($form_id, '_mzf_migrated_at', current_time('mysql'));
+
+            $section_payload = [
+                'headline' => (string) ($mapped['section']['headline'] ?? ''),
+                'subhead' => (string) ($mapped['section']['subhead'] ?? ''),
+                'description' => (string) ($mapped['section']['description'] ?? ''),
+                'form' => $form_id,
+                'id' => (string) ($mapped['section']['id'] ?? ''),
+            ];
+
+            if (function_exists('update_field')) {
+                update_field('show_form', $show_form ? 1 : 0, $page_id);
+                update_field('section_form', $section_payload, $page_id);
+            }
+
+            update_post_meta($page_id, 'show_form', $show_form ? 1 : 0);
+            update_post_meta($page_id, 'section_form_form', $form_id);
+            update_post_meta($page_id, 'section_form', $section_payload);
+            update_post_meta($page_id, 'visibility_form', $show_form ? 1 : 0);
 
             $rows[] = [
                 'source_id' => $page_id,
