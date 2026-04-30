@@ -725,7 +725,10 @@ add_filter('manage_posts_columns', function ($columns, $post_type) {
         return $columns;
     }
 
-    return meza_ensure_taxonomy_admin_columns(is_array($columns) ? $columns : [], 'post');
+    return meza_filter_invalid_taxonomy_admin_columns(
+        meza_ensure_taxonomy_admin_columns(is_array($columns) ? $columns : [], 'post'),
+        'post'
+    );
 }, 1000, 2);
 
 add_filter('wp_mail_smtp_tasks_tasks_action_scheduler_tools_plugin_exceptions', function ($plugins) {
@@ -910,6 +913,43 @@ function meza_ensure_taxonomy_admin_columns(array $columns, string $post_type): 
         }
 
         $columns[$preferred_key] = $column_label;
+    }
+
+    return $columns;
+}
+
+function meza_filter_invalid_taxonomy_admin_columns(array $columns, string $post_type): array
+{
+    if (!is_array($columns)) {
+        return [];
+    }
+
+    $post_type = trim($post_type);
+    if ($post_type === '') {
+        return $columns;
+    }
+
+    $taxonomies = meza_get_cached_object_taxonomies($post_type, 'objects');
+    if (!is_array($taxonomies)) {
+        $taxonomies = [];
+    }
+
+    foreach (array_keys($columns) as $column_key) {
+        $column_key = (string) $column_key;
+        if (!str_starts_with($column_key, 'taxonomy-')) {
+            continue;
+        }
+
+        $taxonomy_name = sanitize_key(substr($column_key, 9));
+        if ($taxonomy_name === '') {
+            unset($columns[$column_key]);
+            continue;
+        }
+
+        $taxonomy = $taxonomies[$taxonomy_name] ?? get_taxonomy($taxonomy_name);
+        if (!($taxonomy instanceof WP_Taxonomy) || !in_array($post_type, (array) $taxonomy->object_type, true)) {
+            unset($columns[$column_key]);
+        }
     }
 
     return $columns;
@@ -6515,8 +6555,8 @@ add_action('current_screen', function ($screen): void {
     add_filter("manage_edit-{$post_type}_columns", function ($columns) use ($post_type) {
         if (!is_array($columns)) $columns = [];
         if ($post_type === '' || !meza_post_type_has_permalink($post_type)) return $columns;
-        if (meza_is_acf_admin_post_type($post_type)) return $columns;
-        if (meza_post_type_uses_admin_columns_layout($post_type)) return $columns;
+        if (meza_is_acf_admin_post_type($post_type)) return meza_filter_invalid_taxonomy_admin_columns($columns, $post_type);
+        if (meza_post_type_uses_admin_columns_layout($post_type)) return meza_filter_invalid_taxonomy_admin_columns($columns, $post_type);
 
         $columns = meza_move_taxonomy_columns_before_meta_columns(
             meza_reinsert_sorted_taxonomy_columns(
@@ -6526,7 +6566,10 @@ add_action('current_screen', function ($screen): void {
             $post_type
         );
 
-        return meza_insert_admin_column_after($columns, 'mz_page_cta', 'mz_page_form', __('Page Form'));
+        return meza_filter_invalid_taxonomy_admin_columns(
+            meza_insert_admin_column_after($columns, 'mz_page_cta', 'mz_page_form', __('Page Form')),
+            $post_type
+        );
     }, 1000);
 
     if (meza_page_form_admin_column_is_default_visible($post_type)) return;
@@ -7514,9 +7557,12 @@ add_action('current_screen', function ($screen) {
     add_filter("manage_{$post_type}_posts_columns", 'meza_normalize_datetime_columns', 1000);
     add_filter("manage_{$post_type}_posts_columns", function ($columns) use ($post_type) {
         if (meza_post_type_uses_admin_columns_layout($post_type)) {
-            return is_array($columns) ? $columns : [];
+            return meza_filter_invalid_taxonomy_admin_columns(is_array($columns) ? $columns : [], $post_type);
         }
-        return meza_ensure_summary_admin_column(is_array($columns) ? $columns : [], $post_type);
+        return meza_filter_invalid_taxonomy_admin_columns(
+            meza_ensure_summary_admin_column(is_array($columns) ? $columns : [], $post_type),
+            $post_type
+        );
     }, 100000);
     add_action("manage_{$post_type}_posts_custom_column", 'meza_render_posts_list_column', 100, 2);
     add_filter("manage_edit-{$post_type}_sortable_columns", 'meza_register_datetime_sortable_columns', 1000);
