@@ -39,6 +39,22 @@ if (!function_exists('meza_is_conference_business_type')) {
     }
 }
 
+if (!function_exists('meza_get_contact_page_id_for_acf_rules')) {
+    function meza_get_contact_page_id_for_acf_rules(): int
+    {
+        if (function_exists('meza_get_page_by_candidate_slugs') && defined('MEZA_CONTACT_SLUGS')) {
+            $page = meza_get_page_by_candidate_slugs(MEZA_CONTACT_SLUGS);
+            if ($page instanceof WP_Post) {
+                return (int) $page->ID;
+            }
+        }
+
+        $page = get_page_by_path('contact', OBJECT, 'page');
+
+        return $page instanceof WP_Post ? (int) $page->ID : 0;
+    }
+}
+
 if (!function_exists('meza_supports_sponsor_features')) {
     function meza_supports_sponsor_features(): bool
     {
@@ -859,6 +875,150 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         ];
     }
 
+    function meza_get_contact_locations_section_fields(): array
+    {
+        return [
+            [
+                'key' => 'field_meza_contact_locations_visibility',
+                'label' => 'Visibility',
+                'name' => 'show_list-locations',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'message' => 'Show the List Locations section this page?',
+                'default_value' => 0,
+                'allow_in_bindings' => 0,
+                'ui' => 0,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
+            ],
+            [
+                'key' => 'field_meza_contact_locations_section_group',
+                'label' => 'Section',
+                'name' => 'section_list-locations',
+                'aria-label' => '',
+                'type' => 'group',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_meza_contact_locations_visibility',
+                            'operator' => '==',
+                            'value' => '1',
+                        ],
+                    ],
+                ],
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'layout' => 'block',
+                'sub_fields' => [
+                    [
+                        'key' => 'field_meza_contact_locations_headline',
+                        'label' => 'Headline (H2)',
+                        'name' => 'headline',
+                        'aria-label' => '',
+                        'type' => 'text',
+                        'instructions' => '',
+                        'required' => 1,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'maxlength' => '',
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                    ],
+                    [
+                        'key' => 'field_meza_contact_locations_subhead',
+                        'label' => 'Subhead',
+                        'name' => 'subhead',
+                        'aria-label' => '',
+                        'type' => 'text',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'maxlength' => '',
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                    ],
+                    [
+                        'key' => 'field_meza_contact_locations_id',
+                        'label' => 'ID',
+                        'name' => 'id',
+                        'aria-label' => '',
+                        'type' => 'text',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'maxlength' => '',
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    function meza_get_contact_locations_section_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_meza_contact_locations_section',
+            'title' => 'List Locations Section',
+            'fields' => meza_get_contact_locations_section_fields(),
+            'location' => [
+                [
+                    [
+                        'param' => 'page',
+                        'operator' => '==',
+                        'value' => (string) meza_get_contact_page_id_for_acf_rules(),
+                    ],
+                ],
+            ],
+            'menu_order' => 8,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+        ];
+    }
+
     function meza_get_business_information_contact_fields(): array
     {
         return [
@@ -1106,13 +1266,89 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
 
     function meza_get_business_information_locations_option_rows(): array
     {
+        if (
+            is_admin()
+            && isset($_POST['acf']['field_meza_business_locations'])
+            && is_array($_POST['acf']['field_meza_business_locations'])
+        ) {
+            return array_values(array_filter(
+                wp_unslash($_POST['acf']['field_meza_business_locations']),
+                'is_array'
+            ));
+        }
+
         if (!function_exists('get_field')) {
-            return [];
+            return meza_get_business_information_locations_rows_from_raw_options();
         }
 
         $rows = get_field('locations', 'option');
 
-        return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
+        if (is_array($rows)) {
+            return array_values(array_filter($rows, 'is_array'));
+        }
+
+        return meza_get_business_information_locations_rows_from_raw_options();
+    }
+
+    function meza_get_business_information_locations_rows_from_raw_options(): array
+    {
+        $row_count = (int) get_option('options_locations', 0);
+        if ($row_count <= 0) {
+            return [];
+        }
+
+        $rows = [];
+
+        for ($index = 0; $index < $row_count; $index++) {
+            $row = [
+                'name' => (string) get_option("options_locations_{$index}_name", ''),
+                'primary' => get_option("options_locations_{$index}_primary", ''),
+                'phone' => (string) get_option("options_locations_{$index}_phone", ''),
+                'email' => (string) get_option("options_locations_{$index}_email", ''),
+                'address' => get_option("options_locations_{$index}_address", null),
+                'note' => (string) get_option("options_locations_{$index}_note", ''),
+            ];
+
+            $hours = [];
+            $hours_count = (int) get_option("options_locations_{$index}_hours", 0);
+
+            for ($hour_index = 0; $hour_index < $hours_count; $hour_index++) {
+                $hours[] = [
+                    'day' => (string) get_option("options_locations_{$index}_hours_{$hour_index}_day", ''),
+                    'time' => (string) get_option("options_locations_{$index}_hours_{$hour_index}_time", ''),
+                ];
+            }
+
+            if (!empty($hours)) {
+                $row['hours'] = $hours;
+            }
+
+            $rows[] = $row;
+        }
+
+        return array_values(array_filter($rows, static function (array $row): bool {
+            foreach (['name', 'phone', 'email', 'note'] as $key) {
+                if (trim((string) ($row[$key] ?? '')) !== '') {
+                    return true;
+                }
+            }
+
+            if (!empty($row['primary'])) {
+                return true;
+            }
+
+            if (meza_acf_google_map_has_meaningful_value($row['address'] ?? null)) {
+                return true;
+            }
+
+            return !empty($row['hours']);
+        }));
+    }
+
+    function meza_should_register_contact_locations_section_group(): bool
+    {
+        return (int) get_option('options_locations', 0) > 1
+            && meza_get_contact_page_id_for_acf_rules() > 0;
     }
 
     function meza_count_primary_business_information_locations($rows): int
@@ -5236,6 +5472,10 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             meza_get_review_field_group_definition(),
         ];
 
+        if (meza_should_register_contact_locations_section_group()) {
+            $groups[] = meza_get_contact_locations_section_field_group_definition();
+        }
+
         $groups = apply_filters('meza_shared_project_acf_field_groups', $groups);
 
         return is_array($groups) ? array_values($groups) : [];
@@ -6092,6 +6332,10 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
             $definitions[] = meza_get_list_sponsors_section_field_group_definition();
         }
 
+        if (meza_should_register_contact_locations_section_group()) {
+            $definitions[] = meza_get_contact_locations_section_field_group_definition();
+        }
+
         return $definitions;
     }
 }
@@ -6596,6 +6840,8 @@ if (!function_exists('meza_get_business_information_branding_field_map')) {
                 },
             ],
         ];
+
+        return $definitions;
     }
 }
 
@@ -7673,3 +7919,20 @@ add_action('acf/init', 'meza_seed_default_editable_acf_taxonomies', 18);
 add_action('acf/init', 'meza_seed_default_editable_acf_field_groups', 20);
 add_action('acf/init', 'meza_repair_seeded_list_profiles_field_group', 21);
 add_action('acf/init', 'meza_seed_default_organization_type_terms', 25);
+
+if (!function_exists('meza_refresh_seeded_acf_field_groups_after_business_information_save')) {
+    function meza_refresh_seeded_acf_field_groups_after_business_information_save($post_id): void
+    {
+        if (
+            !meza_should_seed_default_acf_field_groups()
+            || !meza_is_business_information_acf_submission()
+            || !in_array($post_id, ['option', 'options'], true)
+        ) {
+            return;
+        }
+
+        meza_seed_default_editable_acf_field_groups();
+        meza_repair_seeded_list_profiles_field_group();
+    }
+}
+add_action('acf/save_post', 'meza_refresh_seeded_acf_field_groups_after_business_information_save', 20);
