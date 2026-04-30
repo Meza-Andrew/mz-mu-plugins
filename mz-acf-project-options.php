@@ -197,6 +197,13 @@ if (!function_exists('meza_is_acf_export_tools_screen')) {
     }
 }
 
+if (!function_exists('meza_current_user_can_see_hardcoded_acf_export_items')) {
+    function meza_current_user_can_see_hardcoded_acf_export_items(): bool
+    {
+        return current_user_can('manage_options');
+    }
+}
+
 if (!function_exists('meza_get_acf_export_tool_choices')) {
     function meza_get_acf_export_tool_key_prefix(string $post_type): string
     {
@@ -8847,6 +8854,11 @@ add_action('acf/include_admin_tools', function (): void {
         class Meza_ACF_Admin_Tool_Export extends ACF_Admin_Tool_Export
         {
             public function load() {
+                if (!meza_current_user_can_see_hardcoded_acf_export_items()) {
+                    parent::load();
+                    return;
+                }
+
                 meza_with_acf_export_local_enabled(static function (): void {
                     meza_register_acf_export_tool_local_definitions();
                 });
@@ -8855,6 +8867,10 @@ add_action('acf/include_admin_tools', function (): void {
             }
 
             public function get_selected() {
+                if (!meza_current_user_can_see_hardcoded_acf_export_items()) {
+                    return parent::get_selected();
+                }
+
                 return meza_with_acf_export_local_enabled(function () {
                     meza_register_acf_export_tool_local_definitions();
                     return parent::get_selected();
@@ -8862,6 +8878,11 @@ add_action('acf/include_admin_tools', function (): void {
             }
 
             public function html_field_selection() {
+                if (!meza_current_user_can_see_hardcoded_acf_export_items()) {
+                    parent::html_field_selection();
+                    return;
+                }
+
                 meza_with_acf_export_local_enabled(function (): void {
                     meza_register_acf_export_tool_local_definitions();
 
