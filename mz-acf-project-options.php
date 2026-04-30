@@ -62,6 +62,36 @@ if (!function_exists('meza_supports_sponsor_features')) {
     }
 }
 
+if (!function_exists('meza_business_information_acf_truthy')) {
+    function meza_business_information_acf_truthy($value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return ((int) $value) !== 0;
+        }
+
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on'], true);
+    }
+}
+
+if (!function_exists('meza_business_information_enables_ecommerce')) {
+    function meza_business_information_enables_ecommerce(): bool
+    {
+        if (is_admin() && meza_is_business_information_acf_submission() && isset($_POST['acf']) && is_array($_POST['acf'])) {
+            if (array_key_exists('field_meza_business_ecommerce', $_POST['acf'])) {
+                return meza_business_information_acf_truthy(wp_unslash($_POST['acf']['field_meza_business_ecommerce']));
+            }
+
+            return false;
+        }
+
+        return meza_business_information_acf_truthy(get_option('options_ecommerce', 0));
+    }
+}
+
 if (!function_exists('meza_get_business_information_menu_label')) {
     function meza_get_business_information_menu_label(): string
     {
@@ -895,6 +925,27 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'other_choice' => 0,
                 'save_other_choice' => 0,
                 'layout' => 'horizontal',
+            ],
+            [
+                'key' => 'field_meza_business_ecommerce',
+                'label' => 'E-Commerce',
+                'name' => 'ecommerce',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'message' => '',
+                'default_value' => 0,
+                'allow_in_bindings' => 0,
+                'ui' => 0,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
             ],
         ];
     }
@@ -6006,8 +6057,10 @@ if (!function_exists('meza_normalize_managed_acf_deleted_objects')) {
 if (!function_exists('meza_get_managed_acf_deleted_objects')) {
     function meza_get_managed_acf_deleted_objects(): array
     {
-        return meza_normalize_managed_acf_deleted_objects(
-            get_option(meza_get_managed_acf_deleted_objects_option_name(), [])
+        return meza_prune_runtime_local_managed_acf_deleted_objects(
+            meza_normalize_managed_acf_deleted_objects(
+                get_option(meza_get_managed_acf_deleted_objects_option_name(), [])
+            )
         );
     }
 }
@@ -6017,7 +6070,7 @@ if (!function_exists('meza_update_managed_acf_deleted_objects')) {
     {
         update_option(
             meza_get_managed_acf_deleted_objects_option_name(),
-            meza_normalize_managed_acf_deleted_objects($deleted_objects),
+            meza_prune_runtime_local_managed_acf_deleted_objects($deleted_objects),
             false
         );
     }
@@ -6041,6 +6094,92 @@ if (!function_exists('meza_get_managed_acf_definition_identifier')) {
         }
 
         return '';
+    }
+}
+
+if (!function_exists('meza_get_runtime_local_managed_acf_definitions_by_kind')) {
+    function meza_get_runtime_local_managed_acf_definitions_by_kind(string $kind): array
+    {
+        switch ($kind) {
+            case 'field_groups':
+                return meza_get_shared_project_acf_field_groups();
+
+            case 'post_types':
+                return meza_get_local_acf_post_type_definitions();
+
+            case 'taxonomies':
+                return meza_get_local_acf_taxonomy_definitions();
+
+            case 'options_pages':
+                return meza_get_shared_project_acf_options_pages();
+        }
+
+        return [];
+    }
+}
+
+if (!function_exists('meza_get_runtime_local_managed_acf_definition_identifiers')) {
+    function meza_get_runtime_local_managed_acf_definition_identifiers(string $kind): array
+    {
+        static $cache = [];
+
+        if (array_key_exists($kind, $cache)) {
+            return $cache[$kind];
+        }
+
+        $identifiers = [];
+
+        foreach (meza_get_runtime_local_managed_acf_definitions_by_kind($kind) as $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            $identifier = meza_get_managed_acf_definition_identifier($kind, $definition);
+            if ($identifier === '') {
+                continue;
+            }
+
+            $identifiers[$identifier] = true;
+        }
+
+        $cache[$kind] = array_keys($identifiers);
+
+        return $cache[$kind];
+    }
+}
+
+if (!function_exists('meza_definition_is_runtime_local_managed')) {
+    function meza_definition_is_runtime_local_managed(string $kind, array $definition): bool
+    {
+        $identifier = meza_get_managed_acf_definition_identifier($kind, $definition);
+        if ($identifier === '') {
+            return false;
+        }
+
+        return in_array($identifier, meza_get_runtime_local_managed_acf_definition_identifiers($kind), true);
+    }
+}
+
+if (!function_exists('meza_prune_runtime_local_managed_acf_deleted_objects')) {
+    function meza_prune_runtime_local_managed_acf_deleted_objects(array $deleted_objects): array
+    {
+        $deleted_objects = meza_normalize_managed_acf_deleted_objects($deleted_objects);
+
+        foreach (['field_groups', 'post_types', 'taxonomies', 'options_pages'] as $kind) {
+            $runtime_local_identifiers = meza_get_runtime_local_managed_acf_definition_identifiers($kind);
+            if ($runtime_local_identifiers === []) {
+                continue;
+            }
+
+            $deleted_objects[$kind] = array_values(array_filter(
+                $deleted_objects[$kind] ?? [],
+                static function (string $identifier) use ($runtime_local_identifiers): bool {
+                    return !in_array($identifier, $runtime_local_identifiers, true);
+                }
+            ));
+        }
+
+        return $deleted_objects;
     }
 }
 
@@ -6167,6 +6306,10 @@ if (!function_exists('meza_is_managed_acf_definition_manually_deleted')) {
 if (!function_exists('meza_mark_managed_acf_definition_deleted')) {
     function meza_mark_managed_acf_definition_deleted(string $kind, array $definition): void
     {
+        if (meza_definition_is_runtime_local_managed($kind, $definition)) {
+            return;
+        }
+
         $identifier = meza_get_managed_acf_definition_identifier($kind, $definition);
         if ($identifier === '') {
             return;
@@ -6349,6 +6492,46 @@ add_action('acf/untrash_ui_options_page', static function (array $options_page):
 }, 5);
 
 if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
+    function meza_get_ecommerce_editable_acf_field_group_definitions(): array
+    {
+        static $definitions = null;
+
+        if (is_array($definitions)) {
+            return $definitions;
+        }
+
+        $path = __DIR__ . '/defaults/acf-ecommerce-field-groups.json';
+        if (!is_readable($path)) {
+            $definitions = [];
+            return $definitions;
+        }
+
+        $json = file_get_contents($path);
+        if (!is_string($json) || trim($json) === '') {
+            $definitions = [];
+            return $definitions;
+        }
+
+        $decoded = json_decode($json, true);
+        if (!is_array($decoded)) {
+            $definitions = [];
+            return $definitions;
+        }
+
+        $definitions = array_values(array_filter($decoded, 'is_array'));
+
+        return $definitions;
+    }
+
+    function meza_get_ecommerce_default_editable_acf_field_group_definitions(): array
+    {
+        if (!meza_business_information_enables_ecommerce()) {
+            return [];
+        }
+
+        return meza_get_ecommerce_editable_acf_field_group_definitions();
+    }
+
     function meza_get_default_editable_acf_field_group_definitions(): array
     {
         $definitions = [
@@ -7175,6 +7358,10 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
             $definitions[] = meza_get_contact_locations_section_field_group_definition();
         }
 
+        if (meza_business_information_enables_ecommerce()) {
+            $definitions = array_merge($definitions, meza_get_ecommerce_default_editable_acf_field_group_definitions());
+        }
+
         return $definitions;
     }
 }
@@ -7229,6 +7416,22 @@ if (!function_exists('meza_get_existing_editable_acf_field_group_id')) {
         }
 
         return 0;
+    }
+}
+
+if (!function_exists('meza_delete_editable_acf_field_group_definition')) {
+    function meza_delete_editable_acf_field_group_definition(array $definition): void
+    {
+        if (!function_exists('acf_delete_field_group')) {
+            return;
+        }
+
+        $existing_id = meza_get_existing_editable_acf_field_group_id($definition);
+        if ($existing_id <= 0) {
+            return;
+        }
+
+        acf_delete_field_group($existing_id);
     }
 }
 
@@ -8844,6 +9047,79 @@ if (!function_exists('meza_refresh_seeded_acf_field_groups_after_business_inform
     }
 }
 add_action('acf/save_post', 'meza_refresh_seeded_acf_field_groups_after_business_information_save', 20);
+
+if (!function_exists('meza_sync_ecommerce_after_business_information_save')) {
+    function meza_persist_business_information_ecommerce_setting(): void
+    {
+        update_option('options_ecommerce', meza_business_information_enables_ecommerce() ? '1' : '0', false);
+    }
+
+    function meza_remove_ecommerce_default_editable_acf_field_groups(): void
+    {
+        foreach (meza_get_ecommerce_editable_acf_field_group_definitions() as $definition) {
+            if (!is_array($definition) || empty($definition['key']) || empty($definition['title'])) {
+                continue;
+            }
+
+            meza_delete_editable_acf_field_group_definition($definition);
+        }
+    }
+
+    function meza_sync_ecommerce_defaults(): void
+    {
+        if (meza_business_information_enables_ecommerce()) {
+            if (function_exists('mz_plugins_ensure_catalog_plugin_active')) {
+                mz_plugins_ensure_catalog_plugin_active('woocommerce/woocommerce.php');
+            }
+
+            if (function_exists('meza_draft_all_woocommerce_core_pages')) {
+                meza_draft_all_woocommerce_core_pages();
+            }
+
+            return;
+        }
+
+        meza_remove_ecommerce_default_editable_acf_field_groups();
+
+        if (function_exists('mz_plugins_deactivate_plugin')) {
+            mz_plugins_deactivate_plugin('woocommerce/woocommerce.php');
+        }
+
+        if (function_exists('mz_plugins_queue_plugin_package_removal')) {
+            mz_plugins_queue_plugin_package_removal('woocommerce/woocommerce.php');
+        }
+    }
+
+    function meza_sync_ecommerce_after_business_information_save($post_id): void
+    {
+        if (
+            !meza_is_business_information_acf_submission()
+            || !in_array($post_id, ['option', 'options'], true)
+        ) {
+            return;
+        }
+
+        meza_persist_business_information_ecommerce_setting();
+        meza_sync_ecommerce_defaults();
+    }
+}
+add_action('acf/save_post', 'meza_sync_ecommerce_after_business_information_save', 25);
+
+add_action('admin_init', function (): void {
+    static $did_sync = false;
+
+    if (
+        $did_sync
+        || !is_admin()
+        || !function_exists('mz_plugins_should_rerun')
+        || !mz_plugins_should_rerun()
+    ) {
+        return;
+    }
+
+    $did_sync = true;
+    meza_sync_ecommerce_defaults();
+}, 40);
 
 add_action('acf/include_admin_tools', function (): void {
     if (!class_exists('ACF_Admin_Tool_Export') || !class_exists('ACF_Admin_Tool')) {

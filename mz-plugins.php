@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.42
+ * Version: 1.4.46
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -96,6 +96,106 @@ function mz_plugins_normalize_plugin_file(string $plugin_file): string
     return $plugin_file === '.' ? '' : $plugin_file;
 }
 
+function mz_plugins_should_manage_woocommerce(): bool
+{
+    return mz_plugins_truthy(get_option('options_ecommerce', 0));
+}
+
+function mz_plugins_is_locked_plugin(string $plugin_file): bool
+{
+    $plugin_file = mz_plugins_normalize_plugin_file($plugin_file);
+
+    return $plugin_file === 'woocommerce/woocommerce.php' && mz_plugins_should_manage_woocommerce();
+}
+
+function mz_plugins_is_plugin_active_in_scope(string $plugin_file): bool
+{
+    $plugin_file = mz_plugins_normalize_plugin_file($plugin_file);
+    if ($plugin_file === '') {
+        return false;
+    }
+
+    if (in_array($plugin_file, (array) get_option('active_plugins', []), true)) {
+        return true;
+    }
+
+    if (is_multisite()) {
+        $network_active_plugins = (array) get_site_option('active_sitewide_plugins', []);
+        return isset($network_active_plugins[$plugin_file]);
+    }
+
+    return false;
+}
+
+function mz_plugins_can_manage_catalog_runtime(): bool
+{
+    return current_user_can('install_plugins')
+        || current_user_can('activate_plugins')
+        || current_user_can('manage_options');
+}
+
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $requested_actions = [];
+
+    foreach (['action', 'action2'] as $action_key) {
+        if (!isset($_REQUEST[$action_key])) {
+            continue;
+        }
+
+        $action = sanitize_key((string) wp_unslash($_REQUEST[$action_key]));
+        if ($action !== '' && $action !== '-1') {
+            $requested_actions[$action] = true;
+        }
+    }
+
+    if (!array_intersect(array_keys($requested_actions), ['deactivate', 'deactivate-selected', 'delete-selected', 'delete-plugin'])) {
+        return;
+    }
+
+    if (isset($_REQUEST['plugin'])) {
+        $plugin_file = mz_plugins_normalize_plugin_file((string) wp_unslash($_REQUEST['plugin']));
+
+        if (mz_plugins_is_locked_plugin($plugin_file)) {
+            wp_safe_redirect(admin_url('plugins.php'));
+            exit;
+        }
+    }
+
+    if (!isset($_REQUEST['checked']) || !is_array($_REQUEST['checked'])) {
+        return;
+    }
+
+    $checked_plugins = array_values(array_filter(array_map(
+        static function ($plugin_file): string {
+            return mz_plugins_normalize_plugin_file((string) $plugin_file);
+        },
+        wp_unslash($_REQUEST['checked'])
+    )));
+
+    $filtered_plugins = array_values(array_filter($checked_plugins, static function (string $plugin_file): bool {
+        return !mz_plugins_is_locked_plugin($plugin_file);
+    }));
+
+    if ($filtered_plugins === $checked_plugins) {
+        return;
+    }
+
+    if ($filtered_plugins === []) {
+        wp_safe_redirect(admin_url('plugins.php'));
+        exit;
+    }
+
+    $_REQUEST['checked'] = $filtered_plugins;
+
+    if (isset($_POST['checked'])) {
+        $_POST['checked'] = $filtered_plugins;
+    }
+}, 1);
+
 function mz_plugins_get_manual_overrides(): array
 {
     $stored = get_option(MZ_PLUGINS_MANUAL_OVERRIDE_OPTION, []);
@@ -110,7 +210,7 @@ function mz_plugins_get_manual_overrides(): array
 
         foreach ($values as $plugin_file) {
             $plugin_file = mz_plugins_normalize_plugin_file((string) $plugin_file);
-            if ($plugin_file === '') {
+            if ($plugin_file === '' || mz_plugins_is_locked_plugin($plugin_file)) {
                 continue;
             }
 
@@ -189,6 +289,95 @@ function mz_plugins_clear_manual_override(string $plugin_file): void
     $overrides = mz_plugins_get_manual_overrides();
     unset($overrides['skip_install'][$plugin_file], $overrides['skip_activate'][$plugin_file]);
     mz_plugins_update_manual_overrides($overrides);
+}
+
+function mz_plugins_get_pending_removal_option_name(): string
+{
+    return 'mz_plugins_pending_removals_v1';
+}
+
+function mz_plugins_get_pending_removals(): array
+{
+    $stored = get_option(mz_plugins_get_pending_removal_option_name(), []);
+    if (!is_array($stored)) {
+        return [];
+    }
+
+    $plugin_files = array_values(array_unique(array_filter(array_map(
+        static function ($plugin_file): string {
+            return mz_plugins_normalize_plugin_file((string) $plugin_file);
+        },
+        $stored
+    ))));
+
+    sort($plugin_files, SORT_NATURAL | SORT_FLAG_CASE);
+
+    return $plugin_files;
+}
+
+function mz_plugins_update_pending_removals(array $plugin_files): void
+{
+    $normalized = array_values(array_unique(array_filter(array_map(
+        static function ($plugin_file): string {
+            return mz_plugins_normalize_plugin_file((string) $plugin_file);
+        },
+        $plugin_files
+    ))));
+
+    sort($normalized, SORT_NATURAL | SORT_FLAG_CASE);
+    update_option(mz_plugins_get_pending_removal_option_name(), $normalized, false);
+}
+
+function mz_plugins_queue_plugin_package_removal(string $plugin_file): void
+{
+    $plugin_file = mz_plugins_normalize_plugin_file($plugin_file);
+    if ($plugin_file === '') {
+        return;
+    }
+
+    $pending = mz_plugins_get_pending_removals();
+    if (in_array($plugin_file, $pending, true)) {
+        return;
+    }
+
+    $pending[] = $plugin_file;
+    mz_plugins_update_pending_removals($pending);
+}
+
+function mz_plugins_unqueue_plugin_package_removal(string $plugin_file): void
+{
+    $plugin_file = mz_plugins_normalize_plugin_file($plugin_file);
+    if ($plugin_file === '') {
+        return;
+    }
+
+    $pending = array_values(array_filter(
+        mz_plugins_get_pending_removals(),
+        static function (string $pending_plugin_file) use ($plugin_file): bool {
+            return $pending_plugin_file !== $plugin_file;
+        }
+    ));
+
+    mz_plugins_update_pending_removals($pending);
+}
+
+function mz_plugins_deactivate_plugin(string $plugin_file)
+{
+    $plugin_file = mz_plugins_normalize_plugin_file($plugin_file);
+    if ($plugin_file === '') {
+        return new WP_Error('mz_plugins_invalid_plugin', 'The plugin file is invalid.');
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    mz_plugins_clear_manual_override($plugin_file);
+
+    if (!mz_plugins_is_plugin_active_in_scope($plugin_file)) {
+        return true;
+    }
+
+    deactivate_plugins($plugin_file, true, is_multisite());
+
+    return true;
 }
 
 function mz_plugins_get_default_settings_import_specs(): array
@@ -523,7 +712,7 @@ function mz_plugins_maybe_import_default_settings(array $should_activate, array 
 if (!function_exists('mz_plugins_get_catalog')) {
     function mz_plugins_get_catalog(): array
     {
-        return [
+        $catalog = [
             // All
             ['name' => 'Advanced Custom Fields PRO', 'slug' => 'advanced-custom-fields-pro', 'file' => 'advanced-custom-fields-pro/acf.php', 'envs' => ['development', 'staging', 'qa', 'production'], 'zip' => 'https://downloads.meza.design/vendor/advanced-custom-fields-pro.zip'],
             ['name' => 'Classic Editor', 'slug' => 'classic-editor', 'file' => 'classic-editor/classic-editor.php', 'envs' => ['development', 'staging', 'qa', 'production']],
@@ -553,11 +742,17 @@ if (!function_exists('mz_plugins_get_catalog')) {
             // Production only
             ['name' => 'Site Kit by Google', 'slug' => 'google-site-kit', 'file' => 'google-site-kit/google-site-kit.php', 'envs' => ['production']],
         ];
+
+        if (mz_plugins_should_manage_woocommerce()) {
+            $catalog[] = ['name' => 'WooCommerce', 'slug' => 'woocommerce', 'file' => 'woocommerce/woocommerce.php', 'envs' => ['development', 'staging', 'qa', 'production']];
+        }
+
+        return $catalog;
     }
 }
 
 add_action('deactivated_plugin', function ($plugin): void {
-    if (!mz_plugins_support_manual_overrides()) {
+    if (!mz_plugins_support_manual_overrides() || mz_plugins_is_locked_plugin((string) $plugin)) {
         return;
     }
 
@@ -565,7 +760,7 @@ add_action('deactivated_plugin', function ($plugin): void {
 }, 10, 2);
 
 add_action('deleted_plugin', function ($plugin, $deleted): void {
-    if (!$deleted || !mz_plugins_support_manual_overrides()) {
+    if (!$deleted || !mz_plugins_support_manual_overrides() || mz_plugins_is_locked_plugin((string) $plugin)) {
         return;
     }
 
@@ -775,6 +970,229 @@ if (!function_exists('mz_plugins_format_error_message')) {
     }
 }
 
+if (!function_exists('mz_plugins_get_catalog_plugin')) {
+    function mz_plugins_get_catalog_plugin(string $plugin_file): ?array
+    {
+        $plugin_file = mz_plugins_normalize_plugin_file($plugin_file);
+        if ($plugin_file === '') {
+            return null;
+        }
+
+        foreach (mz_plugins_get_catalog() as $plugin) {
+            if (mz_plugins_normalize_plugin_file((string) ($plugin['file'] ?? '')) === $plugin_file) {
+                return $plugin;
+            }
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('mz_plugins_prepare_admin_plugin_runtime')) {
+    function mz_plugins_prepare_admin_plugin_runtime(): void
+    {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+        require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+
+        if (function_exists('delete_site_transient')) {
+            delete_site_transient('wp_plugin_dependencies_plugin_data');
+            delete_site_transient('update_plugins');
+        }
+
+        add_filter('filesystem_method', function () {
+            return 'direct';
+        }, 99);
+
+        if (!class_exists('WP_Ajax_Upgrader_Skin')) {
+            require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader-skins.php';
+        }
+    }
+}
+
+if (!function_exists('mz_plugins_ensure_catalog_plugin_active')) {
+    function mz_plugins_ensure_catalog_plugin_active(string $plugin_file)
+    {
+        $plugin_file = mz_plugins_normalize_plugin_file($plugin_file);
+        $plugin = mz_plugins_get_catalog_plugin($plugin_file);
+
+        if (!is_array($plugin)) {
+            return new WP_Error('mz_plugins_unknown_plugin', 'The requested plugin is not managed by the MZ plugin catalog.');
+        }
+
+        if (mz_plugins_is_plugin_active_in_scope($plugin_file) && mz_plugins_catalog_missing_required_files($plugin) === []) {
+            return true;
+        }
+
+        if (!mz_plugins_can_manage_catalog_runtime()) {
+            return new WP_Error('mz_plugins_insufficient_permissions', 'The current user cannot install or activate plugins.');
+        }
+
+        if (defined('DISALLOW_FILE_MODS') && DISALLOW_FILE_MODS && mz_plugins_catalog_missing_required_files($plugin) !== []) {
+            return new WP_Error('mz_plugins_file_mods_disabled', 'Plugin installation is disabled for this environment.');
+        }
+
+        if (!mz_plugins_catalog_runtime_requirements_met($plugin)) {
+            return new WP_Error(
+                'mz_plugins_runtime_requirements',
+                'Plugin requirements not met: ' . mz_plugins_catalog_runtime_requirement_message($plugin)
+            );
+        }
+
+        mz_plugins_prepare_admin_plugin_runtime();
+        mz_plugins_unqueue_plugin_package_removal($plugin_file);
+        mz_plugins_clear_manual_override($plugin_file);
+
+        $all = get_plugins();
+        $missing_required_files = mz_plugins_catalog_missing_required_files($plugin);
+
+        if (!isset($all[$plugin_file]) || $missing_required_files !== []) {
+            $api_error = null;
+            $private_package_source = mz_plugins_resolve_private_package_source($plugin, $api_error);
+            $download = $private_package_source ?: (function ($slug, &$api_error = null) {
+                $api = plugins_api('plugin_information', ['slug' => $slug, 'fields' => ['sections' => false]]);
+                if (is_wp_error($api)) {
+                    $api_error = $api;
+                    return '';
+                }
+
+                return !empty($api->download_link) ? (string) $api->download_link : '';
+            })((string) ($plugin['slug'] ?? ''), $api_error);
+
+            if ($download === '') {
+                return $api_error instanceof WP_Error
+                    ? $api_error
+                    : new WP_Error('mz_plugins_download_unavailable', 'The plugin download URL could not be resolved.');
+            }
+
+            $upgrader = new Plugin_Upgrader(new WP_Ajax_Upgrader_Skin());
+            $installed = $upgrader->install($download);
+
+            if (is_wp_error($installed) || !$installed) {
+                return is_wp_error($installed)
+                    ? $installed
+                    : new WP_Error('mz_plugins_install_failed', 'The plugin could not be installed.');
+            }
+
+            wp_clean_plugins_cache(true);
+            $all = get_plugins();
+
+            if (!isset($all[$plugin_file]) || mz_plugins_catalog_missing_required_files($plugin) !== []) {
+                return new WP_Error('mz_plugins_install_incomplete', 'The plugin package was installed, but required files are still missing.');
+            }
+        }
+
+        if (!mz_plugins_catalog_activation_dependencies_met($plugin)) {
+            return new WP_Error('mz_plugins_activation_dependencies', 'Plugin activation dependencies are not currently met.');
+        }
+
+        if (!mz_plugins_is_plugin_active_in_scope($plugin_file)) {
+            $network_wide = is_multisite();
+            $activation = activate_plugin($plugin_file, '', $network_wide, true);
+
+            if (is_wp_error($activation)) {
+                return $activation;
+            }
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('mz_plugins_remove_plugin_package')) {
+    function mz_plugins_remove_plugin_package(string $plugin_file)
+    {
+        $plugin_file = mz_plugins_normalize_plugin_file($plugin_file);
+        if ($plugin_file === '') {
+            return new WP_Error('mz_plugins_invalid_plugin', 'The plugin file is invalid.');
+        }
+
+        if (!mz_plugins_can_manage_catalog_runtime()) {
+            return new WP_Error('mz_plugins_insufficient_permissions', 'The current user cannot remove plugins.');
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+        $plugin_directory = dirname($plugin_file);
+        $plugin_path = WP_PLUGIN_DIR . '/' . $plugin_file;
+        $plugin_directory_path = WP_PLUGIN_DIR . '/' . $plugin_directory;
+
+        if (!file_exists($plugin_path) && !is_dir($plugin_directory_path)) {
+            return true;
+        }
+
+        if (defined('DISALLOW_FILE_MODS') && DISALLOW_FILE_MODS) {
+            return new WP_Error('mz_plugins_file_mods_disabled', 'Plugin removal is disabled for this environment.');
+        }
+
+        mz_plugins_prepare_admin_plugin_runtime();
+        mz_plugins_clear_manual_override($plugin_file);
+
+        if (mz_plugins_is_plugin_active_in_scope($plugin_file)) {
+            deactivate_plugins($plugin_file, true, is_multisite());
+        }
+
+        $deleted = delete_plugins([$plugin_file]);
+
+        if (is_wp_error($deleted)) {
+            return $deleted;
+        }
+
+        if ($deleted === false && (file_exists($plugin_path) || is_dir($plugin_directory_path))) {
+            return new WP_Error('mz_plugins_delete_failed', 'The plugin package could not be deleted.');
+        }
+
+        wp_clean_plugins_cache(true);
+
+        return true;
+    }
+}
+
+if (!function_exists('mz_plugins_catalog_has_locked_plugin_state_drift')) {
+    function mz_plugins_catalog_has_locked_plugin_state_drift(array $should_install, array $should_activate): bool
+    {
+        foreach ($should_install as $plugin_file => $plugin) {
+            if (!mz_plugins_is_locked_plugin((string) $plugin_file)) {
+                continue;
+            }
+
+            if (mz_plugins_catalog_missing_required_files((array) $plugin) !== []) {
+                return true;
+            }
+        }
+
+        foreach ($should_activate as $plugin_file => $plugin) {
+            if (!mz_plugins_is_locked_plugin((string) $plugin_file)) {
+                continue;
+            }
+
+            if (!mz_plugins_is_plugin_active_in_scope((string) $plugin_file)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+add_action('admin_init', function (): void {
+    if (!is_admin() || !mz_plugins_can_manage_catalog_runtime()) {
+        return;
+    }
+
+    foreach (mz_plugins_get_pending_removals() as $plugin_file) {
+        if (mz_plugins_is_plugin_active_in_scope($plugin_file)) {
+            continue;
+        }
+
+        $result = mz_plugins_remove_plugin_package($plugin_file);
+        if (!is_wp_error($result)) {
+            mz_plugins_unqueue_plugin_package_removal($plugin_file);
+        }
+    }
+}, 5);
+
 if (!function_exists('mz_plugins_get_private_package_candidates')) {
     function mz_plugins_get_private_package_candidates(array $plugin): array
     {
@@ -878,7 +1296,7 @@ $catalog = mz_plugins_get_catalog();
 
 add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE, $HIDE) {
     if (defined('DISALLOW_FILE_MODS') && DISALLOW_FILE_MODS) return;
-    if (!current_user_can('install_plugins') || !current_user_can('activate_plugins')) return;
+    if (!mz_plugins_can_manage_catalog_runtime()) return;
 
     require_once ABSPATH . 'wp-admin/includes/plugin.php';
     require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -935,7 +1353,14 @@ add_action('admin_init', function () use ($catalog, $env, $network_wide, $PRUNE,
 
     $has_run = (int)get_option('mz_plugins_initialized', 0) === 1;
     $last_fp = (string)get_option('mz_bootstrap_fingerprint_envonly', '');
-    if ($has_run && $last_fp === $fingerprint && !mz_plugins_should_rerun()) return;
+    if (
+        $has_run
+        && $last_fp === $fingerprint
+        && !mz_plugins_should_rerun()
+        && !mz_plugins_catalog_has_locked_plugin_state_drift($should_install, $should_activate)
+    ) {
+        return;
+    }
 
     add_filter('filesystem_method', function () {
         return 'direct';
@@ -1276,6 +1701,31 @@ $mz_limit_plugin_actions = function ($actions) {
 
 add_filter('plugin_action_links', $mz_limit_plugin_actions, PHP_INT_MAX, 4);
 add_filter('network_admin_plugin_action_links', $mz_limit_plugin_actions, PHP_INT_MAX, 4);
+
+$mz_lock_plugin_actions = function ($actions, $plugin_file = '', $plugin_data = [], $context = '') {
+    if (!is_string($plugin_file) || !mz_plugins_is_locked_plugin($plugin_file) || !is_array($actions)) {
+        return $actions;
+    }
+
+    foreach ($actions as $key => $action) {
+        $key_lc = strtolower((string) $key);
+        $action_lc = strtolower((string) $action);
+
+        if (
+            strpos($key_lc, 'deactivate') !== false
+            || strpos($key_lc, 'delete') !== false
+            || strpos($action_lc, 'action=deactivate') !== false
+            || strpos($action_lc, 'action=delete') !== false
+        ) {
+            unset($actions[$key]);
+        }
+    }
+
+    return $actions;
+};
+
+add_filter('plugin_action_links', $mz_lock_plugin_actions, PHP_INT_MAX, 4);
+add_filter('network_admin_plugin_action_links', $mz_lock_plugin_actions, PHP_INT_MAX, 4);
 
 add_action('admin_init', function () use ($mz_limit_plugin_actions) {
     if (!function_exists('get_plugins')) {

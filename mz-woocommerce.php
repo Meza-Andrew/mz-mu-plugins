@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ WooCommerce
  * Description: WooCommerce query rules, asset loading, and storefront behavior.
- * Version: 1.1.2
+ * Version: 1.1.3
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -13,6 +13,62 @@ if (defined('WP_INSTALLING') && WP_INSTALLING) return;
 /** ================================
  *  WOO GUARDS
  *  ================================ */
+
+if (!function_exists('meza_woocommerce_ecommerce_is_enabled')) {
+    function meza_woocommerce_ecommerce_is_enabled(): bool
+    {
+        $value = get_option('options_ecommerce', 0);
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return ((int) $value) !== 0;
+        }
+
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on'], true);
+    }
+}
+
+if (!function_exists('meza_draft_woocommerce_page')) {
+    function meza_draft_woocommerce_page(int $page_id): void
+    {
+        if ($page_id <= 0) {
+            return;
+        }
+
+        $page = get_post($page_id);
+        if (!($page instanceof WP_Post) || $page->post_type !== 'page') {
+            return;
+        }
+
+        if (in_array((string) $page->post_status, ['draft', 'trash', 'auto-draft'], true)) {
+            return;
+        }
+
+        wp_update_post([
+            'ID' => $page_id,
+            'post_status' => 'draft',
+        ]);
+    }
+}
+
+if (!function_exists('meza_draft_all_woocommerce_core_pages')) {
+    function meza_draft_all_woocommerce_core_pages(): void
+    {
+        $page_ids = [
+            (int) get_option('woocommerce_shop_page_id', 0),
+            (int) get_option('woocommerce_cart_page_id', 0),
+            (int) get_option('woocommerce_checkout_page_id', 0),
+            (int) get_option('woocommerce_myaccount_page_id', 0),
+        ];
+
+        foreach (array_values(array_unique(array_filter($page_ids))) as $page_id) {
+            meza_draft_woocommerce_page((int) $page_id);
+        }
+    }
+}
 
 /** True when WooCommerce is active and its front-end conditionals are available. */
 if (!function_exists('mz_has_woo')) {
@@ -47,6 +103,14 @@ function meza_is_woocommerce_plugin_active(): bool
 {
     return in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')), true);
 }
+
+add_action('woocommerce_page_created', function ($page_id, $page_data): void {
+    if (!meza_woocommerce_ecommerce_is_enabled()) {
+        return;
+    }
+
+    meza_draft_woocommerce_page((int) $page_id);
+}, 20, 2);
 
 /** ================================
  *  QUERY RULES
