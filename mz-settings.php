@@ -5,7 +5,7 @@
  * Description: Core site settings, defaults, and bootstrap configuration.
  * Author: Meza LLC
  * Author URI: https://meza.design
- * Version: 1.8.12
+ * Version: 1.8.13
  */
 
 /** ================================
@@ -258,12 +258,185 @@ function meza_normalize_slug_candidates(array $slugs): array
     return $normalized;
 }
 
+/** Return the option name that stores manually deleted seeded pages. */
+function meza_get_deleted_seeded_pages_option_name(): string
+{
+    return 'meza_deleted_seeded_pages_v1';
+}
+
+/** Build the list of auto-seeded pages that should respect manual deletion. */
+function meza_get_seeded_page_definitions(): array
+{
+    return [
+        [
+            'slugs' => MEZA_FRONT_PAGE_SLUGS,
+            'option_keys' => ['page_on_front'],
+        ],
+        [
+            'slugs' => MEZA_POSTS_PAGE_SLUGS,
+            'option_keys' => ['page_for_posts'],
+        ],
+        [
+            'slugs' => MEZA_PRIVACY_POLICY_SLUGS,
+            'option_keys' => ['wp_page_for_privacy_policy'],
+        ],
+        [
+            'slugs' => MEZA_COOKIE_POLICY_SLUGS,
+            'option_keys' => [MEZA_COOKIE_POLICY_OPTION],
+        ],
+        [
+            'slugs' => MEZA_CONTACT_SLUGS,
+            'option_keys' => [],
+        ],
+        [
+            'slugs' => MEZA_STYLE_GUIDE_SLUGS,
+            'option_keys' => [MEZA_STYLE_GUIDE_OPTION],
+        ],
+        [
+            'slugs' => MEZA_DOCUMENTATION_SLUGS,
+            'option_keys' => [MEZA_DOCUMENTATION_OPTION],
+        ],
+        [
+            'slugs' => MEZA_FAQ_SLUGS,
+            'option_keys' => [],
+        ],
+    ];
+}
+
+/** Normalize the stored list of seeded page deletions. */
+function meza_normalize_deleted_seeded_pages($value): array
+{
+    return array_values(array_unique(array_filter(array_map(
+        static function ($slug): string {
+            return sanitize_title((string) $slug);
+        },
+        is_array($value) ? $value : []
+    ))));
+}
+
+/** Return the primary identifier for a seeded page definition. */
+function meza_get_seeded_page_definition_identifier(array $definition): string
+{
+    $slugs = meza_normalize_slug_candidates((array) ($definition['slugs'] ?? []));
+
+    return $slugs[0] ?? '';
+}
+
+/** Check whether a seeded page slug has been manually trashed or deleted. */
+function meza_is_seeded_page_manually_deleted(array $slugs): bool
+{
+    $deleted_slugs = meza_normalize_deleted_seeded_pages(
+        get_option(meza_get_deleted_seeded_pages_option_name(), [])
+    );
+
+    foreach (meza_normalize_slug_candidates($slugs) as $slug) {
+        if (in_array($slug, $deleted_slugs, true)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/** Persist a manual deletion marker for a seeded page and clear stale option references. */
+function meza_mark_seeded_page_deleted(array $definition): void
+{
+    $identifier = meza_get_seeded_page_definition_identifier($definition);
+    if ($identifier === '') {
+        return;
+    }
+
+    $deleted_slugs = meza_normalize_deleted_seeded_pages(
+        get_option(meza_get_deleted_seeded_pages_option_name(), [])
+    );
+
+    if (!in_array($identifier, $deleted_slugs, true)) {
+        $deleted_slugs[] = $identifier;
+        update_option(meza_get_deleted_seeded_pages_option_name(), $deleted_slugs, false);
+    }
+
+    foreach ((array) ($definition['option_keys'] ?? []) as $option_key) {
+        if ($option_key === '') {
+            continue;
+        }
+
+        update_option((string) $option_key, 0);
+    }
+}
+
+/** Remove a manual deletion marker when a seeded page is restored from the trash. */
+function meza_clear_seeded_page_deleted(array $definition): void
+{
+    $identifier = meza_get_seeded_page_definition_identifier($definition);
+    if ($identifier === '') {
+        return;
+    }
+
+    $deleted_slugs = array_values(array_filter(
+        meza_normalize_deleted_seeded_pages(get_option(meza_get_deleted_seeded_pages_option_name(), [])),
+        static function (string $slug) use ($identifier): bool {
+            return $slug !== $identifier;
+        }
+    ));
+
+    update_option(meza_get_deleted_seeded_pages_option_name(), $deleted_slugs, false);
+}
+
+/** Match a page post to one of the auto-seeded page definitions. */
+function meza_get_seeded_page_definition_for_post(int $post_id): ?array
+{
+    $post = get_post($post_id);
+    if (!($post instanceof WP_Post) || $post->post_type !== 'page') {
+        return null;
+    }
+
+    $post_slug = sanitize_title((string) $post->post_name);
+    if ($post_slug === '') {
+        return null;
+    }
+
+    foreach (meza_get_seeded_page_definitions() as $definition) {
+        $slugs = meza_normalize_slug_candidates((array) ($definition['slugs'] ?? []));
+        if (in_array($post_slug, $slugs, true)) {
+            return $definition;
+        }
+    }
+
+    return null;
+}
+
+/** Remember when an auto-seeded page is manually trashed or deleted. */
+function meza_track_seeded_page_deletion(int $post_id): void
+{
+    $definition = meza_get_seeded_page_definition_for_post($post_id);
+    if (is_array($definition)) {
+        meza_mark_seeded_page_deleted($definition);
+    }
+}
+
+/** Remove the manual deletion marker when a seeded page is restored. */
+function meza_track_seeded_page_restoration(int $post_id): void
+{
+    $definition = meza_get_seeded_page_definition_for_post($post_id);
+    if (is_array($definition)) {
+        meza_clear_seeded_page_deleted($definition);
+    }
+}
+
+add_action('wp_trash_post', 'meza_track_seeded_page_deletion', 5);
+add_action('before_delete_post', 'meza_track_seeded_page_deletion', 5);
+add_action('untrashed_post', 'meza_track_seeded_page_restoration', 5);
+
 /** Return the first existing page that matches one of the candidate slugs. */
 function meza_get_page_by_candidate_slugs(array $slugs): ?WP_Post
 {
     foreach (meza_normalize_slug_candidates($slugs) as $slug) {
         $page = get_page_by_path($slug, OBJECT, 'page');
-        if ($page instanceof WP_Post && $page->post_type === 'page') {
+        if (
+            $page instanceof WP_Post
+            && $page->post_type === 'page'
+            && !in_array((string) $page->post_status, ['auto-draft', 'trash'], true)
+        ) {
             return $page;
         }
     }
@@ -296,6 +469,10 @@ function meza_ensure_page_state(string $title, array $slugs, array $args = []): 
 
     $page = meza_get_page_by_candidate_slugs($slugs);
     $created = false;
+
+    if (!$page instanceof WP_Post && meza_is_seeded_page_manually_deleted($slugs)) {
+        return 0;
+    }
 
     if (!$page instanceof WP_Post) {
         $id = wp_insert_post([
