@@ -78,6 +78,20 @@ if (!function_exists('meza_business_information_acf_truthy')) {
 }
 
 if (!function_exists('meza_business_information_enables_ecommerce')) {
+    function meza_saved_business_information_enables_ecommerce(): bool
+    {
+        return meza_business_information_acf_truthy(get_option('options_ecommerce', 0));
+    }
+
+    function meza_should_seed_ecommerce_default_editable_acf_field_groups(): bool
+    {
+        if (is_admin() && meza_is_business_information_acf_submission() && isset($_POST['acf']) && is_array($_POST['acf'])) {
+            return meza_business_information_enables_ecommerce();
+        }
+
+        return meza_saved_business_information_enables_ecommerce();
+    }
+
     function meza_business_information_enables_ecommerce(): bool
     {
         if (is_admin() && meza_is_business_information_acf_submission() && isset($_POST['acf']) && is_array($_POST['acf'])) {
@@ -88,7 +102,7 @@ if (!function_exists('meza_business_information_enables_ecommerce')) {
             return false;
         }
 
-        return meza_business_information_acf_truthy(get_option('options_ecommerce', 0));
+        return meza_saved_business_information_enables_ecommerce();
     }
 }
 
@@ -6525,7 +6539,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
 
     function meza_get_ecommerce_default_editable_acf_field_group_definitions(): array
     {
-        if (!meza_business_information_enables_ecommerce()) {
+        if (!meza_should_seed_ecommerce_default_editable_acf_field_groups()) {
             return [];
         }
 
