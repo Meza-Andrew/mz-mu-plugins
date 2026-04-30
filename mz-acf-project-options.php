@@ -601,27 +601,6 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'append' => '',
             ],
             [
-                'key' => 'field_meza_business_location',
-                'label' => 'Location',
-                'name' => 'location',
-                'aria-label' => '',
-                'type' => 'text',
-                'instructions' => '',
-                'required' => 1,
-                'conditional_logic' => 0,
-                'wrapper' => [
-                    'width' => '',
-                    'class' => '',
-                    'id' => '',
-                ],
-                'default_value' => '',
-                'maxlength' => '',
-                'allow_in_bindings' => 0,
-                'placeholder' => '',
-                'prepend' => '',
-                'append' => '',
-            ],
-            [
                 'key' => 'field_meza_business_type',
                 'label' => 'Type',
                 'name' => 'type',
@@ -648,6 +627,462 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'layout' => 'horizontal',
             ],
         ];
+    }
+
+    function meza_get_business_information_locations_fields(): array
+    {
+        return [
+            [
+                'key' => 'field_meza_business_locations',
+                'label' => 'Locations',
+                'name' => 'locations',
+                'aria-label' => '',
+                'type' => 'repeater',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'layout' => 'block',
+                'pagination' => 0,
+                'min' => 0,
+                'max' => 0,
+                'collapsed' => 'field_meza_business_location_name',
+                'button_label' => 'Add Location',
+                'rows_per_page' => 20,
+                'sub_fields' => [
+                    [
+                        'key' => 'field_meza_business_location_name',
+                        'label' => 'Name',
+                        'name' => 'name',
+                        'aria-label' => '',
+                        'type' => 'text',
+                        'instructions' => '',
+                        'required' => 1,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'maxlength' => '',
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                        'parent_repeater' => 'field_meza_business_locations',
+                    ],
+                    [
+                        'key' => 'field_meza_business_location_primary',
+                        'label' => 'Primary',
+                        'name' => 'primary',
+                        'aria-label' => '',
+                        'type' => 'true_false',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'message' => 'Is this the primary location?',
+                        'default_value' => 0,
+                        'allow_in_bindings' => 0,
+                        'ui' => 0,
+                        'ui_on_text' => '',
+                        'ui_off_text' => '',
+                        'parent_repeater' => 'field_meza_business_locations',
+                    ],
+                    [
+                        'key' => 'field_meza_business_location_phone',
+                        'label' => 'Phone',
+                        'name' => 'phone',
+                        'aria-label' => '',
+                        'type' => 'text',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'maxlength' => '',
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                        'parent_repeater' => 'field_meza_business_locations',
+                    ],
+                    [
+                        'key' => 'field_meza_business_location_email',
+                        'label' => 'Email',
+                        'name' => 'email',
+                        'aria-label' => '',
+                        'type' => 'email',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                        'parent_repeater' => 'field_meza_business_locations',
+                    ],
+                    [
+                        'key' => 'field_meza_business_location_address',
+                        'label' => 'Address',
+                        'name' => 'address',
+                        'aria-label' => '',
+                        'type' => 'google_map',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'center_lat' => '',
+                        'center_lng' => '',
+                        'zoom' => '',
+                        'height' => '',
+                        'allow_in_bindings' => 0,
+                        'parent_repeater' => 'field_meza_business_locations',
+                    ],
+                    [
+                        'key' => 'field_meza_business_location_hours',
+                        'label' => 'Hours',
+                        'name' => 'hours',
+                        'aria-label' => '',
+                        'type' => 'repeater',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'min' => 0,
+                        'max' => 0,
+                        'rows_per_page' => 20,
+                        'layout' => 'table',
+                        'button_label' => 'Add Row',
+                        'collapsed' => '',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_meza_business_location_hours_day',
+                                'label' => 'Day',
+                                'name' => 'day',
+                                'aria-label' => '',
+                                'type' => 'text',
+                                'instructions' => '',
+                                'required' => 0,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'default_value' => '',
+                                'maxlength' => '',
+                                'placeholder' => '',
+                                'prepend' => '',
+                                'append' => '',
+                                'parent_repeater' => 'field_meza_business_location_hours',
+                            ],
+                            [
+                                'key' => 'field_meza_business_location_hours_time',
+                                'label' => 'Time',
+                                'name' => 'time',
+                                'aria-label' => '',
+                                'type' => 'text',
+                                'instructions' => '',
+                                'required' => 0,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'default_value' => '',
+                                'maxlength' => '',
+                                'placeholder' => '',
+                                'prepend' => '',
+                                'append' => '',
+                                'parent_repeater' => 'field_meza_business_location_hours',
+                            ],
+                        ],
+                        'parent_repeater' => 'field_meza_business_locations',
+                    ],
+                    [
+                        'key' => 'field_meza_business_location_note',
+                        'label' => 'Note',
+                        'name' => 'note',
+                        'aria-label' => '',
+                        'type' => 'text',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => '',
+                        'maxlength' => '',
+                        'allow_in_bindings' => 1,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                        'parent_repeater' => 'field_meza_business_locations',
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    function meza_get_business_information_contact_fields(): array
+    {
+        return [
+            [
+                'key' => 'field_69b5a28923bbe',
+                'label' => 'Phone',
+                'name' => 'phone',
+                'aria-label' => '',
+                'type' => 'text',
+                'instructions' => 'Used in the footer of emails sent through the website.',
+                'required' => 0,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_meza_business_use_primary_location_phone',
+                            'operator' => '!=',
+                            'value' => '1',
+                        ],
+                    ],
+                ],
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'default_value' => '',
+                'maxlength' => '',
+                'allow_in_bindings' => 0,
+                'placeholder' => '',
+                'prepend' => '',
+                'append' => '',
+            ],
+            [
+                'key' => 'field_meza_business_use_primary_location_phone',
+                'label' => 'Use Primary Location Phone',
+                'name' => 'use_primary_location_phone',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'message' => 'Use primary location\'s phone',
+                'default_value' => 0,
+                'allow_in_bindings' => 0,
+                'ui' => 0,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
+            ],
+            [
+                'key' => 'field_68c133a0425a8',
+                'label' => 'Email',
+                'name' => 'email',
+                'aria-label' => '',
+                'type' => 'email',
+                'instructions' => 'The default recipient for forms. Also used in the footer of emails sent through the website.',
+                'required' => 1,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_meza_business_use_primary_location_email',
+                            'operator' => '!=',
+                            'value' => '1',
+                        ],
+                    ],
+                ],
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'default_value' => '',
+                'allow_in_bindings' => 0,
+                'placeholder' => '',
+                'prepend' => '',
+                'append' => '',
+            ],
+            [
+                'key' => 'field_meza_business_use_primary_location_email',
+                'label' => 'Use Primary Location Email',
+                'name' => 'use_primary_location_email',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'message' => 'Use primary location\'s email',
+                'default_value' => 0,
+                'allow_in_bindings' => 0,
+                'ui' => 0,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
+            ],
+            [
+                'key' => 'field_69b5a2b623bc0',
+                'label' => 'Mailing Address',
+                'name' => 'address',
+                'aria-label' => '',
+                'type' => 'google_map',
+                'instructions' => 'Used in the footer of emails sent through the website. Only put an address in this field if visitors can come to a real location.',
+                'required' => 1,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_meza_business_use_primary_location_address',
+                            'operator' => '!=',
+                            'value' => '1',
+                        ],
+                        [
+                            'field' => 'field_meza_business_mailing_address',
+                            'operator' => '==empty',
+                        ],
+                    ],
+                ],
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'allow_in_bindings' => 0,
+                'center_lat' => '38.3032',
+                'center_lng' => '-77.4605',
+                'zoom' => '',
+                'height' => '',
+            ],
+            [
+                'key' => 'field_meza_business_use_primary_location_address',
+                'label' => 'Use Primary Location Address',
+                'name' => 'use_primary_location_address',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'message' => 'Use primary location\'s address',
+                'default_value' => 0,
+                'allow_in_bindings' => 0,
+                'ui' => 0,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
+            ],
+            [
+                'key' => 'field_meza_business_mailing_address',
+                'label' => 'Mailing Address',
+                'name' => 'address_text',
+                'aria-label' => '',
+                'type' => 'textarea',
+                'instructions' => 'Used in the footer of emails sent through the website. Only put a mailing-only address in this field, such as a P.O. Box.',
+                'required' => 1,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_meza_business_use_primary_location_address',
+                            'operator' => '!=',
+                            'value' => '1',
+                        ],
+                        [
+                            'field' => 'field_69b5a2b623bc0',
+                            'operator' => '==empty',
+                        ],
+                    ],
+                ],
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'default_value' => '',
+                'maxlength' => '',
+                'allow_in_bindings' => 0,
+                'rows' => 2,
+                'placeholder' => '',
+                'new_lines' => '',
+            ],
+        ];
+    }
+
+    function meza_get_business_information_locations_option_rows(): array
+    {
+        if (!function_exists('get_field')) {
+            return [];
+        }
+
+        $rows = get_field('locations', 'option');
+
+        return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
+    }
+
+    function meza_count_primary_business_information_locations($rows): int
+    {
+        if (!is_array($rows)) {
+            return 0;
+        }
+
+        $primary_count = 0;
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            if (!empty($row['primary'])) {
+                $primary_count++;
+            }
+        }
+
+        return $primary_count;
+    }
+
+    function meza_business_information_has_primary_location(?array $rows = null): bool
+    {
+        if ($rows === null) {
+            $rows = meza_get_business_information_locations_option_rows();
+        }
+
+        return meza_count_primary_business_information_locations($rows) > 0;
     }
 
     function meza_get_business_information_branding_fields(): array
@@ -2542,6 +2977,27 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'value' => 'resource',
                     ],
                 ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'service',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'taxonomy',
+                        'operator' => '==',
+                        'value' => 'sign_type',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'taxonomy',
+                        'operator' => '==',
+                        'value' => 'location',
+                    ],
+                ],
             ],
             'menu_order' => 19,
             'position' => 'normal',
@@ -4150,6 +4606,30 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'display_title' => '',
             ],
             [
+                'key' => 'group_meza_business_information_locations',
+                'title' => 'Locations',
+                'fields' => meza_get_business_information_locations_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'business-information',
+                        ],
+                    ],
+                ],
+                'menu_order' => 5,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'left',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
                 'key' => 'group_meza_business_branding',
                 'title' => 'Visuals and Identity',
                 'fields' => meza_get_business_information_branding_fields(),
@@ -4429,104 +4909,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             [
                 'key' => 'group_68c1337b43d46',
                 'title' => 'Contact Information',
-                'fields' => [
-                    [
-                        'key' => 'field_69b5a28923bbe',
-                        'label' => 'Phone',
-                        'name' => 'phone',
-                        'aria-label' => '',
-                        'type' => 'text',
-                        'instructions' => 'Used in the footer of emails sent through the website.',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'maxlength' => '',
-                        'allow_in_bindings' => 0,
-                        'placeholder' => '',
-                        'prepend' => '',
-                        'append' => '',
-                    ],
-                    [
-                        'key' => 'field_68c133a0425a8',
-                        'label' => 'Email',
-                        'name' => 'email',
-                        'aria-label' => '',
-                        'type' => 'email',
-                        'instructions' => 'The default recipient for forms. Also used in the footer of emails sent through the website.',
-                        'required' => 1,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'allow_in_bindings' => 0,
-                        'placeholder' => '',
-                        'prepend' => '',
-                        'append' => '',
-                    ],
-                    [
-                        'key' => 'field_69b5a2b623bc0',
-                        'label' => 'Address',
-                        'name' => 'address',
-                        'aria-label' => '',
-                        'type' => 'google_map',
-                        'instructions' => 'Used in the footer of emails sent through the website. Only put an address in this field if visitors can come to a real location.',
-                        'required' => 1,
-                        'conditional_logic' => [
-                            [
-                                [
-                                    'field' => 'field_meza_business_mailing_address',
-                                    'operator' => '==empty',
-                                ],
-                            ],
-                        ],
-                        'wrapper' => [
-                            'width' => '',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'allow_in_bindings' => 0,
-                        'center_lat' => '38.3032',
-                        'center_lng' => '-77.4605',
-                        'zoom' => '',
-                        'height' => '',
-                    ],
-                    [
-                        'key' => 'field_meza_business_mailing_address',
-                        'label' => 'Address',
-                        'name' => 'address_text',
-                        'aria-label' => '',
-                        'type' => 'textarea',
-                        'instructions' => 'Used in the footer of emails sent through the website. Only put a mailing-only address in this field, such as a P.O. Box.',
-                        'required' => 1,
-                        'conditional_logic' => [
-                            [
-                                [
-                                    'field' => 'field_69b5a2b623bc0',
-                                    'operator' => '==empty',
-                                ],
-                            ],
-                        ],
-                        'wrapper' => [
-                            'width' => '',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'maxlength' => '',
-                        'allow_in_bindings' => 0,
-                        'rows' => 2,
-                        'placeholder' => '',
-                        'new_lines' => '',
-                    ],
-                ],
+                'fields' => meza_get_business_information_contact_fields(),
                 'location' => [
                     [
                         [
@@ -4571,7 +4954,12 @@ if (!function_exists('meza_register_local_acf_post_type_fallbacks')) {
     {
         foreach (meza_get_local_acf_post_type_definitions() as $definition) {
             $post_type = sanitize_key((string) ($definition['post_type'] ?? ''));
-            if ($post_type === '' || post_type_exists($post_type)) {
+            if (
+                $post_type === ''
+                || post_type_exists($post_type)
+                || meza_should_skip_local_acf_post_type_definition($definition)
+                || meza_is_managed_acf_definition_manually_deleted('post_types', $definition)
+            ) {
                 continue;
             }
 
@@ -4588,7 +4976,12 @@ if (!function_exists('meza_register_local_acf_taxonomy_fallbacks')) {
             $taxonomy = sanitize_key((string) ($definition['taxonomy'] ?? ''));
             $object_type = array_values(array_filter(array_map('sanitize_key', (array) ($definition['object_type'] ?? []))));
 
-            if ($taxonomy === '' || taxonomy_exists($taxonomy) || $object_type === []) {
+            if (
+                $taxonomy === ''
+                || taxonomy_exists($taxonomy)
+                || $object_type === []
+                || meza_is_managed_acf_definition_manually_deleted('taxonomies', $definition)
+            ) {
                 continue;
             }
 
@@ -4651,6 +5044,361 @@ if (!function_exists('meza_should_seed_default_acf_field_groups')) {
         return false;
     }
 }
+
+if (!function_exists('meza_get_managed_acf_deleted_objects_option_name')) {
+    function meza_get_managed_acf_deleted_objects_option_name(): string
+    {
+        return 'meza_managed_acf_deleted_objects_v1';
+    }
+}
+
+if (!function_exists('meza_normalize_managed_acf_deleted_objects')) {
+    function meza_normalize_managed_acf_deleted_objects($value): array
+    {
+        $value = is_array($value) ? $value : [];
+        $normalized = [];
+
+        foreach (['field_groups', 'post_types', 'taxonomies', 'options_pages'] as $kind) {
+            $normalized[$kind] = array_values(array_unique(array_filter(array_map(
+                static function ($identifier): string {
+                    return sanitize_key((string) $identifier);
+                },
+                is_array($value[$kind] ?? null) ? $value[$kind] : []
+            ))));
+        }
+
+        return $normalized;
+    }
+}
+
+if (!function_exists('meza_get_managed_acf_deleted_objects')) {
+    function meza_get_managed_acf_deleted_objects(): array
+    {
+        return meza_normalize_managed_acf_deleted_objects(
+            get_option(meza_get_managed_acf_deleted_objects_option_name(), [])
+        );
+    }
+}
+
+if (!function_exists('meza_update_managed_acf_deleted_objects')) {
+    function meza_update_managed_acf_deleted_objects(array $deleted_objects): void
+    {
+        update_option(
+            meza_get_managed_acf_deleted_objects_option_name(),
+            meza_normalize_managed_acf_deleted_objects($deleted_objects),
+            false
+        );
+    }
+}
+
+if (!function_exists('meza_get_managed_acf_definition_identifier')) {
+    function meza_get_managed_acf_definition_identifier(string $kind, array $definition): string
+    {
+        switch ($kind) {
+            case 'field_groups':
+                return sanitize_key((string) ($definition['key'] ?? ''));
+
+            case 'post_types':
+                return sanitize_key((string) ($definition['post_type'] ?? ''));
+
+            case 'taxonomies':
+                return sanitize_key((string) ($definition['taxonomy'] ?? ''));
+
+            case 'options_pages':
+                return sanitize_key((string) ($definition['menu_slug'] ?? ''));
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('meza_get_managed_acf_definitions_by_kind')) {
+    function meza_get_managed_acf_definitions_by_kind(string $kind): array
+    {
+        switch ($kind) {
+            case 'field_groups':
+                return array_merge(
+                    meza_get_shared_project_acf_field_groups(),
+                    meza_get_default_editable_acf_field_group_definitions()
+                );
+
+            case 'post_types':
+                return meza_get_local_acf_post_type_definitions();
+
+            case 'taxonomies':
+                return meza_get_local_acf_taxonomy_definitions();
+
+            case 'options_pages':
+                return meza_get_shared_project_acf_options_pages();
+        }
+
+        return [];
+    }
+}
+
+if (!function_exists('meza_get_managed_acf_definition_match')) {
+    function meza_get_managed_acf_definition_match(string $kind, array $candidate): ?array
+    {
+        $candidate_identifier = meza_get_managed_acf_definition_identifier($kind, $candidate);
+        if ($candidate_identifier === '') {
+            return null;
+        }
+
+        foreach (meza_get_managed_acf_definitions_by_kind($kind) as $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            if (meza_get_managed_acf_definition_identifier($kind, $definition) === $candidate_identifier) {
+                return $definition;
+            }
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('meza_get_database_acf_post_type_definition_by_slug')) {
+    function meza_get_database_acf_post_type_definition_by_slug(string $post_type_slug, array $exclude_definition = []): ?array
+    {
+        $post_type_slug = sanitize_key($post_type_slug);
+        if ($post_type_slug === '' || !function_exists('acf_get_raw_post_types')) {
+            return null;
+        }
+
+        $excluded_key = sanitize_key((string) ($exclude_definition['key'] ?? ''));
+
+        foreach ((array) acf_get_raw_post_types() as $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            $definition_slug = sanitize_key((string) ($definition['post_type'] ?? ''));
+            if ($definition_slug !== $post_type_slug) {
+                continue;
+            }
+
+            $definition_key = sanitize_key((string) ($definition['key'] ?? ''));
+            if ($excluded_key !== '' && $definition_key === $excluded_key) {
+                continue;
+            }
+
+            return $definition;
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('meza_should_skip_local_acf_post_type_definition')) {
+    function meza_should_skip_local_acf_post_type_definition(array $definition): bool
+    {
+        $post_type_slug = sanitize_key((string) ($definition['post_type'] ?? ''));
+        if ($post_type_slug === '') {
+            return false;
+        }
+
+        return is_array(meza_get_database_acf_post_type_definition_by_slug($post_type_slug, $definition));
+    }
+}
+
+if (!function_exists('meza_is_managed_acf_definition_manually_deleted')) {
+    function meza_is_managed_acf_definition_manually_deleted(string $kind, array $definition): bool
+    {
+        $identifier = meza_get_managed_acf_definition_identifier($kind, $definition);
+        if ($identifier === '') {
+            return false;
+        }
+
+        $deleted_objects = meza_get_managed_acf_deleted_objects();
+
+        return in_array($identifier, $deleted_objects[$kind] ?? [], true);
+    }
+}
+
+if (!function_exists('meza_mark_managed_acf_definition_deleted')) {
+    function meza_mark_managed_acf_definition_deleted(string $kind, array $definition): void
+    {
+        $identifier = meza_get_managed_acf_definition_identifier($kind, $definition);
+        if ($identifier === '') {
+            return;
+        }
+
+        $deleted_objects = meza_get_managed_acf_deleted_objects();
+        $deleted_objects[$kind] = $deleted_objects[$kind] ?? [];
+
+        if (!in_array($identifier, $deleted_objects[$kind], true)) {
+            $deleted_objects[$kind][] = $identifier;
+            meza_update_managed_acf_deleted_objects($deleted_objects);
+        }
+    }
+}
+
+if (!function_exists('meza_clear_managed_acf_definition_deleted')) {
+    function meza_clear_managed_acf_definition_deleted(string $kind, array $definition): void
+    {
+        $identifier = meza_get_managed_acf_definition_identifier($kind, $definition);
+        if ($identifier === '') {
+            return;
+        }
+
+        $deleted_objects = meza_get_managed_acf_deleted_objects();
+        $deleted_objects[$kind] = array_values(array_filter(
+            $deleted_objects[$kind] ?? [],
+            static function (string $deleted_identifier) use ($identifier): bool {
+                return $deleted_identifier !== $identifier;
+            }
+        ));
+
+        meza_update_managed_acf_deleted_objects($deleted_objects);
+    }
+}
+
+if (!function_exists('meza_track_managed_acf_definition_event')) {
+    function meza_track_managed_acf_definition_event(string $kind, array $candidate, bool $is_deleted): void
+    {
+        $definition = meza_get_managed_acf_definition_match($kind, $candidate);
+        if (!is_array($definition)) {
+            return;
+        }
+
+        if ($is_deleted) {
+            meza_mark_managed_acf_definition_deleted($kind, $definition);
+            return;
+        }
+
+        meza_clear_managed_acf_definition_deleted($kind, $definition);
+    }
+}
+
+if (!function_exists('meza_get_managed_acf_post_deletion_match')) {
+    function meza_get_managed_acf_post_deletion_match(int $post_id): ?array
+    {
+        $post = get_post($post_id);
+        if (!($post instanceof WP_Post)) {
+            return null;
+        }
+
+        $kind = '';
+        $candidate = null;
+
+        switch ($post->post_type) {
+            case 'acf-field-group':
+                if (!function_exists('acf_get_field_group')) {
+                    return null;
+                }
+
+                $kind = 'field_groups';
+                $candidate = acf_get_field_group($post_id);
+                break;
+
+            case 'acf-post-type':
+                if (!function_exists('acf_get_post_type')) {
+                    return null;
+                }
+
+                $kind = 'post_types';
+                $candidate = acf_get_post_type($post_id);
+                break;
+
+            case 'acf-taxonomy':
+                if (!function_exists('acf_get_taxonomy')) {
+                    return null;
+                }
+
+                $kind = 'taxonomies';
+                $candidate = acf_get_taxonomy($post_id);
+                break;
+
+            case 'acf-ui-options-page':
+                if (!function_exists('acf_get_ui_options_page')) {
+                    return null;
+                }
+
+                $kind = 'options_pages';
+                $candidate = acf_get_ui_options_page($post_id);
+                break;
+        }
+
+        if ($kind === '' || !is_array($candidate)) {
+            return null;
+        }
+
+        $definition = meza_get_managed_acf_definition_match($kind, $candidate);
+        if (!is_array($definition)) {
+            return null;
+        }
+
+        return [
+            'kind' => $kind,
+            'definition' => $definition,
+        ];
+    }
+}
+
+if (!function_exists('meza_track_managed_acf_post_deletion')) {
+    function meza_track_managed_acf_post_deletion(int $post_id): void
+    {
+        $match = meza_get_managed_acf_post_deletion_match($post_id);
+        if (!is_array($match) || !is_array($match['definition'] ?? null)) {
+            return;
+        }
+
+        meza_mark_managed_acf_definition_deleted((string) $match['kind'], $match['definition']);
+    }
+}
+
+if (!function_exists('meza_track_managed_acf_post_restoration')) {
+    function meza_track_managed_acf_post_restoration(int $post_id): void
+    {
+        $match = meza_get_managed_acf_post_deletion_match($post_id);
+        if (!is_array($match) || !is_array($match['definition'] ?? null)) {
+            return;
+        }
+
+        meza_clear_managed_acf_definition_deleted((string) $match['kind'], $match['definition']);
+    }
+}
+
+add_action('wp_trash_post', 'meza_track_managed_acf_post_deletion', 5);
+add_action('before_delete_post', 'meza_track_managed_acf_post_deletion', 5);
+add_action('untrashed_post', 'meza_track_managed_acf_post_restoration', 5);
+add_action('acf/trash_field_group', static function (array $field_group): void {
+    meza_track_managed_acf_definition_event('field_groups', $field_group, true);
+}, 5);
+add_action('acf/delete_field_group', static function (array $field_group): void {
+    meza_track_managed_acf_definition_event('field_groups', $field_group, true);
+}, 5);
+add_action('acf/untrash_field_group', static function (array $field_group): void {
+    meza_track_managed_acf_definition_event('field_groups', $field_group, false);
+}, 5);
+add_action('acf/trash_post_type', static function (array $post_type): void {
+    meza_track_managed_acf_definition_event('post_types', $post_type, true);
+}, 5);
+add_action('acf/delete_post_type', static function (array $post_type): void {
+    meza_track_managed_acf_definition_event('post_types', $post_type, true);
+}, 5);
+add_action('acf/untrash_post_type', static function (array $post_type): void {
+    meza_track_managed_acf_definition_event('post_types', $post_type, false);
+}, 5);
+add_action('acf/trash_taxonomy', static function (array $taxonomy): void {
+    meza_track_managed_acf_definition_event('taxonomies', $taxonomy, true);
+}, 5);
+add_action('acf/delete_taxonomy', static function (array $taxonomy): void {
+    meza_track_managed_acf_definition_event('taxonomies', $taxonomy, true);
+}, 5);
+add_action('acf/untrash_taxonomy', static function (array $taxonomy): void {
+    meza_track_managed_acf_definition_event('taxonomies', $taxonomy, false);
+}, 5);
+add_action('acf/trash_ui_options_page', static function (array $options_page): void {
+    meza_track_managed_acf_definition_event('options_pages', $options_page, true);
+}, 5);
+add_action('acf/delete_ui_options_page', static function (array $options_page): void {
+    meza_track_managed_acf_definition_event('options_pages', $options_page, true);
+}, 5);
+add_action('acf/untrash_ui_options_page', static function (array $options_page): void {
+    meza_track_managed_acf_definition_event('options_pages', $options_page, false);
+}, 5);
 
 if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
     function meza_get_default_editable_acf_field_group_definitions(): array
@@ -5176,6 +5924,10 @@ if (!function_exists('meza_seed_default_editable_acf_taxonomies')) {
                 continue;
             }
 
+            if (meza_is_managed_acf_definition_manually_deleted('taxonomies', $definition)) {
+                continue;
+            }
+
             $existing_id = meza_get_existing_editable_acf_taxonomy_id($definition);
             if ($existing_id > 0 && !$should_refresh_existing) {
                 continue;
@@ -5203,6 +5955,10 @@ if (!function_exists('meza_seed_default_editable_acf_field_groups')) {
 
         foreach (meza_get_default_editable_acf_field_group_definitions() as $definition) {
             if (!is_array($definition) || empty($definition['key']) || empty($definition['title'])) {
+                continue;
+            }
+
+            if (meza_is_managed_acf_definition_manually_deleted('field_groups', $definition)) {
                 continue;
             }
 
@@ -5238,6 +5994,10 @@ if (!function_exists('meza_repair_seeded_list_profiles_field_group')) {
         }
 
         if (!is_array($definition)) {
+            return;
+        }
+
+        if (meza_is_managed_acf_definition_manually_deleted('field_groups', $definition)) {
             return;
         }
 
@@ -5668,6 +6428,36 @@ add_filter('acf/update_value/key=field_69b5a2b623bc0', static function ($value, 
 
     return '';
 }, 5, 3);
+
+add_filter('acf/validate_value/name=locations', static function ($valid, $value, $field, $input) {
+    if ($valid !== true) {
+        return $valid;
+    }
+
+    if (meza_count_primary_business_information_locations($value) > 1) {
+        return 'There can only be 1 primary location.';
+    }
+
+    return $valid;
+}, 20, 4);
+
+add_filter('acf/prepare_field/key=field_meza_business_location_primary', static function ($field) {
+    if (!is_admin()) {
+        return $field;
+    }
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen)) {
+        return $field;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page !== 'business-information' || !meza_business_information_has_primary_location()) {
+        return $field;
+    }
+
+    return !empty($field['value']) ? $field : false;
+}, 20);
 
 foreach (meza_get_business_information_branding_field_map() as $field_name => $callbacks) {
     if (isset($callbacks['load']) && is_callable($callbacks['load'])) {
@@ -6424,7 +7214,12 @@ add_action('acf/init', function (): void {
 
     if (function_exists('acf_add_local_internal_post_type')) {
         foreach (meza_get_local_acf_post_type_definitions() as $definition) {
-            if (!is_array($definition) || empty($definition['key'])) {
+            if (
+                !is_array($definition)
+                || empty($definition['key'])
+                || meza_should_skip_local_acf_post_type_definition($definition)
+                || meza_is_managed_acf_definition_manually_deleted('post_types', $definition)
+            ) {
                 continue;
             }
 
@@ -6433,7 +7228,7 @@ add_action('acf/init', function (): void {
     }
 
     foreach (meza_get_shared_project_acf_options_pages() as $page) {
-        if (!is_array($page)) {
+        if (!is_array($page) || meza_is_managed_acf_definition_manually_deleted('options_pages', $page)) {
             continue;
         }
 
@@ -6446,7 +7241,11 @@ add_action('acf/init', function (): void {
     }
 
     foreach (meza_get_shared_project_acf_field_groups() as $group) {
-        if (!is_array($group) || empty($group['key'])) {
+        if (
+            !is_array($group)
+            || empty($group['key'])
+            || meza_is_managed_acf_definition_manually_deleted('field_groups', $group)
+        ) {
             continue;
         }
 
