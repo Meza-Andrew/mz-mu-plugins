@@ -2977,6 +2977,181 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         ];
     }
 
+    function meza_get_service_category_taxonomy_definition(): array
+    {
+        return [
+            'key' => 'taxonomy_69f3aa4870280',
+            'title' => 'Service Categories',
+            'menu_order' => 0,
+            'active' => true,
+            'taxonomy' => 'service-category',
+            'object_type' => [
+                'service',
+            ],
+            'advanced_configuration' => 1,
+            'import_source' => '',
+            'import_date' => '',
+            'labels' => [
+                'name' => 'Service Categories',
+                'singular_name' => 'Service Category',
+                'menu_name' => 'Service Categories',
+                'all_items' => 'All Service Categories',
+                'edit_item' => 'Edit Service Category',
+                'view_item' => 'View Service Category',
+                'update_item' => 'Update Service Category',
+                'add_new_item' => 'Add New Service Category',
+                'new_item_name' => 'New Service Category Name',
+                'search_items' => 'Search Service Categories',
+                'popular_items' => 'Popular Service Categories',
+                'separate_items_with_commas' => 'Separate service categories with commas',
+                'add_or_remove_items' => 'Add or remove service categories',
+                'choose_from_most_used' => 'Choose from the most used service categories',
+                'most_used' => '',
+                'not_found' => 'No service categories found',
+                'no_terms' => 'No service categories',
+                'name_field_description' => '',
+                'slug_field_description' => '',
+                'desc_field_description' => '',
+                'items_list_navigation' => 'Service Categories list navigation',
+                'items_list' => 'Service Categories list',
+                'back_to_items' => '← Go to service categories',
+                'item_link' => 'Service Category Link',
+                'item_link_description' => 'A link to a service category',
+            ],
+            'description' => '',
+            'capabilities' => [
+                'manage_terms' => 'manage_categories',
+                'edit_terms' => 'manage_categories',
+                'delete_terms' => 'manage_categories',
+                'assign_terms' => 'edit_posts',
+            ],
+            'public' => 1,
+            'publicly_queryable' => 0,
+            'hierarchical' => 0,
+            'show_ui' => 1,
+            'show_in_menu' => 1,
+            'show_in_nav_menus' => 0,
+            'show_in_rest' => 1,
+            'rest_base' => '',
+            'rest_namespace' => 'wp/v2',
+            'rest_controller_class' => 'WP_REST_Terms_Controller',
+            'show_tagcloud' => 1,
+            'show_in_quick_edit' => 1,
+            'show_admin_column' => 1,
+            'rewrite' => [
+                'permalink_rewrite' => 'no_permalink',
+            ],
+            'query_var' => 'taxonomy_key',
+            'query_var_name' => '',
+            'default_term' => [
+                'default_term_enabled' => '0',
+            ],
+            'sort' => 0,
+            'meta_box' => 'default',
+            'meta_box_cb' => '',
+            'meta_box_sanitize_cb' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_service_post_type_definition(): array
+    {
+        return [
+            'key' => 'post_type_66b426000001',
+            'title' => 'Services',
+            'menu_order' => 0,
+            'active' => true,
+            'post_type' => 'service',
+            'advanced_configuration' => true,
+            'import_source' => '',
+            'import_date' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+            'labels' => [
+                'name' => 'Services',
+                'singular_name' => 'Service',
+                'menu_name' => 'Services',
+                'all_items' => 'All Services',
+                'edit_item' => 'Edit Service',
+                'view_item' => 'View Service',
+                'view_items' => 'View Services',
+                'add_new_item' => 'Add New Service',
+                'add_new' => 'Add New Service',
+                'new_item' => 'New Service',
+                'parent_item_colon' => '',
+                'search_items' => 'Search Services',
+                'not_found' => 'No services found',
+                'not_found_in_trash' => 'No services found in Trash',
+                'archives' => '',
+                'attributes' => '',
+                'featured_image' => '',
+                'set_featured_image' => '',
+                'remove_featured_image' => '',
+                'use_featured_image' => '',
+                'insert_into_item' => '',
+                'uploaded_to_this_item' => '',
+                'filter_items_list' => '',
+                'filter_by_date' => '',
+                'items_list_navigation' => '',
+                'items_list' => '',
+                'item_published' => '',
+                'item_published_privately' => '',
+                'item_reverted_to_draft' => '',
+                'item_scheduled' => '',
+                'item_updated' => '',
+                'item_link' => '',
+                'item_link_description' => '',
+            ],
+            'description' => '',
+            'public' => true,
+            'hierarchical' => true,
+            'exclude_from_search' => false,
+            'publicly_queryable' => true,
+            'show_ui' => true,
+            'show_in_menu' => true,
+            'show_in_admin_bar' => true,
+            'show_in_nav_menus' => true,
+            'show_in_rest' => true,
+            'rest_base' => '',
+            'rest_namespace' => 'wp/v2',
+            'rest_controller_class' => 'WP_REST_Posts_Controller',
+            'menu_position' => '',
+            'menu_icon' => [
+                'type' => 'dashicons',
+                'value' => 'dashicons-hammer',
+            ],
+            'rename_capabilities' => false,
+            'singular_capability_name' => 'post',
+            'plural_capability_name' => 'posts',
+            'supports' => [
+                'title',
+                'thumbnail',
+                'custom-fields',
+                'excerpt',
+                'page-attributes',
+            ],
+            'taxonomies' => [
+                'locality',
+                'service-category',
+            ],
+            'has_archive' => false,
+            'has_archive_slug' => '',
+            'rewrite' => [
+                'permalink_rewrite' => 'post_type_key',
+                'with_front' => '1',
+                'feeds' => '0',
+                'pages' => '1',
+            ],
+            'query_var' => 'post_type_key',
+            'query_var_name' => '',
+            'can_export' => true,
+            'delete_with_user' => false,
+            'register_meta_box_cb' => '',
+            'enter_title_here' => '',
+        ];
+    }
+
     function meza_get_hero_section_field_group_definition(): array
     {
         return [
@@ -4213,6 +4388,165 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         ];
     }
 
+    function meza_get_list_services_section_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_b2f9d7e8',
+            'title' => 'List Services Section',
+            'fields' => [
+                [
+                    'key' => 'field_3ce1e3d6',
+                    'label' => 'Visibility',
+                    'name' => 'visibility_list-services',
+                    'aria-label' => '',
+                    'type' => 'true_false',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'message' => '',
+                    'default_value' => 0,
+                    'allow_in_bindings' => 1,
+                    'ui' => 0,
+                    'ui_on_text' => '',
+                    'ui_off_text' => '',
+                ],
+                [
+                    'key' => 'field_e278a597',
+                    'label' => 'Section',
+                    'name' => 'section_list-services',
+                    'aria-label' => '',
+                    'type' => 'group',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => [
+                        [
+                            [
+                                'field' => 'field_3ce1e3d6',
+                                'operator' => '==',
+                                'value' => '1',
+                            ],
+                        ],
+                    ],
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'layout' => 'block',
+                    'sub_fields' => [
+                        [
+                            'key' => 'field_643fcf0d',
+                            'label' => 'Headline (H2)',
+                            'name' => 'headline',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 1,
+                            'conditional_logic' => false,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_9fe55eb5',
+                            'label' => 'Subhead',
+                            'name' => 'subhead',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => false,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                        [
+                            'key' => 'field_1086a562',
+                            'label' => 'ID',
+                            'name' => 'id',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => false,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                        ],
+                    ],
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'page_type',
+                        'operator' => '==',
+                        'value' => 'front_page',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'service',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'taxonomy',
+                        'operator' => '==',
+                        'value' => 'locality',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'taxonomy',
+                        'operator' => '==',
+                        'value' => 'service-category',
+                    ],
+                ],
+            ],
+            'menu_order' => 2,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
     function meza_get_list_partners_section_field_group_definition(): array
     {
         return [
@@ -5094,6 +5428,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
     function meza_get_local_acf_post_type_definitions(): array
     {
         $definitions = [
+            meza_get_service_post_type_definition(),
             meza_get_faq_post_type_definition(),
             meza_get_cta_post_type_definition(),
             meza_get_profile_post_type_definition(),
@@ -5125,6 +5460,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
     function meza_get_local_acf_taxonomy_definitions(): array
     {
         $definitions = [
+            meza_get_service_category_taxonomy_definition(),
             meza_get_organization_type_taxonomy_definition(),
             meza_get_profile_type_taxonomy_definition(),
             meza_get_locality_taxonomy_definition(),
@@ -5561,6 +5897,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             meza_get_hero_section_field_group_definition(),
             meza_get_form_section_field_group_definition(),
             meza_get_cta_section_field_group_definition(),
+            meza_get_list_services_section_field_group_definition(),
             meza_get_list_posts_section_field_group_definition(),
             meza_get_list_faqs_section_field_group_definition(),
             meza_get_list_reviews_section_field_group_definition(),
@@ -6647,7 +6984,6 @@ if (!function_exists('meza_get_default_editable_acf_taxonomy_definitions')) {
         $definitions = [
             meza_get_organization_type_taxonomy_definition(),
             meza_get_profile_type_taxonomy_definition(),
-            meza_get_locality_taxonomy_definition(),
         ];
 
         if (meza_supports_sponsor_features()) {
