@@ -2798,6 +2798,27 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'value' => 'resource',
                     ],
                 ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'service',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'taxonomy',
+                        'operator' => '==',
+                        'value' => 'sign_type',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'taxonomy',
+                        'operator' => '==',
+                        'value' => 'location',
+                    ],
+                ],
             ],
             'menu_order' => 21,
             'position' => 'normal',
@@ -3755,6 +3776,105 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         ];
     }
 
+    function meza_get_faq_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_681255c43a8a1',
+            'title' => 'FAQ',
+            'fields' => [
+                [
+                    'key' => 'field_681255cc3a8a2',
+                    'label' => 'FAQs',
+                    'name' => 'faqs',
+                    'aria-label' => '',
+                    'type' => 'repeater',
+                    'instructions' => '',
+                    'required' => 1,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'layout' => 'block',
+                    'pagination' => 0,
+                    'min' => 1,
+                    'max' => 0,
+                    'collapsed' => 'field_681255d93a8a3',
+                    'button_label' => 'Add FAQ',
+                    'rows_per_page' => 20,
+                    'sub_fields' => [
+                        [
+                            'key' => 'field_681255d93a8a3',
+                            'label' => 'Question',
+                            'name' => 'question',
+                            'aria-label' => '',
+                            'type' => 'text',
+                            'instructions' => '',
+                            'required' => 1,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'maxlength' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'prepend' => '',
+                            'append' => '',
+                            'parent_repeater' => 'field_681255cc3a8a2',
+                        ],
+                        [
+                            'key' => 'field_681255e53a8a4',
+                            'label' => 'Answer',
+                            'name' => 'answer',
+                            'aria-label' => '',
+                            'type' => 'wysiwyg',
+                            'instructions' => '',
+                            'required' => 1,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'allow_in_bindings' => 0,
+                            'tabs' => 'all',
+                            'toolbar' => 'basic',
+                            'media_upload' => 0,
+                            'delay' => 0,
+                            'parent_repeater' => 'field_681255cc3a8a2',
+                        ],
+                    ],
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'faq',
+                    ],
+                ],
+            ],
+            'menu_order' => 0,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
     function meza_get_review_field_group_definition(): array
     {
         $citer_field = meza_review_uses_profile_citer()
@@ -3875,6 +3995,27 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     'return_format' => 'Ymd',
                     'first_day' => 1,
                     'default_to_current_date' => 1,
+                    'allow_in_bindings' => 0,
+                ],
+                [
+                    'key' => 'field_6811ca58eb4cb',
+                    'label' => 'Featured',
+                    'name' => 'featured',
+                    'aria-label' => '',
+                    'type' => 'true_false',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'message' => '',
+                    'default_value' => 0,
+                    'ui_on_text' => '',
+                    'ui_off_text' => '',
+                    'ui' => 1,
                     'allow_in_bindings' => 0,
                 ],
             ],
@@ -4415,6 +4556,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             meza_get_cta_field_group_definition(),
             meza_get_profile_field_group_definition(),
             meza_get_organization_field_group_definition(),
+            meza_get_faq_field_group_definition(),
             meza_get_review_field_group_definition(),
         ];
 
