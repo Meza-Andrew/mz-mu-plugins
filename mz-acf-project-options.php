@@ -2914,6 +2914,69 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         ];
     }
 
+    function meza_get_locality_taxonomy_definition(): array
+    {
+        return [
+            'key' => 'taxonomy_66b426000102',
+            'title' => 'Localities',
+            'menu_order' => 0,
+            'active' => true,
+            'taxonomy' => 'locality',
+            'object_type' => [
+                'service',
+                'review',
+                'organization',
+            ],
+            'advanced_configuration' => 1,
+            'import_source' => '',
+            'import_date' => '',
+            'labels' => [
+                'name' => 'Localities',
+                'singular_name' => 'Locality',
+                'menu_name' => 'Localities',
+                'add_new_item' => 'Add New Locality',
+            ],
+            'description' => '',
+            'capabilities' => [
+                'manage_terms' => 'manage_categories',
+                'edit_terms' => 'manage_categories',
+                'delete_terms' => 'manage_categories',
+                'assign_terms' => 'edit_posts',
+            ],
+            'public' => 1,
+            'publicly_queryable' => 1,
+            'hierarchical' => 1,
+            'show_ui' => 1,
+            'show_in_menu' => 1,
+            'show_in_nav_menus' => 1,
+            'show_in_rest' => 1,
+            'rest_base' => '',
+            'rest_namespace' => 'wp/v2',
+            'rest_controller_class' => 'WP_REST_Terms_Controller',
+            'show_tagcloud' => 1,
+            'show_in_quick_edit' => 1,
+            'show_admin_column' => 1,
+            'rewrite' => [
+                'permalink_rewrite' => 'taxonomy_key',
+                'with_front' => '1',
+                'rewrite_hierarchical' => '1',
+            ],
+            'query_var' => 'post_type_key',
+            'query_var_name' => '',
+            'default_term' => [
+                'default_term_enabled' => '1',
+                'name' => 'Fredericksburg, Virginia',
+                'slug' => 'fredericksburg-va',
+            ],
+            'sort' => 0,
+            'meta_box' => 'default',
+            'meta_box_cb' => '',
+            'meta_box_sanitize_cb' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
     function meza_get_hero_section_field_group_definition(): array
     {
         return [
@@ -5030,13 +5093,33 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
 
     function meza_get_local_acf_post_type_definitions(): array
     {
-        return [
+        $definitions = [
             meza_get_faq_post_type_definition(),
             meza_get_cta_post_type_definition(),
             meza_get_profile_post_type_definition(),
             meza_get_organization_post_type_definition(),
             meza_get_review_post_type_definition(),
         ];
+
+        if (function_exists('mzf_get_form_post_type_definition')) {
+            $definitions[] = mzf_get_form_post_type_definition();
+        }
+
+        return $definitions;
+    }
+
+    function meza_get_builtin_acf_post_type_slugs(): array
+    {
+        $slugs = [];
+
+        foreach (meza_get_local_acf_post_type_definitions() as $definition) {
+            $post_type = sanitize_key((string) ($definition['post_type'] ?? ''));
+            if ($post_type !== '') {
+                $slugs[] = $post_type;
+            }
+        }
+
+        return array_values(array_unique($slugs));
     }
 
     function meza_get_local_acf_taxonomy_definitions(): array
@@ -5044,6 +5127,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         $definitions = [
             meza_get_organization_type_taxonomy_definition(),
             meza_get_profile_type_taxonomy_definition(),
+            meza_get_locality_taxonomy_definition(),
         ];
 
         if (meza_supports_sponsor_features()) {
@@ -5082,6 +5166,20 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
 
     function meza_get_local_acf_taxonomy_args(array $definition): array
     {
+        $default_term = [];
+        $default_term_definition = (array) ($definition['default_term'] ?? []);
+        if (!empty($default_term_definition['default_term_enabled'])) {
+            $default_term_name = trim((string) ($default_term_definition['name'] ?? ''));
+            $default_term_slug = sanitize_title((string) ($default_term_definition['slug'] ?? ''));
+
+            if ($default_term_name !== '' && $default_term_slug !== '') {
+                $default_term = [
+                    'name' => $default_term_name,
+                    'slug' => $default_term_slug,
+                ];
+            }
+        }
+
         return [
             'labels' => (array) ($definition['labels'] ?? []),
             'description' => (string) ($definition['description'] ?? ''),
@@ -5104,6 +5202,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             'meta_box_cb' => (string) ($definition['meta_box_cb'] ?? ''),
             'meta_box_sanitize_cb' => (string) ($definition['meta_box_sanitize_cb'] ?? ''),
             'capabilities' => (array) ($definition['capabilities'] ?? []),
+            'default_term' => $default_term,
         ];
     }
 
@@ -5553,6 +5652,52 @@ if (!function_exists('meza_seed_default_organization_type_terms')) {
 }
 add_action('init', 'meza_seed_default_organization_type_terms', 2);
 
+if (!function_exists('meza_seed_default_locality_terms')) {
+    function meza_seed_default_locality_terms(): void
+    {
+        $taxonomy = 'locality';
+        if (!taxonomy_exists($taxonomy)) {
+            return;
+        }
+
+        if (term_exists('fredericksburg-va', $taxonomy)) {
+            return;
+        }
+
+        wp_insert_term('Fredericksburg, Virginia', $taxonomy, [
+            'slug' => 'fredericksburg-va',
+        ]);
+    }
+}
+add_action('init', 'meza_seed_default_locality_terms', 2);
+
+if (!function_exists('meza_ensure_locality_taxonomy_runtime_registration')) {
+    function meza_ensure_locality_taxonomy_runtime_registration(): void
+    {
+        $definition = meza_get_locality_taxonomy_definition();
+        $taxonomy = sanitize_key((string) ($definition['taxonomy'] ?? ''));
+        $object_types = array_values(array_filter(array_map('sanitize_key', (array) ($definition['object_type'] ?? []))));
+
+        if ($taxonomy === '' || $object_types === []) {
+            return;
+        }
+
+        if (!taxonomy_exists($taxonomy)) {
+            register_taxonomy($taxonomy, $object_types, meza_get_local_acf_taxonomy_args($definition));
+            return;
+        }
+
+        foreach ($object_types as $object_type) {
+            if ($object_type === '' || !post_type_exists($object_type)) {
+                continue;
+            }
+
+            register_taxonomy_for_object_type($taxonomy, $object_type);
+        }
+    }
+}
+add_action('init', 'meza_ensure_locality_taxonomy_runtime_registration', 3);
+
 if (!function_exists('meza_should_seed_default_acf_field_groups')) {
     function meza_should_seed_default_acf_field_groups(): bool
     {
@@ -5575,6 +5720,13 @@ if (!function_exists('meza_should_seed_default_acf_field_groups')) {
         }
 
         return false;
+    }
+}
+
+if (!function_exists('meza_should_ignore_managed_acf_deletions')) {
+    function meza_should_ignore_managed_acf_deletions(): bool
+    {
+        return meza_should_seed_default_acf_field_groups();
     }
 }
 
@@ -5691,6 +5843,18 @@ if (!function_exists('meza_get_managed_acf_definition_match')) {
     }
 }
 
+if (!function_exists('meza_is_database_backed_acf_ui_object')) {
+    function meza_is_database_backed_acf_ui_object(array $object): bool
+    {
+        $local = strtolower(trim((string) ($object['local'] ?? '')));
+        if (in_array($local, ['php', 'json'], true)) {
+            return false;
+        }
+
+        return (int) ($object['ID'] ?? 0) > 0 || in_array($local, ['', 'db', 'database'], true);
+    }
+}
+
 if (!function_exists('meza_get_database_acf_post_type_definition_by_slug')) {
     function meza_get_database_acf_post_type_definition_by_slug(string $post_type_slug, array $exclude_definition = []): ?array
     {
@@ -5738,6 +5902,10 @@ if (!function_exists('meza_should_skip_local_acf_post_type_definition')) {
 if (!function_exists('meza_is_managed_acf_definition_manually_deleted')) {
     function meza_is_managed_acf_definition_manually_deleted(string $kind, array $definition): bool
     {
+        if (meza_should_ignore_managed_acf_deletions()) {
+            return false;
+        }
+
         $identifier = meza_get_managed_acf_definition_identifier($kind, $definition);
         if ($identifier === '') {
             return false;
@@ -6091,6 +6259,139 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                 'allow_ai_access' => false,
                 'ai_description' => '',
             ],
+            [
+                'key' => 'group_9f5b5c9a',
+                'title' => 'List Localities Section',
+                'fields' => [
+                    [
+                        'key' => 'field_6e5b5e63',
+                        'label' => 'Visibility',
+                        'name' => 'visibility_list-localities',
+                        'aria-label' => '',
+                        'type' => 'true_false',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => 0,
+                        'message' => 'Show the List Localities section on this page?',
+                        'ui' => 0,
+                        'ui_on_text' => '',
+                        'ui_off_text' => '',
+                    ],
+                    [
+                        'key' => 'field_b471daa1',
+                        'label' => 'List Localities Section',
+                        'name' => 'section_list-localities',
+                        'aria-label' => '',
+                        'type' => 'group',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => [
+                            [
+                                [
+                                    'field' => 'field_6e5b5e63',
+                                    'operator' => '==',
+                                    'value' => '1',
+                                ],
+                            ],
+                        ],
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'layout' => 'block',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_c042b116',
+                                'label' => 'Headline (H2)',
+                                'name' => 'headline',
+                                'aria-label' => '',
+                                'type' => 'text',
+                                'instructions' => '',
+                                'required' => 1,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'default_value' => '',
+                                'maxlength' => '',
+                                'placeholder' => '',
+                                'prepend' => '',
+                                'append' => '',
+                            ],
+                            [
+                                'key' => 'field_06661b49',
+                                'label' => 'Subhead',
+                                'name' => 'subhead',
+                                'aria-label' => '',
+                                'type' => 'text',
+                                'instructions' => '',
+                                'required' => 0,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'default_value' => '',
+                                'maxlength' => '',
+                                'placeholder' => '',
+                                'prepend' => '',
+                                'append' => '',
+                            ],
+                            [
+                                'key' => 'field_adb2ba7f',
+                                'label' => 'ID',
+                                'name' => 'id',
+                                'aria-label' => '',
+                                'type' => 'text',
+                                'instructions' => '',
+                                'required' => 0,
+                                'conditional_logic' => 0,
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'default_value' => '',
+                                'maxlength' => '',
+                                'placeholder' => '',
+                                'prepend' => '',
+                                'append' => '',
+                            ],
+                        ],
+                    ],
+                ],
+                'location' => [
+                    [
+                        [
+                            'param' => 'page_type',
+                            'operator' => '==',
+                            'value' => 'front_page',
+                        ],
+                    ],
+                ],
+                'menu_order' => 8,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'top',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+                'allow_ai_access' => false,
+                'ai_description' => '',
+            ],
             meza_get_list_partners_section_field_group_definition(),
             [
                 'key' => 'group_6901490e04b96',
@@ -6346,6 +6647,7 @@ if (!function_exists('meza_get_default_editable_acf_taxonomy_definitions')) {
         $definitions = [
             meza_get_organization_type_taxonomy_definition(),
             meza_get_profile_type_taxonomy_definition(),
+            meza_get_locality_taxonomy_definition(),
         ];
 
         if (meza_supports_sponsor_features()) {
@@ -6454,8 +6756,6 @@ if (!function_exists('meza_seed_default_editable_acf_taxonomies')) {
             return;
         }
 
-        $should_refresh_existing = meza_should_seed_default_acf_field_groups();
-
         foreach (meza_get_default_editable_acf_taxonomy_definitions() as $definition) {
             if (!is_array($definition) || empty($definition['key']) || empty($definition['taxonomy'])) {
                 continue;
@@ -6466,12 +6766,8 @@ if (!function_exists('meza_seed_default_editable_acf_taxonomies')) {
             }
 
             $existing_id = meza_get_existing_editable_acf_taxonomy_id($definition);
-            if ($existing_id > 0 && !$should_refresh_existing) {
-                continue;
-            }
-
             if ($existing_id > 0) {
-                $definition['ID'] = $existing_id;
+                continue;
             }
 
             acf_import_taxonomy($definition);
@@ -6488,8 +6784,6 @@ if (!function_exists('meza_seed_default_editable_acf_field_groups')) {
             return;
         }
 
-        $should_refresh_existing = meza_should_seed_default_acf_field_groups();
-
         foreach (meza_get_default_editable_acf_field_group_definitions() as $definition) {
             if (!is_array($definition) || empty($definition['key']) || empty($definition['title'])) {
                 continue;
@@ -6500,12 +6794,8 @@ if (!function_exists('meza_seed_default_editable_acf_field_groups')) {
             }
 
             $existing_id = meza_get_existing_editable_acf_field_group_id($definition);
-            if ($existing_id > 0 && !$should_refresh_existing) {
-                continue;
-            }
-
             if ($existing_id > 0) {
-                $definition['ID'] = $existing_id;
+                continue;
             }
 
             acf_import_field_group($definition);
@@ -6515,48 +6805,77 @@ if (!function_exists('meza_seed_default_editable_acf_field_groups')) {
     }
 }
 
-if (!function_exists('meza_repair_seeded_list_profiles_field_group')) {
-    function meza_repair_seeded_list_profiles_field_group(): void
+if (!function_exists('meza_attach_locality_to_new_custom_acf_post_type')) {
+    function meza_should_rerun_locality_post_type_defaults(): bool
     {
-        if (!function_exists('acf_get_field_group') || !function_exists('acf_update_field_group')) {
+        return meza_should_seed_default_acf_field_groups();
+    }
+
+    function meza_get_locality_defaulted_acf_post_types_option_name(): string
+    {
+        return 'meza_locality_defaulted_acf_post_types_v1';
+    }
+
+    function meza_get_locality_defaulted_acf_post_type_ids(): array
+    {
+        $ids = get_option(meza_get_locality_defaulted_acf_post_types_option_name(), []);
+        if (!is_array($ids)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(array_map('intval', $ids))));
+    }
+
+    function meza_mark_locality_defaulted_acf_post_type(int $post_id): void
+    {
+        if ($post_id <= 0) {
             return;
         }
 
-        $definition = null;
-        foreach (meza_get_default_editable_acf_field_group_definitions() as $group_definition) {
-            if (($group_definition['key'] ?? '') === 'group_meza_list_profiles_section') {
-                $definition = $group_definition;
-                break;
-            }
-        }
-
-        if (!is_array($definition)) {
+        $ids = meza_get_locality_defaulted_acf_post_type_ids();
+        if (in_array($post_id, $ids, true)) {
             return;
         }
 
-        if (meza_is_managed_acf_definition_manually_deleted('field_groups', $definition)) {
+        $ids[] = $post_id;
+        update_option(meza_get_locality_defaulted_acf_post_types_option_name(), $ids, false);
+    }
+
+    function meza_attach_locality_to_new_custom_acf_post_type(array $post_type): void
+    {
+        if (!function_exists('acf_update_post_type')) {
             return;
         }
 
-        $existing = acf_get_field_group('group_meza_list_profiles_section');
-        if (!is_array($existing) || empty($existing['ID'])) {
+        $post_id = (int) ($post_type['ID'] ?? 0);
+        $post_type_slug = sanitize_key((string) ($post_type['post_type'] ?? ''));
+        if ($post_type_slug === '' || in_array($post_type_slug, meza_get_builtin_acf_post_type_slugs(), true)) {
             return;
         }
 
-        $expected_title = (string) ($definition['title'] ?? '');
-        $expected_location = meza_normalize_acf_field_group_location((array) ($definition['location'] ?? []));
-        $current_title = (string) ($existing['title'] ?? '');
-        $current_location = meza_normalize_acf_field_group_location((array) ($existing['location'] ?? []));
-
-        if ($current_title === $expected_title && $current_location === $expected_location) {
+        $should_rerun_defaults = meza_should_rerun_locality_post_type_defaults();
+        if (
+            !$should_rerun_defaults
+            && $post_id > 0
+            && in_array($post_id, meza_get_locality_defaulted_acf_post_type_ids(), true)
+        ) {
             return;
         }
 
-        $existing['title'] = $expected_title;
-        $existing['location'] = $definition['location'] ?? [];
-        $existing['menu_order'] = $definition['menu_order'] ?? '';
+        $selected_taxonomies = $post_type['taxonomies'] ?? [];
+        if (!is_array($selected_taxonomies)) {
+            $selected_taxonomies = (array) $selected_taxonomies;
+        }
 
-        acf_update_field_group($existing);
+        $selected_taxonomies = array_values(array_unique(array_filter(array_map('sanitize_key', $selected_taxonomies))));
+        if (!empty($selected_taxonomies)) {
+            meza_mark_locality_defaulted_acf_post_type($post_id);
+            return;
+        }
+
+        $post_type['taxonomies'] = ['locality'];
+        acf_update_post_type($post_type);
+        meza_mark_locality_defaulted_acf_post_type((int) ($post_type['ID'] ?? $post_id));
     }
 }
 
@@ -7917,8 +8236,8 @@ add_action('acf/init', function (): void {
 
 add_action('acf/init', 'meza_seed_default_editable_acf_taxonomies', 18);
 add_action('acf/init', 'meza_seed_default_editable_acf_field_groups', 20);
-add_action('acf/init', 'meza_repair_seeded_list_profiles_field_group', 21);
 add_action('acf/init', 'meza_seed_default_organization_type_terms', 25);
+add_action('acf/update_post_type', 'meza_attach_locality_to_new_custom_acf_post_type', 20);
 
 if (!function_exists('meza_refresh_seeded_acf_field_groups_after_business_information_save')) {
     function meza_refresh_seeded_acf_field_groups_after_business_information_save($post_id): void
@@ -7932,7 +8251,6 @@ if (!function_exists('meza_refresh_seeded_acf_field_groups_after_business_inform
         }
 
         meza_seed_default_editable_acf_field_groups();
-        meza_repair_seeded_list_profiles_field_group();
     }
 }
 add_action('acf/save_post', 'meza_refresh_seeded_acf_field_groups_after_business_information_save', 20);

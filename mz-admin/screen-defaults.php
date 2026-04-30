@@ -2287,6 +2287,17 @@ if (!function_exists('meza_admin_get_menu_content_group_rules')) {
     {
         $defaults = [
             [
+                'id' => 'meza-hardcoded-content-post-types-without-permalinks',
+                'group' => 'without',
+                'menu_slug_equals' => [
+                    'edit.php?post_type=cta',
+                    'edit.php?post_type=faq',
+                    'edit.php?post_type=organization',
+                    'edit.php?post_type=profile',
+                    'edit.php?post_type=review',
+                ],
+            ],
+            [
                 'id' => 'gravityforms',
                 'group' => 'without',
                 'menu_slug_contains' => [
