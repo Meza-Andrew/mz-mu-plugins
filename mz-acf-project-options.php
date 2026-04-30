@@ -209,6 +209,66 @@ if (!function_exists('meza_get_acf_export_tool_choices')) {
         };
     }
 
+    function meza_is_conference_only_acf_export_field_group(array $post): bool
+    {
+        $locations = isset($post['location']) && is_array($post['location']) ? $post['location'] : [];
+
+        foreach ($locations as $location_group) {
+            if (!is_array($location_group)) {
+                continue;
+            }
+
+            foreach ($location_group as $rule) {
+                if (!is_array($rule)) {
+                    continue;
+                }
+
+                $param = sanitize_key((string) ($rule['param'] ?? ''));
+                $value = sanitize_key((string) ($rule['value'] ?? ''));
+
+                if ($param === 'options_page' && in_array($value, ['conference', 'conference-schedule'], true)) {
+                    return true;
+                }
+
+                if ($param === 'post_type' && $value === 'segment') {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    function meza_should_include_acf_export_tool_choice(string $post_type, array $post): bool
+    {
+        if ($post_type === 'acf-field-group' && !meza_is_conference_business_type()) {
+            return !meza_is_conference_only_acf_export_field_group($post);
+        }
+
+        if ($post_type === 'acf-post-type' && !meza_is_conference_business_type()) {
+            $slug = sanitize_key((string) ($post['post_type'] ?? ''));
+            if ($slug === 'segment') {
+                return false;
+            }
+        }
+
+        if ($post_type === 'acf-taxonomy' && !meza_supports_sponsor_features()) {
+            $slug = sanitize_key((string) ($post['taxonomy'] ?? ''));
+            if ($slug === 'sponsor-type') {
+                return false;
+            }
+        }
+
+        if ($post_type === 'acf-ui-options-page' && !meza_is_conference_business_type()) {
+            $slug = sanitize_key((string) ($post['menu_slug'] ?? ''));
+            if (in_array($slug, ['conference', 'conference-schedule'], true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     function meza_get_acf_export_tool_choices(string $post_type): array
     {
         if (!function_exists('acf_get_internal_post_type_posts')) {
@@ -232,6 +292,10 @@ if (!function_exists('meza_get_acf_export_tool_choices')) {
             }
 
             if ($key_prefix === '' || strpos((string) $post['key'], $key_prefix) !== 0) {
+                continue;
+            }
+
+            if (!meza_should_include_acf_export_tool_choice($post_type, $post)) {
                 continue;
             }
 
