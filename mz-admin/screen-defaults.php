@@ -784,10 +784,16 @@ add_action('current_screen', function ($screen): void {
     update_user_meta($user_id, $migration_key, 1);
 }, 220);
 
+function meza_content_permissions_metabox_module_is_available(): bool
+{
+    return class_exists('YahnisElsts\\AdminMenuEditor\\ContentPermissions\\UserInterface\\ContentPermissionsMetaBox');
+}
+
 // Post edit screen defaults: keep Admin Menu Editor's Content Permissions box unchecked in Screen Options.
 add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
     if (!($screen instanceof WP_Screen)) return $hidden;
     if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) return $hidden;
+    if (!meza_content_permissions_metabox_module_is_available()) return $hidden;
     if (!meza_can_access_content_permissions_panel()) return $hidden;
 
     $hidden[] = 'ame-cpe-content-permissions';
@@ -798,6 +804,7 @@ add_filter('default_hidden_meta_boxes', function ($hidden, $screen) {
 add_filter('hidden_meta_boxes', function ($hidden, $screen, $use_defaults) {
     if (!($screen instanceof WP_Screen)) return $hidden;
     if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) return $hidden;
+    if (!meza_content_permissions_metabox_module_is_available()) return $hidden;
     if (!$use_defaults || !meza_can_access_content_permissions_panel()) return $hidden;
 
     $hidden[] = 'ame-cpe-content-permissions';
@@ -808,6 +815,7 @@ add_filter('hidden_meta_boxes', function ($hidden, $screen, $use_defaults) {
 add_action('current_screen', function ($screen): void {
     if (!($screen instanceof WP_Screen)) return;
     if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) return;
+    if (!meza_content_permissions_metabox_module_is_available()) return;
     if (!meza_can_access_content_permissions_panel()) return;
 
     $screen_id = (string) ($screen->id ?? '');
@@ -831,12 +839,113 @@ add_action('current_screen', function ($screen): void {
 
 // Post edit screens: remove Content Permissions entirely for users who are not administrators or site managers.
 add_action('add_meta_boxes', function (string $post_type): void {
+    if (!meza_content_permissions_metabox_module_is_available()) return;
     if (meza_can_access_content_permissions_panel()) return;
 
     foreach (['normal', 'side', 'advanced'] as $context) {
         remove_meta_box('ame-cpe-content-permissions', $post_type, $context);
     }
 }, 1000, 1);
+
+function meza_cleanup_invalid_content_permissions_metabox($post_type = ''): void
+{
+    global $wp_meta_boxes;
+
+    $post_type = sanitize_key((string) $post_type);
+    if ($post_type === '') {
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $post_type = $screen instanceof WP_Screen ? sanitize_key((string) ($screen->post_type ?? '')) : '';
+    }
+
+    if ($post_type === '') {
+        return;
+    }
+
+    if (!isset($wp_meta_boxes[$post_type]) || !is_array($wp_meta_boxes[$post_type])) {
+        return;
+    }
+
+    foreach (['normal', 'side', 'advanced'] as $context) {
+        foreach (($wp_meta_boxes[$post_type][$context] ?? []) as $priority => $boxes) {
+            if (!is_array($boxes) || !isset($boxes['ame-cpe-content-permissions'])) {
+                continue;
+            }
+
+            $callback = $boxes['ame-cpe-content-permissions']['callback'] ?? null;
+            if ($boxes['ame-cpe-content-permissions'] !== false && is_callable($callback)) {
+                continue;
+            }
+
+            unset($wp_meta_boxes[$post_type][$context][$priority]['ame-cpe-content-permissions']);
+        }
+    }
+}
+
+function meza_cleanup_invalid_taxonomy_metaboxes($post_type = ''): void
+{
+    global $wp_meta_boxes;
+
+    $post_type = sanitize_key((string) $post_type);
+    if ($post_type === '') {
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $post_type = $screen instanceof WP_Screen ? sanitize_key((string) ($screen->post_type ?? '')) : '';
+    }
+
+    if ($post_type === '') {
+        return;
+    }
+
+    if (!isset($wp_meta_boxes[$post_type]) || !is_array($wp_meta_boxes[$post_type])) {
+        return;
+    }
+
+    foreach (get_object_taxonomies($post_type, 'objects') as $taxonomy) {
+        if (!($taxonomy instanceof WP_Taxonomy) || empty($taxonomy->show_ui)) {
+            continue;
+        }
+
+        $taxonomy_name = sanitize_key((string) ($taxonomy->name ?? ''));
+        if ($taxonomy_name === '') {
+            continue;
+        }
+
+        $metabox_id = !empty($taxonomy->hierarchical)
+            ? $taxonomy_name . 'div'
+            : 'tagsdiv-' . $taxonomy_name;
+
+        foreach (['normal', 'side', 'advanced'] as $context) {
+            foreach (($wp_meta_boxes[$post_type][$context] ?? []) as $priority => $boxes) {
+                if (!is_array($boxes) || !isset($boxes[$metabox_id]) || !is_array($boxes[$metabox_id])) {
+                    continue;
+                }
+
+                $callback = $boxes[$metabox_id]['callback'] ?? null;
+                if (is_callable($callback)) {
+                    continue;
+                }
+
+                unset($wp_meta_boxes[$post_type][$context][$priority][$metabox_id]);
+            }
+        }
+    }
+}
+
+// Defensive guard: some environments end up with this box registered without a callable callback,
+// which crashes do_meta_boxes() and prevents ACF from rendering on edit screens.
+add_action('add_meta_boxes', function ($post_type): void {
+    meza_cleanup_invalid_content_permissions_metabox($post_type);
+    meza_cleanup_invalid_taxonomy_metaboxes($post_type);
+}, PHP_INT_MAX, 1);
+
+add_action('admin_head-post.php', function (): void {
+    meza_cleanup_invalid_content_permissions_metabox();
+    meza_cleanup_invalid_taxonomy_metaboxes();
+}, 1);
+
+add_action('admin_head-post-new.php', function (): void {
+    meza_cleanup_invalid_content_permissions_metabox();
+    meza_cleanup_invalid_taxonomy_metaboxes();
+}, 1);
 
 // Post edit screen: remove the Layout section from Screen Options.
 add_filter('screen_layout_columns', function ($columns, $screen_id, $screen = null) {
@@ -872,7 +981,7 @@ function meza_render_post_screen_options_cleanup(): void
     $post_type = (string) ($screen->post_type ?? '');
 
     echo '<style id="meza-post-screen-options-cleanup">#screen-options-wrap .columns-prefs,#screen-options-wrap .metabox-prefs>p{display:none!important;}</style>';
-    if (!meza_can_access_content_permissions_panel()) {
+    if (meza_content_permissions_metabox_module_is_available() && !meza_can_access_content_permissions_panel()) {
         echo '<style id="meza-post-content-permissions-hide">#ame-cpe-content-permissions,#screen-options-wrap label[for="ame-cpe-content-permissions-hide"]{display:none!important;}</style>';
     }
     if ($post_type === 'post') {

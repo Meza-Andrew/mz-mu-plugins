@@ -51,7 +51,7 @@
             {
                 "key": "field_0dcac467",
                 "label": "Visibility",
-                "name": "visibility_list-products",
+                "name": "show_list-products",
                 "aria-label": "",
                 "type": "true_false",
                 "instructions": "",
@@ -194,7 +194,7 @@
                 }
             ]
         ],
-        "menu_order": 5,
+        "menu_order": 4,
         "position": "normal",
         "style": "default",
         "label_placement": "top",
@@ -214,7 +214,7 @@
             {
                 "key": "field_68604ec70414d",
                 "label": "Visibility",
-                "name": "visibility_list-brands",
+                "name": "show_list-brands",
                 "aria-label": "",
                 "type": "true_false",
                 "instructions": "",
@@ -378,7 +378,7 @@
                 }
             ]
         ],
-        "menu_order": 7,
+        "menu_order": 9,
         "position": "normal",
         "style": "default",
         "label_placement": "top",

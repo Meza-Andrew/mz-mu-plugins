@@ -205,8 +205,17 @@ if (!function_exists('mz_plugin_compat_get_toolset_taxonomy_args')) {
         }
 
         $meta_box_callback = trim((string) ($definition['meta_box_cb']['callback'] ?? ''));
-        if ($meta_box_callback !== '') {
-            $args['meta_box_cb'] = $meta_box_callback;
+        if ($meta_box_callback === '') {
+            $meta_box_callback = 'post_categories_meta_box';
+        }
+        $args['meta_box_cb'] = $meta_box_callback;
+
+        $meta_box_sanitize_callback = trim((string) ($definition['meta_box_cb']['meta_box_sanitize_cb'] ?? ''));
+        if ($meta_box_sanitize_callback === '' && $meta_box_callback === 'post_categories_meta_box') {
+            $meta_box_sanitize_callback = 'taxonomy_meta_box_sanitize_cb_checkboxes';
+        }
+        if ($meta_box_sanitize_callback !== '') {
+            $args['meta_box_sanitize_cb'] = $meta_box_sanitize_callback;
         }
 
         return $args;
