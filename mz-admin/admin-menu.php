@@ -10172,7 +10172,60 @@ add_action('admin_menu', 'meza_restore_settings_utility_group_separator', PHP_IN
 
 function meza_restore_default_fallback_group_separator(): void
 {
-    // Disabled: this legacy separator creates an unwanted break below Appearance.
+    global $menu;
+
+    if (!is_array($menu) || empty($menu)) {
+        return;
+    }
+
+    $is_separator = static function ($item): bool {
+        if (!is_array($item)) {
+            return false;
+        }
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $classes = strtolower((string) ($item[4] ?? ''));
+
+        return str_starts_with($slug, 'separator') || str_contains($classes, 'wp-menu-separator');
+    };
+
+    $is_appearance_group_item = static function ($item): bool {
+        if (!is_array($item)) {
+            return false;
+        }
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+        return in_array($slug, ['themes.php', 'plugins.php', 'users.php', 'tools.php'], true)
+            || $slug === 'options-general.php'
+            || in_array($label, ['appearance', 'plugins', 'users', 'tools', 'settings'], true);
+    };
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item) || !$is_appearance_group_item($item)) {
+            continue;
+        }
+
+        if ($index <= 0) {
+            return;
+        }
+
+        $previous_item = $menu[$index - 1] ?? null;
+        if ($is_separator($previous_item)) {
+            return;
+        }
+
+        array_splice($menu, $index, 0, [[
+            '',
+            'read',
+            'separator-meza-content-appearance',
+            '',
+            'wp-not-current-submenu wp-menu-separator',
+        ]]);
+
+        return;
+    }
 }
 
 add_action('admin_menu', 'meza_restore_default_fallback_group_separator', PHP_INT_MAX - 1);
@@ -10258,7 +10311,7 @@ function meza_group_site_manager_appearance_and_fallback_menus(): void
                 'read',
                 'separator-meza-site-manager-appearance-group',
                 '',
-                'wp-menu-separator',
+                'wp-not-current-submenu wp-menu-separator',
             ]]);
 
             if ($appearance_end !== null) {
@@ -10323,6 +10376,91 @@ function meza_group_site_manager_appearance_and_fallback_menus(): void
             ]]);
         }
     }
+}
+
+function meza_ensure_separator_before_appearance_group(): void
+{
+    if (!meza_can_view_settings_tools_submenu_items(wp_get_current_user())) {
+        return;
+    }
+
+    global $menu;
+
+    if (!is_array($menu) || empty($menu)) {
+        return;
+    }
+
+    $is_separator = static function ($item): bool {
+        if (!is_array($item)) {
+            return false;
+        }
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $classes = strtolower((string) ($item[4] ?? ''));
+
+        return str_starts_with($slug, 'separator') || str_contains($classes, 'wp-menu-separator');
+    };
+
+    $is_appearance_group_item = static function ($item): bool {
+        if (!is_array($item)) {
+            return false;
+        }
+
+        $slug = strtolower((string) ($item[2] ?? ''));
+        $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
+
+        return in_array($slug, ['themes.php', 'plugins.php', 'users.php', 'tools.php'], true)
+            || $slug === 'options-general.php'
+            || in_array($label, ['appearance', 'plugins', 'users', 'tools', 'settings'], true);
+    };
+
+    $menu = array_values($menu);
+
+    $appearance_start = null;
+    $appearance_end = null;
+
+    foreach ($menu as $index => $item) {
+        if ($is_appearance_group_item($item)) {
+            if ($appearance_start === null) {
+                $appearance_start = (int) $index;
+            }
+            $appearance_end = (int) $index;
+            continue;
+        }
+
+        if ($appearance_start !== null && !$is_separator($item)) {
+            break;
+        }
+    }
+
+    if ($appearance_start === null || $appearance_start <= 0) {
+        return;
+    }
+
+    for ($i = $appearance_start + 1; $i <= (int) $appearance_end; $i++) {
+        if (!isset($menu[$i]) || !$is_separator($menu[$i])) {
+            continue;
+        }
+
+        array_splice($menu, $i, 1);
+        $appearance_end--;
+        $i--;
+    }
+
+    $previous_item = $menu[$appearance_start - 1] ?? null;
+    if ($is_separator($previous_item)) {
+        $menu[$appearance_start - 1][2] = 'separator2';
+        $menu[$appearance_start - 1][4] = 'wp-menu-separator';
+        return;
+    }
+
+    array_splice($menu, $appearance_start, 0, [[
+        '',
+        'read',
+        'separator2',
+        '',
+        'wp-menu-separator',
+    ]]);
 }
 
 function meza_enforce_restricted_top_level_utility_menus(): void
@@ -10713,6 +10851,7 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_enforce_site_manager_settings_top_level_target();
     meza_ensure_seo_manager_required_admin_menus();
     meza_cleanup_menu_separators();
+    meza_ensure_separator_before_appearance_group();
 }
 
 function meza_apply_missing_late_admin_menu_mutations(): void
@@ -10720,6 +10859,8 @@ function meza_apply_missing_late_admin_menu_mutations(): void
     meza_enforce_yoast_admin_menu_state();
     meza_remove_site_manager_restricted_top_level_menus();
     meza_rebuild_content_menu_group();
+    meza_reorder_dashboard_utility_items();
+    meza_group_woocommerce_top_level_items();
     meza_enforce_seo_manager_limited_admin_menus();
     meza_enforce_restricted_top_level_utility_menus();
     meza_remove_media_performance_menu_for_site_managers();
@@ -10735,6 +10876,7 @@ function meza_apply_missing_late_admin_menu_mutations(): void
     meza_enforce_site_manager_settings_top_level_target();
     meza_ensure_seo_manager_required_admin_menus();
     meza_cleanup_menu_separators();
+    meza_ensure_separator_before_appearance_group();
 }
 
 // Apply the late role-specific cleanup pass during normal admin menu rendering too.
