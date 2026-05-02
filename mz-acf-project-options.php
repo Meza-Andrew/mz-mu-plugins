@@ -6083,7 +6083,25 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
     {
         $group_key = sanitize_key((string) ($group['key'] ?? ''));
         $section_field_name = meza_get_header_section_group_section_field_names()[$group_key] ?? '';
-        if ($section_field_name === '' || empty($group['fields']) || !is_array($group['fields'])) {
+        if (empty($group['fields']) || !is_array($group['fields'])) {
+            return $group;
+        }
+
+        foreach ($group['fields'] as $field_index => $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+
+            $field_type = (string) ($field['type'] ?? '');
+            $field_name = (string) ($field['name'] ?? '');
+            if ($field_type !== 'true_false' || !str_starts_with($field_name, 'show_')) {
+                continue;
+            }
+
+            $group['fields'][$field_index]['message'] = '';
+        }
+
+        if ($section_field_name === '') {
             return $group;
         }
 
@@ -8113,7 +8131,7 @@ if (!function_exists('meza_delete_editable_acf_field_group_definition')) {
 if (!function_exists('meza_get_acf_field_group_order_migration_version')) {
     function meza_get_acf_field_group_order_migration_version(): string
     {
-        return '2026-05-01-orders-and-show-prefix-v1';
+        return '2026-05-02-orders-and-show-prefix-v2';
     }
 
     function meza_get_acf_field_group_order_migration_option_name(): string
@@ -8267,6 +8285,27 @@ if (!function_exists('meza_get_acf_field_group_order_migration_version')) {
         meza_migrate_acf_meta_name_in_table($GLOBALS['wpdb']->commentmeta, 'meta_id', 'comment_id', $old_name, $new_name);
     }
 
+    function meza_clear_show_field_message(array $field): void
+    {
+        if (!function_exists('acf_update_field')) {
+            return;
+        }
+
+        $field_type = (string) ($field['type'] ?? '');
+        $field_name = (string) ($field['name'] ?? '');
+        if ($field_type !== 'true_false' || !str_starts_with($field_name, 'show_')) {
+            return;
+        }
+
+        if ((string) ($field['message'] ?? '') === '') {
+            return;
+        }
+
+        $updated_field = $field;
+        $updated_field['message'] = '';
+        acf_update_field($updated_field);
+    }
+
     function meza_sync_default_editable_acf_field_group_order_and_names(): void
     {
         if (!meza_should_seed_default_acf_field_groups()) {
@@ -8305,6 +8344,7 @@ if (!function_exists('meza_get_acf_field_group_order_migration_version')) {
                 }
 
                 meza_migrate_visibility_field_to_show($field);
+                meza_clear_show_field_message($field);
             }
         }
 
@@ -8321,6 +8361,7 @@ if (!function_exists('meza_get_acf_field_group_order_migration_version')) {
                     }
 
                     meza_migrate_visibility_field_to_show($field);
+                    meza_clear_show_field_message($field);
                 }
             }
         }
@@ -10066,6 +10107,68 @@ if (!function_exists('meza_sync_list_reviews_section_field_group_locations')) {
     }
 }
 add_action('acf/init', 'meza_sync_list_reviews_section_field_group_locations', 22);
+
+if (!function_exists('meza_sync_section_show_field_messages_blank')) {
+    function meza_get_section_show_field_messages_blank_sync_version(): string
+    {
+        return '2026-05-02-section-show-message-blank-v1';
+    }
+
+    function meza_get_section_show_field_messages_blank_sync_option_name(): string
+    {
+        return 'meza_section_show_field_messages_blank_sync_version';
+    }
+
+    function meza_sync_section_show_field_messages_blank(): void
+    {
+        if (!function_exists('acf_get_raw_field_groups') || !function_exists('acf_get_fields') || !function_exists('acf_update_field')) {
+            return;
+        }
+
+        $version = meza_get_section_show_field_messages_blank_sync_version();
+        if ((string) get_option(meza_get_section_show_field_messages_blank_sync_option_name(), '') === $version) {
+            return;
+        }
+
+        foreach ((array) acf_get_raw_field_groups() as $field_group) {
+            if (!is_array($field_group)) {
+                continue;
+            }
+
+            $title = (string) ($field_group['title'] ?? '');
+            if ($title === '' || strpos($title, 'Section') === false) {
+                continue;
+            }
+
+            $field_group_id = (int) ($field_group['ID'] ?? 0);
+            if ($field_group_id <= 0) {
+                continue;
+            }
+
+            foreach ((array) acf_get_fields($field_group_id) as $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+
+                $field_type = (string) ($field['type'] ?? '');
+                $field_name = (string) ($field['name'] ?? '');
+                if ($field_type !== 'true_false' || !str_starts_with($field_name, 'show_')) {
+                    continue;
+                }
+
+                if ((string) ($field['message'] ?? '') === '') {
+                    continue;
+                }
+
+                $field['message'] = '';
+                acf_update_field($field);
+            }
+        }
+
+        update_option(meza_get_section_show_field_messages_blank_sync_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_sync_section_show_field_messages_blank', 23);
 
 if (!function_exists('meza_sync_section_field_group_menu_order')) {
     function meza_get_section_field_group_menu_order_sync_version(): string
