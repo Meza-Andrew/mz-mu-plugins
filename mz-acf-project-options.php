@@ -681,6 +681,115 @@ if (!function_exists('meza_post_uses_share_image_permalink')) {
     }
 }
 
+if (!function_exists('meza_get_permalink_enabled_post_type_slugs_option_name')) {
+    function meza_get_permalink_enabled_post_type_slugs_option_name(): string
+    {
+        return 'meza_permalink_enabled_post_type_slugs_v1';
+    }
+}
+
+if (!function_exists('meza_sort_permalink_enabled_post_type_slugs')) {
+    function meza_sort_permalink_enabled_post_type_slugs(array $post_type_slugs): array
+    {
+        $post_type_slugs = array_values(array_unique(array_filter(array_map('sanitize_key', $post_type_slugs))));
+
+        usort($post_type_slugs, static function (string $left, string $right): int {
+            $priority = [
+                'page' => 0,
+                'post' => 1,
+            ];
+
+            $left_priority = $priority[$left] ?? 10;
+            $right_priority = $priority[$right] ?? 10;
+
+            if ($left_priority !== $right_priority) {
+                return $left_priority <=> $right_priority;
+            }
+
+            return strcmp($left, $right);
+        });
+
+        return $post_type_slugs;
+    }
+}
+
+if (!function_exists('meza_collect_current_permalink_enabled_post_type_slugs')) {
+    function meza_collect_current_permalink_enabled_post_type_slugs(): array
+    {
+        $post_type_objects = get_post_types(['show_ui' => true], 'objects');
+        if (!is_array($post_type_objects)) {
+            return ['page', 'post'];
+        }
+
+        $post_type_slugs = [];
+
+        foreach ($post_type_objects as $post_type => $post_type_object) {
+            $post_type = sanitize_key((string) $post_type);
+            if ($post_type === '' || $post_type === 'attachment' || !($post_type_object instanceof WP_Post_Type)) {
+                continue;
+            }
+
+            if (function_exists('is_post_type_viewable') && !is_post_type_viewable($post_type_object)) {
+                continue;
+            }
+
+            if ($post_type !== 'post' && $post_type !== 'page' && empty($post_type_object->rewrite) && empty($post_type_object->query_var)) {
+                continue;
+            }
+
+            $post_type_slugs[] = $post_type;
+        }
+
+        return meza_sort_permalink_enabled_post_type_slugs($post_type_slugs);
+    }
+}
+
+if (!function_exists('meza_get_permalink_enabled_post_type_slugs')) {
+    function meza_get_permalink_enabled_post_type_slugs(): array
+    {
+        $cached_post_type_slugs = get_option(meza_get_permalink_enabled_post_type_slugs_option_name(), []);
+        if (!is_array($cached_post_type_slugs)) {
+            $cached_post_type_slugs = [];
+        }
+
+        return meza_sort_permalink_enabled_post_type_slugs(array_merge(
+            $cached_post_type_slugs,
+            meza_collect_current_permalink_enabled_post_type_slugs()
+        ));
+    }
+}
+
+if (!function_exists('meza_refresh_permalink_enabled_post_type_slugs')) {
+    function meza_refresh_permalink_enabled_post_type_slugs(): void
+    {
+        update_option(
+            meza_get_permalink_enabled_post_type_slugs_option_name(),
+            meza_collect_current_permalink_enabled_post_type_slugs(),
+            false
+        );
+    }
+}
+add_action('init', 'meza_refresh_permalink_enabled_post_type_slugs', 100);
+
+if (!function_exists('meza_get_acf_location_rules_for_permalink_post_types')) {
+    function meza_get_acf_location_rules_for_permalink_post_types(): array
+    {
+        $location = [];
+
+        foreach (meza_get_permalink_enabled_post_type_slugs() as $post_type) {
+            $location[] = [
+                [
+                    'param' => 'post_type',
+                    'operator' => '==',
+                    'value' => $post_type,
+                ],
+            ];
+        }
+
+        return $location;
+    }
+}
+
 if (!function_exists('meza_get_post_explicit_social_share_image_id')) {
     function meza_get_post_explicit_social_share_image_id(int $post_id): int
     {
@@ -4264,22 +4373,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     ],
                 ],
             ],
-            'location' => [
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'page',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'post',
-                    ],
-                ],
-            ],
+            'location' => meza_get_acf_location_rules_for_permalink_post_types(),
             'menu_order' => 7,
             'position' => 'normal',
             'style' => 'default',
@@ -8217,6 +8311,19 @@ if (!function_exists('meza_attach_locality_to_new_custom_acf_post_type')) {
 }
 
 add_filter('acf/load_field_groups', function (array $field_groups, string $post_type): array {
+    foreach ($field_groups as &$field_group) {
+        if (!is_array($field_group) || (($field_group['key'] ?? '') !== 'group_meza_list_reviews_section')) {
+            continue;
+        }
+
+        $field_group['location'] = meza_get_acf_location_rules_for_permalink_post_types();
+    }
+    unset($field_group);
+
+    return $field_groups;
+}, 20, 2);
+
+add_filter('acf/load_field_groups', function (array $field_groups, string $post_type): array {
     meza_register_acf_export_tool_local_definitions();
 
     if (!meza_should_merge_acf_field_groups_for_current_screen()) {
@@ -8249,6 +8356,12 @@ add_filter('acf/load_field_groups', function (array $field_groups, string $post_
         return $signature === '' || empty($local_signatures[$signature]);
     }));
 }, 25, 2);
+
+add_filter('acf/load_field_group/key=group_meza_list_reviews_section', function (array $field_group): array {
+    $field_group['location'] = meza_get_acf_location_rules_for_permalink_post_types();
+
+    return $field_group;
+});
 
 add_filter('acf/load_post_types', function (array $posts): array {
     meza_register_acf_export_tool_local_definitions();
@@ -9675,6 +9788,51 @@ if (!function_exists('meza_sync_hero_section_field_group_locations')) {
     }
 }
 add_action('acf/init', 'meza_sync_hero_section_field_group_locations', 21);
+
+if (!function_exists('meza_sync_list_reviews_section_field_group_locations')) {
+    function meza_get_list_reviews_section_field_group_location_sync_version(): string
+    {
+        return '2026-05-02-list-reviews-location-v1';
+    }
+
+    function meza_get_list_reviews_section_field_group_location_sync_option_name(): string
+    {
+        return 'meza_list_reviews_section_field_group_location_sync_version';
+    }
+
+    function meza_sync_list_reviews_section_field_group_locations(): void
+    {
+        if (!function_exists('acf_get_field_group') || !function_exists('acf_update_field_group')) {
+            return;
+        }
+
+        $version = meza_get_list_reviews_section_field_group_location_sync_version();
+        if ((string) get_option(meza_get_list_reviews_section_field_group_location_sync_option_name(), '') === $version) {
+            return;
+        }
+
+        $definition = meza_get_list_reviews_section_field_group_definition();
+        $field_group_id = meza_get_existing_editable_acf_field_group_id($definition);
+        if ($field_group_id <= 0) {
+            update_option(meza_get_list_reviews_section_field_group_location_sync_option_name(), $version, false);
+            return;
+        }
+
+        $field_group = acf_get_field_group($field_group_id);
+        if (!is_array($field_group)) {
+            return;
+        }
+
+        $field_group['location'] = $definition['location'] ?? [];
+        $field_group['menu_order'] = (int) ($definition['menu_order'] ?? 0);
+        $field_group['title'] = (string) ($definition['title'] ?? ($field_group['title'] ?? ''));
+
+        acf_update_field_group($field_group);
+
+        update_option(meza_get_list_reviews_section_field_group_location_sync_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_sync_list_reviews_section_field_group_locations', 22);
 
 add_action('acf/init', 'meza_seed_default_organization_type_terms', 25);
 add_action('acf/update_post_type', 'meza_attach_locality_to_new_custom_acf_post_type', 20);
