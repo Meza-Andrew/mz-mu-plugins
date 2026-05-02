@@ -1316,7 +1316,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                             'class' => '',
                             'id' => '',
                         ],
-                        'default_value' => 'localities',
+                        'default_value' => 'locations',
                         'maxlength' => '',
                         'allow_in_bindings' => 0,
                         'placeholder' => '',
@@ -1646,6 +1646,13 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'param' => 'page_type',
                         'operator' => '==',
                         'value' => 'front_page',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'page_template',
+                        'operator' => '==',
+                        'value' => 'page-form.php',
                     ],
                 ],
             ],
@@ -3980,27 +3987,6 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     'max' => 0,
                     'elements' => [],
                     'bidirectional_target' => [],
-                ],
-                [
-                    'key' => 'field_meza_cta_section_id',
-                    'label' => 'ID',
-                    'name' => 'id',
-                    'aria-label' => '',
-                    'type' => 'text',
-                    'instructions' => '',
-                    'required' => 0,
-                    'conditional_logic' => 0,
-                    'wrapper' => [
-                        'width' => '',
-                        'class' => '',
-                        'id' => '',
-                    ],
-                    'default_value' => '',
-                    'maxlength' => '',
-                    'allow_in_bindings' => 0,
-                    'placeholder' => '',
-                    'prepend' => '',
-                    'append' => '',
                 ],
             ],
             'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
@@ -10204,6 +10190,55 @@ if (!function_exists('meza_sync_list_products_section_field_group_locations')) {
     }
 }
 add_action('acf/init', 'meza_sync_list_products_section_field_group_locations', 22);
+
+if (!function_exists('meza_remove_cta_section_id_field')) {
+    function meza_get_remove_cta_section_id_field_sync_version(): string
+    {
+        return '2026-05-02-remove-cta-section-id-v1';
+    }
+
+    function meza_get_remove_cta_section_id_field_sync_option_name(): string
+    {
+        return 'meza_remove_cta_section_id_field_sync_version';
+    }
+
+    function meza_remove_cta_section_id_field(): void
+    {
+        if (!function_exists('acf_get_field_group') || !function_exists('acf_get_fields') || !function_exists('acf_delete_field')) {
+            return;
+        }
+
+        $version = meza_get_remove_cta_section_id_field_sync_version();
+        if ((string) get_option(meza_get_remove_cta_section_id_field_sync_option_name(), '') === $version) {
+            return;
+        }
+
+        $definition = meza_get_cta_section_field_group_definition();
+        $field_group_id = meza_get_existing_editable_acf_field_group_id($definition);
+        if ($field_group_id <= 0) {
+            update_option(meza_get_remove_cta_section_id_field_sync_option_name(), $version, false);
+            return;
+        }
+
+        foreach ((array) acf_get_fields($field_group_id) as $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+
+            if ((string) ($field['name'] ?? '') !== 'id') {
+                continue;
+            }
+
+            $field_id = (int) ($field['ID'] ?? 0);
+            if ($field_id > 0) {
+                acf_delete_field($field_id);
+            }
+        }
+
+        update_option(meza_get_remove_cta_section_id_field_sync_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_remove_cta_section_id_field', 22);
 
 if (!function_exists('meza_sync_section_show_field_messages_blank')) {
     function meza_get_section_show_field_messages_blank_sync_version(): string

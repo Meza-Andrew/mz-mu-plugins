@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ WooCommerce
  * Description: WooCommerce query rules, asset loading, and storefront behavior.
- * Version: 1.1.3
+ * Version: 1.1.4
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -70,6 +70,95 @@ if (!function_exists('meza_draft_all_woocommerce_core_pages')) {
     }
 }
 
+if (!function_exists('meza_get_woocommerce_unlisted_page_slugs')) {
+    function meza_get_woocommerce_unlisted_page_slugs(): array
+    {
+        return [
+            'shop',
+            'cart',
+            'checkout',
+            'my-account',
+            'refund-and-returns-policy',
+            'refund-returns-policy',
+            'returns-and-refunds-policy',
+            'refund-policy',
+            'returns-policy',
+        ];
+    }
+}
+
+if (!function_exists('meza_get_woocommerce_unlisted_page_titles')) {
+    function meza_get_woocommerce_unlisted_page_titles(): array
+    {
+        return [
+            'Shop',
+            'Cart',
+            'Checkout',
+            'My account',
+            'My Account',
+            'Refund and Returns Policy',
+            'Refund & Returns Policy',
+            'Returns and Refunds Policy',
+            'Returns Policy',
+            'Refund Policy',
+        ];
+    }
+}
+
+if (!function_exists('meza_get_woocommerce_unlisted_page_ids')) {
+    function meza_get_woocommerce_unlisted_page_ids(): array
+    {
+        $page_ids = [
+            (int) get_option('woocommerce_shop_page_id', 0),
+            (int) get_option('woocommerce_cart_page_id', 0),
+            (int) get_option('woocommerce_checkout_page_id', 0),
+            (int) get_option('woocommerce_myaccount_page_id', 0),
+        ];
+
+        foreach (meza_get_woocommerce_unlisted_page_slugs() as $slug) {
+            $page = get_page_by_path($slug, OBJECT, 'page');
+            if ($page instanceof WP_Post) {
+                $page_ids[] = (int) $page->ID;
+            }
+        }
+
+        foreach (meza_get_woocommerce_unlisted_page_titles() as $title) {
+            $page = get_page_by_title($title, OBJECT, 'page');
+            if ($page instanceof WP_Post) {
+                $page_ids[] = (int) $page->ID;
+            }
+        }
+
+        return array_values(array_unique(array_filter(array_map('intval', $page_ids))));
+    }
+}
+
+if (!function_exists('meza_set_woocommerce_page_unlisted')) {
+    function meza_set_woocommerce_page_unlisted(int $page_id): void
+    {
+        if ($page_id <= 0) {
+            return;
+        }
+
+        $page = get_post($page_id);
+        if (!($page instanceof WP_Post) || $page->post_type !== 'page') {
+            return;
+        }
+
+        update_post_meta($page_id, '_yoast_wpseo_meta-robots-noindex', '1');
+        update_post_meta($page_id, '_yoast_wpseo_meta-robots-nofollow', '1');
+    }
+}
+
+if (!function_exists('meza_set_all_woocommerce_pages_unlisted')) {
+    function meza_set_all_woocommerce_pages_unlisted(): void
+    {
+        foreach (meza_get_woocommerce_unlisted_page_ids() as $page_id) {
+            meza_set_woocommerce_page_unlisted((int) $page_id);
+        }
+    }
+}
+
 /** True when WooCommerce is active and its front-end conditionals are available. */
 if (!function_exists('mz_has_woo')) {
     function mz_has_woo(): bool
@@ -105,12 +194,18 @@ function meza_is_woocommerce_plugin_active(): bool
 }
 
 add_action('woocommerce_page_created', function ($page_id, $page_data): void {
+    meza_set_woocommerce_page_unlisted((int) $page_id);
+
     if (!meza_woocommerce_ecommerce_is_enabled()) {
         return;
     }
 
     meza_draft_woocommerce_page((int) $page_id);
 }, 20, 2);
+
+add_action('init', function (): void {
+    meza_set_all_woocommerce_pages_unlisted();
+}, 20);
 
 /** ================================
  *  QUERY RULES
