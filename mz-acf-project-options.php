@@ -1424,6 +1424,16 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         ],
                         'min' => 0,
                         'max' => 0,
+                        'default_value' => [
+                            [
+                                'day' => 'Monday - Friday',
+                                'time' => '8:00am - 5:00pm',
+                            ],
+                            [
+                                'day' => 'Saturday - Sunday',
+                                'time' => 'Closed',
+                            ],
+                        ],
                         'rows_per_page' => 20,
                         'layout' => 'table',
                         'button_label' => 'Add Row',
