@@ -63,7 +63,7 @@
                     "id": ""
                 },
                 "default_value": 0,
-                "message": "Show the List Products section on this page?",
+                "message": "",
                 "ui": 0,
                 "ui_on_text": "",
                 "ui_off_text": ""
@@ -225,7 +225,7 @@
                     "class": "",
                     "id": ""
                 },
-                "message": "Show the List Brands section on this page?",
+                "message": "",
                 "default_value": 0,
                 "allow_in_bindings": 1,
                 "ui": 0,
