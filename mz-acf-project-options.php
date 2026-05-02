@@ -8450,6 +8450,26 @@ if (!function_exists('meza_seed_default_editable_acf_taxonomies')) {
 }
 
 if (!function_exists('meza_seed_default_editable_acf_field_groups')) {
+    function meza_is_ecommerce_editable_acf_field_group_definition(array $definition): bool
+    {
+        $target_key = (string) ($definition['key'] ?? '');
+        if ($target_key === '') {
+            return false;
+        }
+
+        foreach (meza_get_ecommerce_editable_acf_field_group_definitions() as $ecommerce_definition) {
+            if (!is_array($ecommerce_definition)) {
+                continue;
+            }
+
+            if ((string) ($ecommerce_definition['key'] ?? '') === $target_key) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     function meza_seed_default_editable_acf_field_groups(): void
     {
         if (!function_exists('acf_import_field_group')) {
@@ -8461,7 +8481,11 @@ if (!function_exists('meza_seed_default_editable_acf_field_groups')) {
                 continue;
             }
 
-            if (meza_is_managed_acf_definition_manually_deleted('field_groups', $definition)) {
+            $is_ecommerce_definition = meza_is_ecommerce_editable_acf_field_group_definition($definition);
+            if (
+                meza_is_managed_acf_definition_manually_deleted('field_groups', $definition)
+                && !($is_ecommerce_definition && meza_business_information_enables_ecommerce())
+            ) {
                 continue;
             }
 
@@ -10108,6 +10132,79 @@ if (!function_exists('meza_sync_list_reviews_section_field_group_locations')) {
 }
 add_action('acf/init', 'meza_sync_list_reviews_section_field_group_locations', 22);
 
+if (!function_exists('meza_get_ecommerce_field_group_definition_by_title')) {
+    function meza_get_ecommerce_field_group_definition_by_title(string $title): array
+    {
+        $title = trim($title);
+        if ($title === '') {
+            return [];
+        }
+
+        foreach (meza_get_ecommerce_editable_acf_field_group_definitions() as $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            if (trim((string) ($definition['title'] ?? '')) !== $title) {
+                continue;
+            }
+
+            return $definition;
+        }
+
+        return [];
+    }
+}
+
+if (!function_exists('meza_sync_list_products_section_field_group_locations')) {
+    function meza_get_list_products_section_field_group_location_sync_version(): string
+    {
+        return '2026-05-02-list-products-location-v1';
+    }
+
+    function meza_get_list_products_section_field_group_location_sync_option_name(): string
+    {
+        return 'meza_list_products_section_field_group_location_sync_version';
+    }
+
+    function meza_sync_list_products_section_field_group_locations(): void
+    {
+        if (!function_exists('acf_get_field_group') || !function_exists('acf_update_field_group')) {
+            return;
+        }
+
+        $version = meza_get_list_products_section_field_group_location_sync_version();
+        if ((string) get_option(meza_get_list_products_section_field_group_location_sync_option_name(), '') === $version) {
+            return;
+        }
+
+        $definition = meza_get_ecommerce_field_group_definition_by_title('List Products Section');
+        if ($definition === []) {
+            update_option(meza_get_list_products_section_field_group_location_sync_option_name(), $version, false);
+            return;
+        }
+
+        $field_group_id = meza_get_existing_editable_acf_field_group_id($definition);
+        if ($field_group_id <= 0) {
+            update_option(meza_get_list_products_section_field_group_location_sync_option_name(), $version, false);
+            return;
+        }
+
+        $field_group = acf_get_field_group($field_group_id);
+        if (!is_array($field_group)) {
+            return;
+        }
+
+        $field_group['location'] = $definition['location'] ?? [];
+        $field_group['menu_order'] = (int) ($definition['menu_order'] ?? 0);
+        $field_group['title'] = (string) ($definition['title'] ?? ($field_group['title'] ?? ''));
+
+        acf_update_field_group($field_group);
+        update_option(meza_get_list_products_section_field_group_location_sync_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_sync_list_products_section_field_group_locations', 22);
+
 if (!function_exists('meza_sync_section_show_field_messages_blank')) {
     function meza_get_section_show_field_messages_blank_sync_version(): string
     {
@@ -10318,8 +10415,6 @@ if (!function_exists('meza_sync_ecommerce_after_business_information_save')) {
 
             return;
         }
-
-        meza_remove_ecommerce_default_editable_acf_field_groups();
 
         if (function_exists('mz_plugins_deactivate_plugin')) {
             mz_plugins_deactivate_plugin('woocommerce/woocommerce.php');
