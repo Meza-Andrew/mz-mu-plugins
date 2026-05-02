@@ -790,6 +790,56 @@ if (!function_exists('meza_get_acf_location_rules_for_permalink_post_types')) {
     }
 }
 
+if (!function_exists('meza_get_permalink_enabled_taxonomy_slugs')) {
+    function meza_get_permalink_enabled_taxonomy_slugs(): array
+    {
+        $taxonomy_slugs = [];
+
+        foreach ((array) get_taxonomies(['public' => true], 'objects') as $taxonomy_slug => $taxonomy_object) {
+            if (!is_string($taxonomy_slug) || $taxonomy_slug === '') {
+                continue;
+            }
+
+            if (!($taxonomy_object instanceof WP_Taxonomy)) {
+                continue;
+            }
+
+            if (empty($taxonomy_object->query_var)) {
+                continue;
+            }
+
+            $rewrite = $taxonomy_object->rewrite;
+            if ($rewrite === false) {
+                continue;
+            }
+
+            $taxonomy_slugs[] = $taxonomy_slug;
+        }
+
+        sort($taxonomy_slugs, SORT_STRING);
+        return array_values(array_unique($taxonomy_slugs));
+    }
+}
+
+if (!function_exists('meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies')) {
+    function meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(): array
+    {
+        $location = meza_get_acf_location_rules_for_permalink_post_types();
+
+        foreach (meza_get_permalink_enabled_taxonomy_slugs() as $taxonomy_slug) {
+            $location[] = [
+                [
+                    'param' => 'taxonomy',
+                    'operator' => '==',
+                    'value' => $taxonomy_slug,
+                ],
+            ];
+        }
+
+        return $location;
+    }
+}
+
 if (!function_exists('meza_get_post_explicit_social_share_image_id')) {
     function meza_get_post_explicit_social_share_image_id(int $post_id): int
     {
@@ -1523,6 +1573,13 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'param' => 'page',
                         'operator' => '==',
                         'value' => (string) meza_get_contact_page_id_for_acf_rules(),
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'page_type',
+                        'operator' => '==',
+                        'value' => 'front_page',
                     ],
                 ],
             ],
@@ -3615,50 +3672,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     ],
                 ],
             ],
-            'location' => [
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'page',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'post',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'resource',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'service',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'taxonomy',
-                        'operator' => '==',
-                        'value' => 'sign_type',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'taxonomy',
-                        'operator' => '==',
-                        'value' => 'location',
-                    ],
-                ],
-            ],
+            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
             'menu_order' => 1,
             'position' => 'normal',
             'style' => 'default',
@@ -3852,29 +3866,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     ],
                 ],
             ],
-            'location' => [
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'page',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'resource',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'post',
-                    ],
-                ],
-            ],
+            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
             'menu_order' => 16,
             'position' => 'normal',
             'style' => 'default',
@@ -3945,50 +3937,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     'append' => '',
                 ],
             ],
-            'location' => [
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'page',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'post',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'resource',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'service',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'taxonomy',
-                        'operator' => '==',
-                        'value' => 'sign_type',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'taxonomy',
-                        'operator' => '==',
-                        'value' => 'location',
-                    ],
-                ],
-            ],
+            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
             'menu_order' => 20,
             'position' => 'normal',
             'style' => 'default',
@@ -4217,55 +4166,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     ],
                 ],
             ],
-            'location' => [
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'page',
-                    ],
-                    [
-                        'param' => 'page',
-                        'operator' => '!=',
-                        'value' => '115',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'post',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'resource',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'service',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'taxonomy',
-                        'operator' => '==',
-                        'value' => 'sign_type',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'taxonomy',
-                        'operator' => '==',
-                        'value' => 'location',
-                    ],
-                ],
-            ],
+            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
             'menu_order' => 25,
             'position' => 'normal',
             'style' => 'default',
@@ -4415,8 +4316,8 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     ],
                 ],
             ],
-            'location' => meza_get_acf_location_rules_for_permalink_post_types(),
-            'menu_order' => 7,
+            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
+            'menu_order' => 3,
             'position' => 'normal',
             'style' => 'default',
             'label_placement' => 'top',
@@ -4565,22 +4466,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     ],
                 ],
             ],
-            'location' => [
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'page',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'post',
-                    ],
-                ],
-            ],
+            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
             'menu_order' => 23,
             'position' => 'normal',
             'style' => 'default',
@@ -4730,29 +4616,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     ],
                 ],
             ],
-            'location' => [
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'page',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'post',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'resource',
-                    ],
-                ],
-            ],
+            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
             'menu_order' => 22,
             'position' => 'normal',
             'style' => 'default',
@@ -4882,37 +4746,8 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     ],
                 ],
             ],
-            'location' => [
-                [
-                    [
-                        'param' => 'page_type',
-                        'operator' => '==',
-                        'value' => 'front_page',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'service',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'taxonomy',
-                        'operator' => '==',
-                        'value' => 'locality',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'taxonomy',
-                        'operator' => '==',
-                        'value' => 'service-category',
-                    ],
-                ],
-            ],
-            'menu_order' => 3,
+            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
+            'menu_order' => 7,
             'position' => 'normal',
             'style' => 'default',
             'label_placement' => 'top',
@@ -7552,15 +7387,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                         ],
                     ],
                 ],
-                'location' => [
-                    [
-                        [
-                            'param' => 'page_type',
-                            'operator' => '==',
-                            'value' => 'front_page',
-                        ],
-                    ],
-                ],
+                'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
                 'menu_order' => 14,
                 'position' => 'normal',
                 'style' => 'default',
@@ -10140,6 +9967,104 @@ if (!function_exists('meza_sync_list_reviews_section_field_group_locations')) {
     }
 }
 add_action('acf/init', 'meza_sync_list_reviews_section_field_group_locations', 22);
+
+if (!function_exists('meza_sync_section_field_group_menu_order')) {
+    function meza_get_section_field_group_menu_order_sync_version(): string
+    {
+        return '2026-05-02-section-field-group-menu-order-v3';
+    }
+
+    function meza_get_section_field_group_menu_order_sync_option_name(): string
+    {
+        return 'meza_section_field_group_menu_order_sync_version';
+    }
+
+    function meza_get_section_field_group_menu_order_map(): array
+    {
+        return [
+            'Hero Section' => 1,
+            'List Reviews Section' => 3,
+            'List Brands Section' => 5,
+            'List Services Section' => 7,
+            'List Products Section' => 8,
+            'Gallery Section' => 10,
+            'List Partners Section' => 11,
+            'List Profiles Section' => 12,
+            'Benefits Section' => 13,
+            'List Localities Section' => 14,
+            'Form Section' => 16,
+            'List Locations Section' => 18,
+            'CTA Section' => 20,
+            'List Resources Section' => 22,
+            'List Posts Section' => 23,
+            'List FAQs Section' => 25,
+        ];
+    }
+
+    function meza_sync_section_field_group_menu_order(): void
+    {
+        if (!function_exists('acf_get_field_groups') || !function_exists('acf_update_field_group')) {
+            return;
+        }
+
+        $version = meza_get_section_field_group_menu_order_sync_version();
+        if ((string) get_option(meza_get_section_field_group_menu_order_sync_option_name(), '') === $version) {
+            return;
+        }
+
+        $menu_order_by_title = meza_get_section_field_group_menu_order_map();
+        $delete_titles = [
+            'List Sign Types Section',
+        ];
+        $did_update = false;
+
+        foreach ((array) acf_get_field_groups() as $field_group) {
+            if (!is_array($field_group)) {
+                continue;
+            }
+
+            $title = trim((string) ($field_group['title'] ?? ''));
+            $field_group_id = (int) ($field_group['ID'] ?? 0);
+
+            if ($title === '' || $field_group_id <= 0) {
+                continue;
+            }
+
+            if (in_array($title, $delete_titles, true) && function_exists('acf_delete_field_group')) {
+                acf_delete_field_group($field_group_id);
+                $did_update = true;
+                continue;
+            }
+
+            if (!array_key_exists($title, $menu_order_by_title)) {
+                continue;
+            }
+
+            $target_menu_order = (int) $menu_order_by_title[$title];
+            $current_menu_order = (int) ($field_group['menu_order'] ?? 0);
+
+            if ($current_menu_order === $target_menu_order) {
+                continue;
+            }
+
+            $full_group = function_exists('acf_get_field_group')
+                ? acf_get_field_group($field_group_id)
+                : $field_group;
+            if (!is_array($full_group)) {
+                continue;
+            }
+
+            $full_group['menu_order'] = $target_menu_order;
+            acf_update_field_group($full_group);
+            $did_update = true;
+        }
+
+        if ($did_update || (string) get_option(meza_get_section_field_group_menu_order_sync_option_name(), '') !== $version) {
+            update_option(meza_get_section_field_group_menu_order_sync_option_name(), $version, false);
+        }
+    }
+}
+add_action('acf/init', 'meza_sync_section_field_group_menu_order', 23);
 
 add_action('acf/init', 'meza_seed_default_organization_type_terms', 25);
 add_action('acf/update_post_type', 'meza_attach_locality_to_new_custom_acf_post_type', 20);
