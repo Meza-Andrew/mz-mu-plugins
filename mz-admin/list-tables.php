@@ -7845,10 +7845,17 @@ function meza_get_woocommerce_refund_returns_policy_page_id(): int
         'Refund Policy',
     ];
 
-    foreach ($title_candidates as $title) {
-        $page = get_page_by_title($title, OBJECT, 'page');
-        if ($page instanceof WP_Post) {
-            return (int) $page->ID;
+    if (function_exists('meza_find_page_id_by_exact_title_candidates')) {
+        $page_id = meza_find_page_id_by_exact_title_candidates($title_candidates, 'page');
+        if ($page_id > 0) {
+            return $page_id;
+        }
+    } else {
+        foreach ($title_candidates as $title) {
+            $page = get_page_by_title($title, OBJECT, 'page');
+            if ($page instanceof WP_Post) {
+                return (int) $page->ID;
+            }
         }
     }
 
@@ -8507,6 +8514,18 @@ function meza_get_search_visibility_count_cache_key(string $post_type, string $s
     return 'meza_search_visibility_count_v1_' . $state . '_' . $post_type;
 }
 
+function meza_get_search_visibility_exists_cache_key(string $post_type, string $state): string
+{
+    $post_type = sanitize_key($post_type);
+    $state = sanitize_key($state);
+
+    if ($post_type === '' || $state === '') {
+        return '';
+    }
+
+    return 'meza_search_visibility_exists_v1_' . $state . '_' . $post_type;
+}
+
 function meza_get_cached_search_visibility_count(string $post_type, string $state): ?int
 {
     $cache_key = meza_get_search_visibility_count_cache_key($post_type, $state);
@@ -8532,6 +8551,31 @@ function meza_set_cached_search_visibility_count(string $post_type, string $stat
     set_transient($cache_key, max(0, $count), HOUR_IN_SECONDS);
 }
 
+function meza_get_cached_search_visibility_exists(string $post_type, string $state): ?bool
+{
+    $cache_key = meza_get_search_visibility_exists_cache_key($post_type, $state);
+    if ($cache_key === '') {
+        return null;
+    }
+
+    $cached = get_transient($cache_key);
+    if ($cached === false) {
+        return null;
+    }
+
+    return $cached === '1';
+}
+
+function meza_set_cached_search_visibility_exists(string $post_type, string $state, bool $exists): void
+{
+    $cache_key = meza_get_search_visibility_exists_cache_key($post_type, $state);
+    if ($cache_key === '') {
+        return;
+    }
+
+    set_transient($cache_key, $exists ? '1' : '0', HOUR_IN_SECONDS);
+}
+
 function meza_flush_search_visibility_count_cache_for_post_type(string $post_type): void
 {
     $post_type = sanitize_key($post_type);
@@ -8540,12 +8584,15 @@ function meza_flush_search_visibility_count_cache_for_post_type(string $post_typ
     }
 
     foreach ([meza_get_indexed_pages_view_value(), meza_get_hidden_from_search_page_view_value()] as $state) {
-        $cache_key = meza_get_search_visibility_count_cache_key($post_type, $state);
-        if ($cache_key === '') {
-            continue;
+        $count_cache_key = meza_get_search_visibility_count_cache_key($post_type, $state);
+        if ($count_cache_key !== '') {
+            delete_transient($count_cache_key);
         }
 
-        delete_transient($cache_key);
+        $exists_cache_key = meza_get_search_visibility_exists_cache_key($post_type, $state);
+        if ($exists_cache_key !== '') {
+            delete_transient($exists_cache_key);
+        }
     }
 }
 
@@ -8564,6 +8611,92 @@ function meza_flush_search_visibility_count_cache_for_post(int $post_id): void
     meza_flush_search_visibility_count_cache_for_post_type($post_type);
 }
 
+function meza_get_search_visibility_status_placeholders(array $statuses): array
+{
+    $statuses = array_values(array_filter(array_map(
+        static fn($status): string => sanitize_key((string) $status),
+        $statuses
+    )));
+
+    if ($statuses === []) {
+        return [
+            'placeholders' => '',
+            'values' => [],
+        ];
+    }
+
+    return [
+        'placeholders' => implode(', ', array_fill(0, count($statuses), '%s')),
+        'values' => $statuses,
+    ];
+}
+
+function meza_get_search_visibility_count_from_sql(string $post_type, array $statuses, bool $indexed): int
+{
+    global $wpdb;
+
+    if (!($wpdb instanceof wpdb)) {
+        return 0;
+    }
+
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '') {
+        return 0;
+    }
+
+    $status_sql = meza_get_search_visibility_status_placeholders($statuses);
+    if ($status_sql['placeholders'] === '') {
+        return 0;
+    }
+
+    $where_clause = $indexed
+        ? "(
+            NOT EXISTS (
+                SELECT 1
+                FROM {$wpdb->postmeta} AS pm_noindex
+                WHERE pm_noindex.post_id = p.ID
+                AND pm_noindex.meta_key = '_yoast_wpseo_meta-robots-noindex'
+                AND pm_noindex.meta_value = '1'
+            )
+            OR NOT EXISTS (
+                SELECT 1
+                FROM {$wpdb->postmeta} AS pm_nofollow
+                WHERE pm_nofollow.post_id = p.ID
+                AND pm_nofollow.meta_key = '_yoast_wpseo_meta-robots-nofollow'
+                AND pm_nofollow.meta_value = '1'
+            )
+        )"
+        : "EXISTS (
+            SELECT 1
+            FROM {$wpdb->postmeta} AS pm_noindex
+            WHERE pm_noindex.post_id = p.ID
+            AND pm_noindex.meta_key = '_yoast_wpseo_meta-robots-noindex'
+            AND pm_noindex.meta_value = '1'
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM {$wpdb->postmeta} AS pm_nofollow
+            WHERE pm_nofollow.post_id = p.ID
+            AND pm_nofollow.meta_key = '_yoast_wpseo_meta-robots-nofollow'
+            AND pm_nofollow.meta_value = '1'
+        )";
+
+    $sql = "
+        SELECT COUNT(*)
+        FROM {$wpdb->posts} AS p
+        WHERE p.post_type = %s
+        AND p.post_status IN ({$status_sql['placeholders']})
+        AND {$where_clause}
+    ";
+
+    $prepared = $wpdb->prepare(
+        $sql,
+        array_merge([$post_type], $status_sql['values'])
+    );
+
+    return max(0, (int) $wpdb->get_var($prepared));
+}
+
 function meza_get_hidden_from_search_post_type_view_count(string $post_type): int
 {
     static $counts = [];
@@ -8578,27 +8711,11 @@ function meza_get_hidden_from_search_post_type_view_count(string $post_type): in
         return $counts[$post_type];
     }
 
-    $query = new WP_Query([
-        'post_type' => $post_type,
-        'post_status' => ['publish', 'future', 'draft', 'pending', 'private'],
-        'posts_per_page' => 1,
-        'fields' => 'ids',
-        'no_found_rows' => false,
-        'meta_query' => [
-            [
-                'key' => '_yoast_wpseo_meta-robots-noindex',
-                'value' => '1',
-                'compare' => '=',
-            ],
-            [
-                'key' => '_yoast_wpseo_meta-robots-nofollow',
-                'value' => '1',
-                'compare' => '=',
-            ],
-        ],
-    ]);
-
-    $counts[$post_type] = max(0, (int) $query->found_posts);
+    $counts[$post_type] = meza_get_search_visibility_count_from_sql(
+        $post_type,
+        ['publish', 'future', 'draft', 'pending', 'private'],
+        false
+    );
     meza_set_cached_search_visibility_count($post_type, meza_get_hidden_from_search_page_view_value(), $counts[$post_type]);
 
     return $counts[$post_type];
@@ -8623,12 +8740,34 @@ function meza_get_indexed_post_type_view_count(string $post_type): int
         return $counts[$post_type];
     }
 
+    $counts[$post_type] = meza_get_search_visibility_count_from_sql(
+        $post_type,
+        ['publish'],
+        true
+    );
+    meza_set_cached_search_visibility_count($post_type, meza_get_indexed_pages_view_value(), $counts[$post_type]);
+
+    return $counts[$post_type];
+}
+
+function meza_post_type_has_indexed_content(string $post_type): bool
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '') {
+        return false;
+    }
+
+    $cached_exists = meza_get_cached_search_visibility_exists($post_type, meza_get_indexed_pages_view_value());
+    if ($cached_exists !== null) {
+        return $cached_exists;
+    }
+
     $query = new WP_Query([
         'post_type' => $post_type,
         'post_status' => ['publish'],
         'posts_per_page' => 1,
         'fields' => 'ids',
-        'no_found_rows' => false,
+        'no_found_rows' => true,
         'meta_query' => [
             'relation' => 'OR',
             [
@@ -8652,15 +8791,10 @@ function meza_get_indexed_post_type_view_count(string $post_type): int
         ],
     ]);
 
-    $counts[$post_type] = max(0, (int) $query->found_posts);
-    meza_set_cached_search_visibility_count($post_type, meza_get_indexed_pages_view_value(), $counts[$post_type]);
+    $exists = !empty($query->posts);
+    meza_set_cached_search_visibility_exists($post_type, meza_get_indexed_pages_view_value(), $exists);
 
-    return $counts[$post_type];
-}
-
-function meza_post_type_has_indexed_content(string $post_type): bool
-{
-    return meza_get_indexed_post_type_view_count($post_type) > 0;
+    return $exists;
 }
 
 function meza_should_check_product_indexed_content_for_admin_menu_group(): bool
@@ -8681,7 +8815,7 @@ function meza_get_post_type_admin_list_slug(string $post_type): string
     return ($post_type === 'post') ? 'edit.php' : 'edit.php?post_type=' . $post_type;
 }
 
-function meza_get_post_type_visibility_view_link(string $post_type, string $label, string $value, int $count, bool $is_current): string
+function meza_get_post_type_visibility_view_link(string $post_type, string $label, string $value, ?int $count, bool $is_current): string
 {
     $query_var = meza_get_post_search_visibility_view_query_var();
     $query_args = [
@@ -8693,11 +8827,13 @@ function meza_get_post_type_visibility_view_link(string $post_type, string $labe
 
     $url = add_query_arg($query_args, admin_url('edit.php'));
 
-    $text = sprintf(
-        '%s <span class="count">(%s)</span>',
-        esc_html($label),
-        number_format_i18n($count)
-    );
+    $text = esc_html($label);
+    if (is_int($count) && $count >= 0) {
+        $text .= sprintf(
+            ' <span class="count">(%s)</span>',
+            number_format_i18n($count)
+        );
+    }
 
     return sprintf(
         '<a href="%1$s"%2$s>%3$s</a>',
@@ -8707,7 +8843,7 @@ function meza_get_post_type_visibility_view_link(string $post_type, string $labe
     );
 }
 
-function meza_get_page_visibility_view_link(string $label, string $value, int $count, bool $is_current): string
+function meza_get_page_visibility_view_link(string $label, string $value, ?int $count, bool $is_current): string
 {
     return meza_get_post_type_visibility_view_link('page', $label, $value, $count, $is_current);
 }
@@ -8719,8 +8855,8 @@ function meza_add_post_type_search_visibility_views(array $views): array
         return $views;
     }
 
-    $indexed_count = meza_get_indexed_post_type_view_count($post_type);
-    $unlisted_count = meza_get_hidden_from_search_post_type_view_count($post_type);
+    $indexed_count = meza_get_cached_search_visibility_count($post_type, meza_get_indexed_pages_view_value());
+    $unlisted_count = meza_get_cached_search_visibility_count($post_type, meza_get_hidden_from_search_page_view_value());
 
     $indexed_link = meza_get_post_type_visibility_view_link(
         $post_type,
@@ -8743,7 +8879,7 @@ function meza_add_post_type_search_visibility_views(array $views): array
     foreach ($views as $key => $view) {
         $updated_views[$key] = $view;
 
-        if ($key === 'all' && !$inserted && $indexed_count > 0) {
+        if ($key === 'all' && !$inserted) {
             $updated_views['meza_page_visibility_indexed'] = $indexed_link;
             $inserted = true;
         }
@@ -8753,7 +8889,7 @@ function meza_add_post_type_search_visibility_views(array $views): array
     $inserted_unlisted = false;
 
     foreach ($updated_views as $key => $view) {
-        if ($key === 'trash' && !$inserted_unlisted && $unlisted_count > 0) {
+        if ($key === 'trash' && !$inserted_unlisted) {
             $rebuilt_views['meza_page_visibility_unlisted'] = $unlisted_link;
             $inserted_unlisted = true;
         }
@@ -8761,7 +8897,7 @@ function meza_add_post_type_search_visibility_views(array $views): array
         $rebuilt_views[$key] = $view;
     }
 
-    if (!$inserted && $indexed_count > 0) {
+    if (!$inserted) {
         $rebuilt_with_indexed = [];
 
         foreach ($rebuilt_views as $key => $view) {
@@ -8776,7 +8912,7 @@ function meza_add_post_type_search_visibility_views(array $views): array
         $rebuilt_views = $rebuilt_with_indexed;
     }
 
-    if (!$inserted_unlisted && $unlisted_count > 0) {
+    if (!$inserted_unlisted) {
         $fallback_views = [];
 
         foreach ($rebuilt_views as $key => $view) {
@@ -8791,11 +8927,11 @@ function meza_add_post_type_search_visibility_views(array $views): array
         $rebuilt_views = $fallback_views;
     }
 
-    if (!$inserted && $indexed_count > 0) {
+    if (!$inserted) {
         $rebuilt_views['meza_page_visibility_indexed'] = $indexed_link;
     }
 
-    if (!$inserted_unlisted && $unlisted_count > 0) {
+    if (!$inserted_unlisted) {
         $rebuilt_views['meza_page_visibility_unlisted'] = $unlisted_link;
     }
 

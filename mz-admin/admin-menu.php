@@ -5550,10 +5550,17 @@ if (!function_exists('meza_get_woocommerce_refunds_returns_settings_page_id')) {
             'Refund Policy',
         ];
 
-        foreach ($title_candidates as $title) {
-            $page = get_page_by_title($title, OBJECT, 'page');
-            if ($page instanceof WP_Post) {
-                return (int) $page->ID;
+        if (function_exists('meza_find_page_id_by_exact_title_candidates')) {
+            $page_id = meza_find_page_id_by_exact_title_candidates($title_candidates, 'page');
+            if ($page_id > 0) {
+                return $page_id;
+            }
+        } else {
+            foreach ($title_candidates as $title) {
+                $page = get_page_by_title($title, OBJECT, 'page');
+                if ($page instanceof WP_Post) {
+                    return (int) $page->ID;
+                }
             }
         }
 

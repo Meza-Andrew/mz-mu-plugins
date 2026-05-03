@@ -509,14 +509,43 @@ if (!function_exists('meza_events_editor_role_key')) {
     }
 }
 
-if (!function_exists('meza_site_has_subscribers')) {
-    function meza_site_has_subscribers(): bool
+if (!function_exists('meza_get_cached_user_counts')) {
+    function meza_get_cached_user_counts(): array
     {
+        static $counts = null;
+
+        if (is_array($counts)) {
+            return $counts;
+        }
+
+        $cached = get_transient('meza_user_counts_v1');
+        if (is_array($cached)) {
+            $counts = $cached;
+            return $counts;
+        }
+
         if (!function_exists('count_users')) {
-            return false;
+            $counts = [];
+            return $counts;
         }
 
         $counts = count_users();
+
+        if (!is_array($counts)) {
+            $counts = [];
+            return $counts;
+        }
+
+        set_transient('meza_user_counts_v1', $counts, HOUR_IN_SECONDS);
+
+        return $counts;
+    }
+}
+
+if (!function_exists('meza_site_has_subscribers')) {
+    function meza_site_has_subscribers(): bool
+    {
+        $counts = meza_get_cached_user_counts();
 
         return !empty($counts['avail_roles']['subscriber']);
     }
@@ -3942,6 +3971,71 @@ add_action('admin_head-themes.php', function (): void {
     </style>
 <?php
 });
+
+if (!function_exists('meza_find_page_id_by_exact_title_candidates')) {
+    function meza_find_page_id_by_exact_title_candidates(array $titles, string $post_type = 'page'): int
+    {
+        static $cache = [];
+
+        $post_type = sanitize_key($post_type);
+        $titles = array_values(array_filter(array_map(
+            static fn($title): string => trim((string) $title),
+            $titles
+        )));
+
+        if ($post_type === '' || $titles === []) {
+            return 0;
+        }
+
+        $cache_key = md5($post_type . '|' . wp_json_encode($titles));
+        if (array_key_exists($cache_key, $cache)) {
+            return (int) $cache[$cache_key];
+        }
+
+        global $wpdb;
+        if (!($wpdb instanceof wpdb)) {
+            $cache[$cache_key] = 0;
+            return 0;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($titles), '%s'));
+        $sql = "
+            SELECT ID, post_title
+            FROM {$wpdb->posts}
+            WHERE post_type = %s
+            AND post_title IN ({$placeholders})
+            ORDER BY ID ASC
+        ";
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                $sql,
+                array_merge([$post_type], $titles)
+            )
+        );
+
+        $first_id_by_title = [];
+        foreach ((array) $rows as $row) {
+            $row_title = trim((string) ($row->post_title ?? ''));
+            $row_id = (int) ($row->ID ?? 0);
+            if ($row_title === '' || $row_id <= 0 || isset($first_id_by_title[$row_title])) {
+                continue;
+            }
+
+            $first_id_by_title[$row_title] = $row_id;
+        }
+
+        foreach ($titles as $title) {
+            if (isset($first_id_by_title[$title])) {
+                $cache[$cache_key] = (int) $first_id_by_title[$title];
+                return $cache[$cache_key];
+            }
+        }
+
+        $cache[$cache_key] = 0;
+        return 0;
+    }
+}
 
 
 if (!defined('MZ_ADMIN_DIR')) {

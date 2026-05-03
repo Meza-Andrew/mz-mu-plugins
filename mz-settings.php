@@ -1161,7 +1161,10 @@ function meza_plugins_admin_item_count(): int
 /** Count admin-visible users so user-list pagination UI only appears when needed. */
 function meza_users_admin_item_count(): int
 {
-    $counts = count_users();
+    $counts = function_exists('meza_get_cached_user_counts')
+        ? meza_get_cached_user_counts()
+        : count_users();
+
     if (!is_array($counts)) {
         return 0;
     }
