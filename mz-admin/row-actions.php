@@ -78,12 +78,21 @@ function meza_update_admin_action_link(string $html, $post = null, string $label
         }
 
         $text_plain = strtolower(trim(wp_strip_all_tags($text)));
+        $is_delete_or_trash = (
+            str_contains($href, 'action=trash')
+            || str_contains($href, 'action=untrash')
+            || str_contains($href, 'action=delete')
+            || str_contains($text_plain, 'delete')
+            || str_contains($text_plain, 'trash')
+        );
         $is_edit_or_view = (
-            str_contains($href, 'post.php?')
-            || str_contains($href, 'action=edit')
+            !$is_delete_or_trash
+            && (
+                str_contains($href, 'action=edit')
             || str_contains($text_plain, 'edit')
             || str_contains($text_plain, 'view')
             || str_contains($text_plain, 'preview')
+            )
         );
 
         if ($is_edit_or_view) {
