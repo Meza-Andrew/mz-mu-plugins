@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ WooCommerce
  * Description: WooCommerce query rules, asset loading, and storefront behavior.
- * Version: 1.1.14
+ * Version: 1.1.15
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -559,6 +559,33 @@ if (!function_exists('meza_get_woocommerce_unlisted_page_ids')) {
     }
 }
 
+if (!function_exists('meza_woocommerce_update_yoast_robots_if_needed')) {
+    function meza_woocommerce_update_yoast_robots_if_needed(int $post_id, bool $allow_indexing, bool $allow_follow): bool
+    {
+        if ($post_id <= 0) {
+            return false;
+        }
+
+        $target_noindex = $allow_indexing ? '2' : '1';
+        $target_nofollow = $allow_follow ? '0' : '1';
+        $current_noindex = (string) get_post_meta($post_id, '_yoast_wpseo_meta-robots-noindex', true);
+        $current_nofollow = (string) get_post_meta($post_id, '_yoast_wpseo_meta-robots-nofollow', true);
+
+        if ($current_noindex === $target_noindex && $current_nofollow === $target_nofollow) {
+            return false;
+        }
+
+        if (function_exists('meza_assign_yoast_robots')) {
+            meza_assign_yoast_robots($post_id, $allow_indexing, $allow_follow);
+        } else {
+            update_post_meta($post_id, '_yoast_wpseo_meta-robots-noindex', $target_noindex);
+            update_post_meta($post_id, '_yoast_wpseo_meta-robots-nofollow', $target_nofollow);
+        }
+
+        return true;
+    }
+}
+
 if (!function_exists('meza_set_woocommerce_page_unlisted')) {
     function meza_set_woocommerce_page_indexed(int $page_id): void
     {
@@ -571,14 +598,9 @@ if (!function_exists('meza_set_woocommerce_page_unlisted')) {
             return;
         }
 
-        if (function_exists('meza_assign_yoast_robots')) {
-            meza_assign_yoast_robots($page_id, true, true);
-        } else {
-            update_post_meta($page_id, '_yoast_wpseo_meta-robots-noindex', '2');
-            update_post_meta($page_id, '_yoast_wpseo_meta-robots-nofollow', '0');
-        }
+        $updated = meza_woocommerce_update_yoast_robots_if_needed($page_id, true, true);
 
-        if (function_exists('meza_refresh_yoast_indexable')) {
+        if ($updated && function_exists('meza_refresh_yoast_indexable')) {
             meza_refresh_yoast_indexable($page_id);
         }
     }
@@ -594,14 +616,9 @@ if (!function_exists('meza_set_woocommerce_page_unlisted')) {
             return;
         }
 
-        if (function_exists('meza_assign_yoast_robots')) {
-            meza_assign_yoast_robots($page_id, false, false);
-        } else {
-            update_post_meta($page_id, '_yoast_wpseo_meta-robots-noindex', '1');
-            update_post_meta($page_id, '_yoast_wpseo_meta-robots-nofollow', '1');
-        }
+        $updated = meza_woocommerce_update_yoast_robots_if_needed($page_id, false, false);
 
-        if (function_exists('meza_refresh_yoast_indexable')) {
+        if ($updated && function_exists('meza_refresh_yoast_indexable')) {
             meza_refresh_yoast_indexable($page_id);
         }
     }
@@ -713,10 +730,9 @@ if (!function_exists('meza_set_woocommerce_product_visibility')) {
             return;
         }
 
-        update_post_meta($product_id, '_yoast_wpseo_meta-robots-noindex', $allow_indexing ? '2' : '1');
-        update_post_meta($product_id, '_yoast_wpseo_meta-robots-nofollow', $allow_follow ? '0' : '1');
+        $updated = meza_woocommerce_update_yoast_robots_if_needed($product_id, $allow_indexing, $allow_follow);
 
-        if (function_exists('meza_refresh_yoast_indexable')) {
+        if ($updated && function_exists('meza_refresh_yoast_indexable')) {
             meza_refresh_yoast_indexable($product_id);
         }
     }

@@ -8495,6 +8495,75 @@ function meza_is_hidden_from_search_page_view_request(): bool
     return (meza_get_page_visibility_view_request_value() === meza_get_hidden_from_search_page_view_value());
 }
 
+function meza_get_search_visibility_count_cache_key(string $post_type, string $state): string
+{
+    $post_type = sanitize_key($post_type);
+    $state = sanitize_key($state);
+
+    if ($post_type === '' || $state === '') {
+        return '';
+    }
+
+    return 'meza_search_visibility_count_v1_' . $state . '_' . $post_type;
+}
+
+function meza_get_cached_search_visibility_count(string $post_type, string $state): ?int
+{
+    $cache_key = meza_get_search_visibility_count_cache_key($post_type, $state);
+    if ($cache_key === '') {
+        return null;
+    }
+
+    $cached = get_transient($cache_key);
+    if ($cached === false || !is_numeric($cached)) {
+        return null;
+    }
+
+    return max(0, (int) $cached);
+}
+
+function meza_set_cached_search_visibility_count(string $post_type, string $state, int $count): void
+{
+    $cache_key = meza_get_search_visibility_count_cache_key($post_type, $state);
+    if ($cache_key === '') {
+        return;
+    }
+
+    set_transient($cache_key, max(0, $count), HOUR_IN_SECONDS);
+}
+
+function meza_flush_search_visibility_count_cache_for_post_type(string $post_type): void
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '') {
+        return;
+    }
+
+    foreach ([meza_get_indexed_pages_view_value(), meza_get_hidden_from_search_page_view_value()] as $state) {
+        $cache_key = meza_get_search_visibility_count_cache_key($post_type, $state);
+        if ($cache_key === '') {
+            continue;
+        }
+
+        delete_transient($cache_key);
+    }
+}
+
+function meza_flush_search_visibility_count_cache_for_post(int $post_id): void
+{
+    $post = get_post($post_id);
+    if (!($post instanceof WP_Post)) {
+        return;
+    }
+
+    $post_type = sanitize_key((string) $post->post_type);
+    if (!meza_post_type_supports_search_visibility_admin_views($post_type)) {
+        return;
+    }
+
+    meza_flush_search_visibility_count_cache_for_post_type($post_type);
+}
+
 function meza_get_hidden_from_search_post_type_view_count(string $post_type): int
 {
     static $counts = [];
@@ -8502,6 +8571,12 @@ function meza_get_hidden_from_search_post_type_view_count(string $post_type): in
     $post_type = sanitize_key($post_type);
     if ($post_type === '') return 0;
     if (isset($counts[$post_type])) return $counts[$post_type];
+
+    $cached_count = meza_get_cached_search_visibility_count($post_type, meza_get_hidden_from_search_page_view_value());
+    if ($cached_count !== null) {
+        $counts[$post_type] = $cached_count;
+        return $counts[$post_type];
+    }
 
     $query = new WP_Query([
         'post_type' => $post_type,
@@ -8524,6 +8599,7 @@ function meza_get_hidden_from_search_post_type_view_count(string $post_type): in
     ]);
 
     $counts[$post_type] = max(0, (int) $query->found_posts);
+    meza_set_cached_search_visibility_count($post_type, meza_get_hidden_from_search_page_view_value(), $counts[$post_type]);
 
     return $counts[$post_type];
 }
@@ -8540,6 +8616,12 @@ function meza_get_indexed_post_type_view_count(string $post_type): int
     $post_type = sanitize_key($post_type);
     if ($post_type === '') return 0;
     if (isset($counts[$post_type])) return $counts[$post_type];
+
+    $cached_count = meza_get_cached_search_visibility_count($post_type, meza_get_indexed_pages_view_value());
+    if ($cached_count !== null) {
+        $counts[$post_type] = $cached_count;
+        return $counts[$post_type];
+    }
 
     $query = new WP_Query([
         'post_type' => $post_type,
@@ -8571,6 +8653,7 @@ function meza_get_indexed_post_type_view_count(string $post_type): int
     ]);
 
     $counts[$post_type] = max(0, (int) $query->found_posts);
+    meza_set_cached_search_visibility_count($post_type, meza_get_indexed_pages_view_value(), $counts[$post_type]);
 
     return $counts[$post_type];
 }
@@ -8578,6 +8661,11 @@ function meza_get_indexed_post_type_view_count(string $post_type): int
 function meza_post_type_has_indexed_content(string $post_type): bool
 {
     return meza_get_indexed_post_type_view_count($post_type) > 0;
+}
+
+function meza_should_check_product_indexed_content_for_admin_menu_group(): bool
+{
+    return false;
 }
 
 function meza_get_indexed_pages_view_count(): int
@@ -8729,6 +8817,60 @@ function meza_register_post_type_search_visibility_view_filters(): void
     }
 }
 add_action('init', 'meza_register_post_type_search_visibility_view_filters', 100);
+
+add_action('save_post', function (int $post_id, WP_Post $post): void {
+    if (wp_is_post_revision($post_id)) {
+        return;
+    }
+
+    $post_type = sanitize_key((string) $post->post_type);
+    if (!meza_post_type_supports_search_visibility_admin_views($post_type)) {
+        return;
+    }
+
+    meza_flush_search_visibility_count_cache_for_post_type($post_type);
+}, 20, 2);
+
+add_action('before_delete_post', function (int $post_id, WP_Post $post): void {
+    $post_type = sanitize_key((string) $post->post_type);
+    if (!meza_post_type_supports_search_visibility_admin_views($post_type)) {
+        return;
+    }
+
+    meza_flush_search_visibility_count_cache_for_post_type($post_type);
+}, 20, 2);
+
+add_action('trashed_post', function (int $post_id): void {
+    meza_flush_search_visibility_count_cache_for_post($post_id);
+}, 20);
+
+add_action('untrashed_post', function (int $post_id): void {
+    meza_flush_search_visibility_count_cache_for_post($post_id);
+}, 20);
+
+add_action('updated_post_meta', function (int $meta_id, int $post_id, string $meta_key): void {
+    if (!in_array($meta_key, ['_yoast_wpseo_meta-robots-noindex', '_yoast_wpseo_meta-robots-nofollow'], true)) {
+        return;
+    }
+
+    meza_flush_search_visibility_count_cache_for_post($post_id);
+}, 20, 3);
+
+add_action('added_post_meta', function (int $meta_id, int $post_id, string $meta_key): void {
+    if (!in_array($meta_key, ['_yoast_wpseo_meta-robots-noindex', '_yoast_wpseo_meta-robots-nofollow'], true)) {
+        return;
+    }
+
+    meza_flush_search_visibility_count_cache_for_post($post_id);
+}, 20, 3);
+
+add_action('deleted_post_meta', function (array $meta_ids, int $post_id, string $meta_key): void {
+    if (!in_array($meta_key, ['_yoast_wpseo_meta-robots-noindex', '_yoast_wpseo_meta-robots-nofollow'], true)) {
+        return;
+    }
+
+    meza_flush_search_visibility_count_cache_for_post($post_id);
+}, 20, 3);
 
 function meza_get_page_meta_title_column_override_value(int $post_id): string
 {
