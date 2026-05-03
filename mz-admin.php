@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.584
+ * Version: 1.1.609
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -632,6 +632,20 @@ if (!function_exists('meza_should_show_conference_admin_menu')) {
     }
 }
 
+if (!function_exists('meza_should_register_segment_post_type')) {
+    function meza_should_register_segment_post_type(): bool
+    {
+        if (function_exists('meza_is_conference_business_type')) {
+            return meza_is_conference_business_type();
+        }
+
+        $option_value = get_option('options_type');
+        $value = is_scalar($option_value) ? sanitize_key(trim((string) $option_value)) : '';
+
+        return $value === 'conference';
+    }
+}
+
 if (!function_exists('meza_get_conference_admin_menu_slug_aliases')) {
     function meza_get_conference_admin_menu_slug_aliases(): array
     {
@@ -1101,6 +1115,10 @@ if (!function_exists('meza_get_segment_post_type_args')) {
 if (!function_exists('meza_get_segment_taxonomy_menu_items')) {
     function meza_get_segment_taxonomy_menu_items(): array
     {
+        if (!meza_should_register_segment_post_type()) {
+            return [];
+        }
+
         $items = [];
 
         foreach (meza_get_cached_object_taxonomies('segment', 'objects') as $taxonomy) {
@@ -1133,6 +1151,10 @@ if (!function_exists('meza_get_segment_taxonomy_menu_items')) {
 if (!function_exists('meza_get_segment_taxonomy_admin_menu_editor_items')) {
     function meza_get_segment_taxonomy_admin_menu_editor_items(string $parent_slug): array
     {
+        if (!meza_should_register_segment_post_type()) {
+            return [];
+        }
+
         $items = [];
 
         foreach (meza_get_cached_object_taxonomies('segment', 'objects') as $taxonomy) {
@@ -1168,6 +1190,10 @@ if (!function_exists('meza_get_segment_taxonomy_admin_menu_editor_items')) {
 }
 
 add_action('init', function (): void {
+    if (!meza_should_register_segment_post_type()) {
+        return;
+    }
+
     if (post_type_exists('segment')) {
         return;
     }

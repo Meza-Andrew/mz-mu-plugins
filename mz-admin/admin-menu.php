@@ -204,6 +204,125 @@ function meza_is_seo_manager_user($user = null): bool
         && meza_user_has_any_role($user, [meza_seo_manager_role_key()]);
 }
 
+function meza_get_current_admin_post_type_for_indexed_seo_manager_menu(): string
+{
+    $post_type = function_exists('meza_get_current_admin_post_type')
+        ? meza_get_current_admin_post_type()
+        : '';
+    if ($post_type !== '') {
+        return $post_type;
+    }
+
+    global $pagenow;
+    if ((string) $pagenow === 'edit.php') {
+        return 'post';
+    }
+
+    return '';
+}
+
+function meza_seo_manager_post_type_supports_indexed_menu(string $post_type): bool
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '') {
+        return false;
+    }
+
+    return function_exists('meza_post_type_supports_search_visibility_admin_views')
+        ? meza_post_type_supports_search_visibility_admin_views($post_type)
+        : ($post_type === 'page');
+}
+
+function meza_get_seo_manager_indexed_post_type_menu_slug(string $post_type): string
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '' || !meza_seo_manager_post_type_supports_indexed_menu($post_type)) {
+        return '';
+    }
+
+    $base_slug = function_exists('meza_get_top_level_menu_slug_for_post_type')
+        ? meza_get_top_level_menu_slug_for_post_type($post_type)
+        : (($post_type === 'post') ? 'edit.php' : 'edit.php?post_type=' . $post_type);
+    $query_var = function_exists('meza_get_post_search_visibility_view_query_var')
+        ? meza_get_post_search_visibility_view_query_var()
+        : 'meza_page_visibility';
+    $indexed_value = function_exists('meza_get_indexed_pages_view_value')
+        ? meza_get_indexed_pages_view_value()
+        : 'indexed';
+
+    return add_query_arg([$query_var => $indexed_value], $base_slug);
+}
+
+function meza_get_seo_manager_indexed_pages_menu_slug(): string
+{
+    return meza_get_seo_manager_indexed_post_type_menu_slug('page');
+}
+
+function meza_set_seo_manager_post_type_menu_target(): void
+{
+    if (!meza_is_seo_manager_user(wp_get_current_user())) {
+        return;
+    }
+
+    global $menu, $submenu;
+
+    if (is_array($menu)) {
+        foreach ($menu as &$item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $item_slug = (string) ($item[2] ?? '');
+            $post_type = function_exists('meza_get_post_type_from_admin_menu_slug')
+                ? meza_get_post_type_from_admin_menu_slug($item_slug)
+                : '';
+            if (!meza_seo_manager_post_type_supports_indexed_menu($post_type)) {
+                continue;
+            }
+            if ($item_slug !== meza_get_top_level_menu_slug_for_post_type($post_type)) {
+                continue;
+            }
+
+            $indexed_slug = meza_get_seo_manager_indexed_post_type_menu_slug($post_type);
+            if ($indexed_slug === '') {
+                continue;
+            }
+
+            $item[2] = $indexed_slug;
+        }
+        unset($item);
+    }
+
+    foreach ($submenu as $parent_slug => &$items) {
+        if (!is_array($items)) {
+            continue;
+        }
+
+        $post_type = function_exists('meza_get_post_type_from_admin_menu_slug')
+            ? meza_get_post_type_from_admin_menu_slug((string) $parent_slug)
+            : '';
+        if (!meza_seo_manager_post_type_supports_indexed_menu($post_type)) {
+            continue;
+        }
+
+        $default_slug = meza_get_top_level_menu_slug_for_post_type($post_type);
+        $indexed_slug = meza_get_seo_manager_indexed_post_type_menu_slug($post_type);
+        if ($default_slug === '' || $indexed_slug === '') {
+            continue;
+        }
+
+        foreach ($items as &$item) {
+            if (!is_array($item) || ((string) ($item[2] ?? '')) !== $default_slug) {
+                continue;
+            }
+
+            $item[2] = $indexed_slug;
+        }
+        unset($item);
+    }
+    unset($items);
+}
+
 function meza_is_aios_plugin_active(): bool
 {
     return function_exists('meza_is_plugin_basename_active')
@@ -5388,6 +5507,92 @@ add_filter('submenu_file', function ($submenu_file) {
     return meza_get_wc_admin_menu_slug('/analytics/overview');
 }, PHP_INT_MAX);
 
+if (!function_exists('meza_get_woocommerce_refunds_returns_settings_page_id')) {
+    function meza_get_woocommerce_refunds_returns_settings_page_id(): int
+    {
+        foreach (['meza_woocommerce_refund_returns_page_id', 'woocommerce_refund_returns_page_id'] as $option_key) {
+            $stored_page_id = (int) get_option($option_key, 0);
+            if ($stored_page_id > 0) {
+                return $stored_page_id;
+            }
+        }
+
+        $slug_candidates = [
+            'refunds-and-returns-policy',
+            'refund-and-returns-policy',
+            'refund-returns-policy',
+            'returns-and-refunds-policy',
+            'refund-policy',
+            'returns-policy',
+            'refund_returns',
+        ];
+
+        foreach ($slug_candidates as $slug) {
+            $page = get_page_by_path($slug, OBJECT, 'page');
+            if ($page instanceof WP_Post) {
+                return (int) $page->ID;
+            }
+        }
+
+        $title_candidates = [
+            'Refunds and Returns Policy',
+            'Refund and Returns Policy',
+            'Refund & Returns Policy',
+            'Returns and Refunds Policy',
+            'Returns Policy',
+            'Refund Policy',
+        ];
+
+        foreach ($title_candidates as $title) {
+            $page = get_page_by_title($title, OBJECT, 'page');
+            if ($page instanceof WP_Post) {
+                return (int) $page->ID;
+            }
+        }
+
+        return 0;
+    }
+}
+
+add_filter('woocommerce_get_settings_advanced', function ($settings, $current_section) {
+    if (!is_array($settings) || $current_section !== '') {
+        return $settings;
+    }
+
+    $refunds_returns_setting = [
+        'title' => __('Refunds and returns'),
+        'desc' => __('Page where shoppers can review your refund and returns policy.', 'woocommerce'),
+        'id' => 'meza_woocommerce_refund_returns_page_id',
+        'default' => meza_get_woocommerce_refunds_returns_settings_page_id(),
+        'class' => 'wc-page-search',
+        'css' => 'min-width:300px;',
+        'type' => 'single_select_page_with_search',
+        'args' => [
+            'exclude' => [wc_get_page_id('checkout')],
+        ],
+        'desc_tip' => true,
+        'autoload' => false,
+    ];
+
+    $updated_settings = [];
+    $inserted = false;
+
+    foreach ($settings as $setting) {
+        $updated_settings[] = $setting;
+
+        if (($setting['id'] ?? '') === 'woocommerce_terms_page_id') {
+            $updated_settings[] = $refunds_returns_setting;
+            $inserted = true;
+        }
+    }
+
+    if (!$inserted) {
+        $updated_settings[] = $refunds_returns_setting;
+    }
+
+    return $updated_settings;
+}, 20, 2);
+
 add_action('admin_head', function (): void {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
     if (!($screen instanceof WP_Screen) || $screen->id !== 'woocommerce_page_wc-settings') {
@@ -9005,6 +9210,44 @@ function meza_enforce_seo_manager_limited_admin_menus(): void
     }
 }
 
+add_filter('parent_file', function ($parent_file) {
+    if (!meza_is_seo_manager_user(wp_get_current_user())) {
+        return $parent_file;
+    }
+
+    global $pagenow;
+    if ((string) $pagenow !== 'edit.php') {
+        return $parent_file;
+    }
+
+    $post_type = meza_get_current_admin_post_type_for_indexed_seo_manager_menu();
+    if (!meza_seo_manager_post_type_supports_indexed_menu($post_type)) {
+        return $parent_file;
+    }
+
+    $indexed_slug = meza_get_seo_manager_indexed_post_type_menu_slug($post_type);
+    return ($indexed_slug !== '') ? $indexed_slug : $parent_file;
+}, PHP_INT_MAX);
+
+add_filter('submenu_file', function ($submenu_file) {
+    if (!meza_is_seo_manager_user(wp_get_current_user())) {
+        return $submenu_file;
+    }
+
+    global $pagenow;
+    if ((string) $pagenow !== 'edit.php') {
+        return $submenu_file;
+    }
+
+    $post_type = meza_get_current_admin_post_type_for_indexed_seo_manager_menu();
+    if (!meza_seo_manager_post_type_supports_indexed_menu($post_type)) {
+        return $submenu_file;
+    }
+
+    $indexed_slug = meza_get_seo_manager_indexed_post_type_menu_slug($post_type);
+    return ($indexed_slug !== '') ? $indexed_slug : $submenu_file;
+}, PHP_INT_MAX);
+
 function meza_enforce_site_manager_settings_submenu(): void
 {
     if (!meza_is_site_manager_user(wp_get_current_user())) {
@@ -10838,6 +11081,7 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_apply_tail_admin_menu_mutations();
     meza_filter_disabled_tag_taxonomy_submenus();
     meza_enforce_seo_manager_limited_admin_menus();
+    meza_set_seo_manager_post_type_menu_target();
     meza_enforce_restricted_top_level_utility_menus();
     meza_remove_media_performance_menu_for_site_managers();
     meza_prune_empty_top_level_admin_menu_groups();
@@ -10862,6 +11106,7 @@ function meza_apply_missing_late_admin_menu_mutations(): void
     meza_reorder_dashboard_utility_items();
     meza_group_woocommerce_top_level_items();
     meza_enforce_seo_manager_limited_admin_menus();
+    meza_set_seo_manager_post_type_menu_target();
     meza_enforce_restricted_top_level_utility_menus();
     meza_remove_media_performance_menu_for_site_managers();
     meza_enforce_site_manager_settings_submenu();

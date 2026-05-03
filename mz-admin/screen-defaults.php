@@ -2322,6 +2322,14 @@ function meza_admin_menu_content_group(string $menu_slug): string
     parse_str($post_type, $query_args);
     $post_type = (string) ($query_args['post_type'] ?? '');
     if ($post_type === '') return '';
+    if (
+        $post_type === 'product'
+        && function_exists('meza_post_type_has_indexed_content')
+        && !meza_post_type_has_indexed_content('product')
+    ) {
+        return 'without';
+    }
+
     if ($post_type === 'product') return 'with';
     if (function_exists('meza_is_acf_admin_post_type') && meza_is_acf_admin_post_type($post_type)) return '';
 

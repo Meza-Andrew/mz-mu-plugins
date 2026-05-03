@@ -159,70 +159,70 @@ add_action('admin_head-edit.php', function () {
         $runtime_link_cell_selectors
     )));
     $column_width_css = $is_acp_layout
-        ? '.wp-list-table .column-mz_id{width:65px;}' .
-            '.wp-list-table .column-mz_menu_order{width:65px;}' .
-            '.wp-list-table .column-mz_cta_link{width:200px;}' .
-            '.wp-list-table .column-mz_cta_secondary_link{width:200px;}' .
-            '.wp-list-table .column-website{width:200px;}' .
-            '.wp-list-table .column-mz_faq_count{width:80px;}' .
-            '.wp-list-table .column-mz_form_recipients{width:200px;}' .
-            '.wp-list-table .column-mz_slug{width:175px;}' .
-            '.wp-list-table .column-mz_organization_url{width:200px;}' .
-            '.wp-list-table .column-mz_profile_link{width:200px;}' .
-            '.wp-list-table .column-mz_profile_title{width:175px;}' .
-            '.wp-list-table .column-mz_summary{width:325px;}' .
-            '.wp-list-table .column-mz_review_quote{width:325px;}' .
-            '.wp-list-table .column-mz_review_citer{width:175px;}' .
-            '.wp-list-table .column-mz_review_link{width:200px;}' .
-            '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;}' .
-            '.wp-list-table .column-acf-count{width:125px;}' .
+        ? '.wp-list-table .column-mz_id{width:65px;min-width:65px;max-width:65px;}' .
+            '.wp-list-table .column-mz_menu_order{width:65px;min-width:65px;max-width:65px;}' .
+            '.wp-list-table .column-mz_cta_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_cta_secondary_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-website{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_faq_count{width:80px;min-width:80px;max-width:80px;}' .
+            '.wp-list-table .column-mz_form_recipients{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_slug{width:175px;min-width:175px;max-width:175px;}' .
+            '.wp-list-table .column-mz_organization_url{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_profile_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_profile_title{width:175px;min-width:175px;max-width:175px;}' .
+            '.wp-list-table .column-mz_summary{width:325px;min-width:325px;max-width:325px;}' .
+            '.wp-list-table .column-mz_review_quote{width:325px;min-width:325px;max-width:325px;}' .
+            '.wp-list-table .column-mz_review_citer{width:175px;min-width:175px;max-width:175px;}' .
+            '.wp-list-table .column-mz_review_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table .column-acf-count{width:125px;min-width:125px;max-width:125px;}' .
             '.wp-list-table .column-mz_thumbnail{width:125px;min-width:125px;max-width:125px;}' .
-            '.wp-list-table .column-title{width:225px;}' .
-            '.wp-list-table .column-mz_modified,.wp-list-table .column-modified,.wp-list-table .column-mz_published,.wp-list-table .column-date{width:225px;}' .
-            '.wp-list-table th.column-categories,.wp-list-table td.column-categories{width:225px;}' .
-            '.wp-list-table th[class*="column-taxonomy-"],.wp-list-table td[class*="column-taxonomy-"]{width:225px;}' .
-            '.wp-list-table th.meza-admin-taxonomy-column,.wp-list-table td.meza-admin-taxonomy-column{width:225px;}' .
-            '.wp-list-table th.meza-admin-compact-date-column,.wp-list-table td.meza-admin-compact-date-column{width:200px;}' .
+            '.wp-list-table .column-title{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table .column-mz_modified,.wp-list-table .column-modified,.wp-list-table .column-mz_published,.wp-list-table .column-date{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table th.column-categories,.wp-list-table td.column-categories{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table th[class*="column-taxonomy-"],.wp-list-table td[class*="column-taxonomy-"]{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table th.meza-admin-taxonomy-column,.wp-list-table td.meza-admin-taxonomy-column{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table th.meza-admin-compact-date-column,.wp-list-table td.meza-admin-compact-date-column{width:200px;min-width:200px;max-width:200px;}' .
             ($taxonomy_width_selectors !== []
-                ? implode(',', $taxonomy_width_selectors) . '{width:225px;}'
+                ? implode(',', $taxonomy_width_selectors) . '{width:225px;min-width:225px;max-width:225px;}'
                 : '') .
             ($runtime_taxonomy_width_selectors !== []
-                ? implode(',', $runtime_taxonomy_width_selectors) . '{width:225px;}'
+                ? implode(',', $runtime_taxonomy_width_selectors) . '{width:225px;min-width:225px;max-width:225px;}'
                 : '') .
             ($runtime_modified_published_width_selectors !== []
-                ? implode(',', $runtime_modified_published_width_selectors) . '{width:225px;}'
+                ? implode(',', $runtime_modified_published_width_selectors) . '{width:225px;min-width:225px;max-width:225px;}'
                 : '') .
             ($compact_date_width_selectors !== []
-                ? implode(',', array_filter($compact_date_width_selectors, static fn($selector): bool => str_contains($selector, 'th'))) . '{width:200px;white-space:nowrap;}'
+                ? implode(',', array_filter($compact_date_width_selectors, static fn($selector): bool => str_contains($selector, 'th'))) . '{width:200px;min-width:200px;max-width:200px;white-space:nowrap;}'
                 : '') .
             ($compact_date_width_selectors !== []
-                ? implode(',', array_filter($compact_date_width_selectors, static fn($selector): bool => str_contains($selector, 'td'))) . '{width:200px;white-space:normal;line-height:1.4;}'
+                ? implode(',', array_filter($compact_date_width_selectors, static fn($selector): bool => str_contains($selector, 'td'))) . '{width:200px;min-width:200px;max-width:200px;white-space:normal;line-height:1.4;}'
                 : '') .
-            '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:225px;}' .
-            '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:175px;}' .
-            '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:175px;}'
-        : '.wp-list-table .column-mz_id{width:65px;max-width:65px;}' .
-            '.wp-list-table .column-mz_menu_order{width:65px;max-width:65px;}' .
-            '.wp-list-table .column-mz_cta_link{width:200px;max-width:200px;}' .
-            '.wp-list-table .column-mz_cta_secondary_link{width:200px;max-width:200px;}' .
-            '.wp-list-table .column-website{width:200px;max-width:200px;}' .
-            '.wp-list-table .column-mz_faq_count{width:80px;max-width:80px;}' .
-            '.wp-list-table .column-mz_form_recipients{width:200px;max-width:200px;}' .
-            '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
-            '.wp-list-table .column-mz_organization_url{width:200px;max-width:200px;}' .
-            '.wp-list-table .column-mz_profile_link{width:200px;max-width:200px;}' .
-            '.wp-list-table .column-mz_profile_title{width:175px;max-width:175px;}' .
-            '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
-            '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
-            '.wp-list-table .column-mz_review_citer{width:175px;max-width:175px;}' .
-            '.wp-list-table .column-mz_review_link{width:200px;max-width:200px;}' .
-            '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;max-width:225px;}' .
-            '.wp-list-table .column-acf-count{width:125px;max-width:125px;}' .
-            '.wp-list-table .column-mz_thumbnail{width:125px;}' .
-            '.wp-list-table .column-title{width:225px;}' .
-            '.wp-list-table .column-mz_modified,.wp-list-table .column-modified,.wp-list-table .column-mz_published,.wp-list-table .column-date{width:225px;max-width:225px;}' .
-            '.wp-list-table th.column-categories,.wp-list-table td.column-categories{width:225px;max-width:225px;}' .
-            '.wp-list-table th[class*="column-taxonomy-"],.wp-list-table td[class*="column-taxonomy-"]{width:225px;}' .
+            '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:175px;min-width:175px;max-width:175px;}' .
+            '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:175px;min-width:175px;max-width:175px;}'
+        : '.wp-list-table .column-mz_id{width:65px;min-width:65px;max-width:65px;}' .
+            '.wp-list-table .column-mz_menu_order{width:65px;min-width:65px;max-width:65px;}' .
+            '.wp-list-table .column-mz_cta_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_cta_secondary_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-website{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_faq_count{width:80px;min-width:80px;max-width:80px;}' .
+            '.wp-list-table .column-mz_form_recipients{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_slug{width:175px;min-width:175px;max-width:175px;}' .
+            '.wp-list-table .column-mz_organization_url{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_profile_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_profile_title{width:175px;min-width:175px;max-width:175px;}' .
+            '.wp-list-table .column-mz_summary{width:325px;min-width:325px;max-width:325px;}' .
+            '.wp-list-table .column-mz_review_quote{width:325px;min-width:325px;max-width:325px;}' .
+            '.wp-list-table .column-mz_review_citer{width:175px;min-width:175px;max-width:175px;}' .
+            '.wp-list-table .column-mz_review_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table .column-acf-count{width:125px;min-width:125px;max-width:125px;}' .
+            '.wp-list-table .column-mz_thumbnail{width:125px;min-width:125px;max-width:125px;}' .
+            '.wp-list-table .column-title{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table .column-mz_modified,.wp-list-table .column-modified,.wp-list-table .column-mz_published,.wp-list-table .column-date{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table th.column-categories,.wp-list-table td.column-categories{width:225px;min-width:225px;max-width:225px;}' .
+            '.wp-list-table th[class*="column-taxonomy-"],.wp-list-table td[class*="column-taxonomy-"]{width:225px;min-width:225px;max-width:225px;}' .
             '.wp-list-table th.meza-admin-taxonomy-column,.wp-list-table td.meza-admin-taxonomy-column{width:225px;min-width:225px;max-width:225px;}' .
             '.wp-list-table th.meza-admin-compact-date-column,.wp-list-table td.meza-admin-compact-date-column{width:200px;min-width:200px;max-width:200px;}' .
             ($taxonomy_width_selectors !== []
@@ -302,8 +302,8 @@ add_action('admin_head-edit.php', function () {
     if ($post_type === 'product') {
         echo '<style id="meza-product-admin-column-widths">' .
             ($is_acp_layout
-                ? '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px;text-align:center;}' .
-                    '.wp-list-table th.column-mz_thumbnail,.wp-list-table td.column-mz_thumbnail{width:78px;}'
+                ? '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px;min-width:48px;max-width:48px;text-align:center;}' .
+                    '.wp-list-table th.column-mz_thumbnail,.wp-list-table td.column-mz_thumbnail{width:78px;min-width:78px;max-width:78px;}'
                 : '.wp-list-table th.column-featured,.wp-list-table td.column-featured{width:48px;min-width:48px;max-width:48px;text-align:center;}' .
                     '.wp-list-table th.column-mz_thumbnail,.wp-list-table td.column-mz_thumbnail{width:78px;min-width:78px;max-width:78px;}') .
             '.wp-list-table td.column-mz_thumbnail{vertical-align:top!important;}' .
@@ -311,23 +311,23 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap>a{display:inline-block!important;max-width:100%!important;line-height:0!important;}' .
             '.wp-list-table td.column-mz_thumbnail img{display:block!important;width:auto!important;height:auto!important;max-width:100%!important;margin:0!important;}' .
             ($is_acp_layout
-                ? '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px;}' .
-                    '.wp-list-table th.column-price,.wp-list-table td.column-price{width:90px;white-space:nowrap;}' .
-                    '.wp-list-table th.column-is_in_stock,.wp-list-table td.column-is_in_stock{width:110px;white-space:nowrap;}' .
-                    '.wp-list-table th.column-taxonomy-product_brand,.wp-list-table td.column-taxonomy-product_brand{width:130px;}' .
-                    '.wp-list-table th.column-mz_product_type,.wp-list-table td.column-mz_product_type{width:140px;}' .
-                    '.wp-list-table th.column-sku,.wp-list-table td.column-sku{width:190px;}' .
-                    '.wp-list-table th.column-product_cat,.wp-list-table td.column-product_cat,.wp-list-table th.column-taxonomy-product_cat,.wp-list-table td.column-taxonomy-product_cat{width:190px;}' .
-                    '.wp-list-table th.column-product_tag,.wp-list-table td.column-product_tag,.wp-list-table th.column-taxonomy-product_tag,.wp-list-table td.column-taxonomy-product_tag{width:180px;}' .
-                    '.wp-list-table th.column-mz_page_link,.wp-list-table td.column-mz_page_link{width:320px;}' .
-                    '.wp-list-table th.column-wpseo-title,.wp-list-table td.column-wpseo-title{width:260px;}' .
-                    '.wp-list-table th.column-mz_share_title,.wp-list-table td.column-mz_share_title{width:260px;}' .
-                    '.wp-list-table th.column-wpseo-metadesc,.wp-list-table td.column-wpseo-metadesc{width:320px;}' .
-                    '.wp-list-table th.column-mz_share_description,.wp-list-table td.column-mz_share_description{width:320px;}' .
-                    '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:260px;}' .
-                    '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:220px;}' .
-                    '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:220px;}' .
-                    '.wp-list-table th.column-mz_modified,.wp-list-table td.column-mz_modified,.wp-list-table th.column-mz_published,.wp-list-table td.column-mz_published{width:220px;vertical-align:top!important;}'
+                ? '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px;min-width:240px;max-width:240px;}' .
+                    '.wp-list-table th.column-price,.wp-list-table td.column-price{width:90px;min-width:90px;max-width:90px;white-space:nowrap;}' .
+                    '.wp-list-table th.column-is_in_stock,.wp-list-table td.column-is_in_stock{width:110px;min-width:110px;max-width:110px;white-space:nowrap;}' .
+                    '.wp-list-table th.column-taxonomy-product_brand,.wp-list-table td.column-taxonomy-product_brand{width:130px;min-width:130px;max-width:130px;}' .
+                    '.wp-list-table th.column-mz_product_type,.wp-list-table td.column-mz_product_type{width:140px;min-width:140px;max-width:140px;}' .
+                    '.wp-list-table th.column-sku,.wp-list-table td.column-sku{width:190px;min-width:190px;max-width:190px;}' .
+                    '.wp-list-table th.column-product_cat,.wp-list-table td.column-product_cat,.wp-list-table th.column-taxonomy-product_cat,.wp-list-table td.column-taxonomy-product_cat{width:190px;min-width:190px;max-width:190px;}' .
+                    '.wp-list-table th.column-product_tag,.wp-list-table td.column-product_tag,.wp-list-table th.column-taxonomy-product_tag,.wp-list-table td.column-taxonomy-product_tag{width:180px;min-width:180px;max-width:180px;}' .
+                    '.wp-list-table th.column-mz_page_link,.wp-list-table td.column-mz_page_link{width:320px;min-width:320px;max-width:320px;}' .
+                    '.wp-list-table th.column-wpseo-title,.wp-list-table td.column-wpseo-title{width:260px;min-width:260px;max-width:260px;}' .
+                    '.wp-list-table th.column-mz_share_title,.wp-list-table td.column-mz_share_title{width:260px;min-width:260px;max-width:260px;}' .
+                    '.wp-list-table th.column-wpseo-metadesc,.wp-list-table td.column-wpseo-metadesc{width:320px;min-width:320px;max-width:320px;}' .
+                    '.wp-list-table th.column-mz_share_description,.wp-list-table td.column-mz_share_description{width:320px;min-width:320px;max-width:320px;}' .
+                    '.wp-list-table th.column-mz_page_headline,.wp-list-table td.column-mz_page_headline{width:260px;min-width:260px;max-width:260px;}' .
+                    '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:220px;min-width:220px;max-width:220px;}' .
+                    '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:220px;min-width:220px;max-width:220px;}' .
+                    '.wp-list-table th.column-mz_modified,.wp-list-table td.column-mz_modified,.wp-list-table th.column-mz_published,.wp-list-table td.column-mz_published{width:220px;min-width:220px;max-width:220px;vertical-align:top!important;}'
                 : '.wp-list-table th.column-name,.wp-list-table td.column-name{width:240px;min-width:240px;max-width:240px;}' .
                     '.wp-list-table th.column-price,.wp-list-table td.column-price{width:90px;min-width:90px;max-width:90px;white-space:nowrap;}' .
                     '.wp-list-table th.column-is_in_stock,.wp-list-table td.column-is_in_stock{width:110px;min-width:110px;max-width:110px;white-space:nowrap;}' .
