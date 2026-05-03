@@ -65,6 +65,10 @@ if (!function_exists('meza_supports_sponsor_features')) {
 if (!function_exists('meza_business_information_acf_truthy')) {
     function meza_business_information_acf_truthy($value): bool
     {
+        if (is_array($value)) {
+            return $value !== [];
+        }
+
         if (is_bool($value)) {
             return $value;
         }
@@ -77,16 +81,150 @@ if (!function_exists('meza_business_information_acf_truthy')) {
     }
 }
 
-if (!function_exists('meza_business_information_enables_ecommerce')) {
+if (!function_exists('meza_normalize_business_information_legacy_ecommerce_selection')) {
+    function meza_normalize_business_information_legacy_ecommerce_selection($value): array
+    {
+        $allowed_values = ['content_fields', 'store_functionality'];
+
+        if (is_array($value)) {
+            $normalized = [];
+
+            foreach ($value as $item) {
+                $item = sanitize_key(trim((string) $item));
+                if ($item === '' || !in_array($item, $allowed_values, true) || in_array($item, $normalized, true)) {
+                    continue;
+                }
+
+                $normalized[] = $item;
+            }
+
+            return $normalized;
+        }
+
+        if (is_bool($value)) {
+            return $value ? ['store_functionality'] : [];
+        }
+
+        if (is_numeric($value)) {
+            return ((int) $value) !== 0 ? ['store_functionality'] : [];
+        }
+
+        $normalized_value = sanitize_key(trim((string) $value));
+        if (in_array($normalized_value, $allowed_values, true)) {
+            return [$normalized_value];
+        }
+
+        return meza_business_information_acf_truthy($value) ? ['store_functionality'] : [];
+    }
+
+    function meza_get_saved_business_information_legacy_ecommerce_selection(): array
+    {
+        return meza_normalize_business_information_legacy_ecommerce_selection(get_option('options_ecommerce', []));
+    }
+
+    function meza_normalize_business_information_ecommerce_settings(array $settings): array
+    {
+        $normalized = [
+            'woocommerce' => !empty($settings['woocommerce']),
+            'product_indexing' => !empty($settings['product_indexing']),
+            'store' => !empty($settings['store']),
+            'accounts' => !empty($settings['accounts']),
+        ];
+
+        if ($normalized['accounts']) {
+            $normalized['store'] = true;
+        }
+
+        if ($normalized['store']) {
+            $normalized['product_indexing'] = true;
+        }
+
+        if ($normalized['product_indexing']) {
+            $normalized['woocommerce'] = true;
+        }
+
+        return $normalized;
+    }
+
+    function meza_get_saved_business_information_ecommerce_settings(): array
+    {
+        $legacy_selection = meza_get_saved_business_information_legacy_ecommerce_selection();
+
+        $woocommerce = get_option('options_woocommerce', null);
+        $product_indexing = get_option('options_product_indexing', null);
+        $store = get_option('options_store', null);
+        $accounts = get_option('options_accounts', null);
+
+        $settings = [
+            'woocommerce' => ($woocommerce !== null)
+                ? meza_business_information_acf_truthy($woocommerce)
+                : ($legacy_selection !== []),
+            'product_indexing' => ($product_indexing !== null)
+                ? meza_business_information_acf_truthy($product_indexing)
+                : in_array('store_functionality', $legacy_selection, true),
+            'store' => ($store !== null)
+                ? meza_business_information_acf_truthy($store)
+                : in_array('store_functionality', $legacy_selection, true),
+            'accounts' => ($accounts !== null)
+                ? meza_business_information_acf_truthy($accounts)
+                : in_array('store_functionality', $legacy_selection, true),
+        ];
+
+        return meza_normalize_business_information_ecommerce_settings($settings);
+    }
+
+    function meza_get_business_information_ecommerce_settings(): array
+    {
+        if (is_admin() && meza_is_business_information_acf_submission() && isset($_POST['acf']) && is_array($_POST['acf'])) {
+            $posted_fields = wp_unslash($_POST['acf']);
+
+            $settings = [
+                'woocommerce' => meza_business_information_acf_truthy($posted_fields['field_meza_business_woocommerce'] ?? 0),
+                'product_indexing' => meza_business_information_acf_truthy($posted_fields['field_meza_business_product_indexing'] ?? 0),
+                'store' => meza_business_information_acf_truthy($posted_fields['field_meza_business_store'] ?? 0),
+                'accounts' => meza_business_information_acf_truthy($posted_fields['field_meza_business_accounts'] ?? 0),
+            ];
+
+            return meza_normalize_business_information_ecommerce_settings($settings);
+        }
+
+        return meza_get_saved_business_information_ecommerce_settings();
+    }
+
     function meza_saved_business_information_enables_ecommerce(): bool
     {
-        return meza_business_information_acf_truthy(get_option('options_ecommerce', 0));
+        $settings = meza_get_saved_business_information_ecommerce_settings();
+
+        return !empty($settings['woocommerce']);
+    }
+
+    function meza_saved_business_information_enables_product_indexing(): bool
+    {
+        $settings = meza_get_saved_business_information_ecommerce_settings();
+
+        return !empty($settings['product_indexing']);
+    }
+
+    function meza_saved_business_information_enables_store_functionality(): bool
+    {
+        $settings = meza_get_saved_business_information_ecommerce_settings();
+
+        return !empty($settings['store']);
+    }
+
+    function meza_saved_business_information_enables_accounts(): bool
+    {
+        $settings = meza_get_saved_business_information_ecommerce_settings();
+
+        return !empty($settings['accounts']);
     }
 
     function meza_should_seed_ecommerce_default_editable_acf_field_groups(): bool
     {
         if (is_admin() && meza_is_business_information_acf_submission() && isset($_POST['acf']) && is_array($_POST['acf'])) {
-            return meza_business_information_enables_ecommerce();
+            $settings = meza_get_business_information_ecommerce_settings();
+
+            return !empty($settings['woocommerce']);
         }
 
         return meza_saved_business_information_enables_ecommerce();
@@ -94,15 +232,35 @@ if (!function_exists('meza_business_information_enables_ecommerce')) {
 
     function meza_business_information_enables_ecommerce(): bool
     {
-        if (is_admin() && meza_is_business_information_acf_submission() && isset($_POST['acf']) && is_array($_POST['acf'])) {
-            if (array_key_exists('field_meza_business_ecommerce', $_POST['acf'])) {
-                return meza_business_information_acf_truthy(wp_unslash($_POST['acf']['field_meza_business_ecommerce']));
-            }
+        $settings = meza_get_business_information_ecommerce_settings();
 
-            return false;
-        }
+        return !empty($settings['woocommerce']);
+    }
 
-        return meza_saved_business_information_enables_ecommerce();
+    function meza_business_information_enables_content_fields(): bool
+    {
+        return meza_business_information_enables_ecommerce();
+    }
+
+    function meza_business_information_enables_product_indexing(): bool
+    {
+        $settings = meza_get_business_information_ecommerce_settings();
+
+        return !empty($settings['product_indexing']);
+    }
+
+    function meza_business_information_enables_store_functionality(): bool
+    {
+        $settings = meza_get_business_information_ecommerce_settings();
+
+        return !empty($settings['store']);
+    }
+
+    function meza_business_information_enables_accounts(): bool
+    {
+        $settings = meza_get_business_information_ecommerce_settings();
+
+        return !empty($settings['accounts']);
     }
 }
 
@@ -118,6 +276,165 @@ if (!function_exists('meza_get_business_information_menu_label')) {
         return $label_map[meza_get_business_information_type()] ?? $label_map['business'];
     }
 }
+
+add_filter('acf/load_value/key=field_meza_business_woocommerce', function ($value) {
+    if (!function_exists('meza_get_saved_business_information_ecommerce_settings')) {
+        return $value;
+    }
+
+    $settings = meza_get_saved_business_information_ecommerce_settings();
+
+    return !empty($settings['woocommerce']) ? 1 : 0;
+}, 20);
+
+add_filter('acf/load_value/key=field_meza_business_product_indexing', function ($value) {
+    if (!function_exists('meza_get_saved_business_information_ecommerce_settings')) {
+        return $value;
+    }
+
+    $settings = meza_get_saved_business_information_ecommerce_settings();
+
+    return !empty($settings['product_indexing']) ? 1 : 0;
+}, 20);
+
+add_filter('acf/load_value/key=field_meza_business_store', function ($value) {
+    if (!function_exists('meza_get_saved_business_information_ecommerce_settings')) {
+        return $value;
+    }
+
+    $settings = meza_get_saved_business_information_ecommerce_settings();
+
+    return !empty($settings['store']) ? 1 : 0;
+}, 20);
+
+add_filter('acf/load_value/key=field_meza_business_accounts', function ($value) {
+    if (!function_exists('meza_get_saved_business_information_ecommerce_settings')) {
+        return $value;
+    }
+
+    $settings = meza_get_saved_business_information_ecommerce_settings();
+
+    return !empty($settings['accounts']) ? 1 : 0;
+}, 20);
+
+add_action('admin_head', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page !== 'business-information') {
+        return;
+    }
+    ?>
+    <style id="meza-progressive-ecommerce-settings-locks">
+        .acf-field.meza-progressive-ecommerce-locked .acf-input {
+            opacity: 0.65;
+        }
+
+        .acf-field.meza-progressive-ecommerce-locked .acf-input label,
+        .acf-field.meza-progressive-ecommerce-locked .acf-input input[type="checkbox"] {
+            cursor: not-allowed;
+        }
+    </style>
+    <script id="meza-progressive-ecommerce-settings-locks-script">
+        document.addEventListener('DOMContentLoaded', function () {
+            var fieldKeys = {
+                woocommerce: 'field_meza_business_woocommerce',
+                productIndexing: 'field_meza_business_product_indexing',
+                store: 'field_meza_business_store',
+                accounts: 'field_meza_business_accounts'
+            };
+
+            function getField(fieldKey) {
+                return document.querySelector('.acf-field[data-key="' + fieldKey + '"]');
+            }
+
+            function getCheckbox(field) {
+                return field ? field.querySelector('input[type="checkbox"][name^="acf["]') : null;
+            }
+
+            function getHiddenInput(field) {
+                return field ? field.querySelector('input[type="hidden"][name^="acf["]') : null;
+            }
+
+            function isChecked(fieldKey) {
+                var checkbox = getCheckbox(getField(fieldKey));
+                return !!(checkbox && checkbox.checked);
+            }
+
+            function setLocked(fieldKey, locked) {
+                var field = getField(fieldKey);
+                var checkbox = getCheckbox(field);
+                var hiddenInput = getHiddenInput(field);
+
+                if (!field || !checkbox) {
+                    return;
+                }
+
+                var mirror = field.querySelector('input.meza-progressive-ecommerce-mirror');
+
+                if (locked) {
+                    field.classList.add('meza-progressive-ecommerce-locked');
+                    checkbox.disabled = true;
+                    checkbox.setAttribute('aria-disabled', 'true');
+
+                    if (hiddenInput) {
+                        hiddenInput.disabled = true;
+                    }
+
+                    if (!mirror) {
+                        mirror = document.createElement('input');
+                        mirror.type = 'hidden';
+                        mirror.className = 'meza-progressive-ecommerce-mirror';
+                        field.appendChild(mirror);
+                    }
+
+                    mirror.name = checkbox.name;
+                    mirror.value = checkbox.checked ? '1' : '0';
+                    return;
+                }
+
+                field.classList.remove('meza-progressive-ecommerce-locked');
+                checkbox.disabled = false;
+                checkbox.removeAttribute('aria-disabled');
+
+                if (hiddenInput) {
+                    hiddenInput.disabled = false;
+                }
+
+                if (mirror) {
+                    mirror.remove();
+                }
+            }
+
+            function refreshLocks() {
+                setLocked(fieldKeys.woocommerce, isChecked(fieldKeys.productIndexing) || isChecked(fieldKeys.store) || isChecked(fieldKeys.accounts));
+                setLocked(fieldKeys.productIndexing, isChecked(fieldKeys.store) || isChecked(fieldKeys.accounts));
+                setLocked(fieldKeys.store, isChecked(fieldKeys.accounts));
+                setLocked(fieldKeys.accounts, false);
+            }
+
+            document.addEventListener('change', function (event) {
+                var target = event.target;
+                if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox' || !target.name || target.name.indexOf('acf[') !== 0) {
+                    return;
+                }
+
+                refreshLocks();
+            });
+
+            refreshLocks();
+
+            if (window.acf && typeof window.acf.addAction === 'function') {
+                window.acf.addAction('show_field', refreshLocks);
+                window.acf.addAction('hide_field', refreshLocks);
+                window.acf.addAction('append', refreshLocks);
+            }
+        });
+    </script>
+    <?php
+}, 30);
 
 if (!function_exists('meza_get_business_information_page_title')) {
     function meza_get_business_information_page_title(): string
@@ -1253,27 +1570,6 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'save_other_choice' => 0,
                 'layout' => 'horizontal',
             ],
-            [
-                'key' => 'field_meza_business_ecommerce',
-                'label' => 'E-Commerce',
-                'name' => 'ecommerce',
-                'aria-label' => '',
-                'type' => 'true_false',
-                'instructions' => '',
-                'required' => 0,
-                'conditional_logic' => 0,
-                'wrapper' => [
-                    'width' => '',
-                    'class' => '',
-                    'id' => '',
-                ],
-                'message' => '',
-                'default_value' => 0,
-                'allow_in_bindings' => 0,
-                'ui' => 0,
-                'ui_on_text' => '',
-                'ui_off_text' => '',
-            ],
         ];
     }
 
@@ -1507,6 +1803,120 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         'parent_repeater' => 'field_meza_business_locations',
                     ],
                 ],
+            ],
+        ];
+    }
+
+    function meza_get_business_information_ecommerce_fields(): array
+    {
+        return [
+            [
+                'key' => 'field_meza_business_woocommerce',
+                'label' => 'WooCommerce',
+                'name' => 'woocommerce',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => 'Enabling installs WooCommerce and creates product content fields and taxonomies for content authors.',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'message' => 'Enable e-commerce functionality on this site?',
+                'default_value' => 0,
+                'allow_in_bindings' => 0,
+                'ui' => 0,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
+            ],
+            [
+                'key' => 'field_meza_business_product_indexing',
+                'label' => 'Product Indexing',
+                'name' => 'product_indexing',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => 'Enabling allows search engine to find, index, and serve up product content to users.',
+                'required' => 0,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_meza_business_woocommerce',
+                            'operator' => '==',
+                            'value' => '1',
+                        ],
+                    ],
+                ],
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'message' => 'Allow product pages to be indexed?',
+                'default_value' => 0,
+                'allow_in_bindings' => 0,
+                'ui' => 0,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
+            ],
+            [
+                'key' => 'field_meza_business_store',
+                'label' => 'Store',
+                'name' => 'store',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => 'Enabling activates Store functionality for production content including cart, guest checkout, and payment processing functionaliity.',
+                'required' => 0,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_meza_business_product_indexing',
+                            'operator' => '==',
+                            'value' => '1',
+                        ],
+                    ],
+                ],
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'message' => 'Enable store features?',
+                'default_value' => 0,
+                'allow_in_bindings' => 0,
+                'ui' => 0,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
+            ],
+            [
+                'key' => 'field_meza_business_accounts',
+                'label' => 'Accounts',
+                'name' => 'accounts',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => 'Enabling allows users to create accounts and log in during checkout.',
+                'required' => 0,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_meza_business_store',
+                            'operator' => '==',
+                            'value' => '1',
+                        ],
+                    ],
+                ],
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'message' => 'Allow user logins?',
+                'default_value' => 0,
+                'allow_in_bindings' => 0,
+                'ui' => 0,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
             ],
         ];
     }
@@ -3276,7 +3686,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             'query_var_name' => '',
             'default_term' => [
                 'default_term_enabled' => '1',
-                'name' => 'Fredericksburg, Virginia',
+                'name' => 'Fredericksburg',
                 'slug' => 'fredericksburg-va',
             ],
             'sort' => 0,
@@ -5820,6 +6230,45 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         ];
     }
 
+    function meza_get_local_acf_taxonomy_rewrite_value(array $definition)
+    {
+        $rewrite_definition = isset($definition['rewrite']) && is_array($definition['rewrite'])
+            ? $definition['rewrite']
+            : [];
+
+        $permalink_mode = sanitize_key((string) ($rewrite_definition['permalink_rewrite'] ?? ''));
+        if ($permalink_mode === '' || $permalink_mode === 'no_permalink') {
+            return false;
+        }
+
+        $taxonomy = sanitize_key((string) ($definition['taxonomy'] ?? ''));
+        if ($taxonomy === '') {
+            return false;
+        }
+
+        return [
+            'slug' => $taxonomy,
+            'with_front' => !isset($rewrite_definition['with_front']) || !empty($rewrite_definition['with_front']),
+            'hierarchical' => !empty($rewrite_definition['rewrite_hierarchical']),
+        ];
+    }
+
+    function meza_get_local_acf_taxonomy_query_var_value(array $definition)
+    {
+        $query_var_mode = sanitize_key((string) ($definition['query_var'] ?? ''));
+        if ($query_var_mode === '' || $query_var_mode === 'no_query_var') {
+            return false;
+        }
+
+        $query_var_name = sanitize_key((string) ($definition['query_var_name'] ?? ''));
+        if ($query_var_name !== '') {
+            return $query_var_name;
+        }
+
+        $taxonomy = sanitize_key((string) ($definition['taxonomy'] ?? ''));
+        return $taxonomy !== '' ? $taxonomy : true;
+    }
+
     function meza_get_local_acf_taxonomy_args(array $definition): array
     {
         $default_term = [];
@@ -5852,8 +6301,8 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             'show_tagcloud' => !empty($definition['show_tagcloud']),
             'show_in_quick_edit' => !empty($definition['show_in_quick_edit']),
             'show_admin_column' => !empty($definition['show_admin_column']),
-            'rewrite' => false,
-            'query_var' => false,
+            'rewrite' => meza_get_local_acf_taxonomy_rewrite_value($definition),
+            'query_var' => meza_get_local_acf_taxonomy_query_var_value($definition),
             'sort' => !empty($definition['sort']),
             'capabilities' => (array) ($definition['capabilities'] ?? []),
             'default_term' => $default_term,
@@ -6503,6 +6952,30 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'show_in_rest' => 0,
                 'display_title' => '',
             ],
+            [
+                'key' => 'group_meza_business_ecommerce',
+                'title' => 'E-Commerce',
+                'fields' => meza_get_business_information_ecommerce_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'business-information',
+                        ],
+                    ],
+                ],
+                'menu_order' => 4,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'left',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
             meza_get_hero_section_field_group_definition(),
             meza_get_form_section_field_group_definition(),
             meza_get_cta_section_field_group_definition(),
@@ -6619,7 +7092,7 @@ if (!function_exists('meza_seed_default_locality_terms')) {
             return;
         }
 
-        wp_insert_term('Fredericksburg, Virginia', $taxonomy, [
+        wp_insert_term('Fredericksburg', $taxonomy, [
             'slug' => 'fredericksburg-va',
         ]);
     }
@@ -10423,7 +10896,22 @@ add_action('acf/save_post', 'meza_refresh_seeded_acf_field_groups_after_business
 if (!function_exists('meza_sync_ecommerce_after_business_information_save')) {
     function meza_persist_business_information_ecommerce_setting(): void
     {
-        update_option('options_ecommerce', meza_business_information_enables_ecommerce() ? '1' : '0', false);
+        $settings = meza_get_business_information_ecommerce_settings();
+
+        update_option('options_woocommerce', !empty($settings['woocommerce']) ? '1' : '0', false);
+        update_option('options_product_indexing', !empty($settings['product_indexing']) ? '1' : '0', false);
+        update_option('options_store', !empty($settings['store']) ? '1' : '0', false);
+        update_option('options_accounts', !empty($settings['accounts']) ? '1' : '0', false);
+
+        $legacy_selection = [];
+        if (!empty($settings['woocommerce'])) {
+            $legacy_selection[] = 'content_fields';
+        }
+        if (!empty($settings['store'])) {
+            $legacy_selection[] = 'store_functionality';
+        }
+
+        update_option('options_ecommerce', $legacy_selection, false);
     }
 
     function meza_remove_ecommerce_default_editable_acf_field_groups(): void
@@ -10444,11 +10932,15 @@ if (!function_exists('meza_sync_ecommerce_after_business_information_save')) {
                 mz_plugins_ensure_catalog_plugin_active('woocommerce/woocommerce.php');
             }
 
-            if (function_exists('meza_draft_all_woocommerce_core_pages')) {
-                meza_draft_all_woocommerce_core_pages();
+            if (function_exists('meza_sync_woocommerce_configuration')) {
+                meza_sync_woocommerce_configuration(true);
             }
 
             return;
+        }
+
+        if (function_exists('meza_sync_woocommerce_configuration')) {
+            meza_sync_woocommerce_configuration(true);
         }
 
         if (function_exists('mz_plugins_deactivate_plugin')) {

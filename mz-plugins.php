@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Plugins
  * Description: Environment-based plugin installation, activation, and visibility rules.
- * Version: 1.4.46
+ * Version: 1.4.49
  * Author: Meza LLC
  * Author URI: https://meza.design
  *
@@ -68,6 +68,7 @@ const MZ_PLUGINS_MANUAL_OVERRIDE_OPTION = 'mz_plugins_manual_overrides';
 /** Convert common config-style values like 1/true/yes/on into a real boolean. */
 function mz_plugins_truthy($value): bool
 {
+    if (is_array($value)) return $value !== [];
     if (is_bool($value)) return $value;
     if (is_numeric($value)) return ((int)$value) !== 0;
     $s = strtolower(trim((string)$value));
@@ -98,7 +99,22 @@ function mz_plugins_normalize_plugin_file(string $plugin_file): string
 
 function mz_plugins_should_manage_woocommerce(): bool
 {
-    return mz_plugins_truthy(get_option('options_ecommerce', 0));
+    if (function_exists('meza_get_saved_business_information_ecommerce_settings')) {
+        $settings = meza_get_saved_business_information_ecommerce_settings();
+
+        return !empty($settings['woocommerce']);
+    }
+
+    $legacy_value = get_option('options_ecommerce', []);
+    $woocommerce = get_option('options_woocommerce', null);
+    $product_indexing = get_option('options_product_indexing', null);
+    $store = get_option('options_store', null);
+
+    if ($woocommerce !== null || $product_indexing !== null || $store !== null) {
+        return mz_plugins_truthy($woocommerce) || mz_plugins_truthy($product_indexing) || mz_plugins_truthy($store);
+    }
+
+    return mz_plugins_truthy($legacy_value);
 }
 
 function mz_plugins_is_locked_plugin(string $plugin_file): bool
