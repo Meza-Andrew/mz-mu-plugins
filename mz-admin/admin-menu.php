@@ -3228,6 +3228,13 @@ function meza_get_standardized_submenu_utility_label(array $item, string $parent
         return '';
     }
 
+    if (
+        $parent_slug === 'tools.php'
+        && in_array($slug, ['mz-post-type-migration-tools', 'mz-faq-migration-tools'], true)
+    ) {
+        return '';
+    }
+
     $has_import = preg_match('/\bimport\b/i', $title) === 1 || str_contains($slug, 'import');
     $has_export = preg_match('/\bexport\b/i', $title) === 1 || str_contains($slug, 'export');
     $has_tools = preg_match('/\btools?\b/i', $title) === 1
