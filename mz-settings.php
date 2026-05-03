@@ -5,7 +5,7 @@
  * Description: Core site settings, defaults, and bootstrap configuration.
  * Author: Meza LLC
  * Author URI: https://meza.design
- * Version: 1.8.33
+ * Version: 1.8.37
  */
 
 /** ================================
@@ -76,8 +76,13 @@ const MEZA_COOKIE_POLICY_OPTION = 'meza_page_for_cookie_policy';
 
 const MEZA_CONTACT_TITLE      = 'Contact';
 const MEZA_CONTACT_SLUGS      = ['contact'];
+const MEZA_CONTACT_OPTION     = 'meza_page_for_contact';
 const MEZA_CONTACT_FORM_TITLE = 'Contact';
 const MEZA_CONTACT_FORM_SLUG  = 'contact';
+
+const MEZA_ABOUT_TITLE   = 'About';
+const MEZA_ABOUT_SLUGS   = ['about'];
+const MEZA_ABOUT_OPTION  = 'meza_page_for_about';
 
 const MEZA_STYLE_GUIDE_TITLE   = 'Style Guide';
 const MEZA_STYLE_GUIDE_SLUGS   = ['styles', 'style-guide'];
@@ -89,9 +94,10 @@ const MEZA_DOCUMENTATION_SLUGS  = ['documentation', 'site-documentation'];
 const MEZA_DOCUMENTATION_TPL    = 'page-documentation.php';
 const MEZA_DOCUMENTATION_OPTION = 'meza_page_for_documentation';
 
-const MEZA_FAQ_TITLE = 'FAQ';
-const MEZA_FAQ_SLUGS = ['faq'];
-const MEZA_FAQ_TPL   = 'page-faq.php';
+const MEZA_FAQ_TITLE  = 'Frequently Asked Questions (FAQ)';
+const MEZA_FAQ_SLUGS  = ['faq'];
+const MEZA_FAQ_TPL    = 'page-faq.php';
+const MEZA_FAQ_OPTION = 'meza_page_for_faq';
 
 /** Menu locations (theme should register these) */
 const MEZA_MENU_LOCATIONS = [
@@ -286,7 +292,11 @@ function meza_get_seeded_page_definitions(): array
         ],
         [
             'slugs' => MEZA_CONTACT_SLUGS,
-            'option_keys' => [],
+            'option_keys' => [MEZA_CONTACT_OPTION],
+        ],
+        [
+            'slugs' => MEZA_ABOUT_SLUGS,
+            'option_keys' => [MEZA_ABOUT_OPTION],
         ],
         [
             'slugs' => MEZA_STYLE_GUIDE_SLUGS,
@@ -298,7 +308,7 @@ function meza_get_seeded_page_definitions(): array
         ],
         [
             'slugs' => MEZA_FAQ_SLUGS,
-            'option_keys' => [],
+            'option_keys' => [MEZA_FAQ_OPTION],
         ],
     ];
 }
@@ -848,10 +858,21 @@ add_action('admin_init', function () {
 
     // Contact page + draft form attachment
     $contact_page_id = meza_ensure_page_state(MEZA_CONTACT_TITLE, MEZA_CONTACT_SLUGS, [
-        'status' => 'draft',
+        'status' => 'publish',
+        'force_status' => true,
+        'force_title' => true,
     ]);
+    meza_update_page_reference_options('meza_contact_page_option_keys', $contact_page_id, [MEZA_CONTACT_OPTION]);
     $contact_form_id = meza_ensure_form_state(MEZA_CONTACT_FORM_TITLE, MEZA_CONTACT_FORM_SLUG, 'draft');
     meza_assign_contact_form_to_page($contact_page_id, $contact_form_id);
+
+    // About page
+    $about_page_id = meza_ensure_page_state(MEZA_ABOUT_TITLE, MEZA_ABOUT_SLUGS, [
+        'status' => 'publish',
+        'force_status' => true,
+        'force_title' => true,
+    ]);
+    meza_update_page_reference_options('meza_about_page_option_keys', $about_page_id, [MEZA_ABOUT_OPTION]);
 
     // Documentation + template
     $documentation_id = meza_ensure_page_state(MEZA_DOCUMENTATION_TITLE, MEZA_DOCUMENTATION_SLUGS, [
@@ -864,12 +885,14 @@ add_action('admin_init', function () {
     meza_update_page_reference_options('meza_documentation_page_option_keys', $documentation_id, [MEZA_DOCUMENTATION_OPTION]);
 
     // FAQ + template
-    meza_ensure_page_state(MEZA_FAQ_TITLE, MEZA_FAQ_SLUGS, [
-        'status' => 'draft',
+    $faq_page_id = meza_ensure_page_state(MEZA_FAQ_TITLE, MEZA_FAQ_SLUGS, [
+        'status' => 'publish',
         'force_status' => true,
+        'force_title' => true,
         'template' => MEZA_FAQ_TPL,
         'always_apply_template' => true,
     ]);
+    meza_update_page_reference_options('meza_faq_page_option_keys', $faq_page_id, [MEZA_FAQ_OPTION]);
 
     update_option('meza_pages_initialized', 1);
 }, 9);
