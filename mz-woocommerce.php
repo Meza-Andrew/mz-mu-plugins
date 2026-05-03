@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ WooCommerce
  * Description: WooCommerce query rules, asset loading, and storefront behavior.
- * Version: 1.1.12
+ * Version: 1.1.13
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
