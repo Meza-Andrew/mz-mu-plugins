@@ -5185,8 +5185,25 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                             'prepend' => '',
                             'append' => '',
                         ],
-                    [
-                        'key' => 'field_1086a562',
+                        [
+                            'key' => 'field_meza_list_services_link',
+                            'label' => 'Link',
+                            'name' => 'link',
+                            'aria-label' => '',
+                            'type' => 'link',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'return_format' => 'array',
+                            'allow_in_bindings' => 0,
+                        ],
+                        [
+                            'key' => 'field_1086a562',
                             'label' => 'ID',
                             'name' => 'id',
                             'aria-label' => '',
@@ -6389,12 +6406,13 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
     function meza_build_default_section_sub_field(string $section_field_name, string $sub_field_name): array
     {
         $is_textarea = $sub_field_name === 'description';
+        $is_link = $sub_field_name === 'link';
         $field = [
             'key' => meza_get_section_sub_field_stable_key($section_field_name, $sub_field_name),
             'label' => ucfirst($sub_field_name),
             'name' => $sub_field_name,
             'aria-label' => '',
-            'type' => $is_textarea ? 'textarea' : 'text',
+            'type' => $is_textarea ? 'textarea' : ($is_link ? 'link' : 'text'),
             'instructions' => '',
             'required' => 0,
             'conditional_logic' => 0,
@@ -6412,6 +6430,8 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             $field['rows'] = 2;
             $field['placeholder'] = '';
             $field['new_lines'] = '';
+        } elseif ($is_link) {
+            $field['return_format'] = 'array';
         } else {
             $field['placeholder'] = '';
             $field['prepend'] = '';
@@ -6423,7 +6443,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
 
     function meza_normalize_section_sub_fields(array $sub_fields, string $section_field_name, string $group_key = ''): array
     {
-        $target_names = ['headline', 'display', 'subhead', 'description'];
+        $target_names = ['headline', 'display', 'subhead', 'description', 'link'];
         $index_by_name = [];
 
         foreach ($sub_fields as $index => $sub_field) {
@@ -6456,6 +6476,11 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 if (($sub_fields[$index]['type'] ?? '') !== 'textarea') {
                     $sub_fields[$index]['type'] = 'textarea';
                 }
+            } elseif ($name === 'link') {
+                if (($sub_fields[$index]['type'] ?? '') !== 'link') {
+                    $sub_fields[$index]['type'] = 'link';
+                }
+                $sub_fields[$index]['return_format'] = 'array';
             } else {
                 if (($sub_fields[$index]['type'] ?? '') !== 'text') {
                     $sub_fields[$index]['type'] = 'text';
@@ -10774,6 +10799,73 @@ if (!function_exists('meza_sync_section_show_field_messages_blank')) {
     }
 }
 add_action('acf/init', 'meza_sync_section_show_field_messages_blank', 23);
+
+if (!function_exists('meza_sync_section_group_sub_fields')) {
+    function meza_get_section_group_sub_fields_sync_version(): string
+    {
+        return '2026-05-03-section-group-sub-fields-v1';
+    }
+
+    function meza_get_section_group_sub_fields_sync_option_name(): string
+    {
+        return 'meza_section_group_sub_fields_sync_version';
+    }
+
+    function meza_sync_section_group_sub_fields(): void
+    {
+        if (!function_exists('acf_get_field_groups') || !function_exists('acf_get_fields') || !function_exists('acf_update_field')) {
+            return;
+        }
+
+        $version = meza_get_section_group_sub_fields_sync_version();
+        if ((string) get_option(meza_get_section_group_sub_fields_sync_option_name(), '') === $version) {
+            return;
+        }
+
+        $did_update = false;
+
+        foreach ((array) acf_get_field_groups() as $field_group) {
+            if (!is_array($field_group)) {
+                continue;
+            }
+
+            $field_group_id = (int) ($field_group['ID'] ?? 0);
+            if ($field_group_id <= 0) {
+                continue;
+            }
+
+            foreach ((array) acf_get_fields($field_group_id) as $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+
+                $field_name = sanitize_key((string) ($field['name'] ?? ''));
+                $field_type = (string) ($field['type'] ?? '');
+                if ($field_type !== 'group' || !str_starts_with($field_name, 'section_')) {
+                    continue;
+                }
+
+                $existing_sub_fields = isset($field['sub_fields']) && is_array($field['sub_fields'])
+                    ? $field['sub_fields']
+                    : [];
+                $normalized_sub_fields = meza_normalize_section_sub_fields($existing_sub_fields, $field_name, '');
+
+                if ($normalized_sub_fields === $existing_sub_fields) {
+                    continue;
+                }
+
+                $field['sub_fields'] = $normalized_sub_fields;
+                acf_update_field($field);
+                $did_update = true;
+            }
+        }
+
+        if ($did_update || (string) get_option(meza_get_section_group_sub_fields_sync_option_name(), '') !== $version) {
+            update_option(meza_get_section_group_sub_fields_sync_option_name(), $version, false);
+        }
+    }
+}
+add_action('acf/init', 'meza_sync_section_group_sub_fields', 24);
 
 if (!function_exists('meza_sync_section_field_group_menu_order')) {
     function meza_get_section_field_group_menu_order_sync_version(): string
