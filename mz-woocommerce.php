@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ WooCommerce
  * Description: WooCommerce query rules, asset loading, and storefront behavior.
- * Version: 1.1.13
+ * Version: 1.1.14
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -234,6 +234,39 @@ if (!function_exists('meza_get_woocommerce_page_definitions')) {
     }
 }
 
+if (!function_exists('meza_get_page_by_exact_title')) {
+    function meza_get_page_by_exact_title(string $title, string $post_type = 'page'): ?WP_Post
+    {
+        $title = trim($title);
+        if ($title === '') {
+            return null;
+        }
+
+        $query = new WP_Query([
+            'post_type' => $post_type,
+            'post_status' => ['publish', 'draft', 'pending', 'private', 'future'],
+            'title' => $title,
+            'posts_per_page' => 1,
+            'orderby' => 'date',
+            'order' => 'ASC',
+            'fields' => 'ids',
+            'no_found_rows' => true,
+            'cache_results' => false,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+        ]);
+
+        $post_id = (int) ($query->posts[0] ?? 0);
+        if ($post_id <= 0) {
+            return null;
+        }
+
+        $page = get_post($post_id);
+
+        return $page instanceof WP_Post ? $page : null;
+    }
+}
+
 if (!function_exists('meza_get_woocommerce_page_by_definition')) {
     function meza_get_woocommerce_page_by_definition(array $definition): ?WP_Post
     {
@@ -268,7 +301,7 @@ if (!function_exists('meza_get_woocommerce_page_by_definition')) {
                 continue;
             }
 
-            $page = get_page_by_title($title, OBJECT, 'page');
+            $page = meza_get_page_by_exact_title($title, 'page');
             if (
                 $page instanceof WP_Post
                 && $page->post_type === 'page'
@@ -516,7 +549,7 @@ if (!function_exists('meza_get_woocommerce_unlisted_page_ids')) {
         }
 
         foreach (meza_get_woocommerce_unlisted_page_titles() as $title) {
-            $page = get_page_by_title($title, OBJECT, 'page');
+            $page = meza_get_page_by_exact_title($title, 'page');
             if ($page instanceof WP_Post) {
                 $page_ids[] = (int) $page->ID;
             }
