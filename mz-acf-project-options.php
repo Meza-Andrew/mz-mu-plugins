@@ -2,11 +2,13 @@
 
 /**
  * Shared ACF option pages and field groups we want available on every project.
+ * Version: 1.8.45
  */
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) {
     return;
 }
+
 
 if (!function_exists('meza_get_business_information_type')) {
     function meza_get_business_information_type(): string
@@ -470,6 +472,65 @@ if (!function_exists('meza_get_branding_admin_page_title')) {
     }
 }
 
+if (!function_exists('meza_shared_project_options_page_capability')) {
+    function meza_shared_project_options_page_capability(): string
+    {
+        return 'meza_manage_shared_project_options';
+    }
+}
+
+if (!function_exists('meza_get_shared_project_acf_options_page_capability')) {
+    function meza_get_shared_project_acf_options_page_capability(string $menu_slug): string
+    {
+        $menu_slug = sanitize_key($menu_slug);
+
+        if (in_array($menu_slug, ['business-information', 'branding'], true)) {
+            return meza_shared_project_options_page_capability();
+        }
+
+        return 'manage_options';
+    }
+}
+
+if (!function_exists('meza_get_shared_project_acf_options_page_parent_slug')) {
+    function meza_get_shared_project_acf_options_page_parent_slug(string $menu_slug): string
+    {
+        $menu_slug = sanitize_key($menu_slug);
+
+        if ($menu_slug === 'business-information') {
+            return 'index.php';
+        }
+
+        if ($menu_slug === 'branding') {
+            return 'themes.php';
+        }
+
+        return 'options-general.php';
+    }
+}
+
+if (!function_exists('meza_get_shared_project_acf_options_page_menu_slug')) {
+    function meza_get_shared_project_acf_options_page_menu_slug(string $menu_slug): string
+    {
+        $menu_slug = sanitize_key($menu_slug);
+        $parent_slug = meza_get_shared_project_acf_options_page_parent_slug($menu_slug);
+
+        if ($menu_slug === '') {
+            return '';
+        }
+
+        if (
+            $parent_slug !== ''
+            && $parent_slug !== 'none'
+            && str_ends_with($parent_slug, '.php')
+        ) {
+            return $parent_slug . '?page=' . $menu_slug;
+        }
+
+        return 'admin.php?page=' . $menu_slug;
+    }
+}
+
 if (!function_exists('meza_get_crm_page_title')) {
     function meza_get_crm_page_title(): string
     {
@@ -553,6 +614,113 @@ if (!function_exists('meza_normalize_acf_field_group_location')) {
 }
 
 if (!function_exists('meza_get_acf_field_group_merge_signature')) {
+    function meza_is_list_array_compat(array $array): bool
+    {
+        if (function_exists('array_is_list')) {
+            return array_is_list($array);
+        }
+
+        $expected_key = 0;
+        foreach (array_keys($array) as $key) {
+            if ($key !== $expected_key) {
+                return false;
+            }
+
+            $expected_key++;
+        }
+
+        return true;
+    }
+
+    function meza_sort_acf_signature_value($value)
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        if (meza_is_list_array_compat($value)) {
+            foreach ($value as $index => $item) {
+                $value[$index] = meza_sort_acf_signature_value($item);
+            }
+
+            return $value;
+        }
+
+        foreach ($value as $key => $item) {
+            $value[$key] = meza_sort_acf_signature_value($item);
+        }
+
+        ksort($value);
+
+        return $value;
+    }
+
+    function meza_normalize_acf_field_for_signature(array $field): array
+    {
+        $normalized = [
+            'key' => (string) ($field['key'] ?? ''),
+            'name' => (string) ($field['name'] ?? ''),
+            'label' => (string) ($field['label'] ?? ''),
+            'type' => (string) ($field['type'] ?? ''),
+            'required' => (string) ($field['required'] ?? ''),
+        ];
+
+        if (isset($field['sub_fields']) && is_array($field['sub_fields'])) {
+            $normalized['sub_fields'] = array_values(array_map(
+                static fn(array $sub_field): array => meza_normalize_acf_field_for_signature($sub_field),
+                array_values(array_filter($field['sub_fields'], 'is_array'))
+            ));
+        }
+
+        if (isset($field['layouts']) && is_array($field['layouts'])) {
+            $layouts = [];
+
+            foreach ($field['layouts'] as $layout) {
+                if (!is_array($layout)) {
+                    continue;
+                }
+
+                $normalized_layout = [
+                    'key' => (string) ($layout['key'] ?? ''),
+                    'name' => (string) ($layout['name'] ?? ''),
+                    'label' => (string) ($layout['label'] ?? ''),
+                    'display' => (string) ($layout['display'] ?? ''),
+                ];
+
+                if (isset($layout['sub_fields']) && is_array($layout['sub_fields'])) {
+                    $normalized_layout['sub_fields'] = array_values(array_map(
+                        static fn(array $sub_field): array => meza_normalize_acf_field_for_signature($sub_field),
+                        array_values(array_filter($layout['sub_fields'], 'is_array'))
+                    ));
+                }
+
+                $layouts[] = meza_sort_acf_signature_value($normalized_layout);
+            }
+
+            $normalized['layouts'] = $layouts;
+        }
+
+        return meza_sort_acf_signature_value($normalized);
+    }
+
+    function meza_get_acf_field_group_fields_signature(array $field_group): string
+    {
+        $fields = isset($field_group['fields']) && is_array($field_group['fields'])
+            ? array_values(array_filter($field_group['fields'], 'is_array'))
+            : [];
+
+        if (empty($fields)) {
+            return '';
+        }
+
+        $normalized_fields = array_map(
+            static fn(array $field): array => meza_normalize_acf_field_for_signature($field),
+            $fields
+        );
+
+        return md5(wp_json_encode($normalized_fields));
+    }
+
     function meza_get_acf_field_group_merge_signature(array $field_group): string
     {
         $title = trim((string) ($field_group['title'] ?? ''));
@@ -567,6 +735,88 @@ if (!function_exists('meza_get_acf_field_group_merge_signature')) {
             'location' => $location,
         ]));
     }
+
+    function meza_acf_field_group_matches_definition(array $candidate, array $definition): bool
+    {
+        $candidate_key = (string) ($candidate['key'] ?? '');
+        $definition_key = (string) ($definition['key'] ?? '');
+        $candidate_title = trim((string) ($candidate['title'] ?? ''));
+        $definition_title = trim((string) ($definition['title'] ?? ''));
+
+        $candidate_fields_signature = meza_get_acf_field_group_fields_signature($candidate);
+        $definition_fields_signature = meza_get_acf_field_group_fields_signature($definition);
+
+        if ($candidate_key !== '' && $definition_key !== '') {
+            if ($candidate_key !== $definition_key) {
+                return false;
+            }
+
+            if ($candidate_title !== '' && $definition_title !== '' && $candidate_title !== $definition_title) {
+                return false;
+            }
+
+            if ($candidate_fields_signature !== '' && $definition_fields_signature !== '') {
+                return $candidate_fields_signature === $definition_fields_signature;
+            }
+
+            return true;
+        }
+
+        $candidate_signature = meza_get_acf_field_group_merge_signature($candidate);
+        $definition_signature = meza_get_acf_field_group_merge_signature($definition);
+
+        if (
+            $candidate_signature !== ''
+            && $definition_signature !== ''
+            && $candidate_signature === $definition_signature
+        ) {
+            return true;
+        }
+
+        // ACF sometimes gives the export tool a thinner DB-backed object than the
+        // full PHP local definition. Keep known hard-coded singleton groups stable.
+        if (
+            $candidate_title !== ''
+            && $candidate_title === $definition_title
+            && in_array($definition_title, ['Form', 'Service'], true)
+        ) {
+            return true;
+        }
+
+        return false;
+    }
+
+    function meza_get_matching_acf_field_group_definition(array $candidate, array $definitions): ?array
+    {
+        foreach ($definitions as $definition) {
+            if (!is_array($definition) || !meza_acf_field_group_matches_definition($candidate, $definition)) {
+                continue;
+            }
+
+            return $definition;
+        }
+
+        return null;
+    }
+
+    function meza_get_acf_field_group_definition_by_key(array $definitions, string $target_key): ?array
+    {
+        if ($target_key === '') {
+            return null;
+        }
+
+        foreach ($definitions as $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            if ((string) ($definition['key'] ?? '') === $target_key) {
+                return $definition;
+            }
+        }
+
+        return null;
+    }
 }
 
 if (!function_exists('meza_is_hardcoded_acf_field_group')) {
@@ -574,6 +824,38 @@ if (!function_exists('meza_is_hardcoded_acf_field_group')) {
     {
         $local = (string) ($field_group['local'] ?? '');
         return $local === 'php';
+    }
+}
+
+if (!function_exists('meza_get_full_acf_field_group_for_matching')) {
+    function meza_get_full_acf_field_group_for_matching(array $field_group): array
+    {
+        if (!empty($field_group['fields']) && is_array($field_group['fields'])) {
+            return $field_group;
+        }
+
+        $key = (string) ($field_group['key'] ?? '');
+        if ($key === '') {
+            return $field_group;
+        }
+
+        $full_field_group = $field_group;
+
+        if (function_exists('acf_get_raw_field_group')) {
+            $raw_field_group = acf_get_raw_field_group($key);
+            if (is_array($raw_field_group)) {
+                $full_field_group = array_merge($raw_field_group, $field_group);
+            }
+        }
+
+        if (function_exists('acf_get_fields')) {
+            $fields = acf_get_fields($key);
+            if (is_array($fields) && !empty($fields)) {
+                $full_field_group['fields'] = $fields;
+            }
+        }
+
+        return $full_field_group;
     }
 }
 
@@ -731,6 +1013,7 @@ if (!function_exists('meza_get_acf_export_tool_choices')) {
             $choices[] = [
                 'key' => (string) $post['key'],
                 'title' => $title,
+                'local' => (string) ($post['local'] ?? ''),
             ];
         }
 
@@ -759,6 +1042,140 @@ if (!function_exists('meza_get_acf_export_tool_choice_map')) {
 }
 
 if (!function_exists('meza_get_acf_export_tool_grouped_choice_maps')) {
+    function meza_get_acf_export_default_editable_acf_field_group_definitions(): array
+    {
+        $definitions = meza_get_default_editable_acf_field_group_definitions();
+
+        if (function_exists('meza_get_contact_locations_section_field_group_definition')) {
+            $contact_locations_definition = meza_get_contact_locations_section_field_group_definition();
+            if (is_array($contact_locations_definition)) {
+                $definitions[] = $contact_locations_definition;
+            }
+        }
+
+        return array_values(array_filter($definitions, 'is_array'));
+    }
+
+    function meza_get_builtin_acf_field_group_definitions(): array
+    {
+        $definitions = meza_get_shared_project_acf_field_groups();
+        $definitions[] = meza_get_service_field_group_definition();
+
+        if (function_exists('mzf_get_form_field_group_definition')) {
+            $definitions[] = mzf_get_form_field_group_definition();
+        }
+
+        return array_values(array_filter($definitions, 'is_array'));
+    }
+
+    function meza_find_matching_acf_export_definition(array $post, string $identifier_key, array $definitions, array $aliases = []): ?array
+    {
+        $identifier = sanitize_key((string) ($post[$identifier_key] ?? ''));
+        if ($identifier === '') {
+            return null;
+        }
+
+        if (isset($aliases[$identifier])) {
+            $identifier = sanitize_key((string) $aliases[$identifier]);
+        }
+
+        foreach ($definitions as $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            if (sanitize_key((string) ($definition[$identifier_key] ?? '')) === $identifier) {
+                return $definition;
+            }
+        }
+
+        return null;
+    }
+
+    function meza_get_acf_export_tool_group_for_post(string $post_type, array $post): string
+    {
+        switch ($post_type) {
+            case 'acf-field-group':
+                $post = meza_get_full_acf_field_group_for_matching($post);
+                $post_key = (string) ($post['key'] ?? '');
+                $post_title = trim((string) ($post['title'] ?? ''));
+                $post_local = (string) ($post['local'] ?? '');
+                $post_fields_signature = meza_get_acf_field_group_fields_signature($post);
+
+                $built_in_definition = meza_get_acf_field_group_definition_by_key(
+                    meza_get_builtin_acf_field_group_definitions(),
+                    $post_key
+                );
+                if (is_array($built_in_definition)) {
+                    if ($post_local === 'php') {
+                        return 'built_in';
+                    }
+
+                    $definition_title = trim((string) ($built_in_definition['title'] ?? ''));
+                    $definition_fields_signature = meza_get_acf_field_group_fields_signature($built_in_definition);
+
+                    if (
+                        $post_title !== ''
+                        && $definition_title !== ''
+                        && $post_title === $definition_title
+                        && $post_fields_signature !== ''
+                        && $definition_fields_signature !== ''
+                        && $post_fields_signature === $definition_fields_signature
+                    ) {
+                        return 'built_in';
+                    }
+                }
+
+                $default_definition = meza_get_acf_field_group_definition_by_key(
+                    meza_get_acf_export_default_editable_acf_field_group_definitions(),
+                    $post_key
+                );
+                if (is_array($default_definition)) {
+                    $definition_title = trim((string) ($default_definition['title'] ?? ''));
+                    $definition_fields_signature = meza_get_acf_field_group_fields_signature($default_definition);
+
+                    if (
+                        $post_title !== ''
+                        && $definition_title !== ''
+                        && $post_title === $definition_title
+                        && $post_fields_signature !== ''
+                        && $definition_fields_signature !== ''
+                        && $post_fields_signature === $definition_fields_signature
+                    ) {
+                        return 'defaults';
+                    }
+                }
+
+                return 'custom';
+
+            case 'acf-post-type':
+                return is_array(meza_find_matching_acf_export_definition($post, 'post_type', meza_get_local_acf_post_type_definitions()))
+                    ? 'built_in'
+                    : 'custom';
+
+            case 'acf-taxonomy':
+                if (is_array(meza_find_matching_acf_export_definition($post, 'taxonomy', meza_get_default_editable_acf_taxonomy_definitions()))) {
+                    return 'defaults';
+                }
+
+                return is_array(meza_find_matching_acf_export_definition($post, 'taxonomy', meza_get_local_acf_taxonomy_definitions()))
+                    ? 'built_in'
+                    : 'custom';
+
+            case 'acf-ui-options-page':
+                return is_array(meza_find_matching_acf_export_definition(
+                    $post,
+                    'menu_slug',
+                    meza_get_shared_project_acf_options_pages(),
+                    meza_get_legacy_shared_project_acf_options_page_slug_map()
+                ))
+                    ? 'built_in'
+                    : 'custom';
+        }
+
+        return 'custom';
+    }
+
     function meza_get_acf_export_tool_definition_key_map(string $post_type, string $group): array
     {
         $definitions = [];
@@ -766,7 +1183,7 @@ if (!function_exists('meza_get_acf_export_tool_grouped_choice_maps')) {
         if ($group === 'built_in') {
             switch ($post_type) {
                 case 'acf-field-group':
-                    $definitions = meza_get_shared_project_acf_field_groups();
+                    $definitions = meza_get_builtin_acf_field_group_definitions();
                     break;
                 case 'acf-post-type':
                     $definitions = meza_get_local_acf_post_type_definitions();
@@ -794,7 +1211,7 @@ if (!function_exists('meza_get_acf_export_tool_grouped_choice_maps')) {
         } elseif ($group === 'defaults') {
             switch ($post_type) {
                 case 'acf-field-group':
-                    $definitions = meza_get_default_editable_acf_field_group_definitions();
+                    $definitions = meza_get_acf_export_default_editable_acf_field_group_definitions();
                     break;
                 case 'acf-taxonomy':
                     $definitions = meza_get_default_editable_acf_taxonomy_definitions();
@@ -828,28 +1245,41 @@ if (!function_exists('meza_get_acf_export_tool_grouped_choice_maps')) {
             'built_in' => [],
         ];
 
-        $default_key_map = meza_get_acf_export_tool_definition_key_map($post_type, 'defaults');
-        $built_in_key_map = meza_get_acf_export_tool_definition_key_map($post_type, 'built_in');
+        if (!function_exists('acf_get_internal_post_type_posts')) {
+            return $groups;
+        }
 
-        foreach (meza_get_acf_export_tool_choices($post_type) as $choice) {
-            $key = (string) ($choice['key'] ?? '');
-            $title = trim((string) ($choice['title'] ?? ''));
+        $key_prefix = meza_get_acf_export_tool_key_prefix($post_type);
 
-            if ($key === '' || $title === '') {
+        foreach ((array) acf_get_internal_post_type_posts($post_type) as $post) {
+            if (
+                !is_array($post)
+                || empty($post['key'])
+                || !is_string($post['key'])
+                || (
+                    function_exists('acf_internal_post_object_contains_valid_key')
+                    && !acf_internal_post_object_contains_valid_key($post)
+                )
+            ) {
                 continue;
             }
 
-            if (isset($built_in_key_map[$key])) {
-                $groups['built_in'][$key] = $title;
+            $key = (string) $post['key'];
+            if ($key_prefix === '' || strpos($key, $key_prefix) !== 0 || !meza_should_include_acf_export_tool_choice($post_type, $post)) {
                 continue;
             }
 
-            if (isset($default_key_map[$key])) {
-                $groups['defaults'][$key] = $title;
+            $title = trim((string) ($post['title'] ?? ''));
+            if ($title === '') {
                 continue;
             }
 
-            $groups['custom'][$key] = $title;
+            $group = meza_get_acf_export_tool_group_for_post($post_type, $post);
+            if (!isset($groups[$group])) {
+                $group = 'custom';
+            }
+
+            $groups[$group][$key] = $title;
         }
 
         return $groups;
@@ -935,7 +1365,7 @@ if (!function_exists('meza_register_acf_export_tool_local_definitions')) {
                 acf_add_local_internal_post_type($export_page, 'acf-ui-options-page');
             }
 
-            foreach (meza_get_shared_project_acf_field_groups() as $group) {
+            foreach (meza_get_builtin_acf_field_group_definitions() as $group) {
                 if (!is_array($group) || empty($group['key'])) {
                     continue;
                 }
@@ -1213,6 +1643,39 @@ if (!function_exists('meza_get_acf_location_rules_for_permalink_post_types_and_t
     }
 }
 
+if (!function_exists('meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies_excluding_posts')) {
+    function meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies_excluding_posts(): array
+    {
+        $location = [];
+
+        foreach (meza_get_permalink_enabled_post_type_slugs() as $post_type) {
+            if ($post_type === 'post') {
+                continue;
+            }
+
+            $location[] = [
+                [
+                    'param' => 'post_type',
+                    'operator' => '==',
+                    'value' => $post_type,
+                ],
+            ];
+        }
+
+        foreach (meza_get_permalink_enabled_taxonomy_slugs() as $taxonomy_slug) {
+            $location[] = [
+                [
+                    'param' => 'taxonomy',
+                    'operator' => '==',
+                    'value' => $taxonomy_slug,
+                ],
+            ];
+        }
+
+        return $location;
+    }
+}
+
 if (!function_exists('meza_get_post_explicit_social_share_image_id')) {
     function meza_get_post_explicit_social_share_image_id(int $post_id): int
     {
@@ -1408,8 +1871,8 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
                 'page_title'      => meza_get_business_information_page_title(),
                 'menu_title'      => meza_get_business_information_menu_label(),
                 'menu_slug'       => 'business-information',
-                'parent_slug'     => 'options-general.php',
-                'capability'      => 'manage_options',
+                'parent_slug'     => meza_get_shared_project_acf_options_page_parent_slug('business-information'),
+                'capability'      => meza_get_shared_project_acf_options_page_capability('business-information'),
                 'redirect'        => false,
                 'update_button'   => 'Update',
                 'updated_message' => 'Settings Updated',
@@ -1419,8 +1882,8 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
                 'page_title'      => meza_get_branding_page_title(),
                 'menu_title'      => 'Branding',
                 'menu_slug'       => 'branding',
-                'parent_slug'     => 'options-general.php',
-                'capability'      => 'manage_options',
+                'parent_slug'     => meza_get_shared_project_acf_options_page_parent_slug('branding'),
+                'capability'      => meza_get_shared_project_acf_options_page_capability('branding'),
                 'redirect'        => false,
                 'update_button'   => 'Update',
                 'updated_message' => 'Options Updated',
@@ -1594,16 +2057,16 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 'pagination' => 0,
                 'min' => 0,
                 'max' => 0,
-                'collapsed' => 'field_meza_business_location_name',
+                'collapsed' => 'field_meza_business_location_locality',
                 'button_label' => 'Add Location',
                 'rows_per_page' => 20,
                 'sub_fields' => [
                     [
-                        'key' => 'field_meza_business_location_name',
-                        'label' => 'Name',
-                        'name' => 'name',
+                        'key' => 'field_meza_business_location_locality',
+                        'label' => 'Locality',
+                        'name' => 'locality',
                         'aria-label' => '',
-                        'type' => 'text',
+                        'type' => 'taxonomy',
                         'instructions' => '',
                         'required' => 1,
                         'conditional_logic' => 0,
@@ -1612,12 +2075,15 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                             'class' => '',
                             'id' => '',
                         ],
-                        'default_value' => 'locations',
-                        'maxlength' => '',
+                        'taxonomy' => 'locality',
+                        'add_term' => 0,
+                        'save_terms' => 0,
+                        'load_terms' => 0,
+                        'return_format' => 'id',
+                        'field_type' => 'multi_select',
+                        'allow_null' => 0,
+                        'multiple' => 1,
                         'allow_in_bindings' => 0,
-                        'placeholder' => '',
-                        'prepend' => '',
-                        'append' => '',
                         'parent_repeater' => 'field_meza_business_locations',
                     ],
                     [
@@ -2361,6 +2827,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
 
         for ($index = 0; $index < $row_count; $index++) {
             $row = [
+                'locality' => get_option("options_locations_{$index}_locality", ''),
                 'name' => (string) get_option("options_locations_{$index}_name", ''),
                 'primary' => get_option("options_locations_{$index}_primary", ''),
                 'phone' => (string) get_option("options_locations_{$index}_phone", ''),
@@ -2387,6 +2854,10 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         }
 
         return array_values(array_filter($rows, static function (array $row): bool {
+            if (!empty($row['locality'])) {
+                return true;
+            }
+
             foreach (['name', 'phone', 'email', 'note'] as $key) {
                 if (trim((string) ($row[$key] ?? '')) !== '') {
                     return true;
@@ -3686,8 +4157,8 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             'query_var_name' => '',
             'default_term' => [
                 'default_term_enabled' => '1',
-                'name' => 'Fredericksburg',
-                'slug' => 'fredericksburg-va',
+                'name' => 'Fredericksburg, Virginia',
+                'slug' => 'fredericksburg-virginia',
             ],
             'sort' => 0,
             'meta_box' => 'default',
@@ -4326,6 +4797,38 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                             'bidirectional_target' => [],
                         ],
                         [
+                            'key' => 'field_681651f0f8f01',
+                            'label' => 'FAQ',
+                            'name' => 'faq',
+                            'aria-label' => '',
+                            'type' => 'relationship',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'post_type' => [
+                                'faq',
+                            ],
+                            'post_status' => [
+                                'publish',
+                            ],
+                            'taxonomy' => '',
+                            'filters' => [
+                                'search',
+                            ],
+                            'return_format' => 'id',
+                            'min' => 0,
+                            'max' => 1,
+                            'allow_in_bindings' => 0,
+                            'elements' => '',
+                            'bidirectional' => 0,
+                            'bidirectional_target' => [],
+                        ],
+                        [
                             'key' => 'field_69b03ff731afe',
                             'label' => 'ID',
                             'name' => 'id',
@@ -4779,7 +5282,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 ],
             ],
             'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
-            'menu_order' => 3,
+            'menu_order' => 6,
             'position' => 'normal',
             'style' => 'default',
             'label_placement' => 'top',
@@ -5225,8 +5728,8 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                     ],
                 ],
             ],
-            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
-            'menu_order' => 7,
+            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies_excluding_posts(),
+            'menu_order' => 3,
             'position' => 'normal',
             'style' => 'default',
             'label_placement' => 'top',
@@ -5568,6 +6071,69 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                 ],
             ],
             'menu_order' => 12,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_service_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_68de19d78cbcb',
+            'title' => 'Service',
+            'fields' => [
+                [
+                    'key' => 'field_68de19d72892a',
+                    'label' => 'Office',
+                    'name' => 'office',
+                    'aria-label' => '',
+                    'type' => 'relationship',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'post_type' => [
+                        'office',
+                    ],
+                    'post_status' => [
+                        'publish',
+                    ],
+                    'taxonomy' => '',
+                    'filters' => [
+                        'search',
+                    ],
+                    'return_format' => 'id',
+                    'min' => '',
+                    'max' => 1,
+                    'allow_in_bindings' => 0,
+                    'elements' => '',
+                    'bidirectional' => 0,
+                    'bidirectional_target' => [],
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'service',
+                    ],
+                ],
+            ],
+            'menu_order' => 0,
             'position' => 'normal',
             'style' => 'default',
             'label_placement' => 'top',
@@ -6761,7 +7327,7 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
                         ],
                     ],
                 ],
-                'menu_order' => 5,
+                'menu_order' => 9,
                 'position' => 'normal',
                 'style' => 'seamless',
                 'label_placement' => 'top',
@@ -7016,10 +7582,6 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
             meza_get_review_field_group_definition(),
         ];
 
-        if (meza_should_register_contact_locations_section_group()) {
-            $groups[] = meza_get_contact_locations_section_field_group_definition();
-        }
-
         foreach ($groups as $index => $group) {
             if (!is_array($group)) {
                 continue;
@@ -7105,6 +7667,32 @@ if (!function_exists('meza_seed_default_organization_type_terms')) {
 }
 add_action('init', 'meza_seed_default_organization_type_terms', 2);
 
+if (!function_exists('meza_migrate_legacy_default_locality_term')) {
+    function meza_migrate_legacy_default_locality_term(): void
+    {
+        $taxonomy = 'locality';
+        if (!taxonomy_exists($taxonomy)) {
+            return;
+        }
+
+        $current_term = get_term_by('slug', 'fredericksburg-virginia', $taxonomy);
+        if ($current_term instanceof WP_Term) {
+            return;
+        }
+
+        $legacy_term = get_term_by('slug', 'fredericksburg-va', $taxonomy);
+        if (!($legacy_term instanceof WP_Term)) {
+            return;
+        }
+
+        wp_update_term((int) $legacy_term->term_id, $taxonomy, [
+            'name' => 'Fredericksburg, Virginia',
+            'slug' => 'fredericksburg-virginia',
+        ]);
+    }
+}
+add_action('init', 'meza_migrate_legacy_default_locality_term', 1);
+
 if (!function_exists('meza_seed_default_locality_terms')) {
     function meza_seed_default_locality_terms(): void
     {
@@ -7113,12 +7701,12 @@ if (!function_exists('meza_seed_default_locality_terms')) {
             return;
         }
 
-        if (term_exists('fredericksburg-va', $taxonomy)) {
+        if (term_exists('fredericksburg-virginia', $taxonomy)) {
             return;
         }
 
-        wp_insert_term('Fredericksburg', $taxonomy, [
-            'slug' => 'fredericksburg-va',
+        wp_insert_term('Fredericksburg, Virginia', $taxonomy, [
+            'slug' => 'fredericksburg-virginia',
         ]);
     }
 }
@@ -7245,7 +7833,12 @@ if (!function_exists('meza_get_managed_acf_definition_identifier')) {
                 return sanitize_key((string) ($definition['taxonomy'] ?? ''));
 
             case 'options_pages':
-                return sanitize_key((string) ($definition['menu_slug'] ?? ''));
+                $slug = sanitize_key((string) ($definition['menu_slug'] ?? ''));
+                $legacy_slug_map = meza_get_legacy_shared_project_acf_options_page_slug_map();
+
+                return isset($legacy_slug_map[$slug])
+                    ? sanitize_key((string) $legacy_slug_map[$slug])
+                    : $slug;
         }
 
         return '';
@@ -7257,7 +7850,7 @@ if (!function_exists('meza_get_runtime_local_managed_acf_definitions_by_kind')) 
     {
         switch ($kind) {
             case 'field_groups':
-                return meza_get_shared_project_acf_field_groups();
+                return meza_get_builtin_acf_field_group_definitions();
 
             case 'post_types':
                 return meza_get_local_acf_post_type_definitions();
@@ -7344,7 +7937,7 @@ if (!function_exists('meza_get_managed_acf_definitions_by_kind')) {
         switch ($kind) {
             case 'field_groups':
                 return array_merge(
-                    meza_get_shared_project_acf_field_groups(),
+                    meza_get_builtin_acf_field_group_definitions(),
                     meza_get_default_editable_acf_field_group_definitions()
                 );
 
@@ -7365,9 +7958,8 @@ if (!function_exists('meza_get_managed_acf_definitions_by_kind')) {
 if (!function_exists('meza_get_managed_acf_definition_match')) {
     function meza_get_managed_acf_definition_match(string $kind, array $candidate): ?array
     {
-        $candidate_identifier = meza_get_managed_acf_definition_identifier($kind, $candidate);
-        if ($candidate_identifier === '') {
-            return null;
+        if ($kind === 'field_groups') {
+            return meza_get_matching_acf_field_group_definition($candidate, meza_get_managed_acf_definitions_by_kind($kind));
         }
 
         foreach (meza_get_managed_acf_definitions_by_kind($kind) as $definition) {
@@ -7375,7 +7967,10 @@ if (!function_exists('meza_get_managed_acf_definition_match')) {
                 continue;
             }
 
-            if (meza_get_managed_acf_definition_identifier($kind, $definition) === $candidate_identifier) {
+            if (
+                meza_get_managed_acf_definition_identifier($kind, $definition)
+                === meza_get_managed_acf_definition_identifier($kind, $candidate)
+            ) {
                 return $definition;
             }
         }
@@ -7831,7 +8426,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                         ],
                     ],
                 ],
-                'menu_order' => 5,
+                'menu_order' => 9,
                 'position' => 'normal',
                 'style' => 'default',
                 'label_placement' => 'top',
@@ -8740,6 +9335,274 @@ if (!function_exists('meza_get_acf_field_group_order_migration_version')) {
                 ['%d']
             );
         }
+    }
+
+    function meza_acf_migration_value_has_content($value): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+
+            if ($value === '' || $value === 'a:0:{}' || $value === 'N;') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function meza_migrate_acf_option_name_with_blank_target_merge(string $old_name, string $new_name): void
+    {
+        global $wpdb;
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT option_id, option_name, option_value FROM {$wpdb->options} WHERE option_name IN (%s, %s)",
+                $old_name,
+                '_' . $old_name
+            ),
+            ARRAY_A
+        );
+
+        foreach ($rows as $row) {
+            $current_name = (string) ($row['option_name'] ?? '');
+            $option_id = (int) ($row['option_id'] ?? 0);
+            $source_value = $row['option_value'] ?? null;
+
+            if ($option_id <= 0 || $current_name === '') {
+                continue;
+            }
+
+            $target_name = $current_name === '_' . $old_name ? '_' . $new_name : $new_name;
+            $target_row = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT option_id, option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+                    $target_name
+                ),
+                ARRAY_A
+            );
+
+            if (!is_array($target_row)) {
+                $wpdb->update(
+                    $wpdb->options,
+                    ['option_name' => $target_name],
+                    ['option_id' => $option_id],
+                    ['%s'],
+                    ['%d']
+                );
+                continue;
+            }
+
+            if (
+                strpos($current_name, '_') !== 0
+                && !meza_acf_migration_value_has_content($target_row['option_value'] ?? null)
+                && meza_acf_migration_value_has_content($source_value)
+            ) {
+                $wpdb->update(
+                    $wpdb->options,
+                    ['option_value' => $source_value],
+                    ['option_id' => (int) $target_row['option_id']],
+                    ['%s'],
+                    ['%d']
+                );
+            }
+        }
+    }
+
+    function meza_migrate_acf_meta_name_in_table_with_blank_target_merge(string $table, string $id_column, string $object_column, string $old_name, string $new_name): void
+    {
+        global $wpdb;
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT {$id_column} AS row_id, {$object_column} AS object_id, meta_key, meta_value FROM {$table} WHERE meta_key IN (%s, %s)",
+                $old_name,
+                '_' . $old_name
+            ),
+            ARRAY_A
+        );
+
+        foreach ($rows as $row) {
+            $row_id = (int) ($row['row_id'] ?? 0);
+            $object_id = (int) ($row['object_id'] ?? 0);
+            $current_key = (string) ($row['meta_key'] ?? '');
+            $source_value = $row['meta_value'] ?? null;
+
+            if ($row_id <= 0 || $object_id <= 0 || $current_key === '') {
+                continue;
+            }
+
+            $target_key = $current_key === '_' . $old_name ? '_' . $new_name : $new_name;
+            $target_row = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT {$id_column} AS row_id, meta_value FROM {$table} WHERE {$object_column} = %d AND meta_key = %s LIMIT 1",
+                    $object_id,
+                    $target_key
+                ),
+                ARRAY_A
+            );
+
+            if (!is_array($target_row)) {
+                $wpdb->update(
+                    $table,
+                    ['meta_key' => $target_key],
+                    [$id_column => $row_id],
+                    ['%s'],
+                    ['%d']
+                );
+                continue;
+            }
+
+            if (
+                strpos($current_key, '_') !== 0
+                && !meza_acf_migration_value_has_content($target_row['meta_value'] ?? null)
+                && meza_acf_migration_value_has_content($source_value)
+            ) {
+                $wpdb->update(
+                    $table,
+                    ['meta_value' => $source_value],
+                    [$id_column => (int) $target_row['row_id']],
+                    ['%s'],
+                    ['%d']
+                );
+            }
+        }
+    }
+
+    function meza_get_list_reviews_legacy_meta_name_map(): array
+    {
+        return [
+            'visibility_list-testimonials' => 'show_list-reviews',
+            'show_list-testimonials' => 'show_list-reviews',
+            'section_list-testimonials' => 'section_list-reviews',
+            'section_list-testimonials_headline' => 'section_list-reviews_headline',
+            'section_list-testimonials_display' => 'section_list-reviews_display',
+            'section_list-testimonials_subhead' => 'section_list-reviews_subhead',
+            'section_list-testimonials_description' => 'section_list-reviews_description',
+            'section_list-testimonials_link' => 'section_list-reviews_link',
+            'section_list-testimonials_id' => 'section_list-reviews_id',
+            'section_list-testimonials_action_text' => 'section_list-reviews_action_text',
+        ];
+    }
+
+    function meza_migrate_legacy_list_testimonials_meta_once(): void
+    {
+        $version = '2026-05-04-list-testimonials-meta-v1';
+        $option_name = 'meza_list_testimonials_meta_migration_version';
+
+        if ((string) get_option($option_name, '') === $version) {
+            return;
+        }
+
+        foreach (meza_get_list_reviews_legacy_meta_name_map() as $old_name => $new_name) {
+            meza_migrate_acf_option_name_with_blank_target_merge($old_name, $new_name);
+            meza_migrate_acf_meta_name_in_table_with_blank_target_merge($GLOBALS['wpdb']->postmeta, 'meta_id', 'post_id', $old_name, $new_name);
+            meza_migrate_acf_meta_name_in_table_with_blank_target_merge($GLOBALS['wpdb']->termmeta, 'meta_id', 'term_id', $old_name, $new_name);
+            meza_migrate_acf_meta_name_in_table_with_blank_target_merge($GLOBALS['wpdb']->usermeta, 'umeta_id', 'user_id', $old_name, $new_name);
+            meza_migrate_acf_meta_name_in_table_with_blank_target_merge($GLOBALS['wpdb']->commentmeta, 'meta_id', 'comment_id', $old_name, $new_name);
+        }
+
+        update_option($option_name, $version, false);
+    }
+
+    function meza_update_acf_reference_values_in_meta_table(string $table, string $id_column, array $reference_map): void
+    {
+        global $wpdb;
+
+        foreach ($reference_map as $meta_key => $expected_value) {
+            $rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT {$id_column} AS row_id, meta_value FROM {$table} WHERE meta_key = %s",
+                    $meta_key
+                ),
+                ARRAY_A
+            );
+
+            foreach ($rows as $row) {
+                $row_id = (int) ($row['row_id'] ?? 0);
+                $current_value = (string) ($row['meta_value'] ?? '');
+
+                if ($row_id <= 0 || $current_value === $expected_value) {
+                    continue;
+                }
+
+                $wpdb->update(
+                    $table,
+                    ['meta_value' => $expected_value],
+                    [$id_column => $row_id],
+                    ['%s'],
+                    ['%d']
+                );
+            }
+        }
+    }
+
+    function meza_update_acf_reference_values_in_options(array $reference_map): void
+    {
+        global $wpdb;
+
+        foreach ($reference_map as $option_name => $expected_value) {
+            $rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT option_id, option_value FROM {$wpdb->options} WHERE option_name = %s",
+                    $option_name
+                ),
+                ARRAY_A
+            );
+
+            foreach ($rows as $row) {
+                $option_id = (int) ($row['option_id'] ?? 0);
+                $current_value = (string) ($row['option_value'] ?? '');
+
+                if ($option_id <= 0 || $current_value === $expected_value) {
+                    continue;
+                }
+
+                $wpdb->update(
+                    $wpdb->options,
+                    ['option_value' => $expected_value],
+                    ['option_id' => $option_id],
+                    ['%s'],
+                    ['%d']
+                );
+            }
+        }
+    }
+
+    function meza_get_list_reviews_reference_value_map(): array
+    {
+        return [
+            '_show_list-reviews' => 'field_meza_show_list_reviews',
+            '_section_list-reviews' => 'field_meza_section_list_reviews',
+            '_section_list-reviews_headline' => 'field_meza_list_reviews_headline',
+            '_section_list-reviews_display' => meza_get_section_sub_field_stable_key('section_list-reviews', 'display'),
+            '_section_list-reviews_subhead' => 'field_meza_list_reviews_subhead',
+            '_section_list-reviews_description' => meza_get_section_sub_field_stable_key('section_list-reviews', 'description'),
+            '_section_list-reviews_link' => 'field_meza_list_reviews_link',
+            '_section_list-reviews_id' => 'field_meza_list_reviews_id',
+        ];
+    }
+
+    function meza_sync_list_reviews_reference_values_once(): void
+    {
+        $version = '2026-05-04-list-reviews-reference-values-v1';
+        $option_name = 'meza_list_reviews_reference_values_sync_version';
+
+        if ((string) get_option($option_name, '') === $version) {
+            return;
+        }
+
+        $reference_map = meza_get_list_reviews_reference_value_map();
+        meza_update_acf_reference_values_in_options($reference_map);
+        meza_update_acf_reference_values_in_meta_table($GLOBALS['wpdb']->postmeta, 'meta_id', $reference_map);
+        meza_update_acf_reference_values_in_meta_table($GLOBALS['wpdb']->termmeta, 'meta_id', $reference_map);
+        meza_update_acf_reference_values_in_meta_table($GLOBALS['wpdb']->usermeta, 'umeta_id', $reference_map);
+        meza_update_acf_reference_values_in_meta_table($GLOBALS['wpdb']->commentmeta, 'meta_id', $reference_map);
+
+        update_option($option_name, $version, false);
     }
 
     function meza_migrate_visibility_field_to_show(array $field): void
@@ -9735,7 +10598,7 @@ if (!function_exists('meza_is_business_information_options_screen')) {
         }
 
         $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
-        return $page === 'branding';
+        return $page === 'business-information';
     }
 }
 
@@ -9745,6 +10608,8 @@ add_filter('acf/ui_options_page/registration_args', function (array $args, array
     if ($menu_slug === 'branding') {
         $args['page_title'] = meza_get_branding_page_title();
         $args['menu_title'] = 'Branding';
+        $args['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('branding');
+        $args['capability'] = meza_get_shared_project_acf_options_page_capability('branding');
 
         return $args;
     }
@@ -9752,6 +10617,8 @@ add_filter('acf/ui_options_page/registration_args', function (array $args, array
     if ($menu_slug === 'business-information') {
         $args['page_title'] = meza_get_business_information_page_title();
         $args['menu_title'] = meza_get_business_information_menu_label();
+        $args['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('business-information');
+        $args['capability'] = meza_get_shared_project_acf_options_page_capability('business-information');
 
         return $args;
     }
@@ -9805,13 +10672,16 @@ add_filter('acf/get_options_page', function ($page, $slug) {
             ? meza_get_branding_admin_page_title()
             : meza_get_branding_page_title();
         $page['menu_title'] = 'Branding';
+        $page['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('branding');
+        $page['capability'] = meza_get_shared_project_acf_options_page_capability('branding');
     } elseif ($slug === 'business-information') {
         $page['page_title'] = $current_page_slug === 'business-information'
             ? meza_get_business_information_admin_page_title()
             : meza_get_business_information_page_title();
         $page['menu_title'] = meza_get_business_information_menu_label();
         $page['menu_slug'] = 'business-information';
-        $page['capability'] = 'manage_options';
+        $page['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('business-information');
+        $page['capability'] = meza_get_shared_project_acf_options_page_capability('business-information');
     } elseif ($slug === 'crm') {
         $page['page_title'] = $current_page_slug === 'crm'
             ? meza_get_crm_admin_page_title()
@@ -9855,7 +10725,8 @@ add_filter('acf/get_options_pages', function ($pages) {
         $page['menu_slug'] = $current_slug;
         $page['page_title'] = meza_get_business_information_page_title();
         $page['menu_title'] = meza_get_business_information_menu_label();
-        $page['capability'] = 'manage_options';
+        $page['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug($current_slug);
+        $page['capability'] = meza_get_shared_project_acf_options_page_capability($current_slug);
         $pages[$current_slug] = $page;
         unset($pages[$legacy_slug]);
     }
@@ -9903,7 +10774,7 @@ add_action('admin_init', function (): void {
         return;
     }
 
-    wp_safe_redirect(admin_url('options-general.php?page=' . $legacy_slug_map[$page]));
+    wp_safe_redirect(admin_url(meza_get_shared_project_acf_options_page_menu_slug($legacy_slug_map[$page])));
     exit;
 }, 1);
 
@@ -9917,7 +10788,7 @@ add_filter('parent_file', function ($parent_file) {
         return $parent_file;
     }
 
-    return 'options-general.php';
+    return meza_get_shared_project_acf_options_page_parent_slug($page);
 }, 20);
 
 add_filter('submenu_file', function ($submenu_file) {
@@ -9930,7 +10801,7 @@ add_filter('submenu_file', function ($submenu_file) {
         return $submenu_file;
     }
 
-    return $page;
+    return meza_get_shared_project_acf_options_page_menu_slug($page);
 }, 20);
 
 if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
@@ -9938,165 +10809,106 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
     {
         global $submenu;
 
-        if (!isset($submenu['options-general.php']) || !is_array($submenu['options-general.php'])) {
-            return;
-        }
-
         $acf_options_available = meza_shared_project_acf_options_are_available();
-        $is_site_manager = function_exists('meza_is_site_manager_user') && meza_is_site_manager_user(wp_get_current_user());
-        $menu_capability = $is_site_manager ? 'read' : 'manage_options';
+        $branding_capability = meza_get_shared_project_acf_options_page_capability('branding');
+        $business_information_capability = meza_get_shared_project_acf_options_page_capability('business-information');
 
-        $business_information_item = null;
-        $branding_item = null;
-        $crm_item = null;
-        $business_information_menu_label = meza_get_business_information_menu_label();
-        $business_information_page_title = meza_get_business_information_admin_page_title();
-        $expected_items = [
-            'business-information' => [$business_information_menu_label, $menu_capability, 'business-information', $business_information_page_title],
-            'branding' => ['Branding', $menu_capability, 'branding', meza_get_branding_admin_page_title()],
-            'crm' => ['CRM Integration', 'manage_options', 'crm', meza_get_crm_admin_page_title()],
+        $business_information_item = [
+            meza_get_business_information_menu_label(),
+            $business_information_capability,
+            meza_get_shared_project_acf_options_page_menu_slug('business-information'),
+            meza_get_business_information_admin_page_title(),
         ];
-        $allowed_expected_item_slugs = array_keys($expected_items);
+        $branding_item = [
+            'Branding',
+            $branding_capability,
+            meza_get_shared_project_acf_options_page_menu_slug('branding'),
+            meza_get_branding_admin_page_title(),
+        ];
+        $crm_item = [
+            'CRM Integration',
+            'manage_options',
+            meza_get_shared_project_acf_options_page_menu_slug('crm'),
+            meza_get_crm_admin_page_title(),
+        ];
 
-        if ($is_site_manager) {
-            if (function_exists('meza_get_site_manager_allowed_settings_page_slugs')) {
-                $allowed_expected_item_slugs = array_values(array_intersect(
-                    $allowed_expected_item_slugs,
-                    array_map('sanitize_key', meza_get_site_manager_allowed_settings_page_slugs())
-                ));
+        $matching_slugs = [
+            'business-information',
+            'admin.php?page=business-information',
+            'index.php?page=business-information',
+            'options-general.php?page=business-information',
+            'branding',
+            'admin.php?page=branding',
+            'themes.php?page=branding',
+            'options-general.php?page=branding',
+            'crm',
+            'admin.php?page=crm',
+            'options-general.php?page=crm',
+        ];
+
+        foreach (['index.php', 'themes.php', 'options-general.php'] as $parent_slug) {
+            if (!isset($submenu[$parent_slug]) || !is_array($submenu[$parent_slug])) {
+                $submenu[$parent_slug] = [];
             }
-        }
 
-        foreach ($submenu['options-general.php'] as $index => $item) {
-            if (!is_array($item)) {
-                continue;
-            }
+            $submenu[$parent_slug] = array_values(array_filter(
+                $submenu[$parent_slug],
+                static function ($item) use ($matching_slugs): bool {
+                    if (!is_array($item)) {
+                        return false;
+                    }
 
-            $slug = (string) ($item[2] ?? '');
-
-            if (in_array($slug, ['business-information', 'admin.php?page=business-information', 'options-general.php?page=business-information'], true)) {
-                if (!$acf_options_available) {
-                    unset($submenu['options-general.php'][$index]);
-                    continue;
+                    $slug = (string) ($item[2] ?? '');
+                    return !in_array($slug, $matching_slugs, true);
                 }
-
-                $submenu['options-general.php'][$index][0] = $business_information_menu_label;
-                $submenu['options-general.php'][$index][1] = $menu_capability;
-                $submenu['options-general.php'][$index][2] = 'business-information';
-                if (isset($submenu['options-general.php'][$index][3])) {
-                    $submenu['options-general.php'][$index][3] = $business_information_page_title;
-                }
-
-                $business_information_item = $submenu['options-general.php'][$index];
-                unset($submenu['options-general.php'][$index]);
-                continue;
-            }
-
-            if (in_array($slug, ['crm', 'admin.php?page=crm', 'options-general.php?page=crm'], true)) {
-                if (!$acf_options_available) {
-                    unset($submenu['options-general.php'][$index]);
-                    continue;
-                }
-
-                $submenu['options-general.php'][$index][0] = 'CRM Integration';
-                $submenu['options-general.php'][$index][2] = 'crm';
-                if (isset($submenu['options-general.php'][$index][3])) {
-                    $submenu['options-general.php'][$index][3] = meza_get_crm_admin_page_title();
-                }
-
-                $crm_item = $submenu['options-general.php'][$index];
-                unset($submenu['options-general.php'][$index]);
-                continue;
-            }
-
-            if (!in_array($slug, ['branding', 'admin.php?page=branding', 'options-general.php?page=branding'], true)) {
-                continue;
-            }
-
-            if (!$acf_options_available) {
-                unset($submenu['options-general.php'][$index]);
-                continue;
-            }
-
-            $submenu['options-general.php'][$index][0] = 'Branding';
-            $submenu['options-general.php'][$index][1] = $menu_capability;
-            $submenu['options-general.php'][$index][2] = 'branding';
-            if (isset($submenu['options-general.php'][$index][3])) {
-                $submenu['options-general.php'][$index][3] = meza_get_branding_admin_page_title();
-            }
-
-            $branding_item = $submenu['options-general.php'][$index];
-            unset($submenu['options-general.php'][$index]);
+            ));
         }
 
         if (!$acf_options_available) {
-            $submenu['options-general.php'] = array_values($submenu['options-general.php']);
             return;
         }
 
-        if ($business_information_item === null && in_array('business-information', $allowed_expected_item_slugs, true)) {
-            $business_information_item = $expected_items['business-information'];
-        }
-
-        if ($branding_item === null && in_array('branding', $allowed_expected_item_slugs, true)) {
-            $branding_item = $expected_items['branding'];
-        }
-
-        if ($crm_item === null && in_array('crm', $allowed_expected_item_slugs, true)) {
-            $crm_item = $expected_items['crm'];
-        }
-
-        $submenu['options-general.php'] = array_values($submenu['options-general.php']);
-
-        $insert_index = 1;
-        foreach ($submenu['options-general.php'] as $index => $item) {
+        $dashboard_insert_index = count($submenu['index.php']);
+        foreach ($submenu['index.php'] as $index => $item) {
             if (!is_array($item)) {
                 continue;
             }
 
             $slug = (string) ($item[2] ?? '');
-            if ($slug === 'options-writing.php') {
-                $insert_index = $index;
+            if ($slug === MEZA_ACTIVITY_LOG_PAGE_SLUG) {
+                $dashboard_insert_index = $index;
                 break;
             }
         }
+        array_splice($submenu['index.php'], $dashboard_insert_index, 0, [$business_information_item]);
 
-        $items_to_insert = array_values(array_filter([
-            $business_information_item,
-            $branding_item,
-            $crm_item,
-        ], 'is_array'));
+        $appearance_insert_index = 0;
+        foreach ($submenu['themes.php'] as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
 
-        if ($items_to_insert === []) {
-            return;
+            if ((string) ($item[2] ?? '') === 'themes.php') {
+                $appearance_insert_index = $index;
+                break;
+            }
+
+            $appearance_insert_index = $index + 1;
         }
+        array_splice($submenu['themes.php'], $appearance_insert_index, 0, [$branding_item]);
 
-        array_splice($submenu['options-general.php'], $insert_index, 0, $items_to_insert);
+        $settings_insert_index = 1;
+        foreach ($submenu['options-general.php'] as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
 
-        if ($is_site_manager) {
-            $desired_order = [
-                $business_information_menu_label,
-                'Branding',
-                'Privacy',
-                'CRM Integration',
-            ];
-
-            usort($submenu['options-general.php'], static function (array $a, array $b) use ($desired_order): int {
-                $label_a = trim(wp_strip_all_tags((string) ($a[0] ?? '')));
-                $label_b = trim(wp_strip_all_tags((string) ($b[0] ?? '')));
-                $index_a = array_search($label_a, $desired_order, true);
-                $index_b = array_search($label_b, $desired_order, true);
-
-                $index_a = ($index_a === false) ? PHP_INT_MAX : (int) $index_a;
-                $index_b = ($index_b === false) ? PHP_INT_MAX : (int) $index_b;
-
-                if ($index_a === $index_b) {
-                    return strnatcasecmp($label_a, $label_b);
-                }
-
-                return $index_a <=> $index_b;
-            });
+            if ((string) ($item[2] ?? '') === 'options-writing.php') {
+                $settings_insert_index = $index;
+                break;
+            }
         }
+        array_splice($submenu['options-general.php'], $settings_insert_index, 0, [$crm_item]);
     }
 }
 
@@ -10509,7 +11321,7 @@ add_action('acf/init', function (): void {
         }
     }
 
-    foreach (meza_get_shared_project_acf_field_groups() as $group) {
+    foreach (meza_get_builtin_acf_field_group_definitions() as $group) {
         if (
             !is_array($group)
             || empty($group['key'])
@@ -10882,13 +11694,13 @@ if (!function_exists('meza_sync_section_field_group_menu_order')) {
     {
         return [
             'Hero Section' => 1,
-            'List Reviews Section' => 3,
-            'List Brands Section' => 5,
-            'List Services Section' => 7,
-            'List Products Section' => 8,
+            'List Services Section' => 3,
+            'List Products Section' => 4,
+            'List Reviews Section' => 6,
+            'List Brands Section' => 8,
             'Gallery Section' => 10,
             'List Partners Section' => 11,
-            'List Profiles Section' => 12,
+            'List Profiles Section' => 9,
             'Benefits Section' => 13,
             'List Localities Section' => 14,
             'Form Section' => 16,
@@ -10967,7 +11779,9 @@ add_action('acf/init', 'meza_sync_section_field_group_menu_order', 23);
 
 add_action('acf/init', 'meza_seed_default_organization_type_terms', 25);
 add_action('acf/update_post_type', 'meza_attach_locality_to_new_custom_acf_post_type', 20);
-add_action('init', 'meza_reset_legacy_section_text_defaults_once', 30);
+add_action('init', 'meza_migrate_legacy_list_testimonials_meta_once', 29);
+add_action('init', 'meza_sync_list_reviews_reference_values_once', 30);
+add_action('init', 'meza_reset_legacy_section_text_defaults_once', 31);
 
 if (!function_exists('meza_refresh_seeded_acf_field_groups_after_business_information_save')) {
     function meza_refresh_seeded_acf_field_groups_after_business_information_save($post_id): void
@@ -11189,6 +12003,10 @@ add_action('acf/include_admin_tools', function (): void {
                                     'value' => $selected,
                                     'toggle' => true,
                                     'choices' => $grouped_choices[$group_key],
+                                    'wrapper' => [
+                                        'class' => 'meza-acf-export-bucket',
+                                        'data-group-key' => $group_key,
+                                    ],
                                 ]
                             );
                         }
@@ -11224,6 +12042,111 @@ add_action('admin_head', function (): void {
         .acf-admin-page .acf-checkbox-list.acf-bl li:last-of-type {
             margin-bottom: 8px;
         }
+
+        #acf-admin-tools .meza-acf-export-bucket > .acf-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        #acf-admin-tools .meza-acf-export-bucket > .acf-label label {
+            margin: 0;
+        }
+
+        #acf-admin-tools .meza-acf-export-bucket-toggle {
+            border: 0;
+            background: transparent;
+            color: #2271b1;
+            cursor: pointer;
+            font: inherit;
+            padding: 0;
+            text-decoration: underline;
+        }
+
+        #acf-admin-tools .meza-acf-export-bucket-toggle:hover,
+        #acf-admin-tools .meza-acf-export-bucket-toggle:focus {
+            color: #135e96;
+        }
+
+        #acf-admin-tools .meza-acf-export-bucket.is-collapsed > .acf-input {
+            display: none;
+        }
     </style>
+    <script>
+        (() => {
+            const storageKeyPrefix = 'mezaAcfExportBucketState:v1:';
+
+            const getBucketStorageKey = (bucket, groupKey) => {
+                const sectionField = bucket.closest('.acf-field');
+                const sectionLabel = sectionField instanceof HTMLElement
+                    ? ((sectionField.querySelector(':scope > .acf-label > label')?.textContent) || '').trim()
+                    : '';
+
+                return storageKeyPrefix + sectionLabel + ':' + groupKey;
+            };
+
+            const initBucketToggles = () => {
+                const buckets = document.querySelectorAll('#acf-admin-tools .meza-acf-export-bucket');
+
+                buckets.forEach((bucket) => {
+                    if (!(bucket instanceof HTMLElement) || bucket.dataset.mezaBucketToggleReady === '1') {
+                        return;
+                    }
+
+                    const labelWrap = bucket.querySelector(':scope > .acf-label');
+                    const label = labelWrap ? labelWrap.querySelector('label') : null;
+                    const inputWrap = bucket.querySelector(':scope > .acf-input');
+
+                    if (!(labelWrap instanceof HTMLElement) || !(label instanceof HTMLElement) || !(inputWrap instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'meza-acf-export-bucket-toggle';
+                    const groupKey = bucket.dataset.groupKey || '';
+                    const storageKey = getBucketStorageKey(bucket, groupKey);
+
+                    const syncButtonLabel = () => {
+                        button.textContent = bucket.classList.contains('is-collapsed') ? 'Expand' : 'Collapse';
+                    };
+
+                    button.addEventListener('click', () => {
+                        bucket.classList.toggle('is-collapsed');
+                        try {
+                            window.localStorage.setItem(storageKey, bucket.classList.contains('is-collapsed') ? 'collapsed' : 'expanded');
+                        } catch (error) {
+                        }
+                        syncButtonLabel();
+                    });
+
+                    let savedState = '';
+                    try {
+                        savedState = window.localStorage.getItem(storageKey) || '';
+                    } catch (error) {
+                    }
+
+                    if (savedState === 'collapsed') {
+                        bucket.classList.add('is-collapsed');
+                    } else if (savedState === 'expanded') {
+                        bucket.classList.remove('is-collapsed');
+                    } else if (groupKey === 'defaults' || groupKey === 'built_in') {
+                        bucket.classList.add('is-collapsed');
+                    }
+
+                    syncButtonLabel();
+                    labelWrap.appendChild(button);
+                    bucket.dataset.mezaBucketToggleReady = '1';
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initBucketToggles, { once: true });
+            } else {
+                initBucketToggles();
+            }
+        })();
+    </script>
 <?php
 }, 20);
