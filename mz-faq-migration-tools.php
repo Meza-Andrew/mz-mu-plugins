@@ -4,7 +4,7 @@
  * Plugin Name: MZ FAQ Migration Tools (MU)
  * Description: Admin-only tools to migrate legacy section_faq data into built-in FAQ posts and FAQ sections.
  * Author: Meza
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if (!defined('ABSPATH')) {
@@ -38,6 +38,11 @@ if (!defined('MZFQMT_SECTION_GROUP_FIELD_KEY')) {
 if (!function_exists('mzfmt_user_can_access_tool')) {
     function mzfmt_user_can_access_tool(): bool
     {
+        $admin_access_enabled = (bool) apply_filters('mzfmt_admin_tool_enabled', false);
+        if (!$admin_access_enabled) {
+            return false;
+        }
+
         $user = wp_get_current_user();
         $user_login = strtolower((string) ($user->user_login ?? ''));
 

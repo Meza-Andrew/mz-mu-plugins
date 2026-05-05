@@ -4,7 +4,7 @@
  * Plugin Name: MZ Form Migration Tools (MU)
  * Description: Admin-only tools to migrate legacy page section_form data into form posts and clean/reset form records.
  * Author: Meza
- * Version: 1.0.1
+ * Version: 1.0.7
  */
 
 if (!defined('ABSPATH')) {
@@ -140,6 +140,482 @@ if (!function_exists('mzf_mt_source_form_slug_base')) {
         }
 
         return sanitize_title($source_slug . '-' . $family);
+    }
+}
+
+if (!function_exists('mzf_mt_term_object_id')) {
+    function mzf_mt_term_object_id(WP_Term $term): string
+    {
+        return $term->taxonomy . '_' . (int) $term->term_id;
+    }
+}
+
+if (!function_exists('mzf_mt_term_should_show_form')) {
+    function mzf_mt_term_should_show_form(WP_Term $term): bool
+    {
+        $show_form = get_term_meta($term->term_id, 'show_form', true);
+        if ($show_form !== '') {
+            return (bool) $show_form;
+        }
+
+        $legacy_visibility = get_term_meta($term->term_id, 'visibility_form', true);
+        if ($legacy_visibility !== '') {
+            return (bool) $legacy_visibility;
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('mzf_mt_term_form_family')) {
+    function mzf_mt_term_form_family(WP_Term $term): string
+    {
+        $family = '';
+
+        if ($term->taxonomy === 'locality') {
+            $family = 'quote';
+        } elseif ($term->taxonomy === 'sign_type') {
+            $family = 'sign-quote';
+        }
+
+        $family = apply_filters('mzf_mt_term_form_family', $family, $term);
+        $family = sanitize_key((string) $family);
+
+        return $family !== '' ? $family : 'contact';
+    }
+}
+
+if (!function_exists('mzf_mt_find_form_by_family')) {
+    function mzf_mt_find_form_by_family(string $family): int
+    {
+        $family = sanitize_title($family);
+        if ($family === '' || !mzf_mt_form_post_type_ready()) {
+            return 0;
+        }
+
+        $by_slug = get_page_by_path($family, OBJECT, 'form');
+        if ($by_slug instanceof WP_Post) {
+            return (int) $by_slug->ID;
+        }
+
+        $by_family = get_posts([
+            'post_type' => 'form',
+            'post_status' => ['publish', 'draft', 'pending', 'private', 'future'],
+            'posts_per_page' => 1,
+            'fields' => 'ids',
+            'meta_query' => [
+                [
+                    'key' => '_mzf_form_family',
+                    'value' => $family,
+                    'compare' => '=',
+                ],
+            ],
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'no_found_rows' => true,
+            'suppress_filters' => true,
+        ]);
+        if (!empty($by_family)) {
+            return (int) $by_family[0];
+        }
+
+        if (function_exists('mzf_slug_matches_family')) {
+            $forms = get_posts([
+                'post_type' => 'form',
+                'post_status' => ['publish', 'draft', 'pending', 'private', 'future'],
+                'posts_per_page' => -1,
+                'fields' => 'ids',
+                'orderby' => 'ID',
+                'order' => 'ASC',
+                'no_found_rows' => true,
+                'suppress_filters' => true,
+            ]);
+
+            foreach ((array) $forms as $form_id) {
+                $form_slug = sanitize_title((string) get_post_field('post_name', (int) $form_id));
+                if ($form_slug !== '' && mzf_slug_matches_family($form_slug, $family)) {
+                    return (int) $form_id;
+                }
+            }
+        }
+
+        return 0;
+    }
+}
+
+if (!function_exists('mzf_mt_normalize_relationship_value_to_id')) {
+    function mzf_mt_normalize_relationship_value_to_id($value): int
+    {
+        if (is_array($value)) {
+            if ($value === []) {
+                return 0;
+            }
+
+            $first = reset($value);
+            if ($first instanceof WP_Post) {
+                return (int) $first->ID;
+            }
+
+            return (int) $first;
+        }
+
+        if ($value instanceof WP_Post) {
+            return (int) $value->ID;
+        }
+
+        return (int) $value;
+    }
+}
+
+if (!function_exists('mzf_mt_backfill_term_section_form_relationship_once')) {
+    function mzf_mt_backfill_term_section_form_relationship_once(): void
+    {
+        $version = '2026-05-04-term-section-form-relationship-v2';
+        $option_name = 'mzf_mt_term_section_form_relationship_version';
+
+        if ((string) get_option($option_name, '') === $version) {
+            return;
+        }
+
+        if (!taxonomy_exists('locality') && !taxonomy_exists('sign_type')) {
+            return;
+        }
+
+        if (!mzf_mt_form_post_type_ready()) {
+            return;
+        }
+
+        $did_update = false;
+
+        foreach (['locality', 'sign_type'] as $taxonomy) {
+            if (!taxonomy_exists($taxonomy)) {
+                continue;
+            }
+
+            $terms = get_terms([
+                'taxonomy' => $taxonomy,
+                'hide_empty' => false,
+            ]);
+
+            if (is_wp_error($terms) || empty($terms)) {
+                continue;
+            }
+
+            foreach ($terms as $term) {
+                if (!($term instanceof WP_Term) || !mzf_mt_term_should_show_form($term)) {
+                    continue;
+                }
+
+                $existing_form_id = mzf_mt_normalize_relationship_value_to_id(get_term_meta($term->term_id, 'section_form_form', true));
+                $section_form = get_term_meta($term->term_id, 'section_form', true);
+                if (!is_array($section_form)) {
+                    $section_form = [];
+                }
+
+                if ($existing_form_id <= 0) {
+                    $existing_form_id = mzf_mt_normalize_relationship_value_to_id($section_form['form'] ?? 0);
+                }
+
+                if ($existing_form_id > 0) {
+                    continue;
+                }
+
+                $family = mzf_mt_term_form_family($term);
+                $form_id = mzf_mt_find_form_by_family($family);
+                if ($form_id <= 0) {
+                    continue;
+                }
+
+                $section_form['form'] = $form_id;
+                $term_object_id = mzf_mt_term_object_id($term);
+
+                if (function_exists('update_field')) {
+                    update_field('field_69b03fca31afa', 1, $term_object_id);
+                    update_field('field_69b03fdc31afb', $section_form, $term_object_id);
+                }
+
+                update_term_meta($term->term_id, 'show_form', 1);
+                update_term_meta($term->term_id, 'visibility_form', 1);
+                update_term_meta($term->term_id, 'section_form_form', $form_id);
+                update_term_meta($term->term_id, 'section_form', $section_form);
+                update_term_meta($term->term_id, '_show_form', 'field_69b03fca31afa');
+                update_term_meta($term->term_id, '_section_form', 'field_69b03fdc31afb');
+                update_term_meta($term->term_id, '_section_form_form', 'field_697ffe37abb58');
+
+                $did_update = true;
+            }
+        }
+
+        if ($did_update) {
+            update_option($option_name, $version, false);
+        }
+    }
+}
+
+if (!function_exists('mzf_mt_sign_type_reviews_default_headline')) {
+    function mzf_mt_sign_type_reviews_default_headline(WP_Term $term): string
+    {
+        $name = trim((string) $term->name);
+        if ($name === '') {
+            $name = trim(str_replace(['-', '_'], ' ', (string) $term->slug));
+        }
+
+        return $name !== '' ? sprintf('What %s clients are saying', $name) : 'What our clients are saying';
+    }
+}
+
+if (!function_exists('mzf_mt_sign_type_reviews_default_subhead')) {
+    function mzf_mt_sign_type_reviews_default_subhead(): string
+    {
+        return 'Real reviews from clients who trust our team for reliable service, quality craftsmanship, and clear communication.';
+    }
+}
+
+if (!function_exists('mzf_mt_backfill_sign_type_section_editor_defaults_once')) {
+    function mzf_mt_backfill_sign_type_section_editor_defaults_once(): void
+    {
+        $version = '2026-05-04-sign-type-section-editor-defaults-v1';
+        $option_name = 'mzf_mt_sign_type_section_editor_defaults_version';
+
+        if ((string) get_option($option_name, '') === $version) {
+            return;
+        }
+
+        if (!taxonomy_exists('sign_type')) {
+            return;
+        }
+
+        $terms = get_terms([
+            'taxonomy' => 'sign_type',
+            'hide_empty' => false,
+        ]);
+
+        if (is_wp_error($terms) || empty($terms)) {
+            return;
+        }
+
+        $did_update = false;
+
+        foreach ($terms as $term) {
+            if (!($term instanceof WP_Term)) {
+                continue;
+            }
+
+            $term_object_id = mzf_mt_term_object_id($term);
+
+            $section_form = get_term_meta($term->term_id, 'section_form', true);
+            $section_form = is_array($section_form) ? $section_form : [];
+            $form_id = mzf_mt_normalize_relationship_value_to_id($section_form['form'] ?? 0);
+            if ($form_id <= 0) {
+                $form_id = mzf_mt_normalize_relationship_value_to_id(get_term_meta($term->term_id, 'section_form_form', true));
+            }
+
+            $form_post = $form_id > 0 ? get_post($form_id) : null;
+            $existing_form_headline = trim((string) get_term_meta($term->term_id, 'section_form_headline', true));
+
+            if ($existing_form_headline === '' && $form_post instanceof WP_Post) {
+                $headline = trim((string) $form_post->post_title);
+                if ($headline !== '') {
+                    $section_form['headline'] = $headline;
+                    update_term_meta($term->term_id, 'section_form_headline', $headline);
+                    update_term_meta($term->term_id, '_section_form_headline', 'field_69b03fe631afc');
+                    if (function_exists('update_field')) {
+                        update_field('field_69b03fdc31afb', $section_form, $term_object_id);
+                    } else {
+                        update_term_meta($term->term_id, 'section_form', $section_form);
+                        update_term_meta($term->term_id, '_section_form', 'field_69b03fdc31afb');
+                    }
+                    $did_update = true;
+                }
+            }
+
+            $reviews_visible = (string) get_term_meta($term->term_id, 'show_list-reviews', true) === '1'
+                || (string) get_term_meta($term->term_id, 'visibility_list-reviews', true) === '1';
+
+            if (!$reviews_visible) {
+                continue;
+            }
+
+            $existing_reviews_headline = trim((string) get_term_meta($term->term_id, 'section_list-reviews_headline', true));
+            $existing_reviews_subhead = trim((string) get_term_meta($term->term_id, 'section_list-reviews_subhead', true));
+            $section_reviews = get_term_meta($term->term_id, 'section_list-reviews', true);
+            $section_reviews = is_array($section_reviews) ? $section_reviews : [];
+            $section_reviews_changed = false;
+
+            if ($existing_reviews_headline === '') {
+                $headline = mzf_mt_sign_type_reviews_default_headline($term);
+                if ($headline !== '') {
+                    $section_reviews['headline'] = $headline;
+                    update_term_meta($term->term_id, 'section_list-reviews_headline', $headline);
+                    update_term_meta($term->term_id, '_section_list-reviews_headline', 'field_meza_list_reviews_headline');
+                    $section_reviews_changed = true;
+                }
+            }
+
+            if ($existing_reviews_subhead === '') {
+                $subhead = mzf_mt_sign_type_reviews_default_subhead();
+                $section_reviews['subhead'] = $subhead;
+                update_term_meta($term->term_id, 'section_list-reviews_subhead', $subhead);
+                update_term_meta($term->term_id, '_section_list-reviews_subhead', 'field_meza_list_reviews_subhead');
+                $section_reviews_changed = true;
+            }
+
+            if ($section_reviews_changed) {
+                if (function_exists('update_field')) {
+                    update_field('field_meza_section_list_reviews', $section_reviews, $term_object_id);
+                } else {
+                    update_term_meta($term->term_id, 'section_list-reviews', $section_reviews);
+                    update_term_meta($term->term_id, '_section_list-reviews', 'field_meza_section_list_reviews');
+                }
+                $did_update = true;
+            }
+        }
+
+        if ($did_update) {
+            update_option($option_name, $version, false);
+        }
+    }
+}
+
+if (!function_exists('mzf_mt_page_reviews_default_headline')) {
+    function mzf_mt_page_reviews_default_headline(int $post_id): string
+    {
+        $slug = sanitize_key((string) get_post_field('post_name', $post_id));
+        if ($slug === 'home') {
+            return 'What our clients are saying';
+        }
+
+        $title = trim((string) get_the_title($post_id));
+        return $title !== '' ? sprintf('What our %s clients are saying', $title) : 'What our clients are saying';
+    }
+}
+
+if (!function_exists('mzf_mt_page_reviews_default_subhead')) {
+    function mzf_mt_page_reviews_default_subhead(): string
+    {
+        return 'Real reviews from clients who trust our team for reliable service, quality craftsmanship, and clear communication.';
+    }
+}
+
+if (!function_exists('mzf_mt_backfill_page_section_editor_defaults_once')) {
+    function mzf_mt_backfill_page_section_editor_defaults_once(): void
+    {
+        $version = '2026-05-04-page-section-editor-defaults-v1';
+        $option_name = 'mzf_mt_page_section_editor_defaults_version';
+
+        if ((string) get_option($option_name, '') === $version) {
+            return;
+        }
+
+        $page_ids = get_posts([
+            'post_type' => 'page',
+            'post_status' => ['publish', 'draft', 'pending', 'private', 'future'],
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'suppress_filters' => true,
+            'no_found_rows' => true,
+        ]);
+
+        if (empty($page_ids)) {
+            return;
+        }
+
+        $did_update = false;
+
+        foreach ((array) $page_ids as $page_id) {
+            $page_id = (int) $page_id;
+            if ($page_id <= 0) {
+                continue;
+            }
+
+            $form_visible = (string) get_post_meta($page_id, 'show_form', true) === '1'
+                || (string) get_post_meta($page_id, 'visibility_form', true) === '1';
+
+            if ($form_visible) {
+                $section_form = get_post_meta($page_id, 'section_form', true);
+                $section_form = is_array($section_form) ? $section_form : [];
+
+                $form_id = mzf_mt_normalize_relationship_value_to_id($section_form['form'] ?? 0);
+                if ($form_id <= 0) {
+                    $form_id = mzf_mt_normalize_relationship_value_to_id(get_post_meta($page_id, 'section_form_form', true));
+                }
+
+                if ($form_id <= 0) {
+                    $family = mzf_mt_source_form_family($page_id, []);
+                    $form_id = mzf_mt_find_form_by_family($family);
+                }
+
+                if ($form_id > 0) {
+                    if (mzf_mt_normalize_relationship_value_to_id(get_post_meta($page_id, 'section_form_form', true)) <= 0) {
+                        update_post_meta($page_id, 'section_form_form', $form_id);
+                        update_post_meta($page_id, '_section_form_form', 'field_697ffe37abb58');
+                        $did_update = true;
+                    }
+
+                    if (mzf_mt_normalize_relationship_value_to_id($section_form['form'] ?? 0) <= 0) {
+                        $section_form['form'] = $form_id;
+                        update_post_meta($page_id, 'section_form', $section_form);
+                        update_post_meta($page_id, '_section_form', 'field_69b03fdc31afb');
+                        $did_update = true;
+                    }
+
+                    $existing_headline = trim((string) get_post_meta($page_id, 'section_form_headline', true));
+                    if ($existing_headline === '') {
+                        $form_post = get_post($form_id);
+                        $headline = $form_post instanceof WP_Post ? trim((string) $form_post->post_title) : '';
+                        if ($headline !== '') {
+                            update_post_meta($page_id, 'section_form_headline', $headline);
+                            update_post_meta($page_id, '_section_form_headline', 'field_69b03fe631afc');
+                            $section_form['headline'] = $headline;
+                            update_post_meta($page_id, 'section_form', $section_form);
+                            update_post_meta($page_id, '_section_form', 'field_69b03fdc31afb');
+                            $did_update = true;
+                        }
+                    }
+                }
+            }
+
+            $reviews_visible = (string) get_post_meta($page_id, 'show_list-reviews', true) === '1'
+                || (string) get_post_meta($page_id, 'visibility_list-reviews', true) === '1';
+
+            if (!$reviews_visible) {
+                continue;
+            }
+
+            $section_reviews = get_post_meta($page_id, 'section_list-reviews', true);
+            $section_reviews = is_array($section_reviews) ? $section_reviews : [];
+            $section_reviews_changed = false;
+
+            $existing_reviews_headline = trim((string) get_post_meta($page_id, 'section_list-reviews_headline', true));
+            if ($existing_reviews_headline === '') {
+                $headline = mzf_mt_page_reviews_default_headline($page_id);
+                if ($headline !== '') {
+                    update_post_meta($page_id, 'section_list-reviews_headline', $headline);
+                    update_post_meta($page_id, '_section_list-reviews_headline', 'field_meza_list_reviews_headline');
+                    $section_reviews['headline'] = $headline;
+                    $section_reviews_changed = true;
+                }
+            }
+
+            $existing_reviews_subhead = trim((string) get_post_meta($page_id, 'section_list-reviews_subhead', true));
+            if ($existing_reviews_subhead === '') {
+                $subhead = mzf_mt_page_reviews_default_subhead();
+                update_post_meta($page_id, 'section_list-reviews_subhead', $subhead);
+                update_post_meta($page_id, '_section_list-reviews_subhead', 'field_meza_list_reviews_subhead');
+                $section_reviews['subhead'] = $subhead;
+                $section_reviews_changed = true;
+            }
+
+            if ($section_reviews_changed) {
+                update_post_meta($page_id, 'section_list-reviews', $section_reviews);
+                update_post_meta($page_id, '_section_list-reviews', 'field_meza_section_list_reviews');
+                $did_update = true;
+            }
+        }
+
+        if ($did_update) {
+            update_option($option_name, $version, false);
+        }
     }
 }
 
@@ -918,3 +1394,5 @@ add_action('admin_init', function () {
     ]);
     exit;
 }, 1);
+
+add_action('init', 'mzf_mt_backfill_term_section_form_relationship_once', 30);
