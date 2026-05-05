@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.615
+ * Version: 1.1.641
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -509,6 +509,13 @@ if (!function_exists('meza_events_editor_role_key')) {
     }
 }
 
+if (!function_exists('meza_shop_manager_role_key')) {
+    function meza_shop_manager_role_key(): string
+    {
+        return 'shop_manager';
+    }
+}
+
 if (!function_exists('meza_get_cached_user_counts')) {
     function meza_get_cached_user_counts(): array
     {
@@ -609,6 +616,35 @@ if (!function_exists('meza_woocommerce_capabilities')) {
         }
 
         return array_values(array_unique($caps));
+    }
+}
+
+if (!function_exists('meza_woocommerce_product_capabilities')) {
+    function meza_woocommerce_product_capabilities(): array
+    {
+        if (!meza_has_woocommerce_plugin()) {
+            return [];
+        }
+
+        return [
+            'edit_product',
+            'read_product',
+            'delete_product',
+            'edit_products',
+            'edit_others_products',
+            'publish_products',
+            'read_private_products',
+            'delete_products',
+            'delete_private_products',
+            'delete_published_products',
+            'delete_others_products',
+            'edit_private_products',
+            'edit_published_products',
+            'manage_product_terms',
+            'edit_product_terms',
+            'delete_product_terms',
+            'assign_product_terms',
+        ];
     }
 }
 
@@ -1531,6 +1567,9 @@ if (!function_exists('meza_site_manager_capabilities')) {
             meza_submission_manager_capability(),
             meza_customer_sign_generator_capability(),
             meza_redirect_manager_capability(),
+            function_exists('meza_shared_project_options_page_capability')
+                ? meza_shared_project_options_page_capability()
+                : 'meza_manage_shared_project_options',
             'wpseo_manage_options',
             'edit_theme_options',
             'list_users',
@@ -1588,6 +1627,10 @@ if (!function_exists('meza_seo_manager_capabilities')) {
             $caps[$cap] = true;
         }
 
+        foreach (meza_woocommerce_product_capabilities() as $cap) {
+            $caps[$cap] = true;
+        }
+
         if (function_exists('meza_site_documentation_seo_manager_caps')) {
             foreach (meza_site_documentation_seo_manager_caps() as $cap => $grant) {
                 $caps[(string) $cap] = (bool) $grant;
@@ -1629,6 +1672,9 @@ if (!function_exists('meza_sync_site_manager_role')) {
             meza_backup_manager_capability(),
             meza_customer_sign_generator_capability(),
             meza_redirect_manager_capability(),
+            function_exists('meza_shared_project_options_page_capability')
+                ? meza_shared_project_options_page_capability()
+                : 'meza_manage_shared_project_options',
             'wpseo_manage_options',
             'wpseo_edit_advanced_metadata',
             'wpseo_bulk_edit',
@@ -1709,7 +1755,15 @@ if (!function_exists('meza_sync_site_manager_role')) {
                 $administrator_role->add_cap(meza_customer_sign_generator_capability());
             }
 
-            foreach ([meza_redirect_manager_capability(), 'wpseo_manage_options', 'wpseo_edit_advanced_metadata', 'wpseo_bulk_edit'] as $cap) {
+            foreach ([
+                meza_redirect_manager_capability(),
+                function_exists('meza_shared_project_options_page_capability')
+                    ? meza_shared_project_options_page_capability()
+                    : 'meza_manage_shared_project_options',
+                'wpseo_manage_options',
+                'wpseo_edit_advanced_metadata',
+                'wpseo_bulk_edit'
+            ] as $cap) {
                 if (!$administrator_role->has_cap($cap)) {
                     $administrator_role->add_cap($cap);
                 }
@@ -2298,6 +2352,115 @@ if (!function_exists('meza_suppress_non_meza_plugin_admin_notice_callbacks')) {
         }
     }
 }
+
+if (!function_exists('meza_is_yoast_redirect_upsell_notification_message')) {
+    function meza_is_yoast_redirect_upsell_notification_message(string $message): bool
+    {
+        $normalized_message = strtolower(trim(wp_strip_all_tags($message)));
+        if ($normalized_message === '') {
+            return false;
+        }
+
+        return str_contains($normalized_message, "make sure you don't miss out on traffic!")
+            && str_contains($normalized_message, 'you should create a redirect to ensure your visitors do not get a 404 error');
+    }
+}
+
+if (!function_exists('meza_is_yoast_redirect_upsell_notification')) {
+    function meza_is_yoast_redirect_upsell_notification($notification): bool
+    {
+        if ($notification instanceof Yoast_Notification) {
+            return meza_is_yoast_redirect_upsell_notification_message((string) $notification->get_message());
+        }
+
+        if (is_array($notification)) {
+            return meza_is_yoast_redirect_upsell_notification_message((string) ($notification['message'] ?? ''));
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_filter_yoast_redirect_upsell_notifications')) {
+    function meza_filter_yoast_redirect_upsell_notifications(array $notifications): array
+    {
+        return array_values(array_filter(
+            $notifications,
+            static fn($notification): bool => !meza_is_yoast_redirect_upsell_notification($notification)
+        ));
+    }
+}
+
+if (!function_exists('meza_remove_yoast_slug_change_watcher_callbacks')) {
+    function meza_remove_yoast_slug_change_watcher_callbacks(): void
+    {
+        global $wp_filter;
+
+        $watcher_methods = [
+            'wp_trash_post' => 'detect_post_trash',
+            'before_delete_post' => 'detect_post_delete',
+            'delete_term_taxonomy' => 'detect_term_delete',
+        ];
+
+        foreach ($watcher_methods as $hook_name => $method_name) {
+            $hook = $wp_filter[$hook_name] ?? null;
+            if (!($hook instanceof WP_Hook) || !is_array($hook->callbacks)) {
+                continue;
+            }
+
+            foreach ($hook->callbacks as $priority => $callbacks) {
+                foreach ((array) $callbacks as $callback_data) {
+                    $callback = $callback_data['function'] ?? null;
+                    if (
+                        !is_array($callback)
+                        || !isset($callback[0], $callback[1])
+                        || !is_object($callback[0])
+                        || !is_a($callback[0], 'WPSEO_Slug_Change_Watcher')
+                        || $callback[1] !== $method_name
+                    ) {
+                        continue;
+                    }
+
+                    remove_action($hook_name, $callback, (int) $priority);
+                }
+            }
+        }
+    }
+}
+
+if (!function_exists('meza_purge_yoast_redirect_upsell_notifications')) {
+    function meza_purge_yoast_redirect_upsell_notifications(): void
+    {
+        if (!class_exists('Yoast_Notification_Center') || !class_exists('Yoast_Notification')) {
+            return;
+        }
+
+        $notification_center = Yoast_Notification_Center::get();
+        foreach ($notification_center->get_notifications() as $notification) {
+            if (!meza_is_yoast_redirect_upsell_notification($notification)) {
+                continue;
+            }
+
+            $notification_center->remove_notification($notification, false);
+        }
+    }
+}
+
+add_action('plugins_loaded', function (): void {
+    meza_remove_yoast_slug_change_watcher_callbacks();
+}, 20);
+
+add_action('init', function (): void {
+    meza_purge_yoast_redirect_upsell_notifications();
+}, 20);
+
+add_filter('yoast_notifications_before_storage', function ($notifications) {
+    if (!is_array($notifications)) {
+        return $notifications;
+    }
+
+    return meza_filter_yoast_redirect_upsell_notifications($notifications);
+}, 20);
 
 if (!function_exists('meza_can_access_admin_bar_new_content_node')) {
     function meza_admin_bar_allows_hidden_post_type_new_node(string $post_type): bool
@@ -2988,6 +3151,25 @@ if (!function_exists('meza_can_manage_privacy_options')) {
     }
 }
 
+if (!function_exists('meza_is_site_manager_branding_request')) {
+    function meza_is_site_manager_branding_request(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        global $pagenow;
+
+        if (!in_array((string) $pagenow, ['admin.php', 'themes.php'], true)) {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+
+        return $page === 'branding';
+    }
+}
+
 add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, array $args): array {
     if ($cap !== 'manage_privacy_options' || $user_id <= 0 || !meza_can_manage_privacy_options($user_id)) {
         return $caps;
@@ -2997,6 +3179,20 @@ add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, arr
 }, 19, 4);
 
 add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, WP_User $user): array {
+    if (
+        $user instanceof WP_User
+        && $user->ID > 0
+        && meza_user_has_any_role($user, [
+            'administrator',
+            meza_site_manager_role_key(),
+        ])
+        && meza_is_site_manager_branding_request()
+    ) {
+        foreach (['switch_themes', 'edit_theme_options'] as $cap) {
+            $allcaps[$cap] = true;
+        }
+    }
+
     if (!($user instanceof WP_User) || $user->ID <= 0 || !meza_can_manage_privacy_options($user)) {
         return $allcaps;
     }
@@ -4045,6 +4241,7 @@ if (!defined('MZ_ADMIN_DIR')) {
 foreach ([
     'list-tables.php',
     'screen-defaults.php',
+    'activity-log.php',
     'admin-menu.php',
     'row-actions.php',
     'acf-admin-columns.php',

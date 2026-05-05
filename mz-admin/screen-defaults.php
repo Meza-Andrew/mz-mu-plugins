@@ -2188,6 +2188,95 @@ function meza_remove_legacy_links_admin_menus(): void
 
 add_action('admin_menu', 'meza_remove_legacy_links_admin_menus', PHP_INT_MAX);
 
+if (!function_exists('meza_remove_acf_taxonomy_add_form_fields')) {
+    function meza_remove_acf_taxonomy_add_form_fields(string $taxonomy): void
+    {
+        global $wp_filter;
+
+        $taxonomy = sanitize_key($taxonomy);
+        if ($taxonomy === '' || !class_exists('acf_form_taxonomy')) {
+            return;
+        }
+
+        $hook_name = "{$taxonomy}_add_form_fields";
+        $hook = $wp_filter[$hook_name] ?? null;
+
+        if (!($hook instanceof WP_Hook) || empty($hook->callbacks) || !is_array($hook->callbacks)) {
+            return;
+        }
+
+        foreach ($hook->callbacks as $priority => $callbacks) {
+            if (!is_array($callbacks)) {
+                continue;
+            }
+
+            foreach ($callbacks as $callback_data) {
+                $callback = $callback_data['function'] ?? null;
+                if (
+                    !is_array($callback)
+                    || !isset($callback[0], $callback[1])
+                    || !($callback[0] instanceof acf_form_taxonomy)
+                    || $callback[1] !== 'add_term'
+                ) {
+                    continue;
+                }
+
+                remove_action($hook_name, $callback, (int) $priority);
+            }
+        }
+    }
+}
+
+if (!function_exists('meza_remove_acf_taxonomy_admin_footer')) {
+    function meza_remove_acf_taxonomy_admin_footer(): void
+    {
+        global $wp_filter;
+
+        if (!class_exists('acf_form_taxonomy')) {
+            return;
+        }
+
+        $hook = $wp_filter['admin_footer'] ?? null;
+        if (!($hook instanceof WP_Hook) || empty($hook->callbacks) || !is_array($hook->callbacks)) {
+            return;
+        }
+
+        foreach ($hook->callbacks as $priority => $callbacks) {
+            if (!is_array($callbacks)) {
+                continue;
+            }
+
+            foreach ($callbacks as $callback_data) {
+                $callback = $callback_data['function'] ?? null;
+                if (
+                    !is_array($callback)
+                    || !isset($callback[0], $callback[1])
+                    || !($callback[0] instanceof acf_form_taxonomy)
+                    || $callback[1] !== 'admin_footer'
+                ) {
+                    continue;
+                }
+
+                remove_action('admin_footer', $callback, (int) $priority);
+            }
+        }
+    }
+}
+
+add_action('admin_head-edit-tags.php', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $taxonomy = isset($_GET['taxonomy']) ? sanitize_key(wp_unslash((string) $_GET['taxonomy'])) : '';
+    if ($taxonomy === '') {
+        return;
+    }
+
+    meza_remove_acf_taxonomy_add_form_fields($taxonomy);
+    meza_remove_acf_taxonomy_admin_footer();
+}, 20);
+
 add_action('admin_init', function (): void {
     if (meza_site_has_subscribers()) return;
     if (!is_admin()) return;

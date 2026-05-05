@@ -3121,7 +3121,7 @@ function meza_render_taxonomy_admin_column(string $taxonomy, WP_Post $post): boo
         $links[] = '<a href="' . esc_url($filter_url) . '">' . esc_html($term->name) . '</a>';
     }
 
-    echo $links !== [] ? implode(', ', $links) : '&mdash;';
+    echo $links !== [] ? implode('<br>', $links) : '&mdash;';
     return true;
 }
 
@@ -3586,9 +3586,102 @@ function meza_extract_admin_column_emails($value): array
     })));
 }
 
+function meza_get_business_location_admin_column_emails(): array
+{
+    if (!function_exists('meza_get_business_information_locations_option_rows')) {
+        return [];
+    }
+
+    $rows = meza_get_business_information_locations_option_rows();
+    if (!is_array($rows) || $rows === []) {
+        return [];
+    }
+
+    $emails = [];
+
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $email = sanitize_email((string) ($row['email'] ?? ''));
+        if ($email !== '' && is_email($email)) {
+            $emails[] = $email;
+        }
+    }
+
+    return array_values(array_unique($emails));
+}
+
+function meza_form_uses_business_location_store_field(int $post_id): bool
+{
+    static $path_cache = [];
+
+    $post_id = (int) $post_id;
+    if ($post_id <= 0) {
+        return false;
+    }
+
+    $slug = sanitize_key((string) get_post_field('post_name', $post_id));
+    if ($slug === '') {
+        return false;
+    }
+
+    foreach (['quote', 'upload-files', 'sign-quote', 'print-quote'] as $location_form_family) {
+        $matches_family = function_exists('mzf_slug_matches_family')
+            ? mzf_slug_matches_family($slug, $location_form_family)
+            : ($slug === $location_form_family);
+
+        if ($matches_family) {
+            return true;
+        }
+    }
+
+    $template_slug = $slug;
+    $template_map = [
+        'rent' => 'equipment-rental',
+        'buy' => 'equipment-purchase',
+        'upload-files' => 'order',
+    ];
+
+    foreach ($template_map as $family => $template_candidate) {
+        $matches_family = function_exists('mzf_slug_matches_family')
+            ? mzf_slug_matches_family($slug, $family)
+            : ($slug === $family);
+
+        if ($matches_family) {
+            $template_slug = $template_candidate;
+            break;
+        }
+    }
+
+    $template_path = locate_template("form/{$template_slug}.php", false, false);
+    if (!is_string($template_path) || $template_path === '' || !is_readable($template_path)) {
+        $template_path = locate_template('form/contact.php', false, false);
+    }
+
+    if (!is_string($template_path) || $template_path === '' || !is_readable($template_path)) {
+        return false;
+    }
+
+    if (array_key_exists($template_path, $path_cache)) {
+        return $path_cache[$template_path];
+    }
+
+    $template_contents = file_get_contents($template_path);
+    if (!is_string($template_contents) || $template_contents === '') {
+        $path_cache[$template_path] = false;
+        return false;
+    }
+
+    $path_cache[$template_path] = str_contains($template_contents, 'form/field-store');
+    return $path_cache[$template_path];
+}
+
 function meza_get_admin_email_column_html($value, array $args = []): string
 {
     $emails = meza_extract_admin_column_emails($value);
+    $label = trim((string) ($args['label'] ?? ''));
 
     if ($emails === []) {
         $fallback_email = sanitize_email((string) ($args['fallback_email'] ?? ''));
@@ -3612,7 +3705,13 @@ function meza_get_admin_email_column_html($value, array $args = []): string
         return '<a href="' . esc_url('mailto:' . $email) . '">' . esc_html($email) . '</a>';
     }, $emails);
 
-    return implode('<br>', $links);
+    $html = implode('<br>', $links);
+
+    if ($label !== '') {
+        $html .= '<br><span>(' . esc_html($label) . ')</span>';
+    }
+
+    return $html;
 }
 
 function meza_parse_admin_phone_value(string $value): array
@@ -6456,6 +6555,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     }
     if ($column === 'mz_form_recipients') {
         $recipients = [];
+        $recipient_label = '';
 
         if (function_exists('get_field')) {
             $email_admin = get_field('email_admin', (int) $post_id);
@@ -6472,7 +6572,16 @@ function meza_render_posts_list_column(string $column, int $post_id): void
             $recipients = mzf_parse_recipients(get_post_meta((int) $post_id, 'email_recipients', true));
         }
 
+        if (meza_form_uses_business_location_store_field((int) $post_id)) {
+            $location_recipients = meza_get_business_location_admin_column_emails();
+            if ($location_recipients !== []) {
+                $recipients = array_values(array_unique(array_merge($recipients, $location_recipients)));
+                $recipient_label = "user's location preference";
+            }
+        }
+
         echo meza_get_admin_email_column_html($recipients, [
+            'label' => $recipient_label,
             'fallback_email' => function_exists('meza_get_business_information_email')
                 ? meza_get_business_information_email()
                 : (function_exists('get_field') ? (string) get_field('email', 'option') : ''),
@@ -6596,7 +6705,7 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         return;
     }
     if ($column === 'mz_review_link') {
-        $url = meza_get_post_link_field_url((int) $post_id, ['link']);
+        $url = meza_get_post_link_field_url((int) $post_id, ['url', 'link']);
 
         if ($url === '') {
             echo '&mdash;';
@@ -8440,6 +8549,27 @@ function meza_post_type_supports_search_visibility_admin_views(string $post_type
     return meza_post_type_has_permalink($post_type);
 }
 
+function meza_is_search_visibility_site_indexable(): bool
+{
+    return ((int) get_option('blog_public', 1) === 1);
+}
+
+function meza_is_search_visibility_yoast_available(): bool
+{
+    if (defined('WPSEO_VERSION') || function_exists('YoastSEO')) {
+        return true;
+    }
+
+    return function_exists('meza_is_plugin_basename_active')
+        && meza_is_plugin_basename_active('wordpress-seo/wp-seo.php');
+}
+
+function meza_should_show_search_visibility_admin_views(): bool
+{
+    return meza_is_search_visibility_site_indexable()
+        && meza_is_search_visibility_yoast_available();
+}
+
 function meza_is_post_hidden_from_search(int $post_id): bool
 {
     if ($post_id <= 0) return false;
@@ -8854,6 +8984,9 @@ function meza_add_post_type_search_visibility_views(array $views): array
     if (!meza_post_type_supports_search_visibility_admin_views($post_type)) {
         return $views;
     }
+    if (!meza_should_show_search_visibility_admin_views()) {
+        return $views;
+    }
 
     $indexed_count = meza_get_cached_search_visibility_count($post_type, meza_get_indexed_pages_view_value());
     $unlisted_count = meza_get_cached_search_visibility_count($post_type, meza_get_hidden_from_search_page_view_value());
@@ -9139,7 +9272,7 @@ add_filter('display_post_states', function ($states, $post) {
         $display_states[] = __('Private');
     }
 
-    if (meza_is_post_hidden_from_search((int) $post->ID)) {
+    if (meza_should_show_search_visibility_admin_views() && meza_is_post_hidden_from_search((int) $post->ID)) {
         $display_states[] = meza_get_hidden_from_search_page_state_label();
     }
 
@@ -9354,6 +9487,7 @@ add_action('pre_get_posts', function (WP_Query $q) {
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
     if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php') return;
+    if (!meza_should_show_search_visibility_admin_views()) return;
     $post_type = sanitize_key((string) $q->get('post_type'));
     if ($post_type === '') {
         $post_type = meza_get_post_type_for_search_visibility_admin_views();
@@ -9391,6 +9525,7 @@ add_action('pre_get_posts', function (WP_Query $q) {
 add_action('pre_get_posts', function (WP_Query $q) {
     global $pagenow;
     if (!is_admin() || !$q->is_main_query() || $pagenow !== 'edit.php') return;
+    if (!meza_should_show_search_visibility_admin_views()) return;
     $post_type = sanitize_key((string) $q->get('post_type'));
     if ($post_type === '') {
         $post_type = meza_get_post_type_for_search_visibility_admin_views();
