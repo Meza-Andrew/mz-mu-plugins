@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.641
+ * Version: 1.1.659
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -25,8 +25,8 @@ if (array_key_exists('plugin_page', $GLOBALS) && $GLOBALS['plugin_page'] === nul
     unset($GLOBALS['plugin_page']);
 }
 
-if (file_exists(__DIR__ . '/mz-hosting.php')) {
-    require_once __DIR__ . '/mz-hosting.php';
+if (file_exists(__DIR__ . '/mz-admin/support/hosting.php')) {
+    require_once __DIR__ . '/mz-admin/support/hosting.php';
 }
 
 if (!function_exists('str_contains')) {
@@ -3151,25 +3151,6 @@ if (!function_exists('meza_can_manage_privacy_options')) {
     }
 }
 
-if (!function_exists('meza_is_site_manager_branding_request')) {
-    function meza_is_site_manager_branding_request(): bool
-    {
-        if (!is_admin()) {
-            return false;
-        }
-
-        global $pagenow;
-
-        if (!in_array((string) $pagenow, ['admin.php', 'themes.php'], true)) {
-            return false;
-        }
-
-        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
-
-        return $page === 'branding';
-    }
-}
-
 add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, array $args): array {
     if ($cap !== 'manage_privacy_options' || $user_id <= 0 || !meza_can_manage_privacy_options($user_id)) {
         return $caps;
@@ -3179,20 +3160,6 @@ add_filter('map_meta_cap', function (array $caps, string $cap, int $user_id, arr
 }, 19, 4);
 
 add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, WP_User $user): array {
-    if (
-        $user instanceof WP_User
-        && $user->ID > 0
-        && meza_user_has_any_role($user, [
-            'administrator',
-            meza_site_manager_role_key(),
-        ])
-        && meza_is_site_manager_branding_request()
-    ) {
-        foreach (['switch_themes', 'edit_theme_options'] as $cap) {
-            $allcaps[$cap] = true;
-        }
-    }
-
     if (!($user instanceof WP_User) || $user->ID <= 0 || !meza_can_manage_privacy_options($user)) {
         return $allcaps;
     }
@@ -3751,7 +3718,7 @@ add_filter('redirection_capability_check', function ($capability, $permission_na
 }, 20, 2);
 
 add_filter('acf/get_options_page', function ($page, $slug) {
-    if ($slug === 'crm' && is_array($page)) {
+    if (in_array($slug, ['crm', 'ecommerce'], true) && is_array($page)) {
         $page['capability'] = 'manage_options';
     }
 
@@ -4239,14 +4206,14 @@ if (!defined('MZ_ADMIN_DIR')) {
 }
 
 foreach ([
-    'list-tables.php',
-    'screen-defaults.php',
-    'activity-log.php',
-    'admin-menu.php',
-    'row-actions.php',
-    'acf-admin-columns.php',
-    'admin-bar-branding-nav-menus.php',
-    'editorial.php',
+    'list-tables/list-tables.php',
+    'list-tables/row-actions.php',
+    'list-tables/acf-admin-columns.php',
+    'screens/screen-defaults.php',
+    'dashboard/activity-log.php',
+    'menu/admin-menu.php',
+    'chrome/admin-bar-branding-nav-menus.php',
+    'editorial/editorial.php',
 ] as $mz_admin_module) {
     require_once MZ_ADMIN_DIR . '/' . $mz_admin_module;
 }

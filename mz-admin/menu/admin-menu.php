@@ -3245,6 +3245,16 @@ function meza_get_standardized_submenu_utility_label(array $item, string $parent
         return '';
     }
 
+    if (
+        $parent_slug === 'tools.php'
+        && (
+            str_contains($slug, 'migration')
+            || preg_match('/\bmigration\b/i', $title) === 1
+        )
+    ) {
+        return 'Migration';
+    }
+
     $has_import = preg_match('/\bimport\b/i', $title) === 1 || str_contains($slug, 'import');
     $has_export = preg_match('/\bexport\b/i', $title) === 1 || str_contains($slug, 'export');
     $has_tools = preg_match('/\btools?\b/i', $title) === 1
@@ -6435,7 +6445,9 @@ if (!function_exists('meza_get_shared_settings_browser_title')) {
         $title_map = [
             'business-information' => 'Business Information Settings',
             'branding' => 'Branding Settings',
+            'content-structure' => 'Configuration Settings',
             'crm' => 'CRM Integration Settings',
+            'ecommerce' => 'E-Commerce Settings',
         ];
 
         return $title_map[$page_slug] ?? '';
@@ -6743,7 +6755,7 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
             return in_array($page, meza_get_shared_project_acf_options_page_slugs(), true);
         }
 
-        return in_array($page, ['branding', 'business-information'], true);
+        return in_array($page, ['branding', 'business-information', 'crm', 'ecommerce'], true);
     }
 
     function meza_is_dynamic_plugin_admin_screen(?WP_Screen $screen = null): bool
@@ -9292,7 +9304,6 @@ function meza_enforce_site_manager_settings_submenu(): void
             : 'Business Information',
         'branding' => 'Branding',
         'privacy' => 'Privacy',
-        'crm' => 'CRM Integration',
     ];
     $allowed_settings_pages = array_intersect_key($allowed_settings_pages, array_flip(meza_get_site_manager_allowed_settings_page_slugs()));
 
@@ -9312,8 +9323,6 @@ function meza_enforce_site_manager_settings_submenu(): void
                 $slug = 'branding';
             } elseif ($label === 'privacy') {
                 $slug = 'privacy';
-            } elseif ($label === 'crm integration') {
-                $slug = 'crm';
             } elseif (in_array($label, ['business information', 'nonprofit information', 'conference information', 'contact information'], true)) {
                 $slug = 'business-information';
             }
@@ -9359,7 +9368,6 @@ function meza_enforce_site_manager_settings_submenu(): void
             : 'Business Information',
         'Branding',
         'Privacy',
-        'CRM Integration',
     ];
 
     usort($submenu['options-general.php'], static function (array $a, array $b) use ($desired_order): int {
@@ -9486,7 +9494,6 @@ function meza_finalize_site_manager_settings_submenu_order(): void
             : 'Business Information',
         'Branding',
         'Privacy',
-        'CRM Integration',
     ];
 
     usort($submenu['options-general.php'], static function (array $a, array $b) use ($desired_order): int {
@@ -9822,6 +9829,7 @@ function meza_should_keep_top_level_menu_item(array $item): bool
         'tools.php',
         'options-general.php',
         'woocommerce',
+        'meza-site-settings',
     ];
 
     if (in_array($slug, $core_top_level_slugs, true)) {
@@ -10466,9 +10474,9 @@ function meza_restore_default_fallback_group_separator(): void
         $slug = strtolower((string) ($item[2] ?? ''));
         $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
 
-        return in_array($slug, ['themes.php', 'plugins.php', 'users.php', 'tools.php'], true)
+        return in_array($slug, ['themes.php', 'plugins.php', 'users.php', 'tools.php', 'meza-business-settings', 'meza-integrations-settings'], true)
             || $slug === 'options-general.php'
-            || in_array($label, ['appearance', 'plugins', 'users', 'tools', 'settings'], true);
+            || in_array($label, ['business', 'appearance', 'plugins', 'users', 'integrations', 'tools', 'settings'], true);
     };
 
     foreach ($menu as $index => $item) {
@@ -10532,9 +10540,9 @@ function meza_group_site_manager_appearance_and_fallback_menus(): void
         $slug = strtolower((string) ($item[2] ?? ''));
         $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
 
-        return in_array($slug, ['themes.php', 'plugins.php', 'users.php', 'tools.php'], true)
+        return in_array($slug, ['themes.php', 'plugins.php', 'users.php', 'tools.php', 'meza-business-settings'], true)
             || $slug === 'options-general.php'
-            || in_array($label, ['appearance', 'plugins', 'users', 'tools', 'settings'], true);
+            || in_array($label, ['business', 'appearance', 'plugins', 'users', 'tools', 'settings'], true);
     };
 
     $is_fallback_group_item = static function ($item): bool {
@@ -11276,9 +11284,13 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_reorder_site_manager_admin_preferences_group();
     meza_group_site_manager_appearance_and_fallback_menus();
     meza_enforce_site_manager_settings_top_level_target();
+    meza_position_integrations_settings_menu();
+    meza_remove_integrations_settings_menu_for_non_admins();
+    meza_position_site_settings_menu();
     meza_ensure_seo_manager_required_admin_menus();
     meza_cleanup_menu_separators();
     meza_ensure_separator_before_appearance_group();
+    meza_position_business_settings_menu();
 }
 
 function meza_apply_missing_late_admin_menu_mutations(): void
@@ -11303,9 +11315,13 @@ function meza_apply_missing_late_admin_menu_mutations(): void
     meza_reorder_site_manager_admin_preferences_group();
     meza_group_site_manager_appearance_and_fallback_menus();
     meza_enforce_site_manager_settings_top_level_target();
+    meza_position_integrations_settings_menu();
+    meza_remove_integrations_settings_menu_for_non_admins();
+    meza_position_site_settings_menu();
     meza_ensure_seo_manager_required_admin_menus();
     meza_cleanup_menu_separators();
     meza_ensure_separator_before_appearance_group();
+    meza_position_business_settings_menu();
 }
 
 // Apply the late role-specific cleanup pass during normal admin menu rendering too.
@@ -11868,45 +11884,7 @@ function meza_get_dashboard_activity_submenu_item(): ?array
 
 function meza_get_dashboard_business_information_submenu_item(): ?array
 {
-    global $submenu;
-
-    $target_slug = function_exists('meza_get_shared_project_acf_options_page_menu_slug')
-        ? strtolower(meza_get_shared_project_acf_options_page_menu_slug('business-information'))
-        : '';
-    $capability = function_exists('meza_shared_project_options_page_capability')
-        ? meza_shared_project_options_page_capability()
-        : 'meza_manage_shared_project_options';
-
-    if (isset($submenu['index.php']) && is_array($submenu['index.php'])) {
-        foreach ($submenu['index.php'] as $item) {
-            if (!is_array($item)) continue;
-
-            $slug = strtolower((string) ($item[2] ?? ''));
-            if (
-                in_array($slug, ['business-information', 'admin.php?page=business-information', 'index.php?page=business-information'], true)
-                || ($target_slug !== '' && $slug === $target_slug)
-            ) {
-                return $item;
-            }
-        }
-    }
-
-    if (
-        !function_exists('meza_get_shared_project_acf_options_page_menu_slug')
-        || !function_exists('meza_get_business_information_menu_label')
-        || !current_user_can($capability)
-    ) {
-        return null;
-    }
-
-    return [
-        meza_get_business_information_menu_label(),
-        $capability,
-        meza_get_shared_project_acf_options_page_menu_slug('business-information'),
-        function_exists('meza_get_business_information_admin_page_title')
-            ? meza_get_business_information_admin_page_title()
-            : meza_get_business_information_menu_label(),
-    ];
+    return null;
 }
 
 function meza_filter_dashboard_submenu_items(): void
@@ -11916,7 +11894,6 @@ function meza_filter_dashboard_submenu_items(): void
     $home_item = [__('Home'), 'read', 'index.php'];
     $updates_item = meza_get_dashboard_updates_submenu_item();
     $site_health_item = meza_get_dashboard_site_health_submenu_item();
-    $business_information_item = meza_get_dashboard_business_information_submenu_item();
     $activity_item = meza_get_dashboard_activity_submenu_item();
 
     $filtered_items = [$home_item];
@@ -11925,9 +11902,6 @@ function meza_filter_dashboard_submenu_items(): void
     }
     if (is_array($site_health_item)) {
         $filtered_items[] = $site_health_item;
-    }
-    if (is_array($business_information_item)) {
-        $filtered_items[] = $business_information_item;
     }
     if (is_array($activity_item)) {
         $filtered_items[] = $activity_item;
@@ -11953,6 +11927,345 @@ function meza_filter_dashboard_submenu_items(): void
         return true;
     }));
 }
+
+function meza_get_business_settings_menu_slug(): string
+{
+    return 'meza-business-settings';
+}
+
+function meza_get_site_settings_menu_slug(): string
+{
+    return 'meza-site-settings';
+}
+
+function meza_get_integrations_settings_menu_slug(): string
+{
+    return 'meza-integrations-settings';
+}
+
+function meza_can_access_site_settings($user = null): bool
+{
+    $capability = function_exists('meza_shared_project_options_page_capability')
+        ? meza_shared_project_options_page_capability()
+        : 'meza_manage_shared_project_options';
+
+    if ($user === null) {
+        return current_user_can($capability);
+    }
+
+    return user_can($user, $capability);
+}
+
+function meza_can_access_business_settings($user = null): bool
+{
+    $capability = function_exists('meza_shared_project_options_page_capability')
+        ? meza_shared_project_options_page_capability()
+        : 'meza_manage_shared_project_options';
+
+    if ($user === null) {
+        return current_user_can($capability);
+    }
+
+    return user_can($user, $capability);
+}
+
+function meza_register_business_settings_top_level_menu(): void
+{
+    if (!meza_can_access_business_settings(wp_get_current_user())) {
+        return;
+    }
+
+    add_menu_page(
+        'Business',
+        'Business',
+        function_exists('meza_shared_project_options_page_capability')
+            ? meza_shared_project_options_page_capability()
+            : 'meza_manage_shared_project_options',
+        meza_get_business_settings_menu_slug(),
+        '__return_null',
+        'dashicons-store',
+        58
+    );
+}
+add_action('admin_menu', 'meza_register_business_settings_top_level_menu', 1);
+add_action('admin_menu_editor-menu_replaced', 'meza_register_business_settings_top_level_menu', 1);
+
+function meza_register_site_settings_top_level_menu(): void
+{
+    if (!meza_can_access_site_settings(wp_get_current_user())) {
+        return;
+    }
+
+    add_menu_page(
+        'Site',
+        'Site',
+        function_exists('meza_shared_project_options_page_capability')
+            ? meza_shared_project_options_page_capability()
+            : 'meza_manage_shared_project_options',
+        meza_get_site_settings_menu_slug(),
+        '__return_null',
+        'dashicons-admin-site',
+        57
+    );
+}
+add_action('admin_menu', 'meza_register_site_settings_top_level_menu', 1);
+add_action('admin_menu_editor-menu_replaced', 'meza_register_site_settings_top_level_menu', 1);
+
+function meza_can_access_integrations_settings($user = null): bool
+{
+    if ($user === null) {
+        return current_user_can('manage_options');
+    }
+
+    return user_can($user, 'manage_options');
+}
+
+function meza_register_integrations_settings_top_level_menu(): void
+{
+    if (!meza_can_access_integrations_settings(wp_get_current_user())) {
+        return;
+    }
+
+    add_menu_page(
+        'Integrations',
+        'Integrations',
+        'manage_options',
+        meza_get_integrations_settings_menu_slug(),
+        '__return_null',
+        'dashicons-admin-links',
+        59
+    );
+}
+add_action('admin_menu', 'meza_register_integrations_settings_top_level_menu', 1);
+add_action('admin_menu_editor-menu_replaced', 'meza_register_integrations_settings_top_level_menu', 1);
+
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page !== meza_get_business_settings_menu_slug() || !meza_can_access_business_settings(wp_get_current_user())) {
+        return;
+    }
+
+    if (!function_exists('meza_get_shared_project_acf_options_page_menu_slug')) {
+        return;
+    }
+
+    wp_safe_redirect(admin_url(meza_get_shared_project_acf_options_page_menu_slug('business-information')));
+    exit;
+}, 1);
+
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page !== meza_get_site_settings_menu_slug() || !meza_can_access_site_settings(wp_get_current_user())) {
+        return;
+    }
+
+    if (!function_exists('meza_get_shared_project_acf_options_page_menu_slug')) {
+        return;
+    }
+
+    wp_safe_redirect(admin_url(meza_get_shared_project_acf_options_page_menu_slug('content-structure')));
+    exit;
+}, 1);
+
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page !== meza_get_integrations_settings_menu_slug() || !meza_can_access_integrations_settings(wp_get_current_user())) {
+        return;
+    }
+
+    if (!function_exists('meza_get_shared_project_acf_options_page_menu_slug')) {
+        return;
+    }
+
+    wp_safe_redirect(admin_url(meza_get_shared_project_acf_options_page_menu_slug('crm')));
+    exit;
+}, 1);
+
+function meza_position_business_settings_menu(): void
+{
+    if (!meza_can_access_business_settings(wp_get_current_user())) {
+        return;
+    }
+
+    global $menu;
+
+    if (!is_array($menu) || $menu === []) {
+        return;
+    }
+
+    $business_index = null;
+    $appearance_index = null;
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $slug = (string) ($item[2] ?? '');
+        if ($slug === meza_get_business_settings_menu_slug()) {
+            $business_index = $index;
+        }
+
+        if ($slug === 'themes.php') {
+            $appearance_index = $index;
+        }
+    }
+
+    if ($business_index === null || $appearance_index === null) {
+        return;
+    }
+
+    $business_item = $menu[$business_index];
+    unset($menu[$business_index]);
+    $menu = array_values($menu);
+
+    foreach ($menu as $index => $item) {
+        if (is_array($item) && ((string) ($item[2] ?? '')) === 'themes.php') {
+            array_splice($menu, $index, 0, [$business_item]);
+            break;
+        }
+    }
+}
+
+function meza_position_site_settings_menu(): void
+{
+    if (!meza_can_access_site_settings(wp_get_current_user())) {
+        return;
+    }
+
+    global $menu;
+
+    if (!is_array($menu) || $menu === []) {
+        return;
+    }
+
+    $site_index = null;
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $slug = (string) ($item[2] ?? '');
+        if ($slug === meza_get_site_settings_menu_slug()) {
+            $site_index = $index;
+        }
+
+    }
+
+    if ($site_index === null) {
+        return;
+    }
+
+    $site_item = $menu[$site_index];
+    unset($menu[$site_index]);
+    $menu = array_values($menu);
+
+    if (count($menu) >= 1) {
+        array_splice($menu, 1, 0, [$site_item]);
+        return;
+    }
+
+    $menu[] = $site_item;
+}
+
+function meza_position_integrations_settings_menu(): void
+{
+    if (!meza_can_access_integrations_settings(wp_get_current_user())) {
+        return;
+    }
+
+    global $menu;
+
+    if (!is_array($menu) || $menu === []) {
+        return;
+    }
+
+    $integrations_index = null;
+    $plugins_index = null;
+    $users_index = null;
+
+    foreach ($menu as $index => $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $slug = (string) ($item[2] ?? '');
+        if ($slug === meza_get_integrations_settings_menu_slug()) {
+            $integrations_index = $index;
+        }
+
+        if ($slug === 'plugins.php') {
+            $plugins_index = $index;
+        }
+
+        if ($slug === 'users.php') {
+            $users_index = $index;
+        }
+    }
+
+    if ($integrations_index === null) {
+        return;
+    }
+
+    $integrations_item = $menu[$integrations_index];
+    unset($menu[$integrations_index]);
+    $menu = array_values($menu);
+
+    if ($plugins_index !== null) {
+        foreach ($menu as $index => $item) {
+            if (is_array($item) && ((string) ($item[2] ?? '')) === 'plugins.php') {
+                array_splice($menu, $index + 1, 0, [$integrations_item]);
+                return;
+            }
+        }
+    }
+
+    if ($users_index !== null) {
+        foreach ($menu as $index => $item) {
+            if (is_array($item) && ((string) ($item[2] ?? '')) === 'users.php') {
+                array_splice($menu, $index, 0, [$integrations_item]);
+                return;
+            }
+        }
+    }
+
+    $menu[] = $integrations_item;
+}
+
+function meza_remove_integrations_settings_menu_for_non_admins(): void
+{
+    if (meza_can_access_integrations_settings(wp_get_current_user())) {
+        return;
+    }
+
+    global $menu, $submenu;
+
+    if (is_array($menu)) {
+        $menu = array_values(array_filter($menu, static function ($item): bool {
+            return !is_array($item) || ((string) ($item[2] ?? '')) !== meza_get_integrations_settings_menu_slug();
+        }));
+    }
+
+    if (is_array($submenu)) {
+        unset($submenu[meza_get_integrations_settings_menu_slug()]);
+    }
+}
+add_action('admin_menu', 'meza_remove_integrations_settings_menu_for_non_admins', PHP_INT_MAX);
+add_action('admin_menu_editor-menu_replaced', 'meza_remove_integrations_settings_menu_for_non_admins', PHP_INT_MAX);
+add_action('admin_head', 'meza_remove_integrations_settings_menu_for_non_admins', PHP_INT_MAX);
 
 function meza_should_keep_admin_menu_counter(string $parent_slug, string $item_slug): bool
 {

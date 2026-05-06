@@ -2067,17 +2067,6 @@ function meza_is_disabled_tag_taxonomy(string $taxonomy): bool
     return empty(array_intersect((array) $taxonomy_object->object_type, meza_get_allowed_tag_post_types()));
 }
 
-function meza_disable_comments_for_post_type(string $post_type): void
-{
-    $post_type = sanitize_key($post_type);
-    if ($post_type === '' || !post_type_exists($post_type)) {
-        return;
-    }
-
-    remove_post_type_support($post_type, 'comments');
-    remove_post_type_support($post_type, 'trackbacks');
-}
-
 function meza_get_design_redirect_url(): string
 {
     return current_user_can('edit_theme_options') ? admin_url('nav-menus.php') : admin_url();
@@ -2101,22 +2090,6 @@ add_filter('register_taxonomy_args', function ($args, $taxonomy, $object_type) {
 
     return $args;
 }, 1000, 3);
-
-add_action('registered_post_type', function ($post_type): void {
-    meza_disable_comments_for_post_type((string) $post_type);
-}, 1000, 1);
-
-add_action('init', function (): void {
-    foreach (get_post_types([], 'names') as $post_type) {
-        meza_disable_comments_for_post_type((string) $post_type);
-    }
-}, 1000);
-
-add_filter('comments_open', '__return_false', 20, 2);
-add_filter('pings_open', '__return_false', 20, 2);
-add_filter('comments_array', function ($comments) {
-    return [];
-}, 20, 2);
 
 // Hide selected admin menu items that we do not expose to editors/admins.
 add_action('admin_menu', function () {

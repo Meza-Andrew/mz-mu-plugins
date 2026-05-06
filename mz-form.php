@@ -4,7 +4,7 @@
  * Plugin Name: MZ Form (MU)
  * Description: AJAX form intake + admin/user emailer with MZ-compatible defaults.
  * Author: Meza
- * Version: 1.1.9
+ * Version: 1.1.11
  */
 
 if (!defined('ABSPATH')) {
@@ -32,8 +32,7 @@ $mzf_core_ok = $mzf_require($mzf_base . '/submissions-log.php', true) && $mzf_co
 $mzf_core_ok = $mzf_require($mzf_base . '/handlers/ajax.php', true) && $mzf_core_ok;
 $mzf_core_ok = $mzf_require($mzf_base . '/hooks.php', true) && $mzf_core_ok;
 $mzf_core_ok = $mzf_require($mzf_base . '/admin-ui.php', true) && $mzf_core_ok;
-$mzf_core_ok = $mzf_require(__DIR__ . '/mz-form-migration-tools.php', true) && $mzf_core_ok;
-$mzf_core_ok = $mzf_require(__DIR__ . '/mz-form-client-overrides.php', true) && $mzf_core_ok;
+$mzf_core_ok = $mzf_require($mzf_base . '/overrides/client.php', true) && $mzf_core_ok;
 
 if (!$mzf_core_ok) {
     error_log('MZF initialization aborted due to missing required files.');
