@@ -1,10 +1,7 @@
 <?php
 
 /**
- * Plugin Name: MZ FAQ Migration Tools (MU)
- * Description: Admin-only tools to migrate legacy section_faq data into built-in FAQ posts and FAQ sections.
- * Author: Meza
- * Version: 1.0.1
+ * Internal module for MZ Tools FAQ migration flows.
  */
 
 if (!defined('ABSPATH')) {
@@ -38,7 +35,8 @@ if (!defined('MZFQMT_SECTION_GROUP_FIELD_KEY')) {
 if (!function_exists('mzfmt_user_can_access_tool')) {
     function mzfmt_user_can_access_tool(): bool
     {
-        $admin_access_enabled = (bool) apply_filters('mzfmt_admin_tool_enabled', false);
+        $default_enabled = current_user_can('manage_options');
+        $admin_access_enabled = (bool) apply_filters('mzfmt_admin_tool_enabled', $default_enabled);
         if (!$admin_access_enabled) {
             return false;
         }
@@ -578,6 +576,10 @@ if (!function_exists('mzfmt_run_migration')) {
 if (!function_exists('mzfmt_get_redirect_url')) {
     function mzfmt_get_redirect_url(): string
     {
+        if (defined('MZ_PTM_PAGE_SLUG')) {
+            return add_query_arg('tab', 'faq', admin_url('tools.php?page=' . MZ_PTM_PAGE_SLUG));
+        }
+
         return admin_url('tools.php?page=' . MZFQMT_PAGE_SLUG);
     }
 }
@@ -605,11 +607,10 @@ if (!function_exists('mzfmt_handle_admin_post')) {
         mzfmt_store_result($result);
 
         $redirect_url = add_query_arg([
-            'page' => MZFQMT_PAGE_SLUG,
             'limit' => (int) ($result['limit'] ?? 0),
             'source_key' => (string) ($result['source_key'] ?? ''),
             'mzfmt_result' => !empty($result['apply']) ? 'run' : 'preview',
-        ], admin_url('tools.php'));
+        ], mzfmt_get_redirect_url());
 
         wp_safe_redirect($redirect_url);
         exit;
@@ -675,17 +676,17 @@ if (!function_exists('mzfmt_render_tools_page')) {
                 <table class="form-table" role="presentation">
                     <tbody>
                         <tr>
-                            <th scope="row"><label for="mzfmt-source-key">Source key</label></th>
+                            <th scope="row"><label for="mzfmt-source-key">Source</label></th>
                             <td>
-                                <input id="mzfmt-source-key" name="source_key" type="text" class="regular-text" value="<?php echo esc_attr($source_key); ?>" />
-                                <p class="description">Optional. Use <code>post:123</code> or <code>term:sign_type:32</code> to target one source.</p>
+                                <input id="mzfmt-source-key" name="source_key" type="text" class="regular-text code" value="<?php echo esc_attr($source_key); ?>" />
+                                <p class="description">Optional. Use <code>post:123</code> or <code>term:sign_type:32</code> to target one source. Leave blank to scan every eligible source.</p>
                             </td>
                         </tr>
                         <tr>
                             <th scope="row"><label for="mzfmt-limit">Limit</label></th>
                             <td>
                                 <input id="mzfmt-limit" name="limit" type="number" min="0" step="1" class="small-text" value="<?php echo esc_attr((string) $limit); ?>" />
-                                <p class="description">Leave at <code>0</code> to scan every source.</p>
+                                <p class="description">Optional. Leave at <code>0</code> to scan every eligible source.</p>
                             </td>
                         </tr>
                     </tbody>
@@ -707,6 +708,10 @@ if (!function_exists('mzfmt_register_tools_page')) {
     function mzfmt_register_tools_page(): void
     {
         if (!mzfmt_user_can_access_tool()) {
+            return;
+        }
+
+        if (defined('MZ_PTM_PAGE_SLUG')) {
             return;
         }
 

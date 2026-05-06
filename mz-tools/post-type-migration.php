@@ -1,10 +1,7 @@
 <?php
 
 /**
- * Plugin Name: MZ Post Type Migration Tools
- * Description: Admin and WP-CLI tools to move posts from one post type to another.
- * Version: 1.0.16
- * Author: Meza
+ * Internal module for MZ Tools post type and media migration flows.
  */
 
 if (!defined('ABSPATH')) {
@@ -23,8 +20,20 @@ if (!defined('MZ_PTM_ACTION')) {
     define('MZ_PTM_ACTION', 'mz_post_type_migration');
 }
 
+if (!defined('MZ_PTM_MEDIA_ACTION')) {
+    define('MZ_PTM_MEDIA_ACTION', 'mz_media_repair');
+}
+
 if (!defined('MZ_PTM_PAGE_SLUG')) {
     define('MZ_PTM_PAGE_SLUG', 'mz-post-type-migration-tools');
+}
+
+if (!defined('MZ_PTM_MEDIA_RESULT_TRANSIENT')) {
+    define('MZ_PTM_MEDIA_RESULT_TRANSIENT', 'mz_ptm_media_last_result');
+}
+
+if (!defined('MZ_PTM_MEDIA_RESULT_USER_META')) {
+    define('MZ_PTM_MEDIA_RESULT_USER_META', 'mz_ptm_media_last_result');
 }
 
 if (!function_exists('mz_ptm_normalize_post_type_slug')) {
@@ -66,6 +75,22 @@ if (!function_exists('mz_ptm_parse_term_slugs')) {
     }
 }
 
+if (!function_exists('mz_ptm_parse_csv_slugs')) {
+    function mz_ptm_parse_csv_slugs($raw_values = null): array
+    {
+        $values = $raw_values;
+
+        if (!is_array($values)) {
+            $values = $values !== null ? explode(',', (string) $values) : [];
+        }
+
+        return array_values(array_filter(array_unique(array_map(
+            'sanitize_key',
+            array_map('strval', $values)
+        ))));
+    }
+}
+
 if (!function_exists('mz_ptm_get_available_source_post_types')) {
     function mz_ptm_get_available_source_post_types($raw_sources = null): array
     {
@@ -92,7 +117,8 @@ if (!function_exists('mz_ptm_get_redirect_url')) {
 if (!function_exists('mz_ptm_user_can_access_tool')) {
     function mz_ptm_user_can_access_tool(): bool
     {
-        $admin_access_enabled = (bool) apply_filters('mz_ptm_admin_tool_enabled', false);
+        $default_enabled = current_user_can('manage_options');
+        $admin_access_enabled = (bool) apply_filters('mz_ptm_admin_tool_enabled', $default_enabled);
         if (!$admin_access_enabled) {
             return false;
         }
@@ -407,6 +433,82 @@ if (!function_exists('mz_ptm_get_result')) {
     }
 }
 
+if (!function_exists('mz_ptm_store_media_result')) {
+    function mz_ptm_store_media_result(array $result): void
+    {
+        $result['recorded_at'] = current_time('mysql');
+        $user_id = get_current_user_id();
+
+        if ($user_id > 0) {
+            update_user_meta($user_id, MZ_PTM_MEDIA_RESULT_USER_META, $result);
+        }
+
+        set_transient(MZ_PTM_MEDIA_RESULT_TRANSIENT, $result, HOUR_IN_SECONDS);
+    }
+}
+
+if (!function_exists('mz_ptm_get_media_result')) {
+    function mz_ptm_get_media_result(): array
+    {
+        $user_id = get_current_user_id();
+
+        if ($user_id > 0) {
+            $user_result = get_user_meta($user_id, MZ_PTM_MEDIA_RESULT_USER_META, true);
+
+            if (is_array($user_result) && $user_result !== []) {
+                return $user_result;
+            }
+        }
+
+        $result = get_transient(MZ_PTM_MEDIA_RESULT_TRANSIENT);
+
+        return is_array($result) ? $result : [];
+    }
+}
+
+if (!function_exists('mz_ptm_store_uploaded_xml_file')) {
+    function mz_ptm_store_uploaded_xml_file(string $input_name)
+    {
+        if (empty($_FILES[$input_name]) || !is_array($_FILES[$input_name])) {
+            return '';
+        }
+
+        $file = $_FILES[$input_name];
+        if ((int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return '';
+        }
+
+        if ((int) ($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+            return new WP_Error('mz_ptm_upload_error', sprintf('Upload failed for %s.', $input_name));
+        }
+
+        $original_name = sanitize_file_name((string) ($file['name'] ?? ''));
+        $extension = strtolower((string) pathinfo($original_name, PATHINFO_EXTENSION));
+        if ($extension !== 'xml') {
+            return new WP_Error('mz_ptm_upload_invalid_type', sprintf('Uploaded file for %s must be an XML export.', $input_name));
+        }
+
+        $uploads = wp_upload_dir();
+        if (!empty($uploads['error'])) {
+            return new WP_Error('mz_ptm_upload_dir_error', (string) $uploads['error']);
+        }
+
+        $target_dir = trailingslashit((string) $uploads['basedir']) . 'mz-temp-imports';
+        if (!wp_mkdir_p($target_dir)) {
+            return new WP_Error('mz_ptm_upload_dir_create_failed', 'Could not create the temporary XML upload directory.');
+        }
+
+        $target_name = wp_unique_filename($target_dir, $original_name);
+        $target_path = trailingslashit($target_dir) . $target_name;
+
+        if (!@move_uploaded_file((string) $file['tmp_name'], $target_path)) {
+            return new WP_Error('mz_ptm_upload_move_failed', sprintf('Could not store uploaded XML for %s.', $input_name));
+        }
+
+        return $target_path;
+    }
+}
+
 if (!function_exists('mz_ptm_handle_admin_post')) {
     function mz_ptm_handle_admin_post(): void
     {
@@ -438,6 +540,7 @@ if (!function_exists('mz_ptm_handle_admin_post')) {
 
         $redirect_url = mz_ptm_get_redirect_url();
         $redirect_url = add_query_arg([
+            'tab' => 'post-type',
             'source' => implode(',', (array) $result['requested_source_post_types']),
             'destination' => (string) $result['destination_post_type'],
             'taxonomy' => (string) ($result['taxonomy'] ?? ''),
@@ -452,6 +555,78 @@ if (!function_exists('mz_ptm_handle_admin_post')) {
     add_action('admin_post_' . MZ_PTM_ACTION, 'mz_ptm_handle_admin_post');
 }
 
+if (!function_exists('mz_ptm_handle_media_admin_post')) {
+    function mz_ptm_handle_media_admin_post(): void
+    {
+        if (!mz_ptm_user_can_access_tool()) {
+            wp_die('You do not have permission to run this media repair.', 403);
+        }
+
+        check_admin_referer('mz_ptm_media_run');
+
+        $mode = isset($_REQUEST['mode']) ? sanitize_key((string) $_REQUEST['mode']) : '';
+        if (!in_array($mode, ['preview', 'run'], true)) {
+            wp_die('Invalid media repair mode.', 400);
+        }
+
+        $staging_file = isset($_REQUEST['staging_file']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['staging_file'])) : '';
+        $production_file = isset($_REQUEST['production_file']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['production_file'])) : '';
+        $content_file = isset($_REQUEST['content_file']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['content_file'])) : '';
+        $post_types = isset($_REQUEST['post_types']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['post_types'])) : '';
+
+        foreach ([
+            'staging_upload' => 'staging_file',
+            'production_upload' => 'production_file',
+            'content_upload' => 'content_file',
+        ] as $upload_key => $target_key) {
+            $uploaded_file = mz_ptm_store_uploaded_xml_file($upload_key);
+            if (is_wp_error($uploaded_file)) {
+                mz_ptm_store_media_result([
+                    'apply' => false,
+                    'errors' => 1,
+                    'messages' => [$uploaded_file->get_error_message()],
+                ]);
+                wp_safe_redirect(add_query_arg('tab', 'media', mz_ptm_get_redirect_url()));
+                exit;
+            }
+
+            if (is_string($uploaded_file) && $uploaded_file !== '') {
+                if ($target_key === 'staging_file') {
+                    $staging_file = $uploaded_file;
+                } elseif ($target_key === 'production_file') {
+                    $production_file = $uploaded_file;
+                } else {
+                    $content_file = $uploaded_file;
+                }
+            }
+        }
+
+        $result = mz_ptm_media_repair_run([
+            'staging_file' => $staging_file,
+            'production_file' => $production_file,
+            'content_file' => $content_file,
+            'post_types' => $post_types,
+            'apply' => $mode === 'run',
+        ]);
+
+        mz_ptm_store_media_result($result);
+
+        $redirect_url = add_query_arg([
+            'tab' => 'media',
+            'staging_file' => $staging_file,
+            'production_file' => $production_file,
+            'content_file' => $content_file,
+            'post_types' => $post_types,
+            'mz_ptm_media_result' => $mode === 'run' ? 'run' : 'preview',
+        ], mz_ptm_get_redirect_url());
+
+        wp_safe_redirect($redirect_url);
+        exit;
+    }
+
+    add_action('admin_post_' . MZ_PTM_MEDIA_ACTION, 'mz_ptm_handle_media_admin_post');
+}
+
 if (!function_exists('mz_ptm_register_tools_page')) {
     function mz_ptm_register_tools_page(): void
     {
@@ -460,8 +635,8 @@ if (!function_exists('mz_ptm_register_tools_page')) {
         }
 
         add_management_page(
-            'Post Type Migration',
-            'Post Type Migration',
+            'Migration Tools',
+            'Migration',
             'manage_options',
             MZ_PTM_PAGE_SLUG,
             'mz_ptm_render_tools_page'
@@ -520,6 +695,60 @@ if (!function_exists('mz_ptm_render_result_summary')) {
     }
 }
 
+if (!function_exists('mz_ptm_render_media_result_summary')) {
+    function mz_ptm_render_media_result_summary(array $result): void
+    {
+        if ($result === []) {
+            return;
+        }
+        ?>
+        <div class="notice notice-info inline">
+            <p>
+                <strong><?php echo esc_html(!empty($result['apply']) ? 'Last media repair' : 'Last media repair dry run'); ?></strong>
+                <?php if (!empty($result['recorded_at'])) : ?>
+                    <span>at <?php echo esc_html((string) $result['recorded_at']); ?></span>
+                <?php endif; ?>
+            </p>
+            <p>
+                <?php
+                echo esc_html(sprintf(
+                    'Production attachments: %d. Staging attachments: %d. Matched: %d. ID remaps: %d. Attachment parents updated: %d. Postmeta rows updated: %d. Option rows updated: %d. Post content rows updated: %d. Errors: %d.',
+                    (int) ($result['production_attachments'] ?? 0),
+                    (int) ($result['staging_attachments'] ?? 0),
+                    (int) ($result['matched_attachments'] ?? 0),
+                    (int) ($result['id_mappings'] ?? 0),
+                    (int) ($result['parents_updated'] ?? 0),
+                    (int) ($result['postmeta_updated'] ?? 0),
+                    (int) ($result['options_updated'] ?? 0),
+                    (int) ($result['post_content_updated'] ?? 0),
+                    (int) ($result['errors'] ?? 0)
+                ));
+                ?>
+            </p>
+            <?php if (!empty($result['post_types'])) : ?>
+                <p><?php echo esc_html('Content post type scope: ' . implode(', ', (array) $result['post_types'])); ?></p>
+            <?php endif; ?>
+            <p>
+                <?php
+                echo esc_html(sprintf(
+                    'Missing in staging export: %d. Missing local attachments: %d. Staging-only attachments skipped: %d. Featured images updated: %d. Featured image posts missing: %d. Featured image attachments missing: %d.',
+                    (int) ($result['missing_in_staging'] ?? 0),
+                    (int) ($result['missing_local_attachments'] ?? 0),
+                    (int) ($result['skipped_staging_only'] ?? 0),
+                    (int) ($result['featured_images_updated'] ?? 0),
+                    (int) ($result['featured_image_posts_missing'] ?? 0),
+                    (int) ($result['featured_image_attachments_missing'] ?? 0)
+                ));
+                ?>
+            </p>
+            <?php if (!empty($result['messages'])) : ?>
+                <textarea readonly rows="10" style="width:100%;font-family:monospace;"><?php echo esc_textarea(implode("\n", (array) $result['messages'])); ?></textarea>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+}
+
 if (!function_exists('mz_ptm_render_tools_page')) {
     function mz_ptm_render_tools_page(): void
     {
@@ -531,56 +760,168 @@ if (!function_exists('mz_ptm_render_tools_page')) {
         $destination = isset($_GET['destination']) ? sanitize_text_field(wp_unslash((string) $_GET['destination'])) : '';
         $taxonomy = isset($_GET['taxonomy']) ? sanitize_text_field(wp_unslash((string) $_GET['taxonomy'])) : '';
         $terms = isset($_GET['terms']) ? sanitize_text_field(wp_unslash((string) $_GET['terms'])) : '';
+        $media_result = mz_ptm_get_media_result();
+        $staging_file = isset($_GET['staging_file']) ? sanitize_text_field(wp_unslash((string) $_GET['staging_file'])) : (string) ($media_result['staging_file'] ?? '');
+        $production_file = isset($_GET['production_file']) ? sanitize_text_field(wp_unslash((string) $_GET['production_file'])) : (string) ($media_result['production_file'] ?? '');
+        $content_file = isset($_GET['content_file']) ? sanitize_text_field(wp_unslash((string) $_GET['content_file'])) : (string) ($media_result['content_file'] ?? '');
+        $post_types = isset($_GET['post_types']) ? sanitize_text_field(wp_unslash((string) $_GET['post_types'])) : '';
+        $faq_limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 0;
+        $faq_source_key = isset($_GET['source_key']) ? sanitize_text_field(wp_unslash((string) $_GET['source_key'])) : '';
+        $faq_result = function_exists('mzfmt_get_result') ? mzfmt_get_result() : [];
+        $active_tab = isset($_GET['tab']) ? sanitize_key((string) $_GET['tab']) : 'post-type';
+        if (!in_array($active_tab, ['post-type', 'media', 'faq', 'form'], true)) {
+            $active_tab = 'post-type';
+        }
         $result = mz_ptm_get_result();
         ?>
         <div class="wrap" data-meza-admin-chrome="post-type-migration-tools">
-            <h1 class="wp-heading-inline">Post Type Migration</h1>
+            <h1 class="wp-heading-inline">Migration Tools</h1>
             <hr class="wp-header-end" />
-            <p>Move posts from one or more source post types into a destination post type. This changes the existing posts in place.</p>
+            <h2 class="nav-tab-wrapper">
+                <a href="<?php echo esc_url(add_query_arg('tab', 'post-type', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'post-type' ? 'nav-tab-active' : ''; ?>">Post Type Migration</a>
+                <a href="<?php echo esc_url(add_query_arg('tab', 'media', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'media' ? 'nav-tab-active' : ''; ?>">Media Migration</a>
+                <a href="<?php echo esc_url(add_query_arg('tab', 'faq', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'faq' ? 'nav-tab-active' : ''; ?>">FAQ Migration</a>
+                <a href="<?php echo esc_url(add_query_arg('tab', 'form', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'form' ? 'nav-tab-active' : ''; ?>">Form Migration</a>
+            </h2>
 
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                <?php wp_nonce_field('mz_ptm_run'); ?>
-                <input type="hidden" name="action" value="<?php echo esc_attr(MZ_PTM_ACTION); ?>" />
+            <?php if ($active_tab === 'post-type') : ?>
+                <p>Move posts from one or more source post types into a destination post type. This changes the existing posts in place.</p>
 
-                <table class="form-table" role="presentation">
-                    <tbody>
-                        <tr>
-                            <th scope="row"><label for="mz-ptm-source">Source post types</label></th>
-                            <td>
-                                <input id="mz-ptm-source" name="source" type="text" class="regular-text" value="<?php echo esc_attr($source); ?>" />
-                                <p class="description">Add post slugs separated by commas</p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><label for="mz-ptm-taxonomy">Source taxonomy</label></th>
-                            <td>
-                                <input id="mz-ptm-taxonomy" name="taxonomy" type="text" class="regular-text" value="<?php echo esc_attr($taxonomy); ?>" />
-                                <p class="description">Add a taxonomy slug to filter posts by</p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><label for="mz-ptm-terms">Source term slugs</label></th>
-                            <td>
-                                <input id="mz-ptm-terms" name="terms" type="text" class="regular-text" value="<?php echo esc_attr($terms); ?>" />
-                                <p class="description">Add taxonomy term slugs separated by commas to filter posts by</p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><label for="mz-ptm-destination">Destination post type</label></th>
-                            <td>
-                                <input id="mz-ptm-destination" name="destination" type="text" class="regular-text" value="<?php echo esc_attr($destination); ?>" />
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                    <?php wp_nonce_field('mz_ptm_run'); ?>
+                    <input type="hidden" name="action" value="<?php echo esc_attr(MZ_PTM_ACTION); ?>" />
 
-                <p class="submit">
-                    <button type="submit" name="mode" value="preview" class="button button-secondary">Run dry run</button>
-                    <button type="submit" name="mode" value="run" class="button button-primary">Run migration</button>
-                </p>
-            </form>
+                    <table class="form-table" role="presentation">
+                        <tbody>
+                            <tr>
+                                <th scope="row"><label for="mz-ptm-source">Source post types</label></th>
+                                <td>
+                                    <input id="mz-ptm-source" name="source" type="text" class="regular-text" value="<?php echo esc_attr($source); ?>" />
+                                    <p class="description">Add post slugs separated by commas</p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="mz-ptm-taxonomy">Source taxonomy</label></th>
+                                <td>
+                                    <input id="mz-ptm-taxonomy" name="taxonomy" type="text" class="regular-text" value="<?php echo esc_attr($taxonomy); ?>" />
+                                    <p class="description">Add a taxonomy slug to filter posts by</p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="mz-ptm-terms">Source term slugs</label></th>
+                                <td>
+                                    <input id="mz-ptm-terms" name="terms" type="text" class="regular-text" value="<?php echo esc_attr($terms); ?>" />
+                                    <p class="description">Add taxonomy term slugs separated by commas to filter posts by</p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="mz-ptm-destination">Destination post type</label></th>
+                                <td>
+                                    <input id="mz-ptm-destination" name="destination" type="text" class="regular-text" value="<?php echo esc_attr($destination); ?>" />
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
 
-            <?php mz_ptm_render_result_summary($result); ?>
+                    <p class="submit">
+                        <button type="submit" name="mode" value="preview" class="button button-secondary">Run dry run</button>
+                        <button type="submit" name="mode" value="run" class="button button-primary">Run migration</button>
+                    </p>
+                </form>
+
+                <?php mz_ptm_render_result_summary($result); ?>
+            <?php elseif ($active_tab === 'faq') : ?>
+                <?php if (!function_exists('mzfmt_run_migration')) : ?>
+                    <div class="notice notice-error inline"><p>FAQ migration tools are not available.</p></div>
+                <?php else : ?>
+                    <p>Migrate legacy <code>section_faq</code> content into built-in <code>faq</code> posts and the shared <code>section_faqs</code> structure.</p>
+
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                        <?php wp_nonce_field('mzfmt_run'); ?>
+                        <input type="hidden" name="action" value="<?php echo esc_attr(defined('MZFQMT_ACTION') ? MZFQMT_ACTION : 'mz_faq_migration'); ?>" />
+
+                        <table class="form-table" role="presentation">
+                            <tbody>
+                                <tr>
+                                    <th scope="row"><label for="mzfmt-source-key">Source key</label></th>
+                                    <td>
+                                        <input id="mzfmt-source-key" name="source_key" type="text" class="regular-text" value="<?php echo esc_attr($faq_source_key); ?>" />
+                                        <p class="description">Optional. Use <code>post:123</code> or <code>term:sign_type:32</code> to target one source.</p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th scope="row"><label for="mzfmt-limit">Limit</label></th>
+                                    <td>
+                                        <input id="mzfmt-limit" name="limit" type="number" min="0" step="1" class="small-text" value="<?php echo esc_attr((string) $faq_limit); ?>" />
+                                        <p class="description">Leave at <code>0</code> to scan every source.</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <p class="submit">
+                            <button type="submit" name="mode" value="preview" class="button button-secondary">Run dry run</button>
+                            <button type="submit" name="mode" value="run" class="button button-primary">Run migration</button>
+                        </p>
+                    </form>
+
+                    <?php mzfmt_render_result_summary(is_array($faq_result) ? $faq_result : []); ?>
+                <?php endif; ?>
+            <?php elseif ($active_tab === 'form') : ?>
+                <?php if (!function_exists('mzf_mt_render_tools_tab')) : ?>
+                    <div class="notice notice-error inline"><p>Form migration tools are not available.</p></div>
+                <?php else : ?>
+                    <?php mzf_mt_render_tools_tab(); ?>
+                <?php endif; ?>
+            <?php else : ?>
+                <p>Compare staging and production attachment exports, then repair attachment IDs, parent relationships, featured images, and related references in this database. Production is treated as the source of truth.</p>
+
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
+                    <?php wp_nonce_field('mz_ptm_media_run'); ?>
+                    <input type="hidden" name="action" value="<?php echo esc_attr(MZ_PTM_MEDIA_ACTION); ?>" />
+
+                    <table class="form-table" role="presentation">
+                        <tbody>
+                            <tr>
+                                <th scope="row"><label for="mz-ptm-staging-file">Staging media export</label></th>
+                                <td>
+                                    <input id="mz-ptm-staging-file" name="staging_file" type="hidden" value="<?php echo esc_attr($staging_file); ?>" />
+                                    <p><input name="staging_upload" type="file" accept=".xml,text/xml,application/xml" /></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="mz-ptm-production-file">Production media export</label></th>
+                                <td>
+                                    <input id="mz-ptm-production-file" name="production_file" type="hidden" value="<?php echo esc_attr($production_file); ?>" />
+                                    <p><input name="production_upload" type="file" accept=".xml,text/xml,application/xml" /></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="mz-ptm-content-file">Production content export</label></th>
+                                <td>
+                                    <input id="mz-ptm-content-file" name="content_file" type="hidden" value="<?php echo esc_attr($content_file); ?>" />
+                                    <p class="description">Optional production full-content WXR/XML export used to restore featured images from the source site.</p>
+                                    <p><input name="content_upload" type="file" accept=".xml,text/xml,application/xml" /></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="mz-ptm-post-types">Content post types</label></th>
+                                <td>
+                                    <input id="mz-ptm-post-types" name="post_types" type="text" class="regular-text code" value="<?php echo esc_attr($post_types); ?>" />
+                                    <p class="description">Optional comma-separated post types to limit featured-image restoration. Leave blank to include all post types found in the content export.</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <p class="submit">
+                        <button type="submit" name="mode" value="preview" class="button button-secondary">Run media dry run</button>
+                        <button type="submit" name="mode" value="run" class="button button-primary">Run media repair</button>
+                    </p>
+                </form>
+
+                <?php mz_ptm_render_media_result_summary($media_result); ?>
+            <?php endif; ?>
         </div>
         <?php
     }
@@ -696,6 +1037,22 @@ if (!function_exists('mz_ptm_wxr_parse_types')) {
         $types = array_values(array_intersect(array_unique($types), mz_ptm_wxr_supported_post_types()));
 
         return $types !== [] ? $types : mz_ptm_wxr_supported_post_types();
+    }
+}
+
+if (!function_exists('mz_ptm_resolve_project_root_file_path')) {
+    function mz_ptm_resolve_project_root_file_path(string $file_path): string
+    {
+        $file_path = trim($file_path);
+        if ($file_path === '') {
+            return '';
+        }
+
+        if (str_starts_with($file_path, '/') || preg_match('/^[A-Za-z]:[\\\\\\/]/', $file_path)) {
+            return $file_path;
+        }
+
+        return trailingslashit(ABSPATH) . ltrim($file_path, '/\\');
     }
 }
 
@@ -1563,6 +1920,669 @@ if (!function_exists('mz_ptm_wxr_run_import')) {
     }
 }
 
+if (!function_exists('mz_ptm_media_repair_parse_attachment_export')) {
+    function mz_ptm_media_repair_parse_attachment_export(string $file_path)
+    {
+        $file_path = mz_ptm_resolve_project_root_file_path($file_path);
+        if ($file_path === '' || !is_readable($file_path)) {
+            return new WP_Error('mz_ptm_media_repair_unreadable_file', sprintf('The export file "%s" is not readable.', $file_path));
+        }
+
+        libxml_use_internal_errors(true);
+        $xml = simplexml_load_file($file_path, 'SimpleXMLElement', LIBXML_NOCDATA);
+        if (!$xml instanceof SimpleXMLElement) {
+            libxml_clear_errors();
+            return new WP_Error('mz_ptm_media_repair_invalid_xml', sprintf('The export file "%s" could not be parsed.', $file_path));
+        }
+
+        $items = [];
+        foreach ($xml->channel->item as $item) {
+            $wp = $item->children('wp', true);
+            if ((string) $wp->post_type !== 'attachment') {
+                continue;
+            }
+
+            $relative_path = mz_ptm_wxr_get_attachment_relative_path([
+                'meta' => mz_ptm_wxr_parse_post_meta($item, 'wp'),
+                'attachment_url' => (string) $wp->attachment_url,
+            ]);
+
+            $items[] = [
+                'legacy_id' => (int) $wp->post_id,
+                'parent_legacy_id' => (int) $wp->post_parent,
+                'slug' => (string) $wp->post_name,
+                'title' => (string) $item->title,
+                'attachment_url' => (string) $wp->attachment_url,
+                'relative_path' => $relative_path,
+            ];
+        }
+
+        return $items;
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_parse_content_featured_images')) {
+    function mz_ptm_media_repair_parse_content_featured_images(string $file_path, array $allowed_post_types = [])
+    {
+        $file_path = mz_ptm_resolve_project_root_file_path($file_path);
+        if ($file_path === '' || !is_readable($file_path)) {
+            return new WP_Error('mz_ptm_media_repair_unreadable_content_file', sprintf('The content export file "%s" is not readable.', $file_path));
+        }
+
+        libxml_use_internal_errors(true);
+        $xml = simplexml_load_file($file_path, 'SimpleXMLElement', LIBXML_NOCDATA);
+        if (!$xml instanceof SimpleXMLElement) {
+            libxml_clear_errors();
+            return new WP_Error('mz_ptm_media_repair_invalid_content_xml', sprintf('The content export file "%s" could not be parsed.', $file_path));
+        }
+
+        $items = [];
+        foreach ($xml->channel->item as $item) {
+            $wp = $item->children('wp', true);
+            $post_type = (string) $wp->post_type;
+            if ($post_type === '' || $post_type === 'attachment') {
+                continue;
+            }
+
+            $normalized_post_type = sanitize_key($post_type);
+            if ($allowed_post_types !== [] && !in_array($normalized_post_type, $allowed_post_types, true)) {
+                continue;
+            }
+
+            $thumbnail_id = 0;
+            foreach ($wp->postmeta as $postmeta) {
+                if ((string) $postmeta->meta_key === '_thumbnail_id') {
+                    $thumbnail_id = (int) $postmeta->meta_value;
+                    break;
+                }
+            }
+
+            if ($thumbnail_id <= 0) {
+                continue;
+            }
+
+            $items[] = [
+                'legacy_id' => (int) $wp->post_id,
+                'post_type' => $normalized_post_type,
+                'slug' => sanitize_title((string) $wp->post_name),
+                'thumbnail_legacy_id' => $thumbnail_id,
+            ];
+        }
+
+        return $items;
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_index_export_items')) {
+    function mz_ptm_media_repair_index_export_items(array $items): array
+    {
+        $index = [
+            'by_id' => [],
+            'by_slug' => [],
+            'by_path' => [],
+        ];
+
+        foreach ($items as $item) {
+            $legacy_id = (int) ($item['legacy_id'] ?? 0);
+            $slug = (string) ($item['slug'] ?? '');
+            $path = (string) ($item['relative_path'] ?? '');
+
+            if ($legacy_id > 0) {
+                $index['by_id'][$legacy_id] = $item;
+            }
+            if ($slug !== '') {
+                $index['by_slug'][$slug] = $item;
+            }
+            if ($path !== '') {
+                $index['by_path'][$path] = $item;
+            }
+        }
+
+        return $index;
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_find_matching_item')) {
+    function mz_ptm_media_repair_find_matching_item(array $production_item, array $staging_index): ?array
+    {
+        $path = (string) ($production_item['relative_path'] ?? '');
+        if ($path !== '' && !empty($staging_index['by_path'][$path])) {
+            return (array) $staging_index['by_path'][$path];
+        }
+
+        $slug = (string) ($production_item['slug'] ?? '');
+        if ($slug !== '' && !empty($staging_index['by_slug'][$slug])) {
+            return (array) $staging_index['by_slug'][$slug];
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_find_local_attachment_id')) {
+    function mz_ptm_media_repair_find_local_attachment_id(array $staging_item): int
+    {
+        $staging_id = (int) ($staging_item['legacy_id'] ?? 0);
+        if ($staging_id > 0) {
+            $post = get_post($staging_id);
+            if ($post instanceof WP_Post && $post->post_type === 'attachment') {
+                return (int) $post->ID;
+            }
+        }
+
+        $path = (string) ($staging_item['relative_path'] ?? '');
+        if ($path !== '') {
+            $ids = get_posts([
+                'post_type' => 'attachment',
+                'post_status' => 'any',
+                'posts_per_page' => 1,
+                'fields' => 'ids',
+                'meta_key' => '_wp_attached_file',
+                'meta_value' => $path,
+                'no_found_rows' => true,
+                'update_post_meta_cache' => false,
+                'update_post_term_cache' => false,
+                'suppress_filters' => true,
+            ]);
+
+            if (!empty($ids[0])) {
+                return (int) $ids[0];
+            }
+        }
+
+        $slug = (string) ($staging_item['slug'] ?? '');
+        if ($slug !== '') {
+            $ids = get_posts([
+                'name' => $slug,
+                'post_type' => 'attachment',
+                'post_status' => 'any',
+                'posts_per_page' => 1,
+                'fields' => 'ids',
+                'no_found_rows' => true,
+                'update_post_meta_cache' => false,
+                'update_post_term_cache' => false,
+                'suppress_filters' => true,
+            ]);
+
+            if (!empty($ids[0])) {
+                return (int) $ids[0];
+            }
+        }
+
+        return 0;
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_resolve_local_parent_id')) {
+    function mz_ptm_media_repair_resolve_local_parent_id(int $production_parent_id): int
+    {
+        if ($production_parent_id <= 0) {
+            return 0;
+        }
+
+        $local_id = mz_ptm_wxr_find_local_post_id_by_legacy_id($production_parent_id);
+        if ($local_id > 0) {
+            return $local_id;
+        }
+
+        $post = get_post($production_parent_id);
+        if ($post instanceof WP_Post && $post->post_type !== 'attachment') {
+            return (int) $post->ID;
+        }
+
+        return 0;
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_find_local_post_id')) {
+    function mz_ptm_media_repair_find_local_post_id(array $item): int
+    {
+        $legacy_id = (int) ($item['legacy_id'] ?? 0);
+        if ($legacy_id > 0) {
+            $local_id = mz_ptm_wxr_find_local_post_id_by_legacy_id($legacy_id);
+            if ($local_id > 0) {
+                return $local_id;
+            }
+
+            $post = get_post($legacy_id);
+            if ($post instanceof WP_Post && $post->post_type === (string) ($item['post_type'] ?? '')) {
+                return (int) $post->ID;
+            }
+        }
+
+        $slug = (string) ($item['slug'] ?? '');
+        $post_type = (string) ($item['post_type'] ?? '');
+        if ($slug === '' || $post_type === '') {
+            return 0;
+        }
+
+        $posts = get_posts([
+            'name' => $slug,
+            'post_type' => $post_type,
+            'post_status' => 'any',
+            'posts_per_page' => 1,
+            'fields' => 'ids',
+            'no_found_rows' => true,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+            'suppress_filters' => true,
+        ]);
+
+        return !empty($posts[0]) ? (int) $posts[0] : 0;
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_replace_string')) {
+    function mz_ptm_media_repair_replace_string(string $value, array $id_map, bool &$changed): string
+    {
+        if ($value === '') {
+            return $value;
+        }
+
+        if (ctype_digit($value)) {
+            $int_value = (int) $value;
+            if (isset($id_map[$int_value])) {
+                $changed = true;
+                return (string) $id_map[$int_value];
+            }
+
+            return $value;
+        }
+
+        if (preg_match('/^\d+(,\d+)+$/', $value)) {
+            $parts = array_map('intval', explode(',', $value));
+            $replaced = [];
+            $local_changed = false;
+            foreach ($parts as $part) {
+                if (isset($id_map[$part])) {
+                    $replaced[] = (string) $id_map[$part];
+                    $local_changed = true;
+                } else {
+                    $replaced[] = (string) $part;
+                }
+            }
+
+            if ($local_changed) {
+                $changed = true;
+                return implode(',', $replaced);
+            }
+        }
+
+        $decoded = json_decode($value, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $decoded_changed = false;
+            $decoded = mz_ptm_media_repair_replace_data($decoded, $id_map, $decoded_changed);
+            if ($decoded_changed) {
+                $changed = true;
+                return wp_json_encode($decoded);
+            }
+        }
+
+        $updated = preg_replace_callback('/wp-image-(\d+)/', static function (array $matches) use ($id_map, &$changed): string {
+            $old_id = (int) ($matches[1] ?? 0);
+            if ($old_id > 0 && isset($id_map[$old_id])) {
+                $changed = true;
+                return 'wp-image-' . (int) $id_map[$old_id];
+            }
+
+            return (string) $matches[0];
+        }, $value);
+
+        $updated = preg_replace_callback('/("id"\s*:\s*)(\d+)/', static function (array $matches) use ($id_map, &$changed): string {
+            $old_id = (int) ($matches[2] ?? 0);
+            if ($old_id > 0 && isset($id_map[$old_id])) {
+                $changed = true;
+                return (string) $matches[1] . (int) $id_map[$old_id];
+            }
+
+            return (string) $matches[0];
+        }, (string) $updated);
+
+        $updated = preg_replace_callback('/(ids=)(["\'])([\d,]+)(\2)/', static function (array $matches) use ($id_map, &$changed): string {
+            $parts = array_map('intval', explode(',', (string) ($matches[3] ?? '')));
+            $local_changed = false;
+            foreach ($parts as &$part) {
+                if (isset($id_map[$part])) {
+                    $part = (int) $id_map[$part];
+                    $local_changed = true;
+                }
+            }
+            unset($part);
+
+            if ($local_changed) {
+                $changed = true;
+                return (string) $matches[1] . (string) $matches[2] . implode(',', $parts) . (string) $matches[4];
+            }
+
+            return (string) $matches[0];
+        }, (string) $updated);
+
+        return (string) $updated;
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_replace_data')) {
+    function mz_ptm_media_repair_replace_data($value, array $id_map, bool &$changed)
+    {
+        if (is_int($value)) {
+            if (isset($id_map[$value])) {
+                $changed = true;
+                return (int) $id_map[$value];
+            }
+
+            return $value;
+        }
+
+        if (is_string($value)) {
+            return mz_ptm_media_repair_replace_string($value, $id_map, $changed);
+        }
+
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                $value[$key] = mz_ptm_media_repair_replace_data($item, $id_map, $changed);
+            }
+
+            return $value;
+        }
+
+        if (is_object($value)) {
+            foreach ($value as $key => $item) {
+                $value->{$key} = mz_ptm_media_repair_replace_data($item, $id_map, $changed);
+            }
+
+            return $value;
+        }
+
+        return $value;
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_prepare_db_value')) {
+    function mz_ptm_media_repair_prepare_db_value($value): string
+    {
+        if (is_array($value) || is_object($value)) {
+            return maybe_serialize($value);
+        }
+
+        return (string) $value;
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_update_metadata_table')) {
+    function mz_ptm_media_repair_update_metadata_table(string $table, string $id_column, string $value_column, array $id_map, bool $apply): array
+    {
+        global $wpdb;
+
+        $updated = 0;
+        $scanned = 0;
+        $rows = $wpdb->get_results("SELECT {$id_column} AS row_id, {$value_column} AS raw_value FROM {$table}", ARRAY_A);
+
+        foreach ((array) $rows as $row) {
+            $scanned++;
+            $raw_value = isset($row['raw_value']) ? (string) $row['raw_value'] : '';
+            $value = is_serialized($raw_value) ? maybe_unserialize($raw_value) : $raw_value;
+            $changed = false;
+            $updated_value = mz_ptm_media_repair_replace_data($value, $id_map, $changed);
+
+            if (!$changed) {
+                continue;
+            }
+
+            $updated++;
+            if (!$apply) {
+                continue;
+            }
+
+            $wpdb->update(
+                $table,
+                [$value_column => mz_ptm_media_repair_prepare_db_value($updated_value)],
+                [$id_column => (int) $row['row_id']],
+                ['%s'],
+                ['%d']
+            );
+        }
+
+        return [
+            'scanned' => $scanned,
+            'updated' => $updated,
+        ];
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_update_posts_table')) {
+    function mz_ptm_media_repair_update_posts_table(array $id_map, bool $apply): array
+    {
+        global $wpdb;
+
+        $updated = 0;
+        $scanned = 0;
+        $rows = $wpdb->get_results("SELECT ID, post_content FROM {$wpdb->posts}", ARRAY_A);
+
+        foreach ((array) $rows as $row) {
+            $scanned++;
+            $raw_value = isset($row['post_content']) ? (string) $row['post_content'] : '';
+            $changed = false;
+            $updated_value = mz_ptm_media_repair_replace_string($raw_value, $id_map, $changed);
+
+            if (!$changed) {
+                continue;
+            }
+
+            $updated++;
+            if (!$apply) {
+                continue;
+            }
+
+            $wpdb->update(
+                $wpdb->posts,
+                ['post_content' => $updated_value],
+                ['ID' => (int) $row['ID']],
+                ['%s'],
+                ['%d']
+            );
+        }
+
+        return [
+            'scanned' => $scanned,
+            'updated' => $updated,
+        ];
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_apply_featured_images')) {
+    function mz_ptm_media_repair_apply_featured_images(array $content_items, array $attachment_id_map, bool $apply): array
+    {
+        $updated = 0;
+        $missing_posts = 0;
+        $missing_attachments = 0;
+        $messages = [];
+
+        foreach ($content_items as $item) {
+            $local_post_id = mz_ptm_media_repair_find_local_post_id($item);
+            if ($local_post_id <= 0) {
+                $missing_posts++;
+                continue;
+            }
+
+            $production_thumbnail_id = (int) ($item['thumbnail_legacy_id'] ?? 0);
+            $local_thumbnail_id = (int) ($attachment_id_map[$production_thumbnail_id] ?? 0);
+            if ($local_thumbnail_id <= 0) {
+                $missing_attachments++;
+                $messages[] = sprintf(
+                    'Could not resolve local attachment for featured image %d on %s "%s".',
+                    $production_thumbnail_id,
+                    (string) ($item['post_type'] ?? ''),
+                    (string) ($item['slug'] ?? '')
+                );
+                continue;
+            }
+
+            $existing_thumbnail_id = (int) get_post_meta($local_post_id, '_thumbnail_id', true);
+            if ($existing_thumbnail_id === $local_thumbnail_id) {
+                continue;
+            }
+
+            $updated++;
+            if (!$apply) {
+                continue;
+            }
+
+            update_post_meta($local_post_id, '_thumbnail_id', $local_thumbnail_id);
+        }
+
+        return [
+            'updated' => $updated,
+            'missing_posts' => $missing_posts,
+            'missing_attachments' => $missing_attachments,
+            'messages' => $messages,
+        ];
+    }
+}
+
+if (!function_exists('mz_ptm_media_repair_run')) {
+    function mz_ptm_media_repair_run(array $args = []): array
+    {
+        $staging_file = isset($args['staging_file']) ? trim((string) $args['staging_file']) : '';
+        $production_file = isset($args['production_file']) ? trim((string) $args['production_file']) : '';
+        $content_file = isset($args['content_file']) ? trim((string) $args['content_file']) : '';
+        $post_types = mz_ptm_parse_csv_slugs($args['post_types'] ?? null);
+        $apply = !empty($args['apply']);
+
+        $result = [
+            'staging_file' => mz_ptm_resolve_project_root_file_path($staging_file),
+            'production_file' => mz_ptm_resolve_project_root_file_path($production_file),
+            'content_file' => mz_ptm_resolve_project_root_file_path($content_file),
+            'post_types' => $post_types,
+            'apply' => $apply,
+            'production_attachments' => 0,
+            'staging_attachments' => 0,
+            'matched_attachments' => 0,
+            'skipped_staging_only' => 0,
+            'missing_in_staging' => 0,
+            'missing_local_attachments' => 0,
+            'id_mappings' => 0,
+            'parents_updated' => 0,
+            'postmeta_updated' => 0,
+            'options_updated' => 0,
+            'post_content_updated' => 0,
+            'featured_images_updated' => 0,
+            'featured_image_posts_missing' => 0,
+            'featured_image_attachments_missing' => 0,
+            'errors' => 0,
+            'messages' => [],
+        ];
+
+        $staging_items = mz_ptm_media_repair_parse_attachment_export($result['staging_file']);
+        if (is_wp_error($staging_items)) {
+            $result['messages'][] = $staging_items->get_error_message();
+            $result['errors']++;
+            return $result;
+        }
+
+        $production_items = mz_ptm_media_repair_parse_attachment_export($result['production_file']);
+        if (is_wp_error($production_items)) {
+            $result['messages'][] = $production_items->get_error_message();
+            $result['errors']++;
+            return $result;
+        }
+
+        $staging_index = mz_ptm_media_repair_index_export_items($staging_items);
+        $production_index = mz_ptm_media_repair_index_export_items($production_items);
+        $result['staging_attachments'] = count($staging_items);
+        $result['production_attachments'] = count($production_items);
+        $result['skipped_staging_only'] = max(0, count($staging_items) - count(array_intersect_key($staging_index['by_slug'], $production_index['by_slug'])));
+
+        $production_to_local_id_map = [];
+        $parent_targets = [];
+
+        foreach ($production_items as $production_item) {
+            $staging_item = mz_ptm_media_repair_find_matching_item($production_item, $staging_index);
+            if ($staging_item === null) {
+                $result['missing_in_staging']++;
+                $result['messages'][] = sprintf(
+                    'Production attachment missing from staging export: %s',
+                    (string) ($production_item['relative_path'] ?: $production_item['slug'] ?: $production_item['legacy_id'])
+                );
+                continue;
+            }
+
+            $local_attachment_id = mz_ptm_media_repair_find_local_attachment_id($staging_item);
+            if ($local_attachment_id <= 0) {
+                $result['missing_local_attachments']++;
+                $result['messages'][] = sprintf(
+                    'Could not find a local attachment for staging item %s.',
+                    (string) ($staging_item['relative_path'] ?: $staging_item['slug'] ?: $staging_item['legacy_id'])
+                );
+                continue;
+            }
+
+            $result['matched_attachments']++;
+
+            $production_attachment_id = (int) ($production_item['legacy_id'] ?? 0);
+            if ($production_attachment_id > 0 && !isset($production_to_local_id_map[$production_attachment_id])) {
+                $production_to_local_id_map[$production_attachment_id] = $local_attachment_id;
+                if ($production_attachment_id !== $local_attachment_id) {
+                    $result['id_mappings']++;
+                }
+            }
+
+            $parent_targets[$local_attachment_id] = mz_ptm_media_repair_resolve_local_parent_id((int) ($production_item['parent_legacy_id'] ?? 0));
+        }
+
+        foreach ($parent_targets as $attachment_id => $parent_id) {
+            $current_parent_id = (int) wp_get_post_parent_id($attachment_id);
+            if ($current_parent_id === $parent_id) {
+                continue;
+            }
+
+            $result['parents_updated']++;
+            if (!$apply) {
+                continue;
+            }
+
+            $update_result = wp_update_post([
+                'ID' => $attachment_id,
+                'post_parent' => $parent_id,
+            ], true, false);
+
+            if (is_wp_error($update_result)) {
+                $result['errors']++;
+                $result['messages'][] = sprintf(
+                    'Failed to update attachment parent for %d: %s',
+                    $attachment_id,
+                    $update_result->get_error_message()
+                );
+            }
+        }
+
+        $postmeta_result = mz_ptm_media_repair_update_metadata_table($GLOBALS['wpdb']->postmeta, 'meta_id', 'meta_value', $production_to_local_id_map, $apply);
+        $result['postmeta_updated'] = (int) ($postmeta_result['updated'] ?? 0);
+
+        $options_result = mz_ptm_media_repair_update_metadata_table($GLOBALS['wpdb']->options, 'option_id', 'option_value', $production_to_local_id_map, $apply);
+        $result['options_updated'] = (int) ($options_result['updated'] ?? 0);
+
+        $posts_result = mz_ptm_media_repair_update_posts_table($production_to_local_id_map, $apply);
+        $result['post_content_updated'] = (int) ($posts_result['updated'] ?? 0);
+
+        if ($result['content_file'] !== '') {
+            $content_items = mz_ptm_media_repair_parse_content_featured_images($result['content_file'], $post_types);
+            if (is_wp_error($content_items)) {
+                $result['messages'][] = $content_items->get_error_message();
+                $result['errors']++;
+                return $result;
+            }
+
+            $featured_result = mz_ptm_media_repair_apply_featured_images((array) $content_items, $production_to_local_id_map, $apply);
+            $result['featured_images_updated'] = (int) ($featured_result['updated'] ?? 0);
+            $result['featured_image_posts_missing'] = (int) ($featured_result['missing_posts'] ?? 0);
+            $result['featured_image_attachments_missing'] = (int) ($featured_result['missing_attachments'] ?? 0);
+            $result['messages'] = array_merge($result['messages'], (array) ($featured_result['messages'] ?? []));
+        }
+
+        return $result;
+    }
+}
+
 if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_WXR_Content_Import_CLI_Command')) {
     class MZ_WXR_Content_Import_CLI_Command
     {
@@ -1636,4 +2656,88 @@ if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_WXR_Content_Import_CLI_Comm
     }
 
     \WP_CLI::add_command('mz wxr-import-content', 'MZ_WXR_Content_Import_CLI_Command');
+}
+
+if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_Media_Repair_CLI_Command')) {
+    class MZ_Media_Repair_CLI_Command
+    {
+        /**
+         * Repair media references using production and staging attachment exports.
+         *
+         * Production is treated as the source of truth. Staging-only attachments
+         * are ignored.
+         *
+         * ## OPTIONS
+         *
+         * --staging-file=<file>
+         * : Absolute path to the staging attachment export XML.
+         *
+         * --production-file=<file>
+         * : Absolute path to the production attachment export XML.
+         *
+         * [--content-file=<file>]
+         * : Optional production content export XML used to restore featured images.
+         *
+         * [--post-types=<types>]
+         * : Optional comma-separated post types to limit featured-image restoration.
+         *
+         * [--apply]
+         * : Perform writes. Omit for a dry run.
+         *
+         * ## EXAMPLES
+         *
+         *     wp mz repair-media-links --staging-file=/path/staging.xml --production-file=/path/production.xml
+         *     wp mz repair-media-links --staging-file=/path/staging.xml --production-file=/path/production.xml --content-file=/path/content.xml --post-types=post,page --apply
+         *
+         * @when after_wp_load
+         */
+        public function __invoke($args, $assoc_args): void
+        {
+            if (empty($assoc_args['staging-file']) || empty($assoc_args['production-file'])) {
+                \WP_CLI::error('The --staging-file and --production-file arguments are required.');
+            }
+
+            $result = mz_ptm_media_repair_run([
+                'staging_file' => (string) $assoc_args['staging-file'],
+                'production_file' => (string) $assoc_args['production-file'],
+                'content_file' => $assoc_args['content-file'] ?? '',
+                'post_types' => $assoc_args['post-types'] ?? '',
+                'apply' => isset($assoc_args['apply']),
+            ]);
+
+            foreach ((array) $result['messages'] as $message) {
+                \WP_CLI::log((string) $message);
+            }
+
+            \WP_CLI::log('');
+            \WP_CLI::log('Staging file: ' . (string) ($result['staging_file'] ?? ''));
+            \WP_CLI::log('Production file: ' . (string) ($result['production_file'] ?? ''));
+            \WP_CLI::log('Content file: ' . (string) ($result['content_file'] ?? ''));
+            \WP_CLI::log('Content post types: ' . implode(', ', (array) ($result['post_types'] ?? [])));
+            \WP_CLI::log('Mode: ' . (!empty($result['apply']) ? 'live run' : 'dry run'));
+            \WP_CLI::log('Production attachments: ' . (int) ($result['production_attachments'] ?? 0));
+            \WP_CLI::log('Staging attachments: ' . (int) ($result['staging_attachments'] ?? 0));
+            \WP_CLI::log('Matched attachments: ' . (int) ($result['matched_attachments'] ?? 0));
+            \WP_CLI::log('Missing in staging export: ' . (int) ($result['missing_in_staging'] ?? 0));
+            \WP_CLI::log('Missing local attachments: ' . (int) ($result['missing_local_attachments'] ?? 0));
+            \WP_CLI::log('Staging-only attachments skipped: ' . (int) ($result['skipped_staging_only'] ?? 0));
+            \WP_CLI::log('ID remaps: ' . (int) ($result['id_mappings'] ?? 0));
+            \WP_CLI::log('Attachment parents updated: ' . (int) ($result['parents_updated'] ?? 0));
+            \WP_CLI::log('Postmeta rows updated: ' . (int) ($result['postmeta_updated'] ?? 0));
+            \WP_CLI::log('Option rows updated: ' . (int) ($result['options_updated'] ?? 0));
+            \WP_CLI::log('Post content rows updated: ' . (int) ($result['post_content_updated'] ?? 0));
+            \WP_CLI::log('Featured images updated: ' . (int) ($result['featured_images_updated'] ?? 0));
+            \WP_CLI::log('Featured image posts missing: ' . (int) ($result['featured_image_posts_missing'] ?? 0));
+            \WP_CLI::log('Featured image attachments missing: ' . (int) ($result['featured_image_attachments_missing'] ?? 0));
+            \WP_CLI::log('Errors: ' . (int) ($result['errors'] ?? 0));
+
+            if (!empty($result['errors'])) {
+                \WP_CLI::halt(1);
+            }
+
+            \WP_CLI::success(!empty($result['apply']) ? 'Media repair complete.' : 'Media repair dry run complete.');
+        }
+    }
+
+    \WP_CLI::add_command('mz repair-media-links', 'MZ_Media_Repair_CLI_Command');
 }

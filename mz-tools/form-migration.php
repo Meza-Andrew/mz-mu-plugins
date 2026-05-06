@@ -1,14 +1,27 @@
 <?php
 
 /**
- * Plugin Name: MZ Form Migration Tools (MU)
- * Description: Admin-only tools to migrate legacy page section_form data into form posts and clean/reset form records.
- * Author: Meza
- * Version: 1.0.7
+ * Internal module for MZ Tools form migration flows.
  */
 
 if (!defined('ABSPATH')) {
     exit;
+}
+
+if (!defined('MZFMT_ACTION')) {
+    define('MZFMT_ACTION', 'mz_form_migration_tools');
+}
+
+if (!defined('MZFMT_RESULT_USER_META')) {
+    define('MZFMT_RESULT_USER_META', 'mz_form_migration_last_result');
+}
+
+if (!function_exists('mzf_mt_user_can_access_tool')) {
+    function mzf_mt_user_can_access_tool(): bool
+    {
+        $default_enabled = current_user_can('manage_options');
+        return (bool) apply_filters('mzf_mt_admin_tool_enabled', $default_enabled);
+    }
 }
 
 if (!function_exists('mzf_mt_form_post_type_ready')) {
@@ -1212,8 +1225,479 @@ if (!function_exists('mzf_mt_print_report')) {
     }
 }
 
+if (!function_exists('mzf_mt_store_result')) {
+    function mzf_mt_store_result(array $result): void
+    {
+        $result['recorded_at'] = current_time('mysql');
+        $user_id = get_current_user_id();
+        if ($user_id > 0) {
+            update_user_meta($user_id, MZFMT_RESULT_USER_META, $result);
+        }
+    }
+}
+
+if (!function_exists('mzf_mt_get_result')) {
+    function mzf_mt_get_result(): array
+    {
+        $user_id = get_current_user_id();
+        if ($user_id <= 0) {
+            return [];
+        }
+
+        $result = get_user_meta($user_id, MZFMT_RESULT_USER_META, true);
+        return is_array($result) ? $result : [];
+    }
+}
+
+if (!function_exists('mzf_mt_get_redirect_url')) {
+    function mzf_mt_get_redirect_url(): string
+    {
+        if (defined('MZ_PTM_PAGE_SLUG')) {
+            return add_query_arg('tab', 'form', admin_url('tools.php?page=' . MZ_PTM_PAGE_SLUG));
+        }
+
+        return admin_url('tools.php');
+    }
+}
+
+if (!function_exists('mzf_mt_execute_action')) {
+    function mzf_mt_execute_action(string $action, array $args = []): array
+    {
+        if ($action === 'migrate_section_forms') {
+            if (!mzf_mt_form_post_type_ready()) {
+                return [
+                    'action' => $action,
+                    'title' => 'MZ Form Migration Tools',
+                    'lines' => ['Form post type is not registered on this site.'],
+                ];
+            }
+
+            $run_args = [
+                'apply' => !empty($args['apply']),
+                'limit' => isset($args['limit']) ? absint((int) $args['limit']) : 0,
+                'source_id' => isset($args['source_id']) ? absint((int) $args['source_id']) : 0,
+                'include_hidden' => !empty($args['include_hidden']),
+            ];
+
+            $rows = mzf_mt_migrate_section_forms($run_args);
+            $counts = [];
+            foreach ($rows as $row) {
+                $status = (string) ($row['status'] ?? 'unknown');
+                $counts[$status] = ($counts[$status] ?? 0) + 1;
+            }
+
+            $lines = [];
+            $lines[] = 'Mode: ' . ($run_args['apply'] ? 'APPLY' : 'DRY RUN');
+            $lines[] = 'Args: ' . wp_json_encode($run_args);
+            $lines[] = 'Total scanned: ' . count($rows);
+            $lines[] = 'Summary: ' . wp_json_encode($counts);
+            $lines[] = '';
+
+            foreach ($rows as $row) {
+                $lines[] = sprintf(
+                    '[%s] source=%d (%s) -> form=%d (%s)',
+                    strtoupper((string) ($row['status'] ?? 'unknown')),
+                    (int) ($row['source_id'] ?? 0),
+                    (string) ($row['source_slug'] ?? ''),
+                    (int) ($row['form_id'] ?? 0),
+                    (string) ($row['form_slug'] ?? '')
+                );
+                if (!empty($row['reason'])) {
+                    $lines[] = '  reason: ' . (string) $row['reason'];
+                }
+            }
+
+            return [
+                'action' => $action,
+                'title' => 'Section Form Migration',
+                'lines' => $lines,
+                'apply' => $run_args['apply'],
+                'args' => $run_args,
+                'counts' => $counts,
+                'total_scanned' => count($rows),
+            ];
+        }
+
+        if ($action === 'clear_forms') {
+            if (empty($args['confirm'])) {
+                return [
+                    'action' => $action,
+                    'title' => 'MZ Form Migration Tools',
+                    'lines' => [
+                        'Refusing to clear forms without confirmation.',
+                        'Re-run with confirmation enabled.',
+                    ],
+                ];
+            }
+
+            $result = mzf_mt_clear_forms();
+            $lines = [
+                'Total found: ' . (int) $result['total'],
+                'Deleted: ' . (int) $result['deleted'],
+                'Failed: ' . (int) $result['failed'],
+            ];
+            if (!empty($result['errors'])) {
+                $lines[] = 'SQL errors: ' . implode(' | ', (array) $result['errors']);
+            }
+            if (!empty($result['remaining_ids'])) {
+                $lines[] = 'Failed IDs: ' . implode(',', (array) $result['remaining_ids']);
+            }
+
+            return [
+                'action' => $action,
+                'title' => 'Form Post Cleanup',
+                'lines' => $lines,
+                'apply' => true,
+                'total' => (int) $result['total'],
+                'deleted' => (int) $result['deleted'],
+                'failed' => (int) $result['failed'],
+                'errors' => (array) ($result['errors'] ?? []),
+            ];
+        }
+
+        if ($action === 'repair_form_dupe_ids') {
+            if (empty($args['confirm'])) {
+                return [
+                    'action' => $action,
+                    'title' => 'MZ Form Migration Tools',
+                    'lines' => [
+                        'Refusing to run duplicate-ID repair without confirmation.',
+                        'Re-run with confirmation enabled.',
+                    ],
+                ];
+            }
+
+            $result = mzf_mt_repair_dupe_form_ids();
+            $lines = [
+                'Duplicate ID groups found: ' . (int) $result['found'],
+                'Groups fixed: ' . count((array) $result['fixed']),
+            ];
+            foreach ((array) $result['fixed'] as $row) {
+                $lines[] = '  ID ' . (int) ($row['id'] ?? 0) . ' removed: ' . (int) ($row['removed'] ?? 0);
+            }
+            if (!empty($result['errors'])) {
+                $lines[] = 'Errors: ' . implode(' | ', (array) $result['errors']);
+            }
+            $lines[] = 'Remaining duplicate groups: ' . count((array) $result['remaining']);
+
+            return [
+                'action' => $action,
+                'title' => 'Form Duplicate ID Repair',
+                'lines' => $lines,
+                'apply' => true,
+                'found' => (int) $result['found'],
+                'fixed' => (array) ($result['fixed'] ?? []),
+                'remaining' => (array) ($result['remaining'] ?? []),
+                'errors' => (array) ($result['errors'] ?? []),
+            ];
+        }
+
+        if ($action === 'export_forms_json') {
+            $payload = mzf_mt_export_forms_payload();
+            $json = wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            if ($json === false) {
+                return [
+                    'action' => $action,
+                    'title' => 'Form JSON Export',
+                    'lines' => ['Failed to encode JSON payload.'],
+                ];
+            }
+
+            return [
+                'action' => $action,
+                'title' => 'Form JSON Export',
+                'download' => true,
+                'content_type' => 'application/json; charset=utf-8',
+                'filename' => 'mzf-form-sync.json',
+                'body' => $json,
+            ];
+        }
+
+        if ($action === 'import_forms_json') {
+            if (empty($args['confirm'])) {
+                return [
+                    'action' => $action,
+                    'title' => 'MZ Form Migration Tools',
+                    'lines' => [
+                        'Refusing JSON import without confirmation.',
+                        'Default path: ' . mzf_mt_default_sync_json_path(),
+                    ],
+                ];
+            }
+
+            $path = isset($args['path']) ? wp_unslash((string) $args['path']) : '';
+            $replace_meta = !empty($args['replace_meta']);
+            [$payload_or_error, $resolved_path] = mzf_mt_read_forms_payload_from_json($path);
+            if (is_wp_error($payload_or_error)) {
+                return [
+                    'action' => $action,
+                    'title' => 'Form JSON Import',
+                    'lines' => [
+                        'Error: ' . $payload_or_error->get_error_message(),
+                        'Path: ' . $resolved_path,
+                    ],
+                ];
+            }
+
+            $rows = mzf_mt_import_forms_payload($payload_or_error, $replace_meta);
+            $counts = [];
+            foreach ($rows as $row) {
+                $status = (string) ($row['status'] ?? 'unknown');
+                $counts[$status] = ($counts[$status] ?? 0) + 1;
+            }
+
+            $lines = [];
+            $lines[] = 'Path: ' . $resolved_path;
+            $lines[] = 'Replace meta mode: ' . ($replace_meta ? 'ON' : 'OFF');
+            $lines[] = 'Summary: ' . wp_json_encode($counts);
+            $lines[] = '';
+            foreach ($rows as $row) {
+                $lines[] = sprintf(
+                    '[%s] slug=%s -> form=%d',
+                    strtoupper((string) ($row['status'] ?? 'unknown')),
+                    (string) ($row['slug'] ?? ''),
+                    (int) ($row['form_id'] ?? 0)
+                );
+                if (!empty($row['reason'])) {
+                    $lines[] = '  reason: ' . (string) $row['reason'];
+                }
+            }
+
+            return [
+                'action' => $action,
+                'title' => 'Form JSON Import',
+                'lines' => $lines,
+                'apply' => true,
+                'path' => $resolved_path,
+                'replace_meta' => $replace_meta,
+                'counts' => $counts,
+            ];
+        }
+
+        return [
+            'action' => $action,
+            'title' => 'MZ Form Migration Tools',
+            'lines' => [
+                'Unknown action: ' . $action,
+                'Valid actions: migrate_section_forms, clear_forms, repair_form_dupe_ids, export_forms_json, import_forms_json',
+            ],
+            'apply' => false,
+        ];
+    }
+}
+
+if (!function_exists('mzf_mt_output_download_result')) {
+    function mzf_mt_output_download_result(array $result): void
+    {
+        if (!headers_sent()) {
+            header('Content-Type: ' . (string) ($result['content_type'] ?? 'text/plain; charset=utf-8'));
+            header('Content-Disposition: attachment; filename="' . (string) ($result['filename'] ?? 'download.txt') . '"');
+        }
+
+        echo (string) ($result['body'] ?? '');
+    }
+}
+
+if (!function_exists('mzf_mt_result_heading')) {
+    function mzf_mt_result_heading(array $result): string
+    {
+        $action = (string) ($result['action'] ?? '');
+        $apply = !empty($result['apply']);
+
+        if ($action === 'migrate_section_forms') {
+            return $apply ? 'Last migration' : 'Last dry run';
+        }
+
+        return 'Last action';
+    }
+}
+
+if (!function_exists('mzf_mt_result_summary_lines')) {
+    function mzf_mt_result_summary_lines(array $result): array
+    {
+        $action = (string) ($result['action'] ?? '');
+        $summary = [];
+
+        if ($action === 'migrate_section_forms') {
+            $counts = is_array($result['counts'] ?? null) ? (array) $result['counts'] : [];
+            $summary[] = sprintf(
+                'Scanned: %d. Created: %d. Updated: %d. Skipped: %d. Errors: %d.',
+                (int) ($result['total_scanned'] ?? 0),
+                (int) ($counts['created'] ?? 0),
+                (int) ($counts['updated'] ?? 0),
+                (int) ($counts['skipped'] ?? 0),
+                (int) ($counts['error'] ?? 0)
+            );
+            if (!empty($result['args'])) {
+                $summary[] = 'Args: ' . wp_json_encode((array) $result['args']);
+            }
+            return $summary;
+        }
+
+        if ($action === 'clear_forms') {
+            $summary[] = sprintf(
+                'Total found: %d. Deleted: %d. Failed: %d.',
+                (int) ($result['total'] ?? 0),
+                (int) ($result['deleted'] ?? 0),
+                (int) ($result['failed'] ?? 0)
+            );
+            return $summary;
+        }
+
+        if ($action === 'repair_form_dupe_ids') {
+            $summary[] = sprintf(
+                'Duplicate groups found: %d. Groups fixed: %d. Remaining duplicate groups: %d.',
+                (int) ($result['found'] ?? 0),
+                count((array) ($result['fixed'] ?? [])),
+                count((array) ($result['remaining'] ?? []))
+            );
+            return $summary;
+        }
+
+        if ($action === 'import_forms_json') {
+            $counts = is_array($result['counts'] ?? null) ? (array) $result['counts'] : [];
+            $summary[] = 'Path: ' . (string) ($result['path'] ?? '');
+            $summary[] = sprintf(
+                'Created: %d. Updated: %d. Skipped: %d. Errors: %d.',
+                (int) ($counts['created'] ?? 0),
+                (int) ($counts['updated'] ?? 0),
+                (int) ($counts['skipped'] ?? 0),
+                (int) ($counts['error'] ?? 0)
+            );
+            $summary[] = 'Replace meta mode: ' . (!empty($result['replace_meta']) ? 'ON' : 'OFF');
+            return $summary;
+        }
+
+        if ($action === 'export_forms_json') {
+            $summary[] = 'JSON export was generated for download.';
+            return $summary;
+        }
+
+        return $summary;
+    }
+}
+
+if (!function_exists('mzf_mt_render_result_summary')) {
+    function mzf_mt_render_result_summary(array $result): void
+    {
+        if ($result === []) {
+            return;
+        }
+        ?>
+        <div class="notice notice-info inline">
+            <p>
+                <strong><?php echo esc_html(mzf_mt_result_heading($result)); ?></strong>
+                <?php if (!empty($result['recorded_at'])) : ?>
+                    <span>at <?php echo esc_html((string) $result['recorded_at']); ?></span>
+                <?php endif; ?>
+            </p>
+            <?php foreach (mzf_mt_result_summary_lines($result) as $summary_line) : ?>
+                <p><?php echo esc_html((string) $summary_line); ?></p>
+            <?php endforeach; ?>
+            <?php if (!empty($result['lines'])) : ?>
+                <textarea readonly rows="14" style="width:100%;font-family:monospace;"><?php echo esc_textarea(implode("\n", (array) $result['lines'])); ?></textarea>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+}
+
+if (!function_exists('mzf_mt_render_tools_tab')) {
+    function mzf_mt_render_tools_tab(): void
+    {
+        $result = mzf_mt_get_result();
+        $limit = isset($_GET['mzf_limit']) ? absint((int) $_GET['mzf_limit']) : 0;
+        $source_id = isset($_GET['mzf_source_id']) ? absint((int) $_GET['mzf_source_id']) : 0;
+        $include_hidden = isset($_GET['mzf_include_hidden']) && (string) $_GET['mzf_include_hidden'] === '1';
+        ?>
+        <p>Migrate legacy <code>section_form</code> content into built-in <code>form</code> posts.</p>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <?php wp_nonce_field('mzf_mt_run'); ?>
+            <input type="hidden" name="action" value="<?php echo esc_attr(MZFMT_ACTION); ?>" />
+            <input type="hidden" name="tool_action" value="migrate_section_forms" />
+            <table class="form-table" role="presentation">
+                <tbody>
+                    <tr>
+                        <th scope="row"><label for="mzf-mt-source-id">Source</label></th>
+                        <td>
+                            <input id="mzf-mt-source-id" name="source_id" type="number" min="0" step="1" class="small-text" value="<?php echo esc_attr((string) $source_id); ?>" />
+                            <p class="description">Optional. Enter one post ID to target one source. Leave at <code>0</code> to scan every eligible source.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="mzf-mt-limit">Limit</label></th>
+                        <td>
+                            <input id="mzf-mt-limit" name="limit" type="number" min="0" step="1" class="small-text" value="<?php echo esc_attr((string) $limit); ?>" />
+                            <p class="description">Optional. Leave at <code>0</code> to scan every eligible source.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Include hidden</th>
+                        <td>
+                            <label><input name="include_hidden" type="checkbox" value="1" <?php checked($include_hidden); ?> /> Include sources whose legacy form visibility is turned off.</label>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="submit">
+                <button type="submit" name="mode" value="preview" class="button button-secondary">Run dry run</button>
+                <button type="submit" name="mode" value="run" class="button button-primary">Run migration</button>
+            </p>
+        </form>
+
+        <?php mzf_mt_render_result_summary($result); ?>
+        <?php
+    }
+}
+
+if (!function_exists('mzf_mt_handle_admin_post')) {
+    function mzf_mt_handle_admin_post(): void
+    {
+        if (!mzf_mt_user_can_access_tool()) {
+            wp_die('You do not have permission to run this migration.', 403);
+        }
+
+        check_admin_referer('mzf_mt_run');
+
+        $tool_action = isset($_REQUEST['tool_action']) ? sanitize_key((string) $_REQUEST['tool_action']) : '';
+        $mode = isset($_REQUEST['mode']) ? sanitize_key((string) $_REQUEST['mode']) : '';
+
+        $args = [
+            'apply' => $mode === 'run',
+            'limit' => isset($_REQUEST['limit']) ? absint((int) $_REQUEST['limit']) : 0,
+            'source_id' => isset($_REQUEST['source_id']) ? absint((int) $_REQUEST['source_id']) : 0,
+            'include_hidden' => isset($_REQUEST['include_hidden']) && (string) $_REQUEST['include_hidden'] === '1',
+            'confirm' => isset($_REQUEST['confirm']) && (string) $_REQUEST['confirm'] === '1',
+            'path' => isset($_REQUEST['path']) ? wp_unslash((string) $_REQUEST['path']) : '',
+            'replace_meta' => isset($_REQUEST['replace_meta']) && (string) $_REQUEST['replace_meta'] === '1',
+        ];
+
+        $result = mzf_mt_execute_action($tool_action, $args);
+
+        if (!empty($result['download'])) {
+            mzf_mt_output_download_result($result);
+            exit;
+        }
+
+        mzf_mt_store_result($result);
+
+        $redirect_url = add_query_arg([
+            'mzf_limit' => (int) $args['limit'],
+            'mzf_source_id' => (int) $args['source_id'],
+            'mzf_include_hidden' => !empty($args['include_hidden']) ? '1' : '0',
+            'mzf_json_path' => (string) $args['path'],
+            'mzf_replace_meta' => !empty($args['replace_meta']) ? '1' : '0',
+        ], mzf_mt_get_redirect_url());
+
+        wp_safe_redirect($redirect_url);
+        exit;
+    }
+
+    add_action('admin_post_' . MZFMT_ACTION, 'mzf_mt_handle_admin_post');
+}
+
 add_action('admin_init', function () {
-    if (!is_admin() || wp_doing_ajax() || !current_user_can('manage_options')) {
+    if (!is_admin() || wp_doing_ajax() || !mzf_mt_user_can_access_tool()) {
         return;
     }
     $action = isset($_GET['mzf_mt_action']) ? sanitize_key((string) $_GET['mzf_mt_action']) : '';
@@ -1221,177 +1705,22 @@ add_action('admin_init', function () {
         return;
     }
 
-    if ($action === 'migrate_section_forms') {
-        if (!mzf_mt_form_post_type_ready()) {
-            mzf_mt_print_report('MZ Form Migration Tools', ['Form post type is not registered on this site.']);
-            exit;
-        }
-
-        $args = [
-            'apply' => isset($_GET['apply']) && (string) $_GET['apply'] === '1',
-            'limit' => isset($_GET['limit']) ? absint($_GET['limit']) : 0,
-            'source_id' => isset($_GET['source_id']) ? absint($_GET['source_id']) : 0,
-            'include_hidden' => isset($_GET['include_hidden']) && (string) $_GET['include_hidden'] === '1',
-        ];
-
-        $rows = mzf_mt_migrate_section_forms($args);
-        $counts = [];
-        foreach ($rows as $row) {
-            $status = (string) ($row['status'] ?? 'unknown');
-            $counts[$status] = ($counts[$status] ?? 0) + 1;
-        }
-
-        $out = [];
-        $out[] = 'Mode: ' . ($args['apply'] ? 'APPLY' : 'DRY RUN');
-        $out[] = 'Args: ' . wp_json_encode($args);
-        $out[] = 'Total scanned: ' . count($rows);
-        $out[] = 'Summary: ' . wp_json_encode($counts);
-        $out[] = '';
-
-        foreach ($rows as $row) {
-            $out[] = sprintf(
-                '[%s] source=%d (%s) -> form=%d (%s)',
-                strtoupper((string) $row['status']),
-                (int) ($row['source_id'] ?? 0),
-                (string) ($row['source_slug'] ?? ''),
-                (int) ($row['form_id'] ?? 0),
-                (string) ($row['form_slug'] ?? '')
-            );
-            if (!empty($row['reason'])) {
-                $out[] = '  reason: ' . (string) $row['reason'];
-            }
-        }
-
-        mzf_mt_print_report('Section Form Migration', $out);
-        exit;
-    }
-
-    if ($action === 'clear_forms') {
-        $confirm = isset($_GET['confirm']) && (string) $_GET['confirm'] === '1';
-        if (!$confirm) {
-            mzf_mt_print_report('MZ Form Migration Tools', [
-                'Refusing to clear forms without confirmation.',
-                'Run: /wp-admin/?mzf_mt_action=clear_forms&confirm=1',
-            ]);
-            exit;
-        }
-
-        $result = mzf_mt_clear_forms();
-        $lines = [
-            'Total found: ' . (int) $result['total'],
-            'Deleted: ' . (int) $result['deleted'],
-            'Failed: ' . (int) $result['failed'],
-        ];
-        if (!empty($result['errors'])) {
-            $lines[] = 'SQL errors: ' . implode(' | ', (array) $result['errors']);
-        }
-        if (!empty($result['remaining_ids'])) {
-            $lines[] = 'Failed IDs: ' . implode(',', (array) $result['remaining_ids']);
-        }
-
-        mzf_mt_print_report('Form Post Cleanup', $lines);
-        exit;
-    }
-
-    if ($action === 'repair_form_dupe_ids') {
-        $confirm = isset($_GET['confirm']) && (string) $_GET['confirm'] === '1';
-        if (!$confirm) {
-            mzf_mt_print_report('MZ Form Migration Tools', [
-                'Refusing to run duplicate-ID repair without confirmation.',
-                'Run: /wp-admin/?mzf_mt_action=repair_form_dupe_ids&confirm=1',
-            ]);
-            exit;
-        }
-
-        $result = mzf_mt_repair_dupe_form_ids();
-        $lines = [
-            'Duplicate ID groups found: ' . (int) $result['found'],
-            'Groups fixed: ' . count((array) $result['fixed']),
-        ];
-        foreach ((array) $result['fixed'] as $row) {
-            $lines[] = '  ID ' . (int) ($row['id'] ?? 0) . ' removed: ' . (int) ($row['removed'] ?? 0);
-        }
-        if (!empty($result['errors'])) {
-            $lines[] = 'Errors: ' . implode(' | ', (array) $result['errors']);
-        }
-        $lines[] = 'Remaining duplicate groups: ' . count((array) $result['remaining']);
-
-        mzf_mt_print_report('Form Duplicate ID Repair', $lines);
-        exit;
-    }
-
-    if ($action === 'export_forms_json') {
-        $payload = mzf_mt_export_forms_payload();
-        $json = wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        if ($json === false) {
-            mzf_mt_print_report('Form JSON Export', ['Failed to encode JSON payload.']);
-            exit;
-        }
-
-        if (!headers_sent()) {
-            header('Content-Type: application/json; charset=utf-8');
-            header('Content-Disposition: attachment; filename="mzf-form-sync.json"');
-        }
-        echo $json;
-        exit;
-    }
-
-    if ($action === 'import_forms_json') {
-        $confirm = isset($_GET['confirm']) && (string) $_GET['confirm'] === '1';
-        if (!$confirm) {
-            mzf_mt_print_report('MZ Form Migration Tools', [
-                'Refusing JSON import without confirmation.',
-                'Run: /wp-admin/?mzf_mt_action=import_forms_json&confirm=1',
-                'Optional: add &path=/absolute/path/to/mzf-form-sync.json',
-                'Optional: add &replace_meta=1 to remove old keys not present in JSON',
-                'Default path: ' . mzf_mt_default_sync_json_path(),
-            ]);
-            exit;
-        }
-
-        $path = isset($_GET['path']) ? wp_unslash((string) $_GET['path']) : '';
-        $replace_meta = isset($_GET['replace_meta']) && (string) $_GET['replace_meta'] === '1';
-        [$payload_or_error, $resolved_path] = mzf_mt_read_forms_payload_from_json($path);
-        if (is_wp_error($payload_or_error)) {
-            mzf_mt_print_report('Form JSON Import', [
-                'Error: ' . $payload_or_error->get_error_message(),
-                'Path: ' . $resolved_path,
-            ]);
-            exit;
-        }
-
-        $rows = mzf_mt_import_forms_payload($payload_or_error, $replace_meta);
-        $counts = [];
-        foreach ($rows as $row) {
-            $status = (string) ($row['status'] ?? 'unknown');
-            $counts[$status] = ($counts[$status] ?? 0) + 1;
-        }
-
-        $lines = [];
-        $lines[] = 'Path: ' . $resolved_path;
-        $lines[] = 'Replace meta mode: ' . ($replace_meta ? 'ON' : 'OFF');
-        $lines[] = 'Summary: ' . wp_json_encode($counts);
-        $lines[] = '';
-        foreach ($rows as $row) {
-            $lines[] = sprintf(
-                '[%s] slug=%s -> form=%d',
-                strtoupper((string) ($row['status'] ?? 'unknown')),
-                (string) ($row['slug'] ?? ''),
-                (int) ($row['form_id'] ?? 0)
-            );
-            if (!empty($row['reason'])) {
-                $lines[] = '  reason: ' . (string) $row['reason'];
-            }
-        }
-
-        mzf_mt_print_report('Form JSON Import', $lines);
-        exit;
-    }
-
-    mzf_mt_print_report('MZ Form Migration Tools', [
-        'Unknown action: ' . $action,
-        'Valid actions: migrate_section_forms, clear_forms, repair_form_dupe_ids, export_forms_json, import_forms_json',
+    $result = mzf_mt_execute_action($action, [
+        'apply' => isset($_GET['apply']) && (string) $_GET['apply'] === '1',
+        'limit' => isset($_GET['limit']) ? absint((int) $_GET['limit']) : 0,
+        'source_id' => isset($_GET['source_id']) ? absint((int) $_GET['source_id']) : 0,
+        'include_hidden' => isset($_GET['include_hidden']) && (string) $_GET['include_hidden'] === '1',
+        'confirm' => isset($_GET['confirm']) && (string) $_GET['confirm'] === '1',
+        'path' => isset($_GET['path']) ? wp_unslash((string) $_GET['path']) : '',
+        'replace_meta' => isset($_GET['replace_meta']) && (string) $_GET['replace_meta'] === '1',
     ]);
+
+    if (!empty($result['download'])) {
+        mzf_mt_output_download_result($result);
+        exit;
+    }
+
+    mzf_mt_print_report((string) ($result['title'] ?? 'MZ Form Migration Tools'), (array) ($result['lines'] ?? []));
     exit;
 }, 1);
 
