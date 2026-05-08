@@ -103,31 +103,25 @@ if (!function_exists('meza_site_documentation_content_type_visibility_label')) {
 if (!function_exists('meza_site_documentation_content_type_description')) {
     function meza_site_documentation_content_type_description(object $object): string
     {
-        $description = trim((string) ($object->description ?? ''));
-
-        if ($description !== '') {
-            return $description;
-        }
-
         if ($object instanceof WP_Post_Type) {
             $post_type = (string) $object->name;
 
-            if ($post_type === 'page') {
-                $examples = meza_site_documentation_random_page_template_examples();
-                $example_text = $examples !== []
-                    ? meza_site_documentation_format_example_list($examples)
-                    : 'custom landing pages, service pages, and evergreen website pages';
+            $description = trim((string) ($object->description ?? ''));
 
-                return 'Manage content for pages like ' . $example_text . '.';
+            if ($post_type === 'page') {
+                return 'Manage evergreen website pages such as service, landing, contact, and general information pages.';
             }
 
             if ($post_type === 'post') {
-                $examples = meza_site_documentation_random_post_examples();
-                $example_text = $examples !== []
-                    ? meza_site_documentation_format_example_list($examples)
-                    : 'recent website articles';
+                return 'Manage time-based article content for news, insights, and educational resources.';
+            }
 
-                return 'Manage time-based article content like ' . $example_text . '.';
+            if ($post_type === 'product') {
+                return 'Manage product content for the site\'s catalog and store inventory.';
+            }
+
+            if ($description !== '') {
+                return $description;
             }
 
             return '';
@@ -135,7 +129,25 @@ if (!function_exists('meza_site_documentation_content_type_description')) {
 
         if ($object instanceof WP_Taxonomy) {
             if ((string) $object->name === 'category') {
-                return 'Manage categorization of time-based article content.';
+                return 'Organize article content into blog categories.';
+            }
+
+            if ((string) $object->name === 'product_brand') {
+                return 'Organize products by manufacturer or brand so inventory can be grouped into browseable collections.';
+            }
+
+            if ((string) $object->name === 'product_cat') {
+                return 'Organize products into browseable product categories.';
+            }
+
+            if ((string) $object->name === 'product_tag') {
+                return 'Add flexible product labels for merchandising, filtering, and related-product organization.';
+            }
+
+            $description = trim((string) ($object->description ?? ''));
+
+            if ($description !== '') {
+                return $description;
             }
 
             return '';
@@ -367,6 +379,7 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
         $post_type_objects = get_post_types([], 'objects');
         $rows = [];
         $yoast_active = meza_site_documentation_is_plugin_active('wordpress-seo/wp-seo.php');
+        $taxonomy_counts = [];
 
         foreach ($post_type_objects as $post_type_object) {
             if (!($post_type_object instanceof WP_Post_Type) || !meza_site_documentation_is_documented_post_type($post_type_object)) {
@@ -380,12 +393,17 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                 : '';
             $post_type_has_public_permalink = meza_site_documentation_post_type_has_public_permalink($post_type_object);
             $post_type_is_public_by_default = $post_type_has_public_permalink;
+            $post_type_counts = wp_count_posts($post_type);
+            $post_type_count = $post_type_counts instanceof stdClass
+                ? array_sum((array) $post_type_counts)
+                : 0;
 
             $post_type_row = [
                 'key' => sanitize_key($post_type),
                 'group' => $post_type_group_label,
                 'item' => (string) ($post_type_object->labels->name ?? ucfirst($post_type)),
                 'description' => meza_site_documentation_content_type_description($post_type_object),
+                'count' => (int) $post_type_count,
                 'visibility' => meza_site_documentation_content_type_visibility_label(
                     $post_type_has_public_permalink,
                     $post_type_is_public_by_default
@@ -424,12 +442,21 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                     $taxonomy_has_public_permalink,
                     $yoast_active
                 );
+                $taxonomy_name = (string) $taxonomy->name;
+
+                if (!array_key_exists($taxonomy_name, $taxonomy_counts)) {
+                    $taxonomy_counts[$taxonomy_name] = (int) wp_count_terms([
+                        'taxonomy' => $taxonomy_name,
+                        'hide_empty' => false,
+                    ]);
+                }
 
                 $taxonomy_row = [
-                    'key' => sanitize_key($post_type . '_' . (string) $taxonomy->name),
+                    'key' => sanitize_key($post_type . '_' . $taxonomy_name),
                     'group' => $post_type_group_label,
                     'item' => meza_site_documentation_get_content_type_taxonomy_label($taxonomy, $post_type_object),
                     'description' => meza_site_documentation_content_type_description($taxonomy),
+                    'count' => (int) ($taxonomy_counts[$taxonomy_name] ?? 0),
                     'visibility' => meza_site_documentation_content_type_visibility_label(
                         $taxonomy_has_public_permalink,
                         $taxonomy_is_public_by_default
@@ -442,7 +469,7 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                     'required_capability' => $taxonomy_capability,
                     'action' => 'Edit',
                     'kind' => 'taxonomy',
-                    'action_url' => admin_url('edit-tags.php?taxonomy=' . (string) $taxonomy->name . '&post_type=' . $post_type),
+                    'action_url' => admin_url('edit-tags.php?taxonomy=' . $taxonomy_name . '&post_type=' . $post_type),
                 ];
 
                 if (meza_site_documentation_should_include_row($taxonomy_row, 'content_types')) {
@@ -725,4 +752,3 @@ if (!function_exists('meza_site_documentation_get_taxonomy_term_rows')) {
         return $rows;
     }
 }
-

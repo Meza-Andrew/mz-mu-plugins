@@ -3,12 +3,71 @@
 /**
  * Plugin Name: MZ WooCommerce
  * Description: WooCommerce query rules, asset loading, and storefront behavior.
- * Version: 1.1.15
+ * Version: 1.1.16
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) return;
+
+if (!function_exists('meza_woocommerce_normalize_product_taxonomy_labels')) {
+    function meza_woocommerce_normalize_product_taxonomy_labels(array $args, string $taxonomy): array
+    {
+        if (!in_array($taxonomy, ['product_cat', 'product_tag'], true)) {
+            return $args;
+        }
+
+        $labels = isset($args['labels']) && is_array($args['labels'])
+            ? $args['labels']
+            : [];
+
+        if ($taxonomy === 'product_cat') {
+            $args['labels'] = array_merge($labels, [
+                'name' => __('Product Categories'),
+                'singular_name' => __('Product Category'),
+                'menu_name' => __('Product Categories'),
+                'all_items' => __('All Product Categories'),
+                'search_items' => __('Search Product Categories'),
+                'popular_items' => __('Popular Product Categories'),
+                'parent_item' => __('Parent Product Category'),
+                'parent_item_colon' => __('Parent Product Category:'),
+                'edit_item' => __('Edit Product Category'),
+                'view_item' => __('View Product Category'),
+                'update_item' => __('Update Product Category'),
+                'add_new_item' => __('Add New Product Category'),
+                'new_item_name' => __('New Product Category Name'),
+                'separate_items_with_commas' => __('Separate product categories with commas'),
+                'add_or_remove_items' => __('Add or remove product categories'),
+                'choose_from_most_used' => __('Choose from the most used product categories'),
+                'not_found' => __('No product categories found.'),
+            ]);
+
+            return $args;
+        }
+
+        $args['labels'] = array_merge($labels, [
+            'name' => __('Tags'),
+            'singular_name' => __('Tag'),
+            'menu_name' => __('Tags'),
+            'all_items' => __('All Tags'),
+            'search_items' => __('Search Tags'),
+            'popular_items' => __('Popular Tags'),
+            'edit_item' => __('Edit Tag'),
+            'view_item' => __('View Tag'),
+            'update_item' => __('Update Tag'),
+            'add_new_item' => __('Add New Tag'),
+            'new_item_name' => __('New Tag Name'),
+            'separate_items_with_commas' => __('Separate tags with commas'),
+            'add_or_remove_items' => __('Add or remove tags'),
+            'choose_from_most_used' => __('Choose from the most used tags'),
+            'not_found' => __('No tags found.'),
+        ]);
+
+        return $args;
+    }
+
+    add_filter('register_taxonomy_args', 'meza_woocommerce_normalize_product_taxonomy_labels', 20, 2);
+}
 
 /** ================================
  *  WOO GUARDS
