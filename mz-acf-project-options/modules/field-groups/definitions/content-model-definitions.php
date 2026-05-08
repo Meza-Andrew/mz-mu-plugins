@@ -48,7 +48,7 @@
                 'item_link' => 'CTA Link',
                 'item_link_description' => 'A link to a cta.',
             ],
-            'description' => '',
+            'description' => 'Manage reusable calls to action used across the website for lead generation, contact prompts, and section-level conversions.',
             'public' => true,
             'hierarchical' => false,
             'exclude_from_search' => true,
@@ -138,7 +138,7 @@
                 'item_link' => 'Review Link',
                 'item_link_description' => 'A link to a review.',
             ],
-            'description' => '',
+            'description' => 'Manage testimonial and review content used across the website to support trust, proof, and related marketing sections.',
             'public' => true,
             'hierarchical' => false,
             'exclude_from_search' => true,
@@ -229,7 +229,7 @@
                 'item_link' => 'FAQ Link',
                 'item_link_description' => 'A link to a faq.',
             ],
-            'description' => '',
+            'description' => 'Manage reusable frequently asked questions used across the website to support service, product, and informational content.',
             'public' => true,
             'hierarchical' => false,
             'exclude_from_search' => true,
@@ -371,7 +371,7 @@
                 'menu_name' => 'Localities',
                 'add_new_item' => 'Add New Locality',
             ],
-            'description' => '',
+            'description' => 'Organize content by service area or location so entries can be grouped and referenced geographically.',
             'capabilities' => [
                 'manage_terms' => 'manage_categories',
                 'edit_terms' => 'manage_categories',
@@ -453,7 +453,7 @@
                 'item_link' => 'Service Category Link',
                 'item_link_description' => 'A link to a service category',
             ],
-            'description' => '',
+            'description' => 'Organize service content into internal service categories for admin structure, filtering, and related grouping.',
             'capabilities' => [
                 'manage_terms' => 'manage_categories',
                 'edit_terms' => 'manage_categories',
@@ -538,7 +538,7 @@
                 'item_link' => '',
                 'item_link_description' => '',
             ],
-            'description' => '',
+            'description' => 'Manage service content for the site\'s core offerings, including overview pages and supporting service-specific information.',
             'public' => true,
             'hierarchical' => true,
             'exclude_from_search' => false,
@@ -586,4 +586,3 @@
             'enter_title_here' => '',
         ];
     }
-

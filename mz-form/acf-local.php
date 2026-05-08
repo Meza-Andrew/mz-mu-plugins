@@ -53,7 +53,7 @@ if (!function_exists('mzf_get_form_post_type_definition')) {
                 'item_link' => 'Form Link',
                 'item_link_description' => 'A link to a form.',
             ],
-            'description' => '',
+            'description' => 'Manage reusable form definitions used for contact, quote, upload, and other lead-capture workflows.',
             'public' => true,
             'hierarchical' => false,
             'exclude_from_search' => true,
