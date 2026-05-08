@@ -98,8 +98,12 @@ if (!function_exists('meza_site_documentation_get_section_copy')) {
             'content_types_intro' => (string) ($defaults['site_documentation_content_types_intro'] ?? ''),
             'page_templates_intro' => (string) ($defaults['site_documentation_page_templates_intro'] ?? ''),
             'section_templates_intro' => (string) ($defaults['site_documentation_section_templates_intro'] ?? ''),
+            'website_maintenance_intro' => (string) ($defaults['site_documentation_website_maintenance_intro'] ?? ''),
             'management_capabilities_intro' => (string) ($defaults['site_documentation_management_capabilities_intro'] ?? ''),
+            'dashboards_intro' => (string) ($defaults['site_documentation_dashboards_intro'] ?? ''),
+            'tools_intro' => (string) ($defaults['site_documentation_tools_intro'] ?? ''),
             'tech_stack_intro' => (string) ($defaults['site_documentation_tech_stack_intro'] ?? ''),
+            'analytics_intro' => (string) ($defaults['site_documentation_analytics_intro'] ?? ''),
             'code_dependencies_intro' => (string) ($defaults['site_documentation_code_dependencies_intro'] ?? ''),
             'plugins_intro' => (string) ($defaults['site_documentation_plugins_intro'] ?? ''),
             'themes_intro' => (string) ($defaults['site_documentation_themes_intro'] ?? ''),
@@ -404,4 +408,3 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
         return meza_site_documentation_filter_links($links);
     }
 }
-

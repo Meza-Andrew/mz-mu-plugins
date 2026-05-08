@@ -9829,11 +9829,14 @@ function meza_should_keep_top_level_menu_item(array $item): bool
         'tools.php',
         'options-general.php',
         'woocommerce',
-        'meza-site-settings',
     ];
 
     if (in_array($slug, $core_top_level_slugs, true)) {
         return true;
+    }
+
+    if ($slug === meza_get_site_settings_menu_slug()) {
+        return meza_can_access_site_settings(wp_get_current_user());
     }
 
     if (meza_is_settings_utility_menu_item($item)) {
@@ -11945,15 +11948,11 @@ function meza_get_integrations_settings_menu_slug(): string
 
 function meza_can_access_site_settings($user = null): bool
 {
-    $capability = function_exists('meza_shared_project_options_page_capability')
-        ? meza_shared_project_options_page_capability()
-        : 'meza_manage_shared_project_options';
-
     if ($user === null) {
-        return current_user_can($capability);
+        return current_user_can('manage_options');
     }
 
-    return user_can($user, $capability);
+    return user_can($user, 'manage_options');
 }
 
 function meza_can_access_business_settings($user = null): bool
@@ -11999,9 +11998,7 @@ function meza_register_site_settings_top_level_menu(): void
     add_menu_page(
         'Site',
         'Site',
-        function_exists('meza_shared_project_options_page_capability')
-            ? meza_shared_project_options_page_capability()
-            : 'meza_manage_shared_project_options',
+        'manage_options',
         meza_get_site_settings_menu_slug(),
         '__return_null',
         'dashicons-admin-site',

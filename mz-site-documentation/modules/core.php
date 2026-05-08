@@ -153,20 +153,24 @@ if (!function_exists('meza_site_documentation_default_section_copy')) {
     function meza_site_documentation_default_section_copy(): array
     {
         return [
-            'site_documentation_key_links_intro' => 'Use these links to reach the live website, WordPress admin, and other primary destinations tied to the site.',
-            'site_documentation_users_and_roles_intro' => 'These are the WordPress roles documented for the website and the users currently assigned to them when applicable.',
-            'site_documentation_content_structure_intro' => 'This section outlines how website content is modeled in WordPress, including the templates and reusable building blocks that shape what appears on the front end.',
-            'site_documentation_content_intro' => 'This section documents the live content inventory, separating public indexed URLs from content that is managed in WordPress without a front-end permalink.',
-            'site_documentation_indexed_urls_intro' => 'These are the published URLs that can be reached on the website, grouped by page, post type, and public taxonomy structure.',
-            'site_documentation_content_only_intro' => 'These content types and taxonomies are managed in WordPress but do not publish front-end URLs by default.',
-            'site_documentation_content_types_intro' => 'These are the registered post types and taxonomies that support reusable website content, along with their default visibility and role-based management access.',
-            'site_documentation_page_templates_intro' => 'These are the core and custom page templates currently available on the website and where they fit into the content structure.',
-            'site_documentation_section_templates_intro' => 'These are the reusable section partials available in the theme codebase for assembling pages, archives, and landing-page layouts.',
-            'site_documentation_management_capabilities_intro' => 'These are the ongoing maintenance responsibilities on the website, mapped to the documented access each primary role has.',
-            'site_documentation_tech_stack_intro' => 'This section outlines the active platforms, plugins, and themes that support the website. Importance indicates how critical each item is to core functionality, maintenance, and troubleshooting.',
-            'site_documentation_code_dependencies_intro' => 'These are the code packages used by the active theme stack for front-end behavior, asset compilation, and shared build tooling.',
-            'site_documentation_plugins_intro' => '',
-            'site_documentation_themes_intro' => '',
+            'site_documentation_key_links_intro' => 'Use these links to access the main website destinations and related reference pages documented for this project.',
+            'site_documentation_users_and_roles_intro' => 'This section identifies the WordPress roles used on the site and the people or teams associated with them when that information is available.',
+            'site_documentation_content_structure_intro' => 'This section explains how content is organized in WordPress, including the templates and reusable patterns that shape the site.',
+            'site_documentation_content_intro' => 'This section catalogs the site\'s content collections, separating published URLs from content that is managed only in the admin.',
+            'site_documentation_indexed_urls_intro' => 'These entries represent content that publishes a front-end URL and can be referenced directly on the website.',
+            'site_documentation_content_only_intro' => 'These entries represent content that is maintained in WordPress for internal or supporting use without a public URL by default.',
+            'site_documentation_content_types_intro' => 'These are the post types and taxonomies used to organize content across the site, along with their visibility and management access.',
+            'site_documentation_page_templates_intro' => 'These templates define the main page-level layouts available on the site and where they are typically used.',
+            'site_documentation_section_templates_intro' => 'These templates are reusable content sections available in the theme for building page and archive layouts.',
+            'site_documentation_website_maintenance_intro' => 'This section summarizes the operational areas involved in maintaining the site and the systems used to support that work.',
+            'site_documentation_management_capabilities_intro' => 'These entries outline the core maintenance responsibilities documented for the site and the roles that can perform them.',
+            'site_documentation_dashboards_intro' => 'These are the primary admin and reporting screens used to review site activity, content status, visibility, and related metrics.',
+            'site_documentation_tools_intro' => 'These are the administrative tools and utilities available to support configuration, troubleshooting, and routine upkeep.',
+            'site_documentation_tech_stack_intro' => 'This section documents the active platforms, themes, plugins, and supporting code dependencies that the site relies on.',
+            'site_documentation_analytics_intro' => 'These are the analytics and tracking services connected to the site, along with the places used to review reporting data.',
+            'site_documentation_code_dependencies_intro' => 'These are the development and runtime packages used by the active theme stack for front-end features, builds, and shared tooling.',
+            'site_documentation_plugins_intro' => 'These are the active WordPress plugins that provide site features, integrations, editorial support, and administrative functionality.',
+            'site_documentation_themes_intro' => 'These are the active themes that control the site\'s frontend presentation, template structure, and shared implementation layer.',
         ];
     }
 }
@@ -818,4 +822,3 @@ if (!function_exists('meza_site_documentation_single_template_rows')) {
         return array_values($rows);
     }
 }
-

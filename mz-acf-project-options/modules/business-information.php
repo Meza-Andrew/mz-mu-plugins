@@ -499,8 +499,12 @@ if (!function_exists('meza_get_shared_project_acf_options_page_capability')) {
     {
         $menu_slug = sanitize_key($menu_slug);
 
-        if (in_array($menu_slug, ['business-information', 'branding', 'content-structure'], true)) {
+        if (in_array($menu_slug, ['business-information', 'branding'], true)) {
             return meza_shared_project_options_page_capability();
+        }
+
+        if ($menu_slug === 'content-structure') {
+            return 'manage_options';
         }
 
         return 'manage_options';
@@ -623,4 +627,3 @@ if (!function_exists('meza_get_settings_admin_page_title_for_slug')) {
         return '';
     }
 }
-
