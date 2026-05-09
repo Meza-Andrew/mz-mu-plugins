@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Tools
  * Description: Migration and reconciliation tools for Meza WordPress projects.
- * Version: 1.0.2
+ * Version: 1.0.8
  * Author: Meza
  */
 

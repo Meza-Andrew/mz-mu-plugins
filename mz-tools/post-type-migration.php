@@ -36,6 +36,22 @@ if (!defined('MZ_PTM_MEDIA_RESULT_USER_META')) {
     define('MZ_PTM_MEDIA_RESULT_USER_META', 'mz_ptm_media_last_result');
 }
 
+if (!defined('MZ_PTM_MEDIA_ATTACH_ACTION')) {
+    define('MZ_PTM_MEDIA_ATTACH_ACTION', 'mz_media_attach_featured');
+}
+
+if (!defined('MZ_PTM_LOCALITY_ACTION')) {
+    define('MZ_PTM_LOCALITY_ACTION', 'mz_locality_migration');
+}
+
+if (!defined('MZ_PTM_LOCALITY_RESULT_TRANSIENT')) {
+    define('MZ_PTM_LOCALITY_RESULT_TRANSIENT', 'mz_ptm_locality_last_result');
+}
+
+if (!defined('MZ_PTM_LOCALITY_RESULT_USER_META')) {
+    define('MZ_PTM_LOCALITY_RESULT_USER_META', 'mz_ptm_locality_last_result');
+}
+
 if (!function_exists('mz_ptm_normalize_post_type_slug')) {
     function mz_ptm_normalize_post_type_slug(string $value): string
     {
@@ -111,6 +127,143 @@ if (!function_exists('mz_ptm_get_redirect_url')) {
     function mz_ptm_get_redirect_url(): string
     {
         return admin_url('tools.php?page=' . MZ_PTM_PAGE_SLUG);
+    }
+}
+
+if (!function_exists('mz_ptm_get_locality_taxonomy')) {
+    function mz_ptm_get_locality_taxonomy(): string
+    {
+        if (taxonomy_exists('locality')) {
+            return 'locality';
+        }
+
+        if (taxonomy_exists('location')) {
+            return 'location';
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('mz_ptm_locality_is_stateful_name')) {
+    function mz_ptm_locality_is_stateful_name(string $name): bool
+    {
+        return preg_match('/,\s*(virginia|maryland|west virginia|district of columbia|dc)$/i', trim($name)) === 1;
+    }
+}
+
+if (!function_exists('mz_ptm_locality_normalize_name')) {
+    function mz_ptm_locality_normalize_name(string $name): string
+    {
+        $normalized = strtolower(trim(wp_strip_all_tags($name)));
+        $normalized = preg_replace('/\s+/', ' ', $normalized);
+        $normalized = preg_replace('/(?:,\s*(virginia|maryland|west virginia|district of columbia|dc)|\s+(virginia|maryland|west virginia|district of columbia|va|md|wv|dc))$/i', '', (string) $normalized);
+        $normalized = preg_replace('/\s+/', ' ', (string) $normalized);
+
+        return trim((string) $normalized, " \t\n\r\0\x0B,");
+    }
+}
+
+if (!function_exists('mz_ptm_get_locality_merge_candidates')) {
+    function mz_ptm_get_locality_merge_candidates(string $taxonomy = ''): array
+    {
+        $taxonomy = $taxonomy !== '' ? $taxonomy : mz_ptm_get_locality_taxonomy();
+        if ($taxonomy === '') {
+            return [];
+        }
+
+        $terms = get_terms([
+            'taxonomy' => $taxonomy,
+            'hide_empty' => false,
+        ]);
+
+        if (is_wp_error($terms) || !is_array($terms)) {
+            return [];
+        }
+
+        $groups = [];
+
+        foreach ($terms as $term) {
+            if (!($term instanceof WP_Term)) {
+                continue;
+            }
+
+            $key = mz_ptm_locality_normalize_name((string) $term->name);
+            if ($key === '') {
+                continue;
+            }
+
+            if (!isset($groups[$key])) {
+                $groups[$key] = [];
+            }
+
+            $groups[$key][] = $term;
+        }
+
+        $candidates = [];
+
+        foreach ($groups as $key => $group_terms) {
+            if (count($group_terms) < 2) {
+                continue;
+            }
+
+            $stateful_terms = array_values(array_filter($group_terms, static function ($term): bool {
+                return $term instanceof WP_Term && mz_ptm_locality_is_stateful_name((string) $term->name);
+            }));
+
+            if ($stateful_terms === []) {
+                continue;
+            }
+
+            usort($stateful_terms, static function (WP_Term $a, WP_Term $b): int {
+                $count_compare = (int) $b->count <=> (int) $a->count;
+                if ($count_compare !== 0) {
+                    return $count_compare;
+                }
+
+                return strcasecmp((string) $a->name, (string) $b->name);
+            });
+
+            $destination_term = $stateful_terms[0];
+            $source_terms = [];
+
+            foreach ($group_terms as $term) {
+                if (!($term instanceof WP_Term)) {
+                    continue;
+                }
+
+                if ((int) $term->term_id === (int) $destination_term->term_id) {
+                    continue;
+                }
+
+                $source_terms[] = $term;
+            }
+
+            if ($source_terms === []) {
+                continue;
+            }
+
+            usort($source_terms, static function (WP_Term $a, WP_Term $b): int {
+                $count_compare = (int) $b->count <=> (int) $a->count;
+                if ($count_compare !== 0) {
+                    return $count_compare;
+                }
+
+                return strcasecmp((string) $a->name, (string) $b->name);
+            });
+
+            $candidates[] = [
+                'key' => $key,
+                'destination' => $destination_term,
+                'sources' => $source_terms,
+            ];
+        }
+
+        usort($candidates, static function (array $a, array $b): int {
+            return strcasecmp((string) $a['key'], (string) $b['key']);
+        });
+
+        return $candidates;
     }
 }
 
@@ -433,6 +586,39 @@ if (!function_exists('mz_ptm_get_result')) {
     }
 }
 
+if (!function_exists('mz_ptm_store_locality_result')) {
+    function mz_ptm_store_locality_result(array $result): void
+    {
+        $result['recorded_at'] = current_time('mysql');
+        $user_id = get_current_user_id();
+
+        if ($user_id > 0) {
+            update_user_meta($user_id, MZ_PTM_LOCALITY_RESULT_USER_META, $result);
+        }
+
+        set_transient(MZ_PTM_LOCALITY_RESULT_TRANSIENT, $result, HOUR_IN_SECONDS);
+    }
+}
+
+if (!function_exists('mz_ptm_get_locality_result')) {
+    function mz_ptm_get_locality_result(): array
+    {
+        $user_id = get_current_user_id();
+
+        if ($user_id > 0) {
+            $user_result = get_user_meta($user_id, MZ_PTM_LOCALITY_RESULT_USER_META, true);
+
+            if (is_array($user_result) && $user_result !== []) {
+                return $user_result;
+            }
+        }
+
+        $result = get_transient(MZ_PTM_LOCALITY_RESULT_TRANSIENT);
+
+        return is_array($result) ? $result : [];
+    }
+}
+
 if (!function_exists('mz_ptm_store_media_result')) {
     function mz_ptm_store_media_result(array $result): void
     {
@@ -555,6 +741,301 @@ if (!function_exists('mz_ptm_handle_admin_post')) {
     add_action('admin_post_' . MZ_PTM_ACTION, 'mz_ptm_handle_admin_post');
 }
 
+if (!function_exists('mz_ptm_run_locality_migration')) {
+    function mz_ptm_run_locality_migration(array $args = []): array
+    {
+        $taxonomy = mz_ptm_get_locality_taxonomy();
+        $source_slug = sanitize_title((string) ($args['source_term'] ?? ''));
+        $destination_slug = sanitize_title((string) ($args['destination_term'] ?? ''));
+        $apply = !empty($args['apply']);
+
+        $result = [
+            'taxonomy' => $taxonomy,
+            'source_term' => $source_slug,
+            'destination_term' => $destination_slug,
+            'apply' => $apply,
+            'objects_matched' => 0,
+            'objects_updated' => 0,
+            'source_deleted' => 0,
+            'errors' => 0,
+            'messages' => [],
+            'per_post_type' => [],
+        ];
+
+        if ($taxonomy === '') {
+            $result['errors']++;
+            $result['messages'][] = 'No locality/location taxonomy exists on this site.';
+            return $result;
+        }
+
+        if ($source_slug === '' || $destination_slug === '') {
+            $result['errors']++;
+            $result['messages'][] = 'Both source and destination locality terms are required.';
+            return $result;
+        }
+
+        if ($source_slug === $destination_slug) {
+            $result['errors']++;
+            $result['messages'][] = 'Source and destination locality terms must be different.';
+            return $result;
+        }
+
+        $source_term = get_term_by('slug', $source_slug, $taxonomy);
+        $destination_term = get_term_by('slug', $destination_slug, $taxonomy);
+
+        if (!($source_term instanceof WP_Term)) {
+            $result['errors']++;
+            $result['messages'][] = sprintf('Source term "%s" was not found in %s.', $source_slug, $taxonomy);
+            return $result;
+        }
+
+        if (!($destination_term instanceof WP_Term)) {
+            $result['errors']++;
+            $result['messages'][] = sprintf('Destination term "%s" was not found in %s.', $destination_slug, $taxonomy);
+            return $result;
+        }
+
+        $object_ids = get_objects_in_term((int) $source_term->term_id, $taxonomy);
+        $object_ids = array_values(array_filter(array_map('intval', is_array($object_ids) ? $object_ids : [])));
+        sort($object_ids, SORT_NUMERIC);
+        $result['objects_matched'] = count($object_ids);
+
+        foreach ($object_ids as $object_id) {
+            $post = get_post($object_id);
+            $post_type = $post instanceof WP_Post ? (string) $post->post_type : 'unknown';
+            if (!isset($result['per_post_type'][$post_type])) {
+                $result['per_post_type'][$post_type] = 0;
+            }
+            $result['per_post_type'][$post_type]++;
+
+            $existing_term_ids = wp_get_object_terms($object_id, $taxonomy, ['fields' => 'ids']);
+            if (is_wp_error($existing_term_ids)) {
+                $result['errors']++;
+                $result['messages'][] = sprintf('Could not load existing locality terms for object %d.', $object_id);
+                continue;
+            }
+
+            $existing_term_ids = array_map('intval', (array) $existing_term_ids);
+            $replacement_term_ids = array_values(array_unique(array_merge(
+                array_diff($existing_term_ids, [(int) $source_term->term_id]),
+                [(int) $destination_term->term_id]
+            )));
+            sort($replacement_term_ids, SORT_NUMERIC);
+
+            if (!$apply) {
+                $result['objects_updated']++;
+                $result['messages'][] = sprintf(
+                    'Would move object %d (%s) from %s to %s.',
+                    $object_id,
+                    $post_type,
+                    $source_term->slug,
+                    $destination_term->slug
+                );
+                continue;
+            }
+
+            $set_result = wp_set_object_terms($object_id, $replacement_term_ids, $taxonomy, false);
+            if (is_wp_error($set_result)) {
+                $result['errors']++;
+                $result['messages'][] = sprintf(
+                    'Failed to update object %d (%s): %s',
+                    $object_id,
+                    $post_type,
+                    $set_result->get_error_message()
+                );
+                continue;
+            }
+
+            $result['objects_updated']++;
+            $result['messages'][] = sprintf(
+                'Moved object %d (%s) from %s to %s.',
+                $object_id,
+                $post_type,
+                $source_term->slug,
+                $destination_term->slug
+            );
+        }
+
+        if ($apply && $result['errors'] === 0) {
+            $remaining_ids = get_objects_in_term((int) $source_term->term_id, $taxonomy);
+            $remaining_ids = array_values(array_filter(array_map('intval', is_array($remaining_ids) ? $remaining_ids : [])));
+
+            if ($remaining_ids === []) {
+                $deleted = wp_delete_term((int) $source_term->term_id, $taxonomy);
+                if (is_wp_error($deleted)) {
+                    $result['errors']++;
+                    $result['messages'][] = sprintf(
+                        'Failed to delete source term %s: %s',
+                        $source_term->slug,
+                        $deleted->get_error_message()
+                    );
+                } else {
+                    $result['source_deleted'] = 1;
+                    $result['messages'][] = sprintf(
+                        'Deleted source term %s after migration.',
+                        $source_term->slug
+                    );
+                }
+            } else {
+                $result['messages'][] = sprintf(
+                    'Source term %s was not deleted because %d objects still reference it.',
+                    $source_term->slug,
+                    count($remaining_ids)
+                );
+            }
+        } elseif (!$apply && $result['objects_matched'] > 0) {
+            $result['messages'][] = sprintf(
+                'Would delete source term %s after moving %d objects.',
+                $source_term->slug,
+                $result['objects_matched']
+            );
+        }
+
+        ksort($result['per_post_type']);
+
+        return $result;
+    }
+}
+
+if (!function_exists('mz_ptm_run_locality_bulk_migration')) {
+    function mz_ptm_run_locality_bulk_migration(array $args = []): array
+    {
+        $taxonomy = mz_ptm_get_locality_taxonomy();
+        $apply = !empty($args['apply']);
+
+        $result = [
+            'taxonomy' => $taxonomy,
+            'source_term' => '',
+            'destination_term' => '',
+            'apply' => $apply,
+            'bulk' => true,
+            'pairs_matched' => 0,
+            'source_terms_matched' => 0,
+            'objects_matched' => 0,
+            'objects_updated' => 0,
+            'source_deleted' => 0,
+            'errors' => 0,
+            'messages' => [],
+            'per_post_type' => [],
+        ];
+
+        if ($taxonomy === '') {
+            $result['errors']++;
+            $result['messages'][] = 'No locality/location taxonomy exists on this site.';
+            return $result;
+        }
+
+        $candidates = mz_ptm_get_locality_merge_candidates($taxonomy);
+        $result['pairs_matched'] = count($candidates);
+
+        if ($candidates === []) {
+            $result['messages'][] = 'No duplicate locality pairs were found.';
+            return $result;
+        }
+
+        foreach ($candidates as $candidate) {
+            $destination = $candidate['destination'] ?? null;
+            $sources = $candidate['sources'] ?? [];
+
+            if (!($destination instanceof WP_Term) || !is_array($sources)) {
+                continue;
+            }
+
+            foreach ($sources as $source) {
+                if (!($source instanceof WP_Term)) {
+                    continue;
+                }
+
+                $result['source_terms_matched']++;
+
+                $pair_result = mz_ptm_run_locality_migration([
+                    'source_term' => (string) $source->slug,
+                    'destination_term' => (string) $destination->slug,
+                    'apply' => $apply,
+                ]);
+
+                $result['objects_matched'] += (int) ($pair_result['objects_matched'] ?? 0);
+                $result['objects_updated'] += (int) ($pair_result['objects_updated'] ?? 0);
+                $result['source_deleted'] += (int) ($pair_result['source_deleted'] ?? 0);
+                $result['errors'] += (int) ($pair_result['errors'] ?? 0);
+
+                foreach ((array) ($pair_result['per_post_type'] ?? []) as $post_type => $count) {
+                    if (!isset($result['per_post_type'][$post_type])) {
+                        $result['per_post_type'][$post_type] = 0;
+                    }
+
+                    $result['per_post_type'][$post_type] += (int) $count;
+                }
+
+                $result['messages'][] = sprintf(
+                    '%s -> %s: %d objects, deleted source=%d.',
+                    (string) $source->slug,
+                    (string) $destination->slug,
+                    (int) ($pair_result['objects_updated'] ?? 0),
+                    (int) ($pair_result['source_deleted'] ?? 0)
+                );
+
+                foreach ((array) ($pair_result['messages'] ?? []) as $message) {
+                    $message = (string) $message;
+                    if (stripos($message, 'Would move object ') === 0 || stripos($message, 'Moved object ') === 0) {
+                        continue;
+                    }
+
+                    $result['messages'][] = $message;
+                }
+            }
+        }
+
+        ksort($result['per_post_type']);
+
+        return $result;
+    }
+}
+
+if (!function_exists('mz_ptm_handle_locality_admin_post')) {
+    function mz_ptm_handle_locality_admin_post(): void
+    {
+        if (!mz_ptm_user_can_access_tool()) {
+            wp_die('You do not have permission to run this migration.', 403);
+        }
+
+        check_admin_referer('mz_ptm_locality_run');
+
+        $mode = isset($_REQUEST['mode']) ? sanitize_key((string) $_REQUEST['mode']) : '';
+        if (!in_array($mode, ['preview', 'run'], true)) {
+            wp_die('Invalid locality migration mode.', 400);
+        }
+
+        $scope = isset($_REQUEST['scope']) ? sanitize_key((string) $_REQUEST['scope']) : 'all';
+        $source_term = isset($_REQUEST['source_term']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['source_term'])) : '';
+        $destination_term = isset($_REQUEST['destination_term']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['destination_term'])) : '';
+
+        if ($scope === 'single' && $source_term !== '' && $destination_term !== '') {
+            $result = mz_ptm_run_locality_migration([
+                'source_term' => $source_term,
+                'destination_term' => $destination_term,
+                'apply' => $mode === 'run',
+            ]);
+        } else {
+            $result = mz_ptm_run_locality_bulk_migration([
+                'apply' => $mode === 'run',
+            ]);
+        }
+
+        mz_ptm_store_locality_result($result);
+
+        $redirect_url = add_query_arg([
+            'tab' => 'locality',
+            'mz_ptm_locality_result' => $mode === 'run' ? 'run' : 'preview',
+        ], mz_ptm_get_redirect_url());
+
+        wp_safe_redirect($redirect_url);
+        exit;
+    }
+
+    add_action('admin_post_' . MZ_PTM_LOCALITY_ACTION, 'mz_ptm_handle_locality_admin_post');
+}
+
 if (!function_exists('mz_ptm_handle_media_admin_post')) {
     function mz_ptm_handle_media_admin_post(): void
     {
@@ -625,6 +1106,42 @@ if (!function_exists('mz_ptm_handle_media_admin_post')) {
     }
 
     add_action('admin_post_' . MZ_PTM_MEDIA_ACTION, 'mz_ptm_handle_media_admin_post');
+}
+
+if (!function_exists('mz_ptm_handle_attach_featured_media_admin_post')) {
+    function mz_ptm_handle_attach_featured_media_admin_post(): void
+    {
+        if (!mz_ptm_user_can_access_tool()) {
+            wp_die('You do not have permission to run this media repair.', 403);
+        }
+
+        check_admin_referer('mz_ptm_media_attach_run');
+
+        $mode = isset($_REQUEST['mode']) ? sanitize_key((string) $_REQUEST['mode']) : '';
+        if (!in_array($mode, ['preview', 'run'], true)) {
+            wp_die('Invalid media attachment mode.', 400);
+        }
+
+        $post_types = isset($_REQUEST['post_types']) ? sanitize_text_field(wp_unslash((string) $_REQUEST['post_types'])) : '';
+
+        $result = mz_ptm_attach_featured_media_run([
+            'post_types' => $post_types,
+            'apply' => $mode === 'run',
+        ]);
+
+        mz_ptm_store_media_result($result);
+
+        $redirect_url = add_query_arg([
+            'tab' => 'media',
+            'post_types' => $post_types,
+            'mz_ptm_media_result' => $mode === 'run' ? 'run' : 'preview',
+        ], mz_ptm_get_redirect_url());
+
+        wp_safe_redirect($redirect_url);
+        exit;
+    }
+
+    add_action('admin_post_' . MZ_PTM_MEDIA_ATTACH_ACTION, 'mz_ptm_handle_attach_featured_media_admin_post');
 }
 
 if (!function_exists('mz_ptm_register_tools_page')) {
@@ -701,46 +1218,135 @@ if (!function_exists('mz_ptm_render_media_result_summary')) {
         if ($result === []) {
             return;
         }
+
+        $operation = isset($result['operation']) ? (string) $result['operation'] : 'repair';
         ?>
         <div class="notice notice-info inline">
             <p>
-                <strong><?php echo esc_html(!empty($result['apply']) ? 'Last media repair' : 'Last media repair dry run'); ?></strong>
+                <strong>
+                    <?php
+                    echo esc_html(
+                        $operation === 'attach-featured-media'
+                            ? (!empty($result['apply']) ? 'Last featured media attach run' : 'Last featured media attach dry run')
+                            : (!empty($result['apply']) ? 'Last media repair' : 'Last media repair dry run')
+                    );
+                    ?>
+                </strong>
+                <?php if (!empty($result['recorded_at'])) : ?>
+                    <span>at <?php echo esc_html((string) $result['recorded_at']); ?></span>
+                <?php endif; ?>
+            </p>
+            <?php if ($operation === 'attach-featured-media') : ?>
+                <p>
+                    <?php
+                    echo esc_html(sprintf(
+                        'Posts scanned: %d. Attachments updated: %d. Shared attachments assigned: %d. Shared attachments skipped: %d. Missing thumbnails: %d. Missing attachments: %d. Errors: %d.',
+                        (int) ($result['posts_scanned'] ?? 0),
+                        (int) ($result['attachments_updated'] ?? 0),
+                        (int) ($result['shared_attachments_assigned'] ?? 0),
+                        (int) ($result['shared_attachments_skipped'] ?? 0),
+                        (int) ($result['missing_thumbnails'] ?? 0),
+                        (int) ($result['missing_attachments'] ?? 0),
+                        (int) ($result['errors'] ?? 0)
+                    ));
+                    ?>
+                </p>
+            <?php else : ?>
+                <p>
+                    <?php
+                    echo esc_html(sprintf(
+                        'Production attachments: %d. Staging attachments: %d. Matched: %d. ID remaps: %d. Attachment parents updated: %d. Postmeta rows updated: %d. Option rows updated: %d. Post content rows updated: %d. Errors: %d.',
+                        (int) ($result['production_attachments'] ?? 0),
+                        (int) ($result['staging_attachments'] ?? 0),
+                        (int) ($result['matched_attachments'] ?? 0),
+                        (int) ($result['id_mappings'] ?? 0),
+                        (int) ($result['parents_updated'] ?? 0),
+                        (int) ($result['postmeta_updated'] ?? 0),
+                        (int) ($result['options_updated'] ?? 0),
+                        (int) ($result['post_content_updated'] ?? 0),
+                        (int) ($result['errors'] ?? 0)
+                    ));
+                    ?>
+                </p>
+            <?php endif; ?>
+            <?php if (!empty($result['post_types'])) : ?>
+                <p><?php echo esc_html('Content post type scope: ' . implode(', ', (array) $result['post_types'])); ?></p>
+            <?php endif; ?>
+            <?php if ($operation !== 'attach-featured-media') : ?>
+                <p>
+                    <?php
+                    echo esc_html(sprintf(
+                        'Missing in staging export: %d. Missing local attachments: %d. Staging-only attachments skipped: %d. Featured images updated: %d. Featured image posts missing: %d. Featured image attachments missing: %d.',
+                        (int) ($result['missing_in_staging'] ?? 0),
+                        (int) ($result['missing_local_attachments'] ?? 0),
+                        (int) ($result['skipped_staging_only'] ?? 0),
+                        (int) ($result['featured_images_updated'] ?? 0),
+                        (int) ($result['featured_image_posts_missing'] ?? 0),
+                        (int) ($result['featured_image_attachments_missing'] ?? 0)
+                    ));
+                    ?>
+                </p>
+            <?php endif; ?>
+            <?php if (!empty($result['messages'])) : ?>
+                <textarea readonly rows="10" style="width:100%;font-family:monospace;"><?php echo esc_textarea(implode("\n", (array) $result['messages'])); ?></textarea>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+}
+
+if (!function_exists('mz_ptm_render_locality_result_summary')) {
+    function mz_ptm_render_locality_result_summary(array $result): void
+    {
+        if ($result === []) {
+            return;
+        }
+        ?>
+        <div class="notice notice-info inline">
+            <p>
+                <strong><?php echo esc_html(!empty($result['apply']) ? 'Last locality migration' : 'Last locality dry run'); ?></strong>
                 <?php if (!empty($result['recorded_at'])) : ?>
                     <span>at <?php echo esc_html((string) $result['recorded_at']); ?></span>
                 <?php endif; ?>
             </p>
             <p>
                 <?php
-                echo esc_html(sprintf(
-                    'Production attachments: %d. Staging attachments: %d. Matched: %d. ID remaps: %d. Attachment parents updated: %d. Postmeta rows updated: %d. Option rows updated: %d. Post content rows updated: %d. Errors: %d.',
-                    (int) ($result['production_attachments'] ?? 0),
-                    (int) ($result['staging_attachments'] ?? 0),
-                    (int) ($result['matched_attachments'] ?? 0),
-                    (int) ($result['id_mappings'] ?? 0),
-                    (int) ($result['parents_updated'] ?? 0),
-                    (int) ($result['postmeta_updated'] ?? 0),
-                    (int) ($result['options_updated'] ?? 0),
-                    (int) ($result['post_content_updated'] ?? 0),
-                    (int) ($result['errors'] ?? 0)
-                ));
+                if (!empty($result['bulk'])) {
+                    echo esc_html(sprintf(
+                        'Taxonomy: %s. Duplicate pairs: %d. Source terms processed: %d. Objects matched: %d. Objects updated: %d. Source terms deleted: %d. Errors: %d.',
+                        (string) ($result['taxonomy'] ?? ''),
+                        (int) ($result['pairs_matched'] ?? 0),
+                        (int) ($result['source_terms_matched'] ?? 0),
+                        (int) ($result['objects_matched'] ?? 0),
+                        (int) ($result['objects_updated'] ?? 0),
+                        (int) ($result['source_deleted'] ?? 0),
+                        (int) ($result['errors'] ?? 0)
+                    ));
+                } else {
+                    echo esc_html(sprintf(
+                        'Taxonomy: %s. Source: %s. Destination: %s. Objects matched: %d. Objects updated: %d. Source deleted: %d. Errors: %d.',
+                        (string) ($result['taxonomy'] ?? ''),
+                        (string) ($result['source_term'] ?? ''),
+                        (string) ($result['destination_term'] ?? ''),
+                        (int) ($result['objects_matched'] ?? 0),
+                        (int) ($result['objects_updated'] ?? 0),
+                        (int) ($result['source_deleted'] ?? 0),
+                        (int) ($result['errors'] ?? 0)
+                    ));
+                }
                 ?>
             </p>
-            <?php if (!empty($result['post_types'])) : ?>
-                <p><?php echo esc_html('Content post type scope: ' . implode(', ', (array) $result['post_types'])); ?></p>
+            <?php if (!empty($result['per_post_type'])) : ?>
+                <p>
+                    <?php
+                    $parts = [];
+                    foreach ((array) $result['per_post_type'] as $post_type => $count) {
+                        $parts[] = sprintf('%s=%d', (string) $post_type, (int) $count);
+                    }
+                    echo esc_html('Matched post types: ' . implode(', ', $parts));
+                    ?>
+                </p>
             <?php endif; ?>
-            <p>
-                <?php
-                echo esc_html(sprintf(
-                    'Missing in staging export: %d. Missing local attachments: %d. Staging-only attachments skipped: %d. Featured images updated: %d. Featured image posts missing: %d. Featured image attachments missing: %d.',
-                    (int) ($result['missing_in_staging'] ?? 0),
-                    (int) ($result['missing_local_attachments'] ?? 0),
-                    (int) ($result['skipped_staging_only'] ?? 0),
-                    (int) ($result['featured_images_updated'] ?? 0),
-                    (int) ($result['featured_image_posts_missing'] ?? 0),
-                    (int) ($result['featured_image_attachments_missing'] ?? 0)
-                ));
-                ?>
-            </p>
             <?php if (!empty($result['messages'])) : ?>
                 <textarea readonly rows="10" style="width:100%;font-family:monospace;"><?php echo esc_textarea(implode("\n", (array) $result['messages'])); ?></textarea>
             <?php endif; ?>
@@ -761,6 +1367,7 @@ if (!function_exists('mz_ptm_render_tools_page')) {
         $taxonomy = isset($_GET['taxonomy']) ? sanitize_text_field(wp_unslash((string) $_GET['taxonomy'])) : '';
         $terms = isset($_GET['terms']) ? sanitize_text_field(wp_unslash((string) $_GET['terms'])) : '';
         $media_result = mz_ptm_get_media_result();
+        $locality_result = mz_ptm_get_locality_result();
         $staging_file = isset($_GET['staging_file']) ? sanitize_text_field(wp_unslash((string) $_GET['staging_file'])) : (string) ($media_result['staging_file'] ?? '');
         $production_file = isset($_GET['production_file']) ? sanitize_text_field(wp_unslash((string) $_GET['production_file'])) : (string) ($media_result['production_file'] ?? '');
         $content_file = isset($_GET['content_file']) ? sanitize_text_field(wp_unslash((string) $_GET['content_file'])) : (string) ($media_result['content_file'] ?? '');
@@ -769,16 +1376,19 @@ if (!function_exists('mz_ptm_render_tools_page')) {
         $faq_source_key = isset($_GET['source_key']) ? sanitize_text_field(wp_unslash((string) $_GET['source_key'])) : '';
         $faq_result = function_exists('mzfmt_get_result') ? mzfmt_get_result() : [];
         $active_tab = isset($_GET['tab']) ? sanitize_key((string) $_GET['tab']) : 'post-type';
-        if (!in_array($active_tab, ['post-type', 'media', 'faq', 'form'], true)) {
+        if (!in_array($active_tab, ['post-type', 'locality', 'media', 'faq', 'form'], true)) {
             $active_tab = 'post-type';
         }
         $result = mz_ptm_get_result();
+        $locality_taxonomy = mz_ptm_get_locality_taxonomy();
+        $locality_candidates = $locality_taxonomy !== '' ? mz_ptm_get_locality_merge_candidates($locality_taxonomy) : [];
         ?>
         <div class="wrap" data-meza-admin-chrome="post-type-migration-tools">
             <h1 class="wp-heading-inline">Migration Tools</h1>
             <hr class="wp-header-end" />
             <h2 class="nav-tab-wrapper">
                 <a href="<?php echo esc_url(add_query_arg('tab', 'post-type', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'post-type' ? 'nav-tab-active' : ''; ?>">Post Type Migration</a>
+                <a href="<?php echo esc_url(add_query_arg('tab', 'locality', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'locality' ? 'nav-tab-active' : ''; ?>">Locality Migration</a>
                 <a href="<?php echo esc_url(add_query_arg('tab', 'media', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'media' ? 'nav-tab-active' : ''; ?>">Media Migration</a>
                 <a href="<?php echo esc_url(add_query_arg('tab', 'faq', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'faq' ? 'nav-tab-active' : ''; ?>">FAQ Migration</a>
                 <a href="<?php echo esc_url(add_query_arg('tab', 'form', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'form' ? 'nav-tab-active' : ''; ?>">Form Migration</a>
@@ -830,6 +1440,26 @@ if (!function_exists('mz_ptm_render_tools_page')) {
                 </form>
 
                 <?php mz_ptm_render_result_summary($result); ?>
+            <?php elseif ($active_tab === 'locality') : ?>
+                <p>Move every duplicate locality term into its <code>City, State</code> version within the active <code><?php echo esc_html($locality_taxonomy !== '' ? $locality_taxonomy : 'locality/location'); ?></code> taxonomy, then remove the old terms when they are no longer used.</p>
+
+                <?php if ($locality_taxonomy === '') : ?>
+                    <div class="notice notice-error inline"><p>No locality/location taxonomy exists on this site.</p></div>
+                <?php else : ?>
+                    <p><?php echo esc_html(sprintf('Detected duplicate locality groups: %d.', count((array) $locality_candidates))); ?></p>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                        <?php wp_nonce_field('mz_ptm_locality_run'); ?>
+                        <input type="hidden" name="action" value="<?php echo esc_attr(MZ_PTM_LOCALITY_ACTION); ?>" />
+                        <input type="hidden" name="scope" value="all" />
+
+                        <p class="submit">
+                            <button type="submit" name="mode" value="preview" class="button button-secondary">Run dry run</button>
+                            <button type="submit" name="mode" value="run" class="button button-primary">Run locality migration</button>
+                        </p>
+                    </form>
+                <?php endif; ?>
+
+                <?php mz_ptm_render_locality_result_summary($locality_result); ?>
             <?php elseif ($active_tab === 'faq') : ?>
                 <?php if (!function_exists('mzfmt_run_migration')) : ?>
                     <div class="notice notice-error inline"><p>FAQ migration tools are not available.</p></div>
@@ -920,6 +1550,31 @@ if (!function_exists('mz_ptm_render_tools_page')) {
                     </p>
                 </form>
 
+                <hr />
+                <p>Attach each post's featured image to that post in WordPress so it shows as uploaded to the post in the admin media UI.</p>
+
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                    <?php wp_nonce_field('mz_ptm_media_attach_run'); ?>
+                    <input type="hidden" name="action" value="<?php echo esc_attr(MZ_PTM_MEDIA_ATTACH_ACTION); ?>" />
+
+                    <table class="form-table" role="presentation">
+                        <tbody>
+                            <tr>
+                                <th scope="row"><label for="mz-ptm-attach-post-types">Content post types</label></th>
+                                <td>
+                                    <input id="mz-ptm-attach-post-types" name="post_types" type="text" class="regular-text code" value="<?php echo esc_attr($post_types); ?>" />
+                                    <p class="description">Optional comma-separated post types. Leave blank to scan all public content types with featured images. Use <code>sign</code> to target only sign posts.</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <p class="submit">
+                        <button type="submit" name="mode" value="preview" class="button button-secondary">Run attach dry run</button>
+                        <button type="submit" name="mode" value="run" class="button button-primary">Run attach sync</button>
+                    </p>
+                </form>
+
                 <?php mz_ptm_render_media_result_summary($media_result); ?>
             <?php endif; ?>
         </div>
@@ -1001,6 +1656,88 @@ if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_Post_Type_Migration_CLI_Com
     }
 
     \WP_CLI::add_command('mz post-type-migrate', 'MZ_Post_Type_Migration_CLI_Command');
+}
+
+if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_Locality_Migration_CLI_Command')) {
+    class MZ_Locality_Migration_CLI_Command
+    {
+        /**
+         * Move posts from one locality term to another and delete the source term when empty.
+         *
+         * ## OPTIONS
+         *
+         * [--source-term=<slug>]
+         * : Source locality term slug.
+         *
+         * [--destination-term=<slug>]
+         * : Destination locality term slug.
+         *
+         * [--all]
+         * : Run every duplicate locality merge that has a matching City, State destination.
+         *
+         * [--apply]
+         * : Perform writes. Omit for a dry run.
+         *
+         * ## EXAMPLES
+         *
+         *     wp mz migrate-locality --all
+         *     wp mz migrate-locality --all --apply
+         *     wp mz migrate-locality --source-term=alexandria --destination-term=alexandria-virginia
+         *     wp mz migrate-locality --source-term=alexandria --destination-term=alexandria-virginia --apply
+         *
+         * @when after_wp_load
+         */
+        public function __invoke($args, $assoc_args): void
+        {
+            $run_all = isset($assoc_args['all']);
+
+            if ($run_all) {
+                $result = mz_ptm_run_locality_bulk_migration([
+                    'apply' => isset($assoc_args['apply']),
+                ]);
+            } else {
+                if (empty($assoc_args['source-term']) || empty($assoc_args['destination-term'])) {
+                    \WP_CLI::error('Use --all or provide both --source-term and --destination-term.');
+                }
+
+                $result = mz_ptm_run_locality_migration([
+                    'source_term' => (string) $assoc_args['source-term'],
+                    'destination_term' => (string) $assoc_args['destination-term'],
+                    'apply' => isset($assoc_args['apply']),
+                ]);
+            }
+
+            foreach ((array) $result['messages'] as $message) {
+                \WP_CLI::log((string) $message);
+            }
+
+            \WP_CLI::log('');
+            \WP_CLI::log('Taxonomy: ' . (string) ($result['taxonomy'] ?? ''));
+            \WP_CLI::log('Mode: ' . (!empty($result['apply']) ? 'live run' : 'dry run'));
+            if (!empty($result['bulk'])) {
+                \WP_CLI::log('Duplicate pairs: ' . (int) ($result['pairs_matched'] ?? 0));
+                \WP_CLI::log('Source terms processed: ' . (int) ($result['source_terms_matched'] ?? 0));
+            } else {
+                \WP_CLI::log('Source term: ' . (string) ($result['source_term'] ?? ''));
+                \WP_CLI::log('Destination term: ' . (string) ($result['destination_term'] ?? ''));
+            }
+            \WP_CLI::log('Objects matched: ' . (int) ($result['objects_matched'] ?? 0));
+            \WP_CLI::log('Objects updated: ' . (int) ($result['objects_updated'] ?? 0));
+            \WP_CLI::log('Source deleted: ' . (int) ($result['source_deleted'] ?? 0));
+            foreach ((array) ($result['per_post_type'] ?? []) as $post_type => $count) {
+                \WP_CLI::log(sprintf('Type %s: %d', (string) $post_type, (int) $count));
+            }
+            \WP_CLI::log('Errors: ' . (int) ($result['errors'] ?? 0));
+
+            if (!empty($result['errors'])) {
+                \WP_CLI::halt(1);
+            }
+
+            \WP_CLI::success(!empty($result['apply']) ? 'Locality migration complete.' : 'Locality migration dry run complete.');
+        }
+    }
+
+    \WP_CLI::add_command('mz migrate-locality', 'MZ_Locality_Migration_CLI_Command');
 }
 
 if (!function_exists('mz_ptm_wxr_supported_post_types')) {
@@ -1187,6 +1924,38 @@ if (!function_exists('mz_ptm_wxr_get_attachment_alt_text')) {
     function mz_ptm_wxr_get_attachment_alt_text(array $item): string
     {
         return trim((string) mz_ptm_wxr_find_meta_value_by_suffix((array) ($item['meta'] ?? []), '_attachment_image_alt'));
+    }
+}
+
+if (!function_exists('mz_ptm_wxr_parse_relationship_meta_value')) {
+    function mz_ptm_wxr_parse_relationship_meta_value($raw_value): array
+    {
+        if (is_array($raw_value)) {
+            return array_values(array_filter(array_map('intval', $raw_value)));
+        }
+
+        $value = (string) $raw_value;
+        if ($value === '') {
+            return [];
+        }
+
+        if (is_serialized($value)) {
+            $unserialized = maybe_unserialize($value);
+            if (is_array($unserialized)) {
+                return array_values(array_filter(array_map('intval', $unserialized)));
+            }
+        }
+
+        $decoded = json_decode($value, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return array_values(array_filter(array_map('intval', $decoded)));
+        }
+
+        if (preg_match('/^\d+(,\d+)*$/', $value) === 1) {
+            return array_values(array_filter(array_map('intval', explode(',', $value))));
+        }
+
+        return ctype_digit($value) ? [(int) $value] : [];
     }
 }
 
@@ -2583,6 +3352,259 @@ if (!function_exists('mz_ptm_media_repair_run')) {
     }
 }
 
+if (!function_exists('mz_ptm_repair_sign_customer_relationships_run')) {
+    function mz_ptm_repair_sign_customer_relationships_run(array $args = []): array
+    {
+        $file_path = mz_ptm_resolve_project_root_file_path((string) ($args['file'] ?? ''));
+        $apply = !empty($args['apply']);
+
+        $result = [
+            'file' => $file_path,
+            'apply' => $apply,
+            'scanned' => 0,
+            'updated' => 0,
+            'unchanged' => 0,
+            'skipped_missing_customer_map' => 0,
+            'missing_signs' => 0,
+            'missing_customers' => 0,
+            'errors' => 0,
+            'messages' => [],
+        ];
+
+        $items = mz_ptm_wxr_parse_file($file_path, ['sign']);
+        if (is_wp_error($items)) {
+            $result['errors']++;
+            $result['messages'][] = $items->get_error_message();
+            return $result;
+        }
+
+        foreach ((array) $items as $item) {
+            $result['scanned']++;
+
+            $local_sign = mz_ptm_wxr_find_existing_post((array) $item);
+            if (!($local_sign instanceof WP_Post) || $local_sign->post_type !== 'sign') {
+                $result['missing_signs']++;
+                $result['messages'][] = sprintf(
+                    'Could not find local sign for "%s".',
+                    (string) ($item['slug'] ?? '')
+                );
+                continue;
+            }
+
+            $meta_values = (array) (($item['meta']['customer'] ?? []));
+            $expected_customer_ids = [];
+            foreach ($meta_values as $meta_value) {
+                $expected_customer_ids = array_merge($expected_customer_ids, mz_ptm_wxr_parse_relationship_meta_value($meta_value));
+            }
+            $expected_customer_ids = array_values(array_unique(array_filter(array_map('intval', $expected_customer_ids))));
+
+            $local_customer_ids = [];
+            foreach ($expected_customer_ids as $legacy_customer_id) {
+                $local_customer_id = mz_ptm_wxr_find_local_post_id_by_legacy_id((int) $legacy_customer_id);
+                if ($local_customer_id <= 0) {
+                    $result['missing_customers']++;
+                    $result['messages'][] = sprintf('Could not map production customer %d for sign "%s".', (int) $legacy_customer_id, (string) ($item['slug'] ?? ''));
+                    continue;
+                }
+
+                $local_customer_ids[] = (int) $local_customer_id;
+            }
+            $local_customer_ids = array_values(array_unique(array_filter($local_customer_ids)));
+            $expected_field_key_values = (array) (($item['meta']['_customer'] ?? []));
+            $expected_field_key = trim((string) ($expected_field_key_values[0] ?? ''));
+
+            if (count($local_customer_ids) !== count($expected_customer_ids)) {
+                $result['skipped_missing_customer_map']++;
+                $result['messages'][] = sprintf(
+                    'Skipped sign "%s" because one or more customer relationships could not be mapped safely.',
+                    (string) ($item['slug'] ?? '')
+                );
+                continue;
+            }
+
+            $existing_customer_ids = mz_ptm_wxr_parse_relationship_meta_value(get_post_meta((int) $local_sign->ID, 'customer', true));
+            $existing_field_key = trim((string) get_post_meta((int) $local_sign->ID, '_customer', true));
+            sort($existing_customer_ids);
+            $comparison_customer_ids = $local_customer_ids;
+            sort($comparison_customer_ids);
+
+            if ($existing_customer_ids === $comparison_customer_ids && $existing_field_key === $expected_field_key) {
+                $result['unchanged']++;
+                continue;
+            }
+
+            $result['updated']++;
+            if (!$apply) {
+                $result['messages'][] = sprintf(
+                    'Would update sign "%s" customer relationship to [%s].',
+                    (string) ($item['slug'] ?? ''),
+                    implode(', ', $comparison_customer_ids)
+                );
+                continue;
+            }
+
+            delete_post_meta((int) $local_sign->ID, 'customer');
+            delete_post_meta((int) $local_sign->ID, '_customer');
+
+            if ($local_customer_ids === []) {
+                $result['messages'][] = sprintf(
+                    'Cleared customer relationship for sign "%s".',
+                    (string) ($item['slug'] ?? '')
+                );
+                continue;
+            }
+
+            $store_value = count($local_customer_ids) === 1 ? (int) $local_customer_ids[0] : $local_customer_ids;
+            update_post_meta((int) $local_sign->ID, 'customer', $store_value);
+
+            if ($expected_field_key !== '') {
+                update_post_meta((int) $local_sign->ID, '_customer', $expected_field_key);
+            }
+
+            $result['messages'][] = sprintf(
+                'Updated sign "%s" customer relationship to [%s].',
+                (string) ($item['slug'] ?? ''),
+                implode(', ', $local_customer_ids)
+            );
+        }
+
+        return $result;
+    }
+}
+
+if (!function_exists('mz_ptm_attach_featured_media_run')) {
+    function mz_ptm_attach_featured_media_run(array $args = []): array
+    {
+        $post_types = mz_ptm_parse_csv_slugs($args['post_types'] ?? null);
+        $apply = !empty($args['apply']);
+
+        if ($post_types === []) {
+            $post_types = array_values(array_filter(get_post_types(['public' => true], 'names'), static function ($post_type): bool {
+                return !in_array($post_type, ['attachment', 'revision', 'nav_menu_item'], true);
+            }));
+        }
+
+        $query = new WP_Query([
+            'post_type' => $post_types,
+            'post_status' => ['publish', 'future', 'draft', 'pending', 'private'],
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'no_found_rows' => true,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+            'suppress_filters' => true,
+            'meta_query' => [
+                [
+                    'key' => '_thumbnail_id',
+                    'compare' => 'EXISTS',
+                ],
+            ],
+        ]);
+
+        $result = [
+            'operation' => 'attach-featured-media',
+            'post_types' => $post_types,
+            'apply' => $apply,
+            'posts_scanned' => 0,
+            'attachments_updated' => 0,
+            'shared_attachments_assigned' => 0,
+            'shared_attachments_skipped' => 0,
+            'missing_thumbnails' => 0,
+            'missing_attachments' => 0,
+            'errors' => 0,
+            'messages' => [],
+        ];
+
+        $thumbnail_usage = [];
+        foreach ((array) $query->posts as $post_id) {
+            $thumbnail_id = (int) get_post_meta((int) $post_id, '_thumbnail_id', true);
+            if ($thumbnail_id > 0) {
+                if (!isset($thumbnail_usage[$thumbnail_id])) {
+                    $thumbnail_usage[$thumbnail_id] = [];
+                }
+                $thumbnail_usage[$thumbnail_id][] = (int) $post_id;
+            }
+        }
+
+        foreach ((array) $query->posts as $post_id) {
+            $result['posts_scanned']++;
+            $thumbnail_id = (int) get_post_meta((int) $post_id, '_thumbnail_id', true);
+            if ($thumbnail_id <= 0) {
+                $result['missing_thumbnails']++;
+                continue;
+            }
+
+            $attachment = get_post($thumbnail_id);
+            if (!($attachment instanceof WP_Post) || $attachment->post_type !== 'attachment') {
+                $result['missing_attachments']++;
+                $result['messages'][] = sprintf(
+                    'Post %d has missing featured attachment %d.',
+                    (int) $post_id,
+                    $thumbnail_id
+                );
+                continue;
+            }
+
+            if (!empty($thumbnail_usage[$thumbnail_id]) && count((array) $thumbnail_usage[$thumbnail_id]) > 1) {
+                $shared_post_ids = array_map('intval', (array) $thumbnail_usage[$thumbnail_id]);
+                $canonical_post_id = mz_ptm_get_earliest_post_id($shared_post_ids);
+
+                if ($canonical_post_id !== (int) $post_id) {
+                    $result['shared_attachments_skipped']++;
+                    $result['messages'][] = sprintf(
+                        'Skipped shared featured media %d for post %d because it is assigned to earliest post %d in group: %s.',
+                        $thumbnail_id,
+                        (int) $post_id,
+                        $canonical_post_id,
+                        implode(', ', $shared_post_ids)
+                    );
+                    continue;
+                }
+
+                $result['shared_attachments_assigned']++;
+            }
+
+            if ((int) $attachment->post_parent === (int) $post_id) {
+                continue;
+            }
+
+            $result['attachments_updated']++;
+            if (!$apply) {
+                $result['messages'][] = sprintf(
+                    'Would attach media %d to post %d.',
+                    $thumbnail_id,
+                    (int) $post_id
+                );
+                continue;
+            }
+
+            $updated = wp_update_post([
+                'ID' => $thumbnail_id,
+                'post_parent' => (int) $post_id,
+            ], true, false);
+
+            if (is_wp_error($updated)) {
+                $result['errors']++;
+                $result['messages'][] = sprintf(
+                    'Failed to attach media %d to post %d: %s',
+                    $thumbnail_id,
+                    (int) $post_id,
+                    $updated->get_error_message()
+                );
+                continue;
+            }
+
+            $result['messages'][] = sprintf(
+                'Attached media %d to post %d.',
+                $thumbnail_id,
+                (int) $post_id
+            );
+        }
+
+        return $result;
+    }
+}
+
 if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_WXR_Content_Import_CLI_Command')) {
     class MZ_WXR_Content_Import_CLI_Command
     {
@@ -2740,4 +3762,154 @@ if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_Media_Repair_CLI_Command'))
     }
 
     \WP_CLI::add_command('mz repair-media-links', 'MZ_Media_Repair_CLI_Command');
+}
+
+if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_Attach_Featured_Media_CLI_Command')) {
+    class MZ_Attach_Featured_Media_CLI_Command
+    {
+        /**
+         * Attach each post's featured image attachment to that post.
+         *
+         * ## OPTIONS
+         *
+         * [--post-types=<types>]
+         * : Optional comma-separated post types. Leave blank to scan all public post types with featured images.
+         *
+         * [--apply]
+         * : Perform writes. Omit for a dry run.
+         *
+         * ## EXAMPLES
+         *
+         *     wp mz attach-featured-media --post-types=sign
+         *     wp mz attach-featured-media --post-types=sign --apply
+         *
+         * @when after_wp_load
+         */
+        public function __invoke($args, $assoc_args): void
+        {
+            $result = mz_ptm_attach_featured_media_run([
+                'post_types' => $assoc_args['post-types'] ?? '',
+                'apply' => isset($assoc_args['apply']),
+            ]);
+
+            foreach ((array) $result['messages'] as $message) {
+                \WP_CLI::log((string) $message);
+            }
+
+            \WP_CLI::log('');
+            \WP_CLI::log('Content post types: ' . implode(', ', (array) ($result['post_types'] ?? [])));
+            \WP_CLI::log('Mode: ' . (!empty($result['apply']) ? 'live run' : 'dry run'));
+            \WP_CLI::log('Posts scanned: ' . (int) ($result['posts_scanned'] ?? 0));
+            \WP_CLI::log('Attachments updated: ' . (int) ($result['attachments_updated'] ?? 0));
+            \WP_CLI::log('Shared attachments assigned: ' . (int) ($result['shared_attachments_assigned'] ?? 0));
+            \WP_CLI::log('Shared attachments skipped: ' . (int) ($result['shared_attachments_skipped'] ?? 0));
+            \WP_CLI::log('Missing thumbnails: ' . (int) ($result['missing_thumbnails'] ?? 0));
+            \WP_CLI::log('Missing attachments: ' . (int) ($result['missing_attachments'] ?? 0));
+            \WP_CLI::log('Errors: ' . (int) ($result['errors'] ?? 0));
+
+            if (!empty($result['errors'])) {
+                \WP_CLI::halt(1);
+            }
+
+            \WP_CLI::success(!empty($result['apply']) ? 'Featured media attach complete.' : 'Featured media attach dry run complete.');
+        }
+    }
+
+    \WP_CLI::add_command('mz attach-featured-media', 'MZ_Attach_Featured_Media_CLI_Command');
+}
+
+if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_Repair_Sign_Customer_Relationships_CLI_Command')) {
+    class MZ_Repair_Sign_Customer_Relationships_CLI_Command
+    {
+        /**
+         * Repair sign-to-customer relationships from a production content export.
+         *
+         * ## OPTIONS
+         *
+         * --file=<file>
+         * : Absolute path to the production content WXR/XML file.
+         *
+         * [--apply]
+         * : Perform writes. Omit for a dry run.
+         *
+         * ## EXAMPLES
+         *
+         *     wp mz repair-sign-customers --file=/path/production.xml
+         *     wp mz repair-sign-customers --file=/path/production.xml --apply
+         *
+         * @when after_wp_load
+         */
+        public function __invoke($args, $assoc_args): void
+        {
+            if (empty($assoc_args['file'])) {
+                \WP_CLI::error('The --file argument is required.');
+            }
+
+            $result = mz_ptm_repair_sign_customer_relationships_run([
+                'file' => (string) $assoc_args['file'],
+                'apply' => isset($assoc_args['apply']),
+            ]);
+
+            foreach ((array) $result['messages'] as $message) {
+                \WP_CLI::log((string) $message);
+            }
+
+            \WP_CLI::log('');
+            \WP_CLI::log('File: ' . (string) ($result['file'] ?? ''));
+            \WP_CLI::log('Mode: ' . (!empty($result['apply']) ? 'live run' : 'dry run'));
+            \WP_CLI::log('Signs scanned: ' . (int) ($result['scanned'] ?? 0));
+            \WP_CLI::log('Relationships updated: ' . (int) ($result['updated'] ?? 0));
+            \WP_CLI::log('Unchanged: ' . (int) ($result['unchanged'] ?? 0));
+            \WP_CLI::log('Skipped missing customer map: ' . (int) ($result['skipped_missing_customer_map'] ?? 0));
+            \WP_CLI::log('Missing signs: ' . (int) ($result['missing_signs'] ?? 0));
+            \WP_CLI::log('Missing customers: ' . (int) ($result['missing_customers'] ?? 0));
+            \WP_CLI::log('Errors: ' . (int) ($result['errors'] ?? 0));
+
+            if (!empty($result['errors'])) {
+                \WP_CLI::halt(1);
+            }
+
+            \WP_CLI::success(!empty($result['apply']) ? 'Sign customer repair complete.' : 'Sign customer repair dry run complete.');
+        }
+    }
+
+    \WP_CLI::add_command('mz repair-sign-customers', 'MZ_Repair_Sign_Customer_Relationships_CLI_Command');
+}
+
+if (!function_exists('mz_ptm_get_earliest_post_id')) {
+    function mz_ptm_get_earliest_post_id(array $post_ids): int
+    {
+        $post_ids = array_values(array_filter(array_map('intval', $post_ids)));
+        if ($post_ids === []) {
+            return 0;
+        }
+
+        $posts = get_posts([
+            'post__in' => $post_ids,
+            'post_type' => 'any',
+            'post_status' => 'any',
+            'posts_per_page' => -1,
+            'orderby' => 'date ID',
+            'order' => 'ASC',
+            'suppress_filters' => true,
+        ]);
+
+        if (empty($posts)) {
+            sort($post_ids, SORT_NUMERIC);
+            return (int) $post_ids[0];
+        }
+
+        usort($posts, static function (WP_Post $a, WP_Post $b): int {
+            $a_date = (string) $a->post_date_gmt !== '0000-00-00 00:00:00' ? (string) $a->post_date_gmt : (string) $a->post_date;
+            $b_date = (string) $b->post_date_gmt !== '0000-00-00 00:00:00' ? (string) $b->post_date_gmt : (string) $b->post_date;
+
+            if ($a_date === $b_date) {
+                return (int) $a->ID <=> (int) $b->ID;
+            }
+
+            return $a_date <=> $b_date;
+        });
+
+        return (int) $posts[0]->ID;
+    }
 }
