@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.682
+ * Version: 1.1.687
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -241,6 +241,79 @@ if (!function_exists('meza_get_transient_cleanup_option_patterns')) {
     }
 }
 
+if (!function_exists('meza_migrate_legacy_usernames')) {
+    function meza_migrate_legacy_usernames(): void
+    {
+        $migration_option = 'meza_legacy_username_migration_20260508_v1';
+        if (get_option($migration_option, '') === 'done') {
+            return;
+        }
+
+        global $wpdb;
+
+        if (!($wpdb instanceof wpdb)) {
+            return;
+        }
+
+        $pairs = [
+            'andrew' => 'ameza',
+            'rapi' => 'mapi',
+        ];
+
+        foreach ($pairs as $old_login => $new_login) {
+            $old_login = strtolower(trim((string) $old_login));
+            $new_login = strtolower(trim((string) $new_login));
+
+            if ($old_login === '' || $new_login === '' || $old_login === $new_login) {
+                continue;
+            }
+
+            $source_user = get_user_by('login', $old_login);
+            if (!($source_user instanceof WP_User) || !$source_user->exists()) {
+                continue;
+            }
+
+            $target_user = get_user_by('login', $new_login);
+            if ($target_user instanceof WP_User && (int) $target_user->ID !== (int) $source_user->ID) {
+                continue;
+            }
+
+            $updates = [
+                'user_login' => $new_login,
+            ];
+            $formats = ['%s'];
+
+            $current_nicename = sanitize_title((string) ($source_user->user_nicename ?? ''));
+            if ($current_nicename === sanitize_title($old_login)) {
+                $desired_nicename = sanitize_title($new_login);
+                $nicename_owner = get_user_by('slug', $desired_nicename);
+
+                if (!($nicename_owner instanceof WP_User) || (int) $nicename_owner->ID === (int) $source_user->ID) {
+                    $updates['user_nicename'] = $desired_nicename;
+                    $formats[] = '%s';
+                }
+            }
+
+            $updated = $wpdb->update(
+                $wpdb->users,
+                $updates,
+                ['ID' => (int) $source_user->ID],
+                $formats,
+                ['%d']
+            );
+
+            if ($updated === false) {
+                continue;
+            }
+
+            clean_user_cache($source_user->ID);
+            wp_cache_delete($source_user->ID, 'users');
+        }
+
+        update_option($migration_option, 'done', false);
+    }
+}
+
 if (!function_exists('meza_delete_options_by_like_patterns')) {
     function meza_delete_options_by_like_patterns(array $patterns): int
     {
@@ -471,6 +544,7 @@ add_action('trashed_post', 'meza_flush_post_type_counts_cache_for_post', 20);
 add_action('untrashed_post', 'meza_flush_post_type_counts_cache_for_post', 20);
 add_action('before_delete_post', 'meza_flush_post_type_counts_cache_for_post', 20);
 add_action('init', 'meza_migrate_nonautoload_options', 20);
+add_action('init', 'meza_migrate_legacy_usernames', 20);
 add_action('init', 'meza_cleanup_oversized_transient_caches', 21);
 add_action('set_transient', 'meza_force_transient_option_nonautoload', 20, 3);
 

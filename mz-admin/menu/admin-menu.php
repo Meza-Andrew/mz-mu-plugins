@@ -1460,7 +1460,11 @@ if (!function_exists('meza_is_meza_custom_admin_page')) {
         }
 
         $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
-        if (str_starts_with($page, 'mz-') || str_starts_with($page, 'meza-')) {
+        if (
+            str_starts_with($page, 'mz-')
+            || str_starts_with($page, 'meza-')
+            || str_starts_with($page, 'integromat')
+        ) {
             return true;
         }
 
@@ -1480,7 +1484,12 @@ if (!function_exists('meza_is_meza_custom_admin_page')) {
         ]));
 
         foreach ($screen_values as $value) {
-            if (str_contains($value, '_page_mz-') || str_contains($value, '_page_meza-')) {
+            if (
+                str_contains($value, '_page_mz-')
+                || str_contains($value, '_page_meza-')
+                || str_contains($value, '_page_integromat')
+                || str_contains($value, 'toplevel_page_integromat')
+            ) {
                 return true;
             }
         }
@@ -10820,9 +10829,9 @@ function meza_ensure_separator_before_appearance_group(): void
         $slug = strtolower((string) ($item[2] ?? ''));
         $label = strtolower(trim(wp_strip_all_tags((string) ($item[0] ?? ''))));
 
-        return in_array($slug, ['themes.php', 'plugins.php', 'users.php', 'tools.php'], true)
+        return in_array($slug, ['themes.php', 'plugins.php', 'users.php', 'tools.php', 'meza-business-settings', 'meza-integrations-settings'], true)
             || $slug === 'options-general.php'
-            || in_array($label, ['appearance', 'plugins', 'users', 'tools', 'settings'], true);
+            || in_array($label, ['business', 'appearance', 'plugins', 'users', 'integrations', 'tools', 'settings'], true);
     };
 
     $menu = array_values($menu);
@@ -12489,7 +12498,6 @@ function meza_register_business_settings_top_level_menu(): void
     );
 }
 add_action('admin_menu', 'meza_register_business_settings_top_level_menu', 1);
-add_action('admin_menu_editor-menu_replaced', 'meza_register_business_settings_top_level_menu', 1);
 
 function meza_register_site_settings_top_level_menu(): void
 {
@@ -12508,7 +12516,6 @@ function meza_register_site_settings_top_level_menu(): void
     );
 }
 add_action('admin_menu', 'meza_register_site_settings_top_level_menu', 1);
-add_action('admin_menu_editor-menu_replaced', 'meza_register_site_settings_top_level_menu', 1);
 
 function meza_can_access_integrations_settings($user = null): bool
 {
@@ -12536,7 +12543,6 @@ function meza_register_integrations_settings_top_level_menu(): void
     );
 }
 add_action('admin_menu', 'meza_register_integrations_settings_top_level_menu', 1);
-add_action('admin_menu_editor-menu_replaced', 'meza_register_integrations_settings_top_level_menu', 1);
 
 add_action('admin_init', function (): void {
     if (!is_admin()) {
