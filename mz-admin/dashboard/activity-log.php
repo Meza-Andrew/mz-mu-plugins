@@ -30,9 +30,22 @@ function meza_activity_log_can_view(): bool
     return current_user_can(meza_activity_log_get_menu_capability());
 }
 
+function meza_activity_log_get_parent_menu_slug(): string
+{
+    if (function_exists('meza_get_site_settings_menu_slug')) {
+        $slug = (string) meza_get_site_settings_menu_slug();
+        if ($slug !== '') {
+            return $slug;
+        }
+    }
+
+    return 'index.php';
+}
+
 function meza_register_activity_log_dashboard_page(): void
 {
-    $hook_suffix = add_dashboard_page(
+    $hook_suffix = add_submenu_page(
+        meza_activity_log_get_parent_menu_slug(),
         'Activity',
         'Activity',
         meza_activity_log_get_menu_capability(),
@@ -528,7 +541,11 @@ function meza_activity_log_build_admin_url(array $overrides = [], array $remove 
         $args[$key] = $value;
     }
 
-    return add_query_arg($args, admin_url('index.php'));
+    $admin_file = meza_activity_log_get_parent_menu_slug() === 'index.php'
+        ? 'index.php'
+        : 'admin.php';
+
+    return add_query_arg($args, admin_url($admin_file));
 }
 
 function meza_activity_log_get_list_table_instance(array $entries, bool $using_bootstrap_entries, string $current_filter): WP_List_Table

@@ -875,6 +875,17 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             meza_get_shared_project_acf_options_page_submenu_slug('ecommerce'),
             meza_get_ecommerce_admin_page_title(),
         ];
+        $site_management_items = array_values(array_filter([
+            function_exists('meza_get_dashboard_site_health_submenu_item')
+                ? meza_get_dashboard_site_health_submenu_item()
+                : null,
+            function_exists('meza_get_dashboard_updates_submenu_item')
+                ? meza_get_dashboard_updates_submenu_item()
+                : null,
+            function_exists('meza_get_dashboard_activity_submenu_item')
+                ? meza_get_dashboard_activity_submenu_item()
+                : null,
+        ], 'is_array'));
 
         $matching_slugs = [
             'business-information',
@@ -895,7 +906,14 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             'ecommerce',
             'admin.php?page=ecommerce',
             'options-general.php?page=ecommerce',
+            'update-core.php',
+            'site-health.php',
         ];
+        if (defined('MEZA_ACTIVITY_LOG_PAGE_SLUG')) {
+            $matching_slugs[] = MEZA_ACTIVITY_LOG_PAGE_SLUG;
+            $matching_slugs[] = 'index.php?page=' . MEZA_ACTIVITY_LOG_PAGE_SLUG;
+            $matching_slugs[] = 'admin.php?page=' . MEZA_ACTIVITY_LOG_PAGE_SLUG;
+        }
 
         foreach (['index.php', 'themes.php', 'options-general.php', 'meza-business-settings', 'meza-site-settings', 'meza-integrations-settings'] as $parent_slug) {
             if (!isset($submenu[$parent_slug]) || !is_array($submenu[$parent_slug])) {
@@ -930,6 +948,7 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
 
         if (current_user_can($content_structure_capability)) {
             $submenu['meza-site-settings'] = array_values(array_filter([
+                ...$site_management_items,
                 $content_structure_item,
             ], 'is_array'));
         } else {
@@ -1286,4 +1305,3 @@ add_action('admin_head', function (): void {
     </style>
 <?php
 }, 20);
-
