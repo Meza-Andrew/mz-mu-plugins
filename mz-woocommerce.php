@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ WooCommerce
  * Description: WooCommerce query rules, asset loading, and storefront behavior.
- * Version: 1.1.16
+ * Version: 1.1.19
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -777,6 +777,42 @@ if (!function_exists('meza_get_woocommerce_product_ids')) {
     }
 }
 
+if (!function_exists('meza_get_woocommerce_public_product_taxonomies')) {
+    function meza_get_woocommerce_public_product_taxonomies(): array
+    {
+        $taxonomies = [];
+
+        foreach ((array) get_object_taxonomies('product', 'objects') as $taxonomy_name => $taxonomy_object) {
+            if (!($taxonomy_object instanceof WP_Taxonomy)) {
+                continue;
+            }
+
+            if (in_array((string) $taxonomy_name, ['product_type', 'product_visibility'], true)) {
+                continue;
+            }
+
+            if (empty($taxonomy_object->public)) {
+                continue;
+            }
+
+            $taxonomies[] = (string) $taxonomy_name;
+        }
+
+        sort($taxonomies, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return array_values(array_unique($taxonomies));
+    }
+}
+
+if (!function_exists('meza_woocommerce_is_managed_product_taxonomy')) {
+    function meza_woocommerce_is_managed_product_taxonomy(string $taxonomy): bool
+    {
+        $taxonomy = sanitize_key($taxonomy);
+
+        return $taxonomy !== '' && in_array($taxonomy, meza_get_woocommerce_public_product_taxonomies(), true);
+    }
+}
+
 if (!function_exists('meza_set_woocommerce_product_visibility')) {
     function meza_set_woocommerce_product_visibility(int $product_id, bool $allow_indexing, bool $allow_follow): void
     {
@@ -802,6 +838,41 @@ if (!function_exists('meza_sync_woocommerce_product_visibility')) {
     {
         foreach (meza_get_woocommerce_product_ids() as $product_id) {
             meza_set_woocommerce_product_visibility((int) $product_id, $allow_indexing, $allow_follow);
+        }
+    }
+}
+
+if (!function_exists('meza_sync_woocommerce_product_taxonomy_visibility')) {
+    function meza_sync_woocommerce_product_taxonomy_visibility(?bool $allow_indexing = null): void
+    {
+        if ($allow_indexing === null) {
+            $allow_indexing = meza_woocommerce_product_indexing_is_enabled();
+        }
+
+        $taxonomies = meza_get_woocommerce_public_product_taxonomies();
+        if ($taxonomies === []) {
+            return;
+        }
+
+        $titles = get_option('wpseo_titles', []);
+        if (!is_array($titles)) {
+            $titles = [];
+        }
+
+        $target_noindex = !$allow_indexing;
+        $updated = false;
+
+        foreach ($taxonomies as $taxonomy) {
+            $option_key = 'noindex-tax-' . $taxonomy;
+
+            if (!array_key_exists($option_key, $titles) || (bool) $titles[$option_key] !== $target_noindex) {
+                $titles[$option_key] = $target_noindex;
+                $updated = true;
+            }
+        }
+
+        if ($updated) {
+            update_option('wpseo_titles', $titles, false);
         }
     }
 }
@@ -860,6 +931,8 @@ if (!function_exists('meza_sync_woocommerce_configuration')) {
         } else {
             meza_sync_woocommerce_product_visibility(false, false);
         }
+
+        meza_sync_woocommerce_product_taxonomy_visibility(meza_woocommerce_product_indexing_is_enabled());
 
         update_option($signature_option, $target_signature, false);
     }
@@ -1033,6 +1106,43 @@ add_action('deleted_post', function ($post_id, $post): void {
 
 add_action('init', function (): void {
     meza_set_all_woocommerce_pages_unlisted();
+}, 20);
+
+add_filter('wpseo_robots', function ($robots) {
+    if (meza_woocommerce_product_indexing_is_enabled()) {
+        return $robots;
+    }
+
+    $queried_object = get_queried_object();
+    if (!($queried_object instanceof WP_Term) || !meza_woocommerce_is_managed_product_taxonomy((string) $queried_object->taxonomy)) {
+        return $robots;
+    }
+
+    return 'noindex, nofollow';
+}, 20);
+
+add_filter('wp_robots', function (array $robots): array {
+    if (meza_woocommerce_product_indexing_is_enabled()) {
+        return $robots;
+    }
+
+    $queried_object = get_queried_object();
+    if (!($queried_object instanceof WP_Term) || !meza_woocommerce_is_managed_product_taxonomy((string) $queried_object->taxonomy)) {
+        return $robots;
+    }
+
+    unset(
+        $robots['index'],
+        $robots['follow'],
+        $robots['max-snippet'],
+        $robots['max-image-preview'],
+        $robots['max-video-preview']
+    );
+
+    $robots['noindex'] = true;
+    $robots['nofollow'] = true;
+
+    return $robots;
 }, 20);
 
 add_action('admin_init', function (): void {
