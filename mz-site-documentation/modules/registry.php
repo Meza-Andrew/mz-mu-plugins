@@ -49,6 +49,71 @@ if (!function_exists('meza_site_documentation_is_plugin_row_active')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_plugin_version')) {
+    function meza_site_documentation_plugin_version(array $row): string
+    {
+        $plugin_file = trim((string) ($row['plugin_installed'] ?? ''));
+
+        if ($plugin_file === '' || !defined('WP_PLUGIN_DIR')) {
+            return '';
+        }
+
+        $plugin_path = WP_PLUGIN_DIR . '/' . $plugin_file;
+
+        if (!file_exists($plugin_path)) {
+            return '';
+        }
+
+        if (!function_exists('get_plugin_data')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        if (!function_exists('get_plugin_data')) {
+            return '';
+        }
+
+        $plugin_data = get_plugin_data($plugin_path, false, false);
+        $version = trim((string) ($plugin_data['Version'] ?? ''));
+
+        return $version;
+    }
+}
+
+if (!function_exists('meza_site_documentation_plugin_description')) {
+    function meza_site_documentation_plugin_description(array $row): string
+    {
+        $curated_description = trim((string) ($row['description'] ?? ''));
+
+        if ($curated_description !== '') {
+            return $curated_description;
+        }
+
+        $plugin_file = trim((string) ($row['plugin_installed'] ?? ''));
+
+        if ($plugin_file === '' || !defined('WP_PLUGIN_DIR')) {
+            return '';
+        }
+
+        $plugin_path = WP_PLUGIN_DIR . '/' . $plugin_file;
+
+        if (!file_exists($plugin_path)) {
+            return '';
+        }
+
+        if (!function_exists('get_plugin_data')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        if (!function_exists('get_plugin_data')) {
+            return '';
+        }
+
+        $plugin_data = get_plugin_data($plugin_path, false, false);
+
+        return trim((string) ($plugin_data['Description'] ?? ''));
+    }
+}
+
 if (!function_exists('meza_site_documentation_capabilities_registry')) {
     function meza_site_documentation_capabilities_registry(): array
     {
@@ -65,7 +130,7 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                     $site => '',
                     'administrator' => 'Full access',
                 ],
-                'action' => 'Manage',
+                'action' => 'View',
             ],
             'manage_plugins' => [
                 'label' => 'Manage Plugins',
@@ -209,7 +274,18 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                     $site => '',
                     'administrator' => 'Full access',
                 ],
-                'action' => 'Manage',
+                'action' => 'View',
+            ],
+            'view_site_activity' => [
+                'label' => 'View Site Activity',
+                'description' => 'Review the admin activity log to monitor recent changes, publishing events, and other recorded site actions.',
+                'capability' => 'meza_doc_view_site_activity',
+                'access' => [
+                    $seo => '',
+                    $site => '',
+                    'administrator' => 'Full access',
+                ],
+                'action' => 'View',
             ],
             'manage_maintenance_mode' => [
                 'label' => 'Manage Maintenance Mode',
@@ -300,7 +376,11 @@ if (!function_exists('meza_site_documentation_tools_registry')) {
                 'capability' => 'meza_doc_tool_seo_bulk_edit',
                 'plugin' => 'wordpress-seo/wp-seo.php',
                 'hide_when_dependency_missing' => true,
-                'roles' => array_keys(meza_site_documentation_access_roles()),
+                'roles' => [
+                    'administrator',
+                    meza_site_documentation_site_manager_role_key(),
+                    meza_site_documentation_seo_manager_role_key(),
+                ],
                 'action' => 'Use',
             ],
             'two_factor_authentication' => [
@@ -343,6 +423,7 @@ if (!function_exists('meza_site_documentation_analytics_registry')) {
                 'description' => 'Measures website metrics like page views, user engagement, and traffic acquisition.',
                 'capability' => 'meza_doc_analytics_google_analytics',
                 'plugin' => 'google-site-kit/google-site-kit.php',
+                'hide_when_dependency_missing' => true,
                 'default_access_entity' => '',
                 'importance' => 'Important',
                 'action' => 'View',
@@ -352,6 +433,7 @@ if (!function_exists('meza_site_documentation_analytics_registry')) {
                 'description' => 'Measures search query impressions, clicks, and page visibility in Google search results.',
                 'capability' => 'meza_doc_analytics_search_console',
                 'plugin' => 'google-site-kit/google-site-kit.php',
+                'hide_when_dependency_missing' => true,
                 'default_access_entity' => '',
                 'importance' => 'Important',
                 'action' => 'View',
@@ -616,6 +698,7 @@ if (!function_exists('meza_site_documentation_build_theme_row')) {
                 $active_stylesheet,
                 $active_template
             ),
+            'version' => trim((string) $theme->get('Version')),
             'capability' => 'meza_doc_theme_' . sanitize_key($stylesheet),
             'theme' => $stylesheet,
             'roles' => meza_site_documentation_theme_roles(),
@@ -679,22 +762,408 @@ if (!function_exists('meza_site_documentation_themes_registry')) {
 }
 
 if (!function_exists('meza_site_documentation_code_dependency_description')) {
-    function meza_site_documentation_code_dependency_description(string $dependency_name): string
+    function meza_site_documentation_code_dependency_fallbacks(): array
     {
-        $map = [
-            '@wordpress/scripts' => 'Shared build, lint, and asset-compilation tooling for WordPress theme development.',
-            '@babel/runtime' => 'Runtime helpers used by compiled JavaScript in the theme stack.',
-            '@fortawesome/fontawesome-free' => 'Icon library used by the shared theme UI.',
-            '@googlemaps/js-api-loader' => 'Loads the Google Maps JavaScript API for location features.',
-            'glightbox' => 'Provides lightbox behavior for image and gallery interfaces.',
-            'list.js' => 'Adds client-side sorting and filtering for documentation tables and other lists.',
-            'swiper' => 'Provides carousel and slider behavior in shared front-end components.',
-            'the-new-css-reset' => 'Resets browser default styles before shared theme styling is applied.',
-            'vanilla-cookieconsent' => 'Powers the site cookie-consent interface and consent state handling.',
-            'eslint-import-resolver-alias' => 'Supports shared alias resolution during JavaScript linting.',
+        return [
+            '@wordpress/scripts' => [
+                'label' => 'WordPress Scripts',
+                'description' => 'Shared build, lint, and asset-compilation tooling for WordPress theme development.',
+            ],
+            '@babel/runtime' => [
+                'label' => 'Babel Runtime',
+                'description' => 'Runtime helpers used by compiled JavaScript in the theme stack.',
+            ],
+            '@fortawesome/fontawesome-free' => [
+                'label' => 'Font Awesome Free',
+                'description' => 'Icon library used by the shared theme UI.',
+            ],
+            '@googlemaps/js-api-loader' => [
+                'label' => 'Google Maps JavaScript API Loader',
+                'description' => 'Loads the Google Maps JavaScript API for location features.',
+            ],
+            'glightbox' => [
+                'label' => 'GLightbox',
+                'description' => 'Provides lightbox behavior for image and gallery interfaces.',
+            ],
+            'list.js' => [
+                'label' => 'List.js',
+                'description' => 'Adds client-side sorting and filtering for documentation tables and other lists.',
+            ],
+            'swiper' => [
+                'label' => 'Swiper',
+                'description' => 'Provides carousel and slider behavior in shared front-end components.',
+            ],
+            'the-new-css-reset' => [
+                'label' => 'The New CSS Reset',
+                'description' => 'Resets browser default styles before shared theme styling is applied.',
+            ],
+            'vanilla-cookieconsent' => [
+                'label' => 'Cookie Consent',
+                'description' => 'Powers the site cookie-consent interface and consent state handling.',
+            ],
+            'eslint-import-resolver-alias' => [
+                'label' => 'ESLint Import Resolver Alias',
+                'description' => 'Supports shared alias resolution during JavaScript linting.',
+            ],
+        ];
+    }
+}
+
+if (!function_exists('meza_site_documentation_code_dependency_package_meta')) {
+    function meza_site_documentation_code_dependency_package_meta(string $dependency_name): array
+    {
+        $dependency_name = trim($dependency_name);
+
+        if ($dependency_name === '') {
+            return [];
+        }
+
+        $package_path = trailingslashit(get_stylesheet_directory()) . 'node_modules/' . $dependency_name . '/package.json';
+
+        if (!file_exists($package_path)) {
+            return [];
+        }
+
+        $package_data = json_decode((string) file_get_contents($package_path), true);
+
+        return is_array($package_data) ? $package_data : [];
+    }
+}
+
+if (!function_exists('meza_site_documentation_code_dependency_label')) {
+    function meza_site_documentation_code_dependency_label(string $dependency_name): string
+    {
+        $fallbacks = meza_site_documentation_code_dependency_fallbacks();
+        $fallback_label = trim((string) ($fallbacks[$dependency_name]['label'] ?? $dependency_name));
+        $package_meta = meza_site_documentation_code_dependency_package_meta($dependency_name);
+
+        $package_label_fields = [
+            'displayName',
+            'display_name',
+            'title',
+            'label',
+            'productName',
+            'product_name',
         ];
 
-        return $map[$dependency_name] ?? 'Code package used by the active theme stack for front-end behavior or build tooling.';
+        foreach ($package_label_fields as $field_name) {
+            $field_value = trim((string) ($package_meta[$field_name] ?? ''));
+
+            if ($field_value !== '') {
+                return $field_value;
+            }
+        }
+
+        $readme_heading = meza_site_documentation_code_dependency_readme_heading($dependency_name);
+
+        if ($readme_heading !== '') {
+            if ($dependency_name === 'vanilla-cookieconsent' && preg_match('/^CookieConsent\b/i', $readme_heading)) {
+                return 'Cookie Consent';
+            }
+
+            return $readme_heading;
+        }
+
+        $npm_name = trim((string) ($package_meta['npmName'] ?? ''));
+
+        if ($npm_name !== '') {
+            return $npm_name;
+        }
+
+        return $fallback_label;
+    }
+}
+
+if (!function_exists('meza_site_documentation_code_dependency_readme_heading')) {
+    function meza_site_documentation_code_dependency_readme_heading(string $dependency_name): string
+    {
+        $dependency_name = trim($dependency_name);
+
+        if ($dependency_name === '') {
+            return '';
+        }
+
+        $package_directory = trailingslashit(get_stylesheet_directory()) . 'node_modules/' . $dependency_name . '/';
+        $readme_paths = [
+            $package_directory . 'README.md',
+            $package_directory . 'Readme.md',
+            $package_directory . 'readme.md',
+        ];
+
+        foreach ($readme_paths as $readme_path) {
+            if (!file_exists($readme_path)) {
+                continue;
+            }
+
+            $lines = file($readme_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+
+            if (!is_array($lines)) {
+                continue;
+            }
+
+            foreach ($lines as $line) {
+                $line = trim((string) $line);
+
+                if (!str_starts_with($line, '# ')) {
+                    continue;
+                }
+
+                $heading = trim(substr($line, 2));
+                $heading = preg_replace('/^[^\p{L}\p{N}@]+/u', '', $heading);
+                $heading = preg_replace('/\s+v\d+(\.\d+)*$/i', '', (string) $heading);
+                $heading = trim((string) $heading);
+
+                if ($heading === '') {
+                    continue;
+                }
+
+                if (preg_match('/^@fortawesome\/fontawesome-free\b/i', $heading)) {
+                    return 'Font Awesome Free';
+                }
+
+                $ignored_headings = [
+                    'Getting Started',
+                    'Changelog',
+                    'Change Log',
+                    'Contributing to GLightbox.js',
+                ];
+
+                if (in_array($heading, $ignored_headings, true)) {
+                    continue;
+                }
+
+                return $heading;
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('meza_site_documentation_code_dependency_readme_description')) {
+    function meza_site_documentation_code_dependency_readme_description(string $dependency_name): string
+    {
+        $dependency_name = trim($dependency_name);
+
+        if ($dependency_name === '') {
+            return '';
+        }
+
+        $package_directory = trailingslashit(get_stylesheet_directory()) . 'node_modules/' . $dependency_name . '/';
+        $readme_paths = [
+            $package_directory . 'README.md',
+            $package_directory . 'Readme.md',
+            $package_directory . 'readme.md',
+        ];
+
+        $normalize_markdown_text = static function (string $value): string {
+            $value = preg_replace('/!\[[^\]]*\]\([^)]+\)/u', '', $value);
+            $value = preg_replace('/\[([^\]]+)\]\([^)]+\)/u', '$1', $value);
+            $value = preg_replace('/[`*_>#]/u', '', $value);
+            $value = strip_tags($value);
+            $value = preg_replace('/\s+/u', ' ', (string) $value);
+
+            return trim((string) $value);
+        };
+
+        $is_noise_line = static function (string $line): bool {
+            if ($line === '') {
+                return true;
+            }
+
+            $trimmed = trim($line);
+
+            return (bool) preg_match('/^(?:\[!\[[^\]]+\]\([^)]+\)\]\([^)]+\)|!\[[^\]]*\]\([^)]+\)|<img\b|<a\b|```|[-*]\s|>\s|##+\s|#+\s|[=-]{3,})/u', $trimmed);
+        };
+
+        foreach ($readme_paths as $readme_path) {
+            if (!file_exists($readme_path)) {
+                continue;
+            }
+
+            $lines = file($readme_path, FILE_IGNORE_NEW_LINES);
+
+            if (!is_array($lines)) {
+                continue;
+            }
+
+            $in_fence = false;
+            $description_lines = [];
+            $has_seen_primary_heading = false;
+            $capture_first_paragraph = false;
+
+            for ($index = 0, $line_count = count($lines); $index < $line_count; $index++) {
+                $line = rtrim((string) $lines[$index]);
+                $trimmed = trim($line);
+
+                if (str_starts_with($trimmed, '```')) {
+                    $in_fence = !$in_fence;
+                    continue;
+                }
+
+                if ($in_fence) {
+                    continue;
+                }
+
+                if ($trimmed === '') {
+                    if ($description_lines !== []) {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                if (preg_match('/^#\s+/u', $trimmed)) {
+                    $has_seen_primary_heading = true;
+                    $capture_first_paragraph = true;
+                    continue;
+                }
+
+                if (!$has_seen_primary_heading && $index + 1 < $line_count) {
+                    $next_trimmed = trim((string) $lines[$index + 1]);
+
+                    if ($trimmed !== '' && preg_match('/^[=-]{3,}$/u', $next_trimmed)) {
+                        $has_seen_primary_heading = true;
+                        $capture_first_paragraph = true;
+                        $index++;
+                        continue;
+                    }
+                }
+
+                if (preg_match('/^##+\s+Description\b/i', $trimmed)) {
+                    $description_lines = [];
+                    $capture_first_paragraph = false;
+                    continue;
+                }
+
+                if ($description_lines === [] && !$capture_first_paragraph && !$has_seen_primary_heading) {
+                    continue;
+                }
+
+                if ($is_noise_line($trimmed)) {
+                    if ($description_lines !== []) {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                $normalized_line = $normalize_markdown_text($trimmed);
+
+                if ($normalized_line === '') {
+                    if ($description_lines !== []) {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                if (preg_match('/^(?:or|documentation)$/iu', $normalized_line)) {
+                    if ($description_lines !== []) {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                $description_lines[] = $normalized_line;
+            }
+
+            if ($description_lines !== []) {
+                return trim(implode(' ', $description_lines));
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('meza_site_documentation_code_dependency_docs_url')) {
+    function meza_site_documentation_code_dependency_docs_url(string $dependency_name): string
+    {
+        $package_meta = meza_site_documentation_code_dependency_package_meta($dependency_name);
+        $repository = $package_meta['repository'] ?? null;
+        $repository_url = '';
+
+        if (is_array($repository)) {
+            $repository_url = trim((string) ($repository['url'] ?? ''));
+        } elseif (is_string($repository)) {
+            $repository_url = trim($repository);
+        }
+
+        if ($repository_url !== '') {
+            $repository_url = preg_replace('#^git\+#i', '', $repository_url);
+            $repository_url = preg_replace('#^git://#i', 'https://', (string) $repository_url);
+            $repository_url = preg_replace('#\.git$#i', '', (string) $repository_url);
+            $repository_url = trim((string) $repository_url);
+
+            if ($repository_url !== '') {
+                $normalized_repository_url = esc_url_raw($repository_url);
+
+                if ($normalized_repository_url !== '') {
+                    return $normalized_repository_url;
+                }
+            }
+        }
+
+        $homepage = trim((string) ($package_meta['homepage'] ?? ''));
+
+        if ($homepage !== '') {
+            return esc_url_raw($homepage);
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('meza_site_documentation_code_dependency_sentence_case')) {
+    function meza_site_documentation_code_dependency_sentence_case(string $description): string
+    {
+        $description = trim($description);
+
+        if ($description === '') {
+            return '';
+        }
+
+        if (function_exists('mb_substr') && function_exists('mb_strtoupper')) {
+            $first_character = mb_substr($description, 0, 1);
+            $remaining_characters = mb_substr($description, 1);
+
+            return mb_strtoupper($first_character) . $remaining_characters;
+        }
+
+        return ucfirst($description);
+    }
+}
+
+if (!function_exists('meza_site_documentation_code_dependency_description')) {
+    function meza_site_documentation_code_dependency_description(string $dependency_name): string
+    {
+        $package_meta = meza_site_documentation_code_dependency_package_meta($dependency_name);
+        $package_description = trim((string) ($package_meta['description'] ?? ''));
+
+        if ($dependency_name === '@fortawesome/fontawesome-free' && $package_description !== '') {
+            return meza_site_documentation_code_dependency_sentence_case($package_description);
+        }
+
+        $readme_description = meza_site_documentation_code_dependency_readme_description($dependency_name);
+
+        if ($readme_description !== '') {
+            return meza_site_documentation_code_dependency_sentence_case($readme_description);
+        }
+
+        if ($package_description !== '') {
+            return meza_site_documentation_code_dependency_sentence_case($package_description);
+        }
+
+        $fallbacks = meza_site_documentation_code_dependency_fallbacks();
+        $fallback_description = trim((string) ($fallbacks[$dependency_name]['description'] ?? ''));
+
+        if ($fallback_description !== '') {
+            return meza_site_documentation_code_dependency_sentence_case($fallback_description);
+        }
+
+        return 'Code package used by the active theme stack for front-end behavior or build tooling.';
     }
 }
 
@@ -702,74 +1171,35 @@ if (!function_exists('meza_site_documentation_get_code_dependency_rows')) {
     function meza_site_documentation_get_code_dependency_rows(): array
     {
         $rows = [];
-        $theme_directories = array_values(array_unique(array_filter([
-            get_stylesheet_directory(),
-            get_template_directory(),
-        ])));
+        $package_path = trailingslashit(get_stylesheet_directory()) . 'package.json';
 
-        foreach ($theme_directories as $directory) {
-            $package_path = trailingslashit($directory) . 'package.json';
+        if (!file_exists($package_path)) {
+            return [];
+        }
 
-            if (!file_exists($package_path)) {
+        $package_data = json_decode((string) file_get_contents($package_path), true);
+        if (!is_array($package_data)) {
+            return [];
+        }
+
+        foreach ((array) ($package_data['dependencies'] ?? []) as $dependency_name => $version) {
+            $dependency_name = trim((string) $dependency_name);
+            $version = trim((string) $version);
+
+            if ($dependency_name === '' || $version === '') {
                 continue;
             }
 
-            $package_data = json_decode((string) file_get_contents($package_path), true);
-            if (!is_array($package_data)) {
-                continue;
-            }
-
-            $stylesheet = basename($directory);
-            $theme = wp_get_theme($stylesheet);
-            $group_label = $theme instanceof WP_Theme && $theme->exists()
-                ? trim((string) $theme->get('Name'))
-                : ucwords(str_replace(['-', '_'], ' ', $stylesheet));
-
-            $dependency_sets = [
-                'Runtime' => (array) ($package_data['dependencies'] ?? []),
-                'Build' => (array) ($package_data['devDependencies'] ?? []),
+            $rows[] = [
+                'key' => sanitize_key('runtime_' . $dependency_name),
+                'label' => meza_site_documentation_code_dependency_label($dependency_name),
+                'version' => $version,
+                'description' => meza_site_documentation_code_dependency_description($dependency_name),
+                'docs_url' => meza_site_documentation_code_dependency_docs_url($dependency_name),
             ];
-
-            foreach ($dependency_sets as $type_label => $dependencies) {
-                foreach ($dependencies as $dependency_name => $version) {
-                    $dependency_name = trim((string) $dependency_name);
-                    $version = trim((string) $version);
-
-                    if ($dependency_name === '' || $version === '') {
-                        continue;
-                    }
-
-                    $rows[] = [
-                        'key' => sanitize_key($group_label . '_' . $type_label . '_' . $dependency_name),
-                        'group' => $group_label,
-                        'label' => $dependency_name,
-                        'version' => $version,
-                        'type' => $type_label,
-                        'description' => meza_site_documentation_code_dependency_description($dependency_name),
-                    ];
-                }
-            }
         }
 
         usort($rows, static function (array $left, array $right): int {
-            $group_compare = strnatcasecmp((string) ($left['group'] ?? ''), (string) ($right['group'] ?? ''));
-
-            if ($group_compare !== 0) {
-                return $group_compare;
-            }
-
-            $type_weights = [
-                'Runtime' => 10,
-                'Build' => 20,
-            ];
-
-            $left_weight = $type_weights[(string) ($left['type'] ?? '')] ?? 50;
-            $right_weight = $type_weights[(string) ($right['type'] ?? '')] ?? 50;
-
-            if ($left_weight !== $right_weight) {
-                return $left_weight <=> $right_weight;
-            }
-
             return strnatcasecmp((string) ($left['label'] ?? ''), (string) ($right['label'] ?? ''));
         });
 
@@ -932,13 +1362,27 @@ if (!function_exists('meza_site_documentation_get_resolved_rows')) {
 
             $row['is_available'] = meza_site_documentation_is_dependency_available($row);
             $row['role_labels'] = meza_site_documentation_resolve_role_list($row);
-            $row['roles_text'] = implode(', ', array_values($row['role_labels']));
+            $row['roles_text'] = meza_site_documentation_format_role_labels(array_values($row['role_labels']));
+            $row['version'] = $section_key === 'plugins'
+                ? meza_site_documentation_plugin_version($row)
+                : trim((string) ($row['version'] ?? ''));
+            $row['description'] = $section_key === 'plugins'
+                ? meza_site_documentation_plugin_description($row)
+                : trim((string) ($row['description'] ?? ''));
             $row['access'] = array_map(static function ($label): string {
                 return meza_site_documentation_format_access_label((string) $label);
             }, (array) ($row['access'] ?? []));
             $row['action_links'] = meza_site_documentation_get_row_action_links($section_key, $row);
 
             if ($section_key === 'analytics') {
+                if ($row['key'] === 'pagespeed_insights' && function_exists('wp_get_environment_type')) {
+                    $environment_type = wp_get_environment_type();
+
+                    if (in_array($environment_type, ['local', 'development'], true)) {
+                        continue;
+                    }
+                }
+
                 $analytics_override = $analytics_overrides[$row['key']] ?? [];
                 $dynamic_access_email = meza_site_documentation_analytics_access_email();
 

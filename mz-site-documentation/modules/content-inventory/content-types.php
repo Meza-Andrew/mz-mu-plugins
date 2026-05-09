@@ -70,12 +70,36 @@ if (!function_exists('meza_site_documentation_taxonomy_has_public_permalink')) {
 }
 
 if (!function_exists('meza_site_documentation_content_type_is_public_by_default')) {
+    function meza_site_documentation_object_follows_woocommerce_product_indexing(object $object): bool
+    {
+        if (!function_exists('meza_woocommerce_product_indexing_is_enabled')) {
+            return false;
+        }
+
+        if ($object instanceof WP_Post_Type) {
+            return (string) $object->name === 'product';
+        }
+
+        if ($object instanceof WP_Taxonomy) {
+            return in_array('product', array_map(static function ($object_type): string {
+                return is_string($object_type) ? trim($object_type) : '';
+            }, (array) $object->object_type), true);
+        }
+
+        return false;
+    }
+
     function meza_site_documentation_content_type_is_public_by_default(
+        object $object,
         bool $has_public_permalink,
         bool $yoast_active = false
     ): bool {
         if (!$has_public_permalink) {
             return false;
+        }
+
+        if (meza_site_documentation_object_follows_woocommerce_product_indexing($object)) {
+            return meza_woocommerce_product_indexing_is_enabled();
         }
 
         return $yoast_active;
@@ -100,6 +124,28 @@ if (!function_exists('meza_site_documentation_content_type_visibility_label')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_taxonomy_term_visibility_label')) {
+    function meza_site_documentation_taxonomy_term_visibility_label(WP_Taxonomy $taxonomy): string
+    {
+        $has_public_permalink = meza_site_documentation_taxonomy_has_public_permalink($taxonomy);
+        $is_public_by_default = meza_site_documentation_content_type_is_public_by_default(
+            $taxonomy,
+            $has_public_permalink,
+            meza_site_documentation_is_plugin_active('wordpress-seo/wp-seo.php')
+        );
+
+        if (!$has_public_permalink) {
+            return 'Private';
+        }
+
+        if ($is_public_by_default) {
+            return 'Public and Indexable';
+        }
+
+        return 'Link Accessible Only';
+    }
+}
+
 if (!function_exists('meza_site_documentation_content_type_description')) {
     function meza_site_documentation_content_type_description(object $object): string
     {
@@ -118,6 +164,14 @@ if (!function_exists('meza_site_documentation_content_type_description')) {
 
             if ($post_type === 'product') {
                 return 'Manage product content for the site\'s catalog and store inventory.';
+            }
+
+            if ($post_type === 'customer') {
+                return 'Manage customer profile content used to showcase past work, industries served, and related customer pages.';
+            }
+
+            if ($post_type === 'sign') {
+                return 'Manage portfolio-style sign example content used to showcase completed work, sign types, and related project examples.';
             }
 
             if ($description !== '') {
@@ -144,6 +198,10 @@ if (!function_exists('meza_site_documentation_content_type_description')) {
                 return 'Add flexible product labels for merchandising, filtering, and related-product organization.';
             }
 
+            if ((string) $object->name === 'sign_type') {
+                return 'Organize sign content by sign type so entries can be grouped by signage style or product type.';
+            }
+
             $description = trim((string) ($object->description ?? ''));
 
             if ($description !== '') {
@@ -154,6 +212,29 @@ if (!function_exists('meza_site_documentation_content_type_description')) {
         }
 
         return '';
+    }
+}
+
+if (!function_exists('meza_site_documentation_role_labels_from_role_keys')) {
+    function meza_site_documentation_role_labels_from_role_keys(array $role_keys): array
+    {
+        $labels = [];
+
+        foreach ($role_keys as $role_key) {
+            $role_key = sanitize_key((string) $role_key);
+
+            if ($role_key === '') {
+                continue;
+            }
+
+            $active_roles = meza_site_documentation_active_access_roles();
+
+            if (isset($active_roles[$role_key])) {
+                $labels[$role_key] = (string) $active_roles[$role_key];
+            }
+        }
+
+        return $labels;
     }
 }
 
@@ -373,13 +454,129 @@ if (!function_exists('meza_site_documentation_get_content_type_taxonomy_label'))
     }
 }
 
+if (!function_exists('meza_site_documentation_get_taxonomy_heading_label')) {
+    function meza_site_documentation_get_taxonomy_heading_label(WP_Taxonomy $taxonomy): string
+    {
+        $taxonomy_name = (string) $taxonomy->name;
+        $label = isset($taxonomy->labels->name)
+            ? trim((string) $taxonomy->labels->name)
+            : ucfirst($taxonomy_name);
+
+        if ($taxonomy_name === 'category') {
+            return 'Post Categories';
+        }
+
+        if ($taxonomy_name === 'product_brand') {
+            return 'Product Brands';
+        }
+
+        $generic_labels = [
+            'categories' => 'Categories',
+            'tags' => 'Tags',
+            'types' => 'Types',
+        ];
+        $normalized_label = strtolower($label);
+
+        if (!isset($generic_labels[$normalized_label])) {
+            return $label;
+        }
+
+        foreach ((array) $taxonomy->object_type as $object_type) {
+            $object_type = is_string($object_type) ? trim($object_type) : '';
+
+            if ($object_type === '') {
+                continue;
+            }
+
+            $post_type_object = get_post_type_object($object_type);
+
+            if (!($post_type_object instanceof WP_Post_Type) || !meza_site_documentation_is_documented_post_type($post_type_object)) {
+                continue;
+            }
+
+            $prefix = isset($post_type_object->labels->singular_name)
+                ? trim((string) $post_type_object->labels->singular_name)
+                : '';
+
+            if ($prefix === '') {
+                $prefix = isset($post_type_object->labels->name)
+                    ? trim((string) $post_type_object->labels->name)
+                    : ucfirst($object_type);
+            }
+
+            if ($prefix !== '') {
+                return $prefix . ' ' . $generic_labels[$normalized_label];
+            }
+        }
+
+        return $label;
+    }
+}
+
+if (!function_exists('meza_site_documentation_get_taxonomy_term_label')) {
+    function meza_site_documentation_get_taxonomy_term_label(WP_Taxonomy $taxonomy): string
+    {
+        $taxonomy_name = (string) $taxonomy->name;
+        $label = isset($taxonomy->labels->singular_name)
+            ? trim((string) $taxonomy->labels->singular_name)
+            : 'Term';
+
+        if ($taxonomy_name === 'category') {
+            return 'Post Category';
+        }
+
+        if ($taxonomy_name === 'product_brand') {
+            return 'Product Brand';
+        }
+
+        return $label;
+    }
+}
+
 if (!function_exists('meza_site_documentation_get_content_type_rows')) {
+    function meza_site_documentation_get_published_post_type_count(string $post_type): int
+    {
+        $post_type = sanitize_key($post_type);
+
+        if ($post_type === '') {
+            return 0;
+        }
+
+        $counts = wp_count_posts($post_type);
+
+        if (!($counts instanceof stdClass)) {
+            return 0;
+        }
+
+        return max(0, (int) ($counts->publish ?? 0));
+    }
+
+    function meza_site_documentation_get_taxonomy_term_count(string $taxonomy): int
+    {
+        $taxonomy = sanitize_key($taxonomy);
+
+        if ($taxonomy === '') {
+            return 0;
+        }
+
+        $count = get_terms([
+            'taxonomy' => $taxonomy,
+            'hide_empty' => false,
+            'fields' => 'count',
+        ]);
+
+        if (is_wp_error($count)) {
+            return 0;
+        }
+
+        return max(0, (int) $count);
+    }
+
     function meza_site_documentation_get_content_type_rows(): array
     {
         $post_type_objects = get_post_types([], 'objects');
         $rows = [];
         $yoast_active = meza_site_documentation_is_plugin_active('wordpress-seo/wp-seo.php');
-        $taxonomy_counts = [];
 
         foreach ($post_type_objects as $post_type_object) {
             if (!($post_type_object instanceof WP_Post_Type) || !meza_site_documentation_is_documented_post_type($post_type_object)) {
@@ -392,11 +589,13 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                 ? (string) $post_type_object->cap->edit_posts
                 : '';
             $post_type_has_public_permalink = meza_site_documentation_post_type_has_public_permalink($post_type_object);
-            $post_type_is_public_by_default = $post_type_has_public_permalink;
-            $post_type_counts = wp_count_posts($post_type);
-            $post_type_count = $post_type_counts instanceof stdClass
-                ? array_sum((array) $post_type_counts)
-                : 0;
+            $post_type_is_public_by_default = meza_site_documentation_object_follows_woocommerce_product_indexing($post_type_object)
+                ? meza_woocommerce_product_indexing_is_enabled()
+                : $post_type_has_public_permalink;
+            $post_type_count = meza_site_documentation_get_published_post_type_count($post_type);
+            $post_type_role_keys = function_exists('meza_site_documentation_role_keys_for_capability')
+                ? meza_site_documentation_role_keys_for_capability($edit_capability)
+                : [];
 
             $post_type_row = [
                 'key' => sanitize_key($post_type),
@@ -410,9 +609,8 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                 ),
                 'has_public_permalink' => $post_type_has_public_permalink,
                 'is_public_by_default' => $post_type_is_public_by_default,
-                'roles_text' => meza_site_documentation_format_role_labels(
-                    meza_site_documentation_role_labels_for_capability($edit_capability)
-                ),
+                'roles_text' => meza_site_documentation_format_role_labels(array_values($post_type_role_keys)),
+                'allowed_roles' => array_keys($post_type_role_keys),
                 'required_capability' => $edit_capability,
                 'action' => 'Edit',
                 'kind' => 'post_type',
@@ -439,24 +637,25 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                     : (string) ($taxonomy->cap->edit_terms ?? '');
                 $taxonomy_has_public_permalink = meza_site_documentation_taxonomy_has_public_permalink($taxonomy);
                 $taxonomy_is_public_by_default = meza_site_documentation_content_type_is_public_by_default(
+                    $taxonomy,
                     $taxonomy_has_public_permalink,
                     $yoast_active
                 );
                 $taxonomy_name = (string) $taxonomy->name;
-
-                if (!array_key_exists($taxonomy_name, $taxonomy_counts)) {
-                    $taxonomy_counts[$taxonomy_name] = (int) wp_count_terms([
-                        'taxonomy' => $taxonomy_name,
-                        'hide_empty' => false,
-                    ]);
-                }
+                $taxonomy_role_keys = function_exists('meza_site_documentation_role_keys_for_capability')
+                    ? meza_site_documentation_role_keys_for_capability($taxonomy_capability)
+                    : [];
+                $allowed_taxonomy_role_keys = array_values(array_intersect(
+                    array_keys($post_type_role_keys),
+                    array_keys($taxonomy_role_keys)
+                ));
 
                 $taxonomy_row = [
                     'key' => sanitize_key($post_type . '_' . $taxonomy_name),
                     'group' => $post_type_group_label,
                     'item' => meza_site_documentation_get_content_type_taxonomy_label($taxonomy, $post_type_object),
                     'description' => meza_site_documentation_content_type_description($taxonomy),
-                    'count' => (int) ($taxonomy_counts[$taxonomy_name] ?? 0),
+                    'count' => meza_site_documentation_get_taxonomy_term_count($taxonomy_name),
                     'visibility' => meza_site_documentation_content_type_visibility_label(
                         $taxonomy_has_public_permalink,
                         $taxonomy_is_public_by_default
@@ -464,8 +663,9 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
                     'has_public_permalink' => $taxonomy_has_public_permalink,
                     'is_public_by_default' => $taxonomy_is_public_by_default,
                     'roles_text' => meza_site_documentation_format_role_labels(
-                        meza_site_documentation_role_labels_for_capability($taxonomy_capability)
+                        array_values(meza_site_documentation_role_labels_from_role_keys($allowed_taxonomy_role_keys))
                     ),
+                    'allowed_roles' => $allowed_taxonomy_role_keys,
                     'required_capability' => $taxonomy_capability,
                     'action' => 'Edit',
                     'kind' => 'taxonomy',
@@ -479,45 +679,13 @@ if (!function_exists('meza_site_documentation_get_content_type_rows')) {
             }
         }
 
-        $group_has_public_permalink = [];
-
-        foreach ($rows as $row) {
-            $group_label = trim((string) ($row['group'] ?? ''));
-
-            if ($group_label === '') {
-                continue;
-            }
-
-            if (!array_key_exists($group_label, $group_has_public_permalink)) {
-                $group_has_public_permalink[$group_label] = false;
-            }
-
-            if (!empty($row['is_public_by_default'])) {
-                $group_has_public_permalink[$group_label] = true;
-            }
-        }
-
-        usort($rows, static function (array $left, array $right) use ($group_has_public_permalink): int {
+        usort($rows, static function (array $left, array $right): int {
             $left_group = trim((string) ($left['group'] ?? ''));
             $right_group = trim((string) ($right['group'] ?? ''));
-
-            $left_group_weight = !empty($group_has_public_permalink[$left_group]) ? 0 : 1;
-            $right_group_weight = !empty($group_has_public_permalink[$right_group]) ? 0 : 1;
-
-            if ($left_group_weight !== $right_group_weight) {
-                return $left_group_weight <=> $right_group_weight;
-            }
 
             $group_compare = strnatcasecmp($left_group, $right_group);
             if ($group_compare !== 0) {
                 return $group_compare;
-            }
-
-            $left_permalink_weight = !empty($left['is_public_by_default']) ? 0 : 1;
-            $right_permalink_weight = !empty($right['is_public_by_default']) ? 0 : 1;
-
-            if ($left_permalink_weight !== $right_permalink_weight) {
-                return $left_permalink_weight <=> $right_permalink_weight;
             }
 
             $left_kind_weight = (string) ($left['kind'] ?? '') === 'post_type' ? 0 : 1;
@@ -570,6 +738,10 @@ if (!function_exists('meza_site_documentation_get_taxonomy_term_rows')) {
             return [
                 'published' => '',
                 'modified' => '',
+                'published_user_first_name' => '',
+                'published_user_email' => '',
+                'modified_user_first_name' => '',
+                'modified_user_email' => '',
             ];
         }
 
@@ -580,11 +752,17 @@ if (!function_exists('meza_site_documentation_get_taxonomy_term_rows')) {
             return [
                 'published' => '',
                 'modified' => '',
+                'published_user_first_name' => '',
+                'published_user_email' => '',
+                'modified_user_first_name' => '',
+                'modified_user_email' => '',
             ];
         }
 
         $published_timestamps = [];
         $modified_timestamps = [];
+        $published_users = [];
+        $modified_users = [];
 
         foreach ($object_ids as $object_id) {
             $post = get_post($object_id);
@@ -595,12 +773,55 @@ if (!function_exists('meza_site_documentation_get_taxonomy_term_rows')) {
 
             $published_datetime = get_post_datetime($post, 'date');
             if ($published_datetime instanceof DateTimeInterface) {
-                $published_timestamps[] = $published_datetime->getTimestamp();
+                $published_timestamp = $published_datetime->getTimestamp();
+                $published_timestamps[] = $published_timestamp;
+
+                $author_id = (int) $post->post_author;
+                if ($author_id > 0) {
+                    $author = get_user_by('id', $author_id);
+
+                    if ($author instanceof WP_User && $author->exists()) {
+                        $first_name = trim((string) get_user_meta($author_id, 'first_name', true));
+
+                        if ($first_name === '') {
+                            $first_name = trim((string) ($author->display_name ?: $author->user_login));
+                        }
+
+                        $published_users[$published_timestamp] = [
+                            'first_name' => $first_name,
+                            'email' => sanitize_email((string) $author->user_email),
+                        ];
+                    }
+                }
             }
 
             $modified_datetime = get_post_datetime($post, 'modified');
             if ($modified_datetime instanceof DateTimeInterface) {
-                $modified_timestamps[] = $modified_datetime->getTimestamp();
+                $modified_timestamp = $modified_datetime->getTimestamp();
+                $modified_timestamps[] = $modified_timestamp;
+
+                $editor_id = (int) get_post_meta($post->ID, '_edit_last', true);
+
+                if ($editor_id <= 0) {
+                    $editor_id = (int) $post->post_author;
+                }
+
+                if ($editor_id > 0) {
+                    $editor = get_user_by('id', $editor_id);
+
+                    if ($editor instanceof WP_User && $editor->exists()) {
+                        $first_name = trim((string) get_user_meta($editor_id, 'first_name', true));
+
+                        if ($first_name === '') {
+                            $first_name = trim((string) ($editor->display_name ?: $editor->user_login));
+                        }
+
+                        $modified_users[$modified_timestamp] = [
+                            'first_name' => $first_name,
+                            'email' => sanitize_email((string) $editor->user_email),
+                        ];
+                    }
+                }
             }
         }
 
@@ -616,9 +837,22 @@ if (!function_exists('meza_site_documentation_get_taxonomy_term_rows')) {
             return wp_date('Y/m/d', $timestamp);
         };
 
+        $published_timestamp = $published_timestamps === [] ? 0 : min($published_timestamps);
+        $modified_timestamp = $modified_timestamps === [] ? 0 : max($modified_timestamps);
+        $published_user = $published_timestamp > 0 && isset($published_users[$published_timestamp]) && is_array($published_users[$published_timestamp])
+            ? $published_users[$published_timestamp]
+            : [];
+        $modified_user = $modified_timestamp > 0 && isset($modified_users[$modified_timestamp]) && is_array($modified_users[$modified_timestamp])
+            ? $modified_users[$modified_timestamp]
+            : [];
+
         return [
             'published' => $format_timestamp($published_timestamps, 'published'),
             'modified' => $format_timestamp($modified_timestamps, 'modified'),
+            'published_user_first_name' => trim((string) ($published_user['first_name'] ?? '')),
+            'published_user_email' => trim((string) ($published_user['email'] ?? '')),
+            'modified_user_first_name' => trim((string) ($modified_user['first_name'] ?? '')),
+            'modified_user_email' => trim((string) ($modified_user['email'] ?? '')),
         ];
     }
 }
@@ -658,12 +892,8 @@ if (!function_exists('meza_site_documentation_get_taxonomy_term_rows')) {
                 ? $taxonomy->cap->manage_terms
                 : (string) ($taxonomy->cap->edit_terms ?? '');
             $taxonomy_has_public_permalink = meza_site_documentation_taxonomy_has_public_permalink($taxonomy);
-            $taxonomy_label = isset($taxonomy->labels->name)
-                ? trim((string) $taxonomy->labels->name)
-                : ucfirst($taxonomy_name);
-            $term_label = isset($taxonomy->labels->singular_name)
-                ? trim((string) $taxonomy->labels->singular_name)
-                : 'Term';
+            $taxonomy_label = meza_site_documentation_get_taxonomy_heading_label($taxonomy);
+            $term_label = meza_site_documentation_get_taxonomy_term_label($taxonomy);
             $primary_post_type = '';
 
             foreach ((array) $taxonomy->object_type as $object_type) {
@@ -715,15 +945,16 @@ if (!function_exists('meza_site_documentation_get_taxonomy_term_rows')) {
                     'title' => $term_name,
                     'url' => $term_url,
                     'has_public_permalink' => $taxonomy_has_public_permalink,
-                    'visibility' => meza_site_documentation_content_type_visibility_label(
-                        $taxonomy_has_public_permalink,
-                        $taxonomy_has_public_permalink
-                    ),
+                    'visibility' => meza_site_documentation_taxonomy_term_visibility_label($taxonomy),
                     'roles_text' => meza_site_documentation_format_role_labels(
                         meza_site_documentation_role_labels_for_capability($term_capability)
                     ),
                     'modified' => (string) ($term_dates['modified'] ?? ''),
                     'published' => (string) ($term_dates['published'] ?? ''),
+                    'modified_user_first_name' => (string) ($term_dates['modified_user_first_name'] ?? ''),
+                    'modified_user_email' => (string) ($term_dates['modified_user_email'] ?? ''),
+                    'published_user_first_name' => (string) ($term_dates['published_user_first_name'] ?? ''),
+                    'published_user_email' => (string) ($term_dates['published_user_email'] ?? ''),
                     'count' => (int) $term->count,
                     'required_capability' => $term_capability,
                     'action' => 'View / Edit',

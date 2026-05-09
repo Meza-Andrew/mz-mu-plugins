@@ -148,10 +148,24 @@ if (!function_exists('meza_site_documentation_make_link')) {
     }
 }
 
-if (!function_exists('meza_site_documentation_filter_links')) {
-    function meza_site_documentation_filter_links(array $links): array
+if (!function_exists('meza_site_documentation_contact_link')) {
+    function meza_site_documentation_contact_link(string $role_key = 'administrator'): array
+    {
+        $email = meza_site_documentation_contact_email_for_role($role_key);
+
+        if ($email === '') {
+            return [];
+        }
+
+        return meza_site_documentation_make_link('Request Help', 'mailto:' . $email);
+    }
+}
+
+if (!function_exists('meza_site_documentation_finalize_links')) {
+    function meza_site_documentation_finalize_links(string $section_key, array $row, array $links): array
     {
         $filtered = [];
+        $has_inaccessible_admin_link = false;
 
         foreach ($links as $link) {
             if (!is_array($link)) {
@@ -167,6 +181,9 @@ if (!function_exists('meza_site_documentation_filter_links')) {
 
             if (function_exists('meza_site_documentation_current_user_can_access_link')
                 && !meza_site_documentation_current_user_can_access_link($link)) {
+                if (meza_site_documentation_is_admin_link_url($url)) {
+                    $has_inaccessible_admin_link = true;
+                }
                 continue;
             }
 
@@ -174,6 +191,19 @@ if (!function_exists('meza_site_documentation_filter_links')) {
                 'label' => $label,
                 'url' => $url,
             ];
+        }
+
+        if ($has_inaccessible_admin_link && is_user_logged_in()) {
+            $contact_link = meza_site_documentation_contact_link(
+                meza_site_documentation_contact_role_key_for_row($row, $section_key)
+            );
+
+            if ($contact_link !== []) {
+                $filtered[] = [
+                    'label' => (string) $contact_link['label'],
+                    'url' => (string) $contact_link['url'],
+                ];
+            }
         }
 
         return $filtered;
@@ -278,13 +308,14 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
                 ]);
             }
 
-            return meza_site_documentation_filter_links($links);
+            return meza_site_documentation_finalize_links($section_key, $row, $links);
         }
 
         if ($section_key === 'content_types') {
-            return meza_site_documentation_filter_links([
+            return meza_site_documentation_finalize_links($section_key, $row, [
                 meza_site_documentation_make_link((string) ($row['action'] ?? 'Edit'), (string) ($row['action_url'] ?? ''), [
                     'capability' => (string) ($row['required_capability'] ?? ''),
+                    'allowed_roles' => (array) ($row['allowed_roles'] ?? []),
                 ]),
             ]);
         }
@@ -304,7 +335,7 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
                 ]);
             }
 
-            return meza_site_documentation_filter_links($links);
+            return meza_site_documentation_finalize_links($section_key, $row, $links);
         }
 
         $links = [];
@@ -325,10 +356,19 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
                     'manage_security_settings' => admin_url('admin.php?page=aiowpsec'),
                     'manage_backups' => admin_url('options-general.php?page=updraftplus'),
                     'view_site_health' => admin_url('site-health.php'),
+                    'view_site_activity' => admin_url('admin.php?page=meza-activity-log'),
                     'manage_maintenance_mode' => admin_url('admin.php?page=aiowpsec&tab=visitor-lockout'),
                 ];
 
-                $links[] = meza_site_documentation_make_link((string) ($row['action'] ?? 'Manage'), (string) ($map[$row_key] ?? ''), [
+                $current_role_key = meza_site_documentation_current_user_preferred_access_role_key();
+                $current_access_label = $current_role_key !== ''
+                    ? trim((string) (($row['access'][$current_role_key] ?? '')))
+                    : '';
+                $action_label = strcasecmp($current_access_label, 'View access') === 0
+                    ? 'View'
+                    : (string) ($row['action'] ?? 'Manage');
+
+                $links[] = meza_site_documentation_make_link($action_label, (string) ($map[$row_key] ?? ''), [
                     'capability' => (string) ($row['capability'] ?? ''),
                 ]);
                 break;
@@ -405,6 +445,6 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
                 break;
         }
 
-        return meza_site_documentation_filter_links($links);
+        return meza_site_documentation_finalize_links($section_key, $row, $links);
     }
 }

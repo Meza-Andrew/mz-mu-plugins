@@ -34,6 +34,15 @@ if (!function_exists('meza_site_documentation_shop_manager_role_key')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_content_manager_role_key')) {
+    function meza_site_documentation_content_manager_role_key(): string
+    {
+        return function_exists('meza_content_editor_role_key')
+            ? meza_content_editor_role_key()
+            : 'content_manager';
+    }
+}
+
 if (!function_exists('meza_site_documentation_contact_roles')) {
     function meza_site_documentation_contact_roles(): array
     {
@@ -41,6 +50,7 @@ if (!function_exists('meza_site_documentation_contact_roles')) {
             'administrator' => 'Administrator',
             meza_site_documentation_site_manager_role_key() => 'Site Manager',
             meza_site_documentation_seo_manager_role_key() => 'SEO Manager',
+            meza_site_documentation_content_manager_role_key() => 'Content Manager',
             meza_site_documentation_shop_manager_role_key() => 'Shop Manager',
         ];
     }
@@ -50,10 +60,11 @@ if (!function_exists('meza_site_documentation_access_roles')) {
     function meza_site_documentation_access_roles(): array
     {
         return [
-            meza_site_documentation_seo_manager_role_key() => 'SEO Manager',
-            meza_site_documentation_site_manager_role_key() => 'Site Manager',
-            meza_site_documentation_shop_manager_role_key() => 'Shop Manager',
             'administrator' => 'Administrator',
+            meza_site_documentation_site_manager_role_key() => 'Site Manager',
+            meza_site_documentation_seo_manager_role_key() => 'SEO Manager',
+            meza_site_documentation_content_manager_role_key() => 'Content Manager',
+            meza_site_documentation_shop_manager_role_key() => 'Shop Manager',
         ];
     }
 }
@@ -71,6 +82,63 @@ if (!function_exists('meza_site_documentation_active_role_keys')) {
         }
 
         return array_keys($active);
+    }
+}
+
+if (!function_exists('meza_site_documentation_assigned_contact_roles')) {
+    function meza_site_documentation_assigned_contact_roles(): array
+    {
+        $assigned_roles = [];
+        $known_roles = meza_site_documentation_contact_roles();
+        $wp_roles = function_exists('wp_roles') ? wp_roles() : null;
+        $users = get_users([
+            'number' => 0,
+            'orderby' => 'ID',
+            'order' => 'ASC',
+        ]);
+
+        foreach ($users as $user) {
+            if (!($user instanceof WP_User)) {
+                continue;
+            }
+
+            foreach ((array) $user->roles as $role_key) {
+                $role_key = sanitize_key((string) $role_key);
+
+                if ($role_key === '' || isset($assigned_roles[$role_key])) {
+                    continue;
+                }
+
+                $role_label = trim((string) ($known_roles[$role_key] ?? ''));
+
+                if ($role_label === '' && $wp_roles instanceof WP_Roles) {
+                    $role_label = trim((string) ($wp_roles->roles[$role_key]['name'] ?? ''));
+
+                    if ($role_label !== '') {
+                        $role_label = translate_user_role($role_label);
+                    }
+                }
+
+                if ($role_label === '') {
+                    $role_label = ucwords(str_replace(['-', '_'], ' ', $role_key));
+                }
+
+                $assigned_roles[$role_key] = $role_label;
+            }
+        }
+
+        uksort($assigned_roles, static function (string $left_key, string $right_key) use ($assigned_roles): int {
+            $left_priority = meza_site_documentation_role_key_priority($left_key);
+            $right_priority = meza_site_documentation_role_key_priority($right_key);
+
+            if ($left_priority !== $right_priority) {
+                return $left_priority <=> $right_priority;
+            }
+
+            return strnatcasecmp((string) $assigned_roles[$left_key], (string) $assigned_roles[$right_key]);
+        });
+
+        return $assigned_roles;
     }
 }
 
@@ -115,24 +183,62 @@ if (!function_exists('meza_site_documentation_role_has_capability')) {
 }
 
 if (!function_exists('meza_site_documentation_role_labels_for_capability')) {
-    function meza_site_documentation_role_labels_for_capability(string $capability): array
+    function meza_site_documentation_role_keys_for_capability(string $capability): array
     {
-        $labels = [];
+        $roles = [];
 
         foreach (meza_site_documentation_active_access_roles() as $role_key => $role_label) {
             if (meza_site_documentation_role_has_capability($role_key, $capability)) {
-                $labels[$role_key] = $role_label;
+                $roles[$role_key] = $role_label;
             }
         }
 
-        return $labels;
+        return $roles;
+    }
+}
+
+if (!function_exists('meza_site_documentation_role_labels_for_capability')) {
+    function meza_site_documentation_role_labels_for_capability(string $capability): array
+    {
+        return meza_site_documentation_role_keys_for_capability($capability);
+    }
+}
+
+if (!function_exists('meza_site_documentation_format_role_labels')) {
+    function meza_site_documentation_role_label_priority(string $label): int
+    {
+        $label = trim($label);
+
+        return match ($label) {
+            'Administrator' => 10,
+            'Site Manager' => 20,
+            'SEO Manager' => 30,
+            'Content Manager' => 35,
+            'Shop Manager' => 40,
+            default => 1000,
+        };
     }
 }
 
 if (!function_exists('meza_site_documentation_format_role_labels')) {
     function meza_site_documentation_format_role_labels(array $labels): string
     {
-        return implode(', ', array_values(array_filter(array_map('strval', $labels))));
+        $labels = array_values(array_unique(array_filter(array_map(static function ($label): string {
+            return trim((string) $label);
+        }, $labels))));
+
+        usort($labels, static function (string $left, string $right): int {
+            $left_priority = meza_site_documentation_role_label_priority($left);
+            $right_priority = meza_site_documentation_role_label_priority($right);
+
+            if ($left_priority !== $right_priority) {
+                return $left_priority <=> $right_priority;
+            }
+
+            return strnatcasecmp($left, $right);
+        });
+
+        return implode(', ', $labels);
     }
 }
 
@@ -157,7 +263,7 @@ if (!function_exists('meza_site_documentation_default_section_copy')) {
             'site_documentation_users_and_roles_intro' => 'This section identifies the WordPress roles used on the site and the people or teams associated with them when that information is available.',
             'site_documentation_content_structure_intro' => 'This section explains how content is organized in WordPress, including the templates and reusable patterns that shape the site.',
             'site_documentation_content_intro' => 'This section catalogs the site\'s content collections, separating published URLs from content that is managed only in the admin.',
-            'site_documentation_indexed_urls_intro' => 'These entries represent content that publishes a front-end URL and can be referenced directly on the website.',
+            'site_documentation_indexed_urls_intro' => 'These entries represent content with a front-end link that can be referenced directly on the website.',
             'site_documentation_content_only_intro' => 'These entries represent content that is maintained in WordPress for internal or supporting use without a public URL by default.',
             'site_documentation_content_types_intro' => 'These are the post types and taxonomies used to organize content across the site, along with their visibility and management access.',
             'site_documentation_page_templates_intro' => 'These templates define the main page-level layouts available on the site and where they are typically used.',
@@ -185,7 +291,7 @@ if (!function_exists('meza_site_documentation_hero_lead')) {
 if (!function_exists('meza_site_documentation_find_first_user_for_role')) {
     function meza_site_documentation_handoff_excluded_role_logins(): array
     {
-        return ['smeza', 'ameza'];
+        return ['smeza', 'ameza', 'andrew', 'andrewmeza', 'rapi'];
     }
 }
 
@@ -256,6 +362,89 @@ if (!function_exists('meza_site_documentation_users_for_role')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_role_key_priority')) {
+    function meza_site_documentation_role_key_priority(string $role_key): int
+    {
+        $role_key = sanitize_key($role_key);
+
+        return match ($role_key) {
+            'administrator' => 10,
+            meza_site_documentation_site_manager_role_key() => 20,
+            meza_site_documentation_seo_manager_role_key() => 30,
+            meza_site_documentation_content_manager_role_key() => 35,
+            meza_site_documentation_shop_manager_role_key() => 40,
+            default => 1000,
+        };
+    }
+}
+
+if (!function_exists('meza_site_documentation_current_user_preferred_access_role_key')) {
+    function meza_site_documentation_current_user_preferred_access_role_key(): string
+    {
+        $current_roles = meza_site_documentation_current_user_role_keys();
+
+        foreach (array_keys(meza_site_documentation_access_roles()) as $role_key) {
+            if (in_array($role_key, $current_roles, true)) {
+                return $role_key;
+            }
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('meza_site_documentation_contact_email_for_role')) {
+    function meza_site_documentation_contact_email_for_role(string $role_key): string
+    {
+        $role_key = sanitize_key($role_key);
+
+        if ($role_key === '') {
+            return '';
+        }
+
+        $user = meza_site_documentation_find_first_user_for_role($role_key);
+
+        return $user instanceof WP_User
+            ? sanitize_email((string) $user->user_email)
+            : '';
+    }
+}
+
+if (!function_exists('meza_site_documentation_contact_role_key_for_row')) {
+    function meza_site_documentation_contact_role_key_for_row(array $row, string $section_key = ''): string
+    {
+        if ($section_key === 'capabilities') {
+            $full_access_roles = [];
+
+            foreach ((array) ($row['access'] ?? []) as $role_key => $access_label) {
+                if (strcasecmp(trim((string) $access_label), 'Full access') !== 0) {
+                    continue;
+                }
+
+                $role_key = sanitize_key((string) $role_key);
+
+                if ($role_key === '') {
+                    continue;
+                }
+
+                $full_access_roles[] = $role_key;
+            }
+
+            usort($full_access_roles, static function (string $left, string $right): int {
+                return meza_site_documentation_role_key_priority($right) <=> meza_site_documentation_role_key_priority($left);
+            });
+
+            foreach ($full_access_roles as $role_key) {
+                if (meza_site_documentation_contact_email_for_role($role_key) !== '') {
+                    return $role_key;
+                }
+            }
+        }
+
+        return 'administrator';
+    }
+}
+
 if (!function_exists('meza_site_documentation_get_role_contacts')) {
     function meza_site_documentation_user_full_name(WP_User $user): string
     {
@@ -295,77 +484,40 @@ if (!function_exists('meza_site_documentation_get_role_contacts')) {
     function meza_site_documentation_get_role_contacts(): array
     {
         $rows = [];
-        $primary_user_ids = [];
-        $additional_rows = [];
 
-        foreach (meza_site_documentation_contact_roles() as $role_key => $role_label) {
-            $user = meza_site_documentation_find_first_user_for_role($role_key);
+        foreach (meza_site_documentation_assigned_contact_roles() as $role_key => $role_label) {
+            $role_rows = [];
+            $role_users = array_values(array_filter(
+                meza_site_documentation_users_for_role($role_key),
+                static function ($role_user): bool {
+                    return $role_user instanceof WP_User;
+                }
+            ));
 
-            $name = $user instanceof WP_User
-                ? meza_site_documentation_user_full_name($user)
-                : '';
-            $user_login = $user instanceof WP_User
-                ? trim((string) $user->user_login)
-                : '';
-            $email = $user instanceof WP_User
-                ? sanitize_email((string) $user->user_email)
-                : '';
+            usort($role_users, static function (WP_User $left, WP_User $right): int {
+                return strnatcasecmp(
+                    trim((string) $left->user_login),
+                    trim((string) $right->user_login)
+                );
+            });
 
-            if ($name === '' && $user_login === '' && $email === '') {
-                $rows[] = [
-                    'role' => $role_label,
-                    'name' => '',
-                    'user_login' => '',
-                    'email' => '',
-                    'note' => 'Not assigned',
-                ];
+            if ($role_users === []) {
                 continue;
             }
 
-            if ($user instanceof WP_User) {
-                $primary_user_ids[$user->ID] = true;
-            }
-
-            $rows[] = [
-                'role' => $role_label,
-                'name' => $name,
-                'user_login' => $user_login,
-                'email' => $email,
-                'note' => '',
-            ];
-
-            foreach (meza_site_documentation_users_for_role($role_key) as $role_user) {
-                if (isset($primary_user_ids[$role_user->ID])) {
-                    continue;
-                }
-
-                $additional_rows[] = [
+            foreach ($role_users as $role_user) {
+                $role_rows[] = [
                     'role' => $role_label,
                     'name' => meza_site_documentation_user_full_name($role_user),
                     'user_login' => trim((string) $role_user->user_login),
                     'email' => sanitize_email((string) $role_user->user_email),
                     'note' => '',
-                    'sort_first_name' => meza_site_documentation_user_first_name($role_user),
                 ];
             }
-        }
 
-        usort($additional_rows, static function (array $left, array $right): int {
-            $first_name_compare = strnatcasecmp(
-                (string) ($left['sort_first_name'] ?? ''),
-                (string) ($right['sort_first_name'] ?? '')
-            );
-
-            if ($first_name_compare !== 0) {
-                return $first_name_compare;
+            foreach ($role_rows as $row) {
+                $rows[] = $row;
             }
-
-            return strnatcasecmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
-        });
-
-        foreach ($additional_rows as $row) {
-            unset($row['sort_first_name']);
-            $rows[] = $row;
         }
 
         return $rows;
@@ -386,7 +538,7 @@ if (!function_exists('meza_site_documentation_style_guide_url')) {
 
         $pages = get_posts([
             'post_type' => 'page',
-            'post_status' => 'publish',
+            'post_status' => ['publish', 'private'],
             'posts_per_page' => 1,
             'meta_key' => '_wp_page_template',
             'meta_value' => $template_file,
@@ -503,6 +655,34 @@ if (!function_exists('meza_site_documentation_page_template_file_path')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_template_file_headers')) {
+    function meza_site_documentation_template_file_headers(string $path): array
+    {
+        if ($path === '' || !file_exists($path)) {
+            return [
+                'template_name' => '',
+                'template_description' => '',
+                'template_type' => '',
+                'template_post_types' => '',
+            ];
+        }
+
+        $headers = get_file_data($path, [
+            'template_name' => 'Template Name',
+            'template_description' => 'Template Description',
+            'template_type' => 'Template Type',
+            'template_post_types' => 'Template Post Type',
+        ]);
+
+        return [
+            'template_name' => trim((string) ($headers['template_name'] ?? '')),
+            'template_description' => trim((string) ($headers['template_description'] ?? '')),
+            'template_type' => trim((string) ($headers['template_type'] ?? '')),
+            'template_post_types' => trim((string) ($headers['template_post_types'] ?? '')),
+        ];
+    }
+}
+
 if (!function_exists('meza_site_documentation_discover_page_templates')) {
     function meza_site_documentation_discover_page_templates(): array
     {
@@ -525,10 +705,8 @@ if (!function_exists('meza_site_documentation_discover_page_templates')) {
                 }
 
                 $template_file = basename($path);
-                $headers = get_file_data($path, [
-                    'template_name' => 'Template Name',
-                ]);
-                $template_label = trim((string) ($headers['template_name'] ?? ''));
+                $headers = meza_site_documentation_template_file_headers($path);
+                $template_label = (string) ($headers['template_name'] ?? '');
 
                 if ($template_label === '') {
                     continue;
@@ -537,6 +715,8 @@ if (!function_exists('meza_site_documentation_discover_page_templates')) {
                 $templates[$template_file] = [
                     'file' => $template_file,
                     'label' => $template_label,
+                    'description' => (string) ($headers['template_description'] ?? ''),
+                    'type' => (string) ($headers['template_type'] ?? ''),
                 ];
             }
         }
@@ -561,11 +741,8 @@ if (!function_exists('meza_site_documentation_template_supported_page_types')) {
             return ['Page'];
         }
 
-        $headers = get_file_data($path, [
-            'template_post_types' => 'Template Post Type',
-        ]);
-
-        $raw_types = trim((string) ($headers['template_post_types'] ?? ''));
+        $headers = meza_site_documentation_template_file_headers($path);
+        $raw_types = (string) ($headers['template_post_types'] ?? '');
 
         if ($raw_types === '') {
             return ['Page'];
@@ -659,7 +836,19 @@ if (!function_exists('meza_site_documentation_special_page_label')) {
             (int) get_option('meza_page_for_cookie_policy') => 'Cookie Policy Page',
         ];
 
-        return $special_pages[$post_id] ?? '';
+        if (isset($special_pages[$post_id]) && $special_pages[$post_id] !== '') {
+            return $special_pages[$post_id];
+        }
+
+        $template_slug = trim((string) get_page_template_slug($post_id));
+
+        return match ($template_slug) {
+            'page-documentation.php' => 'Documentation Page',
+            'page-style.php' => 'Style Guide Page',
+            'page-cookie-policy.php' => 'Cookie Policy Page',
+            'page-faq.php' => 'FAQ Page',
+            default => '',
+        };
     }
 }
 
@@ -767,6 +956,10 @@ if (!function_exists('meza_site_documentation_single_template_rows')) {
                 $plural_label = $post_type_object instanceof WP_Post_Type
                     ? trim((string) ($post_type_object->labels->name ?? $singular_label))
                     : $singular_label;
+                $headers = meza_site_documentation_template_file_headers($path);
+                $template_label = (string) ($headers['template_name'] ?? '');
+                $template_description = (string) ($headers['template_description'] ?? '');
+                $template_type = (string) ($headers['template_type'] ?? '');
                 $page_references = [];
 
                 $posts = get_posts([
@@ -805,8 +998,9 @@ if (!function_exists('meza_site_documentation_single_template_rows')) {
 
                 $rows[$file] = [
                     'key' => sanitize_key('single_' . $post_type),
-                    'group' => 'Custom Template',
-                    'template_label' => 'Single ' . $singular_label . ' Page',
+                    'group' => $template_type !== '' ? $template_type : 'Custom Template',
+                    'template_label' => $template_label !== '' ? $template_label : 'Single ' . $singular_label . ' Page',
+                    'description' => $template_description,
                     'page_references' => $page_references,
                 ];
             }
