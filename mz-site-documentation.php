@@ -2,7 +2,7 @@
 
 /**
  * Shared documentation data, ACF options, and resolver helpers.
- * Version: 1.0.85
+ * Version: 1.0.90
  */
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) {

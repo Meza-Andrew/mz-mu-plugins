@@ -1039,7 +1039,15 @@ if (!function_exists('meza_site_documentation_get_content_only_rows')) {
     function meza_site_documentation_source_renders_form($source): bool
     {
         if ($source instanceof WP_Term) {
-            return in_array($source->taxonomy, ['locality', 'sign_type'], true);
+            if (!in_array($source->taxonomy, ['locality', 'sign_type'], true)) {
+                return false;
+            }
+
+            if (function_exists('get_field')) {
+                return !empty(get_field('show_form', $source));
+            }
+
+            return false;
         }
 
         $source_post = null;
@@ -1054,25 +1062,19 @@ if (!function_exists('meza_site_documentation_get_content_only_rows')) {
             return false;
         }
 
-        if ($source_post->post_type === 'service') {
-            return true;
+        if (!in_array($source_post->post_type, ['page', 'post', 'service'], true)) {
+            return false;
         }
 
-        if ($source_post->post_type === 'page') {
-            return function_exists('meza_page_has_form_section')
-                ? meza_page_has_form_section((int) $source_post->ID)
-                : false;
+        if ($source_post->post_type === 'page' && (int) $source_post->ID === (int) get_option('page_on_front')) {
+            return false;
         }
 
-        if ($source_post->post_type === 'post') {
-            $show_form = function_exists('get_field')
-                ? get_field('show_form', (int) $source_post->ID)
-                : get_post_meta((int) $source_post->ID, 'show_form', true);
+        $show_form = function_exists('get_field')
+            ? get_field('show_form', (int) $source_post->ID)
+            : get_post_meta((int) $source_post->ID, 'show_form', true);
 
-            return !empty($show_form);
-        }
-
-        return false;
+        return !empty($show_form);
     }
 
     function meza_site_documentation_get_form_usage_count(WP_Post $form_post): int
@@ -1117,6 +1119,10 @@ if (!function_exists('meza_site_documentation_get_content_only_rows')) {
 
         foreach ((array) $service_ids as $service_id) {
             $service_id = (int) $service_id;
+
+            if (!meza_site_documentation_source_renders_form($service_id)) {
+                continue;
+            }
 
             if (in_array($form_id, meza_site_documentation_get_runtime_form_ids($service_id), true)) {
                 $usage_context_keys[] = 'service:' . $service_id;

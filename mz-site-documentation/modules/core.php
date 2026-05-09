@@ -291,7 +291,7 @@ if (!function_exists('meza_site_documentation_hero_lead')) {
 if (!function_exists('meza_site_documentation_find_first_user_for_role')) {
     function meza_site_documentation_handoff_excluded_role_logins(): array
     {
-        return ['smeza', 'ameza', 'andrew', 'andrewmeza', 'rapi'];
+        return ['smeza', 'ameza', 'andrew', 'andrewmeza', 'mapi', 'rapi'];
     }
 }
 

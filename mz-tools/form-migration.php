@@ -198,6 +198,219 @@ if (!function_exists('mzf_mt_term_form_family')) {
     }
 }
 
+if (!function_exists('mzf_mt_collect_nested_form_visibility_targets')) {
+    function mzf_mt_collect_nested_form_visibility_targets(): array
+    {
+        $targets = [];
+
+        $localities = get_terms([
+            'taxonomy' => 'locality',
+            'hide_empty' => false,
+        ]);
+
+        if (!is_wp_error($localities)) {
+            foreach ($localities as $term) {
+                if (!($term instanceof WP_Term) || (int) $term->parent <= 0) {
+                    continue;
+                }
+
+                $parent = get_term((int) $term->parent, 'locality');
+
+                $targets[] = [
+                    'kind' => 'locality',
+                    'object_id' => (int) $term->term_id,
+                    'label' => (string) $term->name,
+                    'parent_label' => ($parent instanceof WP_Term && !is_wp_error($parent)) ? (string) $parent->name : '',
+                    'show_form' => get_term_meta((int) $term->term_id, 'show_form', true),
+                    'visibility_form' => get_term_meta((int) $term->term_id, 'visibility_form', true),
+                ];
+            }
+        }
+
+        return $targets;
+    }
+}
+
+if (!function_exists('mzf_mt_source_has_form_configuration')) {
+    function mzf_mt_source_has_form_configuration(int $source_id): bool
+    {
+        if ($source_id <= 0) {
+            return false;
+        }
+
+        $candidates = [];
+
+        if (function_exists('get_field')) {
+            $candidates[] = get_field('section_form_form', $source_id);
+            $candidates[] = get_field('section_form', $source_id);
+        }
+
+        $candidates[] = get_post_meta($source_id, 'section_form_form', true);
+        $candidates[] = get_post_meta($source_id, 'section_form', true);
+
+        $has_meaningful_value = false;
+
+        $scan_value = static function ($value) use (&$has_meaningful_value, &$scan_value): void {
+            if ($has_meaningful_value || $value === null || $value === '') {
+                return;
+            }
+
+            if ($value instanceof WP_Post) {
+                if ($value->post_type === 'form') {
+                    $has_meaningful_value = true;
+                }
+
+                return;
+            }
+
+            if (is_numeric($value)) {
+                $post = get_post((int) $value);
+
+                if ($post instanceof WP_Post && $post->post_type === 'form') {
+                    $has_meaningful_value = true;
+                }
+
+                return;
+            }
+
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    $scan_value($item);
+
+                    if ($has_meaningful_value) {
+                        return;
+                    }
+                }
+            }
+        };
+
+        foreach ($candidates as $candidate) {
+            $scan_value($candidate);
+
+            if ($has_meaningful_value) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('mzf_mt_collect_post_form_visibility_targets')) {
+    function mzf_mt_collect_post_form_visibility_targets(): array
+    {
+        $targets = [];
+        $front_page_id = (int) get_option('page_on_front');
+
+        $post_ids = get_posts([
+            'post_type' => ['page', 'post'],
+            'post_status' => ['publish', 'draft', 'pending', 'private', 'future'],
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'no_found_rows' => true,
+        ]);
+
+        foreach ((array) $post_ids as $post_id) {
+            $post_id = (int) $post_id;
+
+            if ($post_id <= 0 || !mzf_mt_source_has_form_configuration($post_id)) {
+                continue;
+            }
+
+            $post = get_post($post_id);
+
+            if (!($post instanceof WP_Post)) {
+                continue;
+            }
+
+            $is_front_page = $post->post_type === 'page' && $post_id === $front_page_id;
+
+            if (!$is_front_page && !mzf_mt_source_has_form_configuration($post_id)) {
+                continue;
+            }
+
+            $targets[] = [
+                'kind' => $post->post_type,
+                'object_id' => $post_id,
+                'label' => (string) get_the_title($post_id),
+                'parent_label' => '',
+                'show_form' => get_post_meta($post_id, 'show_form', true),
+                'visibility_form' => get_post_meta($post_id, 'visibility_form', true),
+                'force_off' => $is_front_page,
+            ];
+        }
+
+        return $targets;
+    }
+}
+
+if (!function_exists('mzf_mt_disable_nested_form_visibility')) {
+    function mzf_mt_disable_nested_form_visibility(array $args = []): array
+    {
+        $apply = !empty($args['apply']);
+        $rows = [];
+
+        foreach (array_merge(
+            mzf_mt_collect_nested_form_visibility_targets(),
+            mzf_mt_collect_post_form_visibility_targets()
+        ) as $target) {
+            $kind = (string) ($target['kind'] ?? '');
+            $object_id = (int) ($target['object_id'] ?? 0);
+            $label = (string) ($target['label'] ?? '');
+            $parent_label = (string) ($target['parent_label'] ?? '');
+            $old_show_form = (string) ($target['show_form'] ?? '');
+            $old_visibility_form = (string) ($target['visibility_form'] ?? '');
+            $force_off = !empty($target['force_off']);
+            $target_show_form = ($kind === 'locality' || $force_off) ? '0' : '1';
+            $target_visibility_form = ($kind === 'locality' || $force_off) ? '0' : '1';
+            $already_synced = $old_show_form === $target_show_form && $old_visibility_form === $target_visibility_form;
+            $status = $already_synced ? 'unchanged' : 'updated';
+
+            if ($apply && $object_id > 0) {
+                if (in_array($kind, ['page', 'post'], true)) {
+                    if (function_exists('update_field')) {
+                        update_field('show_form', (int) $target_show_form, $object_id);
+                    }
+
+                    update_post_meta($object_id, 'show_form', (int) $target_show_form);
+                    update_post_meta($object_id, 'visibility_form', (int) $target_visibility_form);
+                    update_post_meta($object_id, '_show_form', 'field_69b03fca31afa');
+                    clean_post_cache($object_id);
+                } elseif ($kind === 'locality') {
+                    $term = get_term($object_id, 'locality');
+
+                    if ($term instanceof WP_Term && !is_wp_error($term)) {
+                        if (function_exists('update_field')) {
+                            update_field('show_form', 0, mzf_mt_term_object_id($term));
+                        }
+
+                        update_term_meta($object_id, 'show_form', 0);
+                        update_term_meta($object_id, 'visibility_form', 0);
+                        update_term_meta($object_id, '_show_form', 'field_69b03fca31afa');
+                        clean_term_cache($object_id, 'locality');
+                    }
+                }
+            }
+
+            $rows[] = [
+                'status' => $status,
+                'kind' => $kind,
+                'object_id' => $object_id,
+                'label' => $label,
+                'parent_label' => $parent_label,
+                'old_show_form' => $old_show_form,
+                'old_visibility_form' => $old_visibility_form,
+                'new_show_form' => $target_show_form,
+                'new_visibility_form' => $target_visibility_form,
+            ];
+        }
+
+        return $rows;
+    }
+}
+
 if (!function_exists('mzf_mt_find_form_by_family')) {
     function mzf_mt_find_form_by_family(string $family): int
     {
@@ -1474,12 +1687,56 @@ if (!function_exists('mzf_mt_execute_action')) {
             ];
         }
 
+        if ($action === 'disable_nested_form_visibility') {
+            $run_args = [
+                'apply' => !empty($args['apply']),
+            ];
+
+            $rows = mzf_mt_disable_nested_form_visibility($run_args);
+            $counts = [];
+
+            foreach ($rows as $row) {
+                $status = (string) ($row['status'] ?? 'unknown');
+                $counts[$status] = ($counts[$status] ?? 0) + 1;
+            }
+
+            $lines = [];
+            $lines[] = 'Mode: ' . ($run_args['apply'] ? 'APPLY' : 'DRY RUN');
+            $lines[] = 'Targets scanned: ' . count($rows);
+            $lines[] = 'Summary: ' . wp_json_encode($counts);
+            $lines[] = '';
+
+            foreach ($rows as $row) {
+                $lines[] = sprintf(
+                    '[%s] %s:%d | parent=%s | label=%s | show_form:%s->%s | visibility_form:%s->%s',
+                    strtoupper((string) ($row['status'] ?? 'unknown')),
+                    (string) ($row['kind'] ?? ''),
+                    (int) ($row['object_id'] ?? 0),
+                    (string) ($row['parent_label'] ?? ''),
+                    (string) ($row['label'] ?? ''),
+                    (string) ($row['old_show_form'] ?? ''),
+                    (string) ($row['new_show_form'] ?? ''),
+                    (string) ($row['old_visibility_form'] ?? ''),
+                    (string) ($row['new_visibility_form'] ?? '')
+                );
+            }
+
+            return [
+                'action' => $action,
+                'title' => 'Form Visibility Sync',
+                'lines' => $lines,
+                'apply' => $run_args['apply'],
+                'counts' => $counts,
+                'total_scanned' => count($rows),
+            ];
+        }
+
         return [
             'action' => $action,
             'title' => 'MZ Form Migration Tools',
             'lines' => [
                 'Unknown action: ' . $action,
-                'Valid actions: migrate_section_forms, clear_forms, repair_form_dupe_ids, export_forms_json, import_forms_json',
+                'Valid actions: migrate_section_forms, clear_forms, repair_form_dupe_ids, export_forms_json, import_forms_json, disable_nested_form_visibility',
             ],
             'apply' => false,
         ];
@@ -1725,3 +1982,38 @@ add_action('admin_init', function () {
 }, 1);
 
 add_action('init', 'mzf_mt_backfill_term_section_form_relationship_once', 30);
+
+if (defined('WP_CLI') && WP_CLI && !class_exists('MZ_Form_Visibility_Cleanup_CLI_Command')) {
+    class MZ_Form_Visibility_Cleanup_CLI_Command
+    {
+        /**
+         * Disable form visibility for child services and child locality terms.
+         *
+         * ## OPTIONS
+         *
+         * [--apply]
+         * : Write the changes. Omit for a dry run.
+         *
+         * ## EXAMPLES
+         *
+         *     wp mz disable-nested-form-visibility
+         *     wp mz disable-nested-form-visibility --apply
+         *
+         * @when after_wp_load
+         */
+        public function __invoke($args, $assoc_args): void
+        {
+            $result = mzf_mt_execute_action('disable_nested_form_visibility', [
+                'apply' => isset($assoc_args['apply']),
+            ]);
+
+            foreach ((array) ($result['lines'] ?? []) as $line) {
+                \WP_CLI::log((string) $line);
+            }
+
+            \WP_CLI::success(!empty($result['apply']) ? 'Nested form visibility cleanup complete.' : 'Nested form visibility dry run complete.');
+        }
+    }
+
+    \WP_CLI::add_command('mz disable-nested-form-visibility', 'MZ_Form_Visibility_Cleanup_CLI_Command');
+}
