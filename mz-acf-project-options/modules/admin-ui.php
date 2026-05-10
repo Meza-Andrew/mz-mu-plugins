@@ -1302,6 +1302,125 @@ add_action('admin_head', function (): void {
         .acf-postbox[data-key="group_68c1337b43d46"] .acf-field[data-type="group"]>.acf-input>.acf-fields>.acf-field .acf-input .description {
             margin: 0 0 8px;
         }
+
+        #acf-group_meza_business_information_locations .acf-field.meza-location-field-row > .acf-label,
+        .acf-postbox[data-key="group_meza_business_information_locations"] .acf-field.meza-location-field-row > .acf-label {
+            padding-bottom: 0;
+        }
+
+        #acf-group_meza_business_information_locations .acf-field.meza-location-field-row > .acf-input,
+        .acf-postbox[data-key="group_meza_business_information_locations"] .acf-field.meza-location-field-row > .acf-input {
+            padding-top: 10px;
+            padding-bottom: 10px;
+        }
+
+        #acf-group_meza_business_information_locations .acf-field.meza-location-field-row-start,
+        .acf-postbox[data-key="group_meza_business_information_locations"] .acf-field.meza-location-field-row-start {
+            border-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        #acf-group_meza_business_information_locations .acf-field.meza-location-field-row-end,
+        .acf-postbox[data-key="group_meza_business_information_locations"] .acf-field.meza-location-field-row-end {
+            border-top: 0;
+            margin-top: -1px;
+            padding-top: 0;
+        }
+
+        #acf-group_meza_business_information_locations .acf-field.meza-location-field-row-end > .acf-label,
+        .acf-postbox[data-key="group_meza_business_information_locations"] .acf-field.meza-location-field-row-end > .acf-label {
+            display: none;
+        }
+
+        #acf-group_meza_business_information_locations .acf-field.meza-location-field-row-end > .acf-input,
+        .acf-postbox[data-key="group_meza_business_information_locations"] .acf-field.meza-location-field-row-end > .acf-input {
+            padding-top: 0;
+        }
+
+        #acf-group_meza_business_information_locations .acf-field.meza-location-field-row-logo,
+        #acf-group_meza_business_information_locations .acf-field.meza-location-field-row-cta,
+        .acf-postbox[data-key="group_meza_business_information_locations"] .acf-field.meza-location-field-row-logo,
+        .acf-postbox[data-key="group_meza_business_information_locations"] .acf-field.meza-location-field-row-cta {
+            background: #fff;
+        }
+
+        #acf-group_meza_business_information_locations .acf-field.meza-location-field-row-end .acf-relationship .filters,
+        .acf-postbox[data-key="group_meza_business_information_locations"] .acf-field.meza-location-field-row-end .acf-relationship .filters {
+            margin-top: 0;
+        }
+
+        #acf-group_meza_business_information_locations .acf-field.meza-location-field-row-end .acf-image-uploader,
+        .acf-postbox[data-key="group_meza_business_information_locations"] .acf-field.meza-location-field-row-end .acf-image-uploader {
+            margin-top: 2px;
+        }
+
+        #acf-group_meza_business_information_locations .acf-field[data-key="field_meza_business_location_secondary_logo"].is-using-site-logo > .acf-input,
+        .acf-postbox[data-key="group_meza_business_information_locations"] .acf-field[data-key="field_meza_business_location_secondary_logo"].is-using-site-logo > .acf-input {
+            display: none;
+        }
     </style>
+    <script id="meza-business-location-logo-toggle">
+        document.addEventListener('DOMContentLoaded', function () {
+            var rowSelectors = ['.acf-row', '.acf-clone'];
+
+            function getLocationRows() {
+                return Array.prototype.slice.call(
+                    document.querySelectorAll('#acf-group_meza_business_information_locations .acf-row, .acf-postbox[data-key="group_meza_business_information_locations"] .acf-row')
+                );
+            }
+
+            function getClosestRow(element) {
+                if (!element) {
+                    return null;
+                }
+
+                for (var i = 0; i < rowSelectors.length; i += 1) {
+                    var row = element.closest(rowSelectors[i]);
+                    if (row) {
+                        return row;
+                    }
+                }
+
+                return null;
+            }
+
+            function syncLocationLogoRow(row) {
+                if (!row) {
+                    return;
+                }
+
+                var logoField = row.querySelector('.acf-field[data-key="field_meza_business_location_secondary_logo"]');
+                var toggleInput = row.querySelector('.acf-field[data-key="field_meza_business_location_use_site_logo"] input[type="checkbox"]');
+
+                if (!logoField || !toggleInput) {
+                    return;
+                }
+
+                logoField.classList.toggle('is-using-site-logo', toggleInput.checked);
+            }
+
+            function syncAllLocationLogoRows() {
+                getLocationRows().forEach(syncLocationLogoRow);
+            }
+
+            document.addEventListener('change', function (event) {
+                var toggleInput = event.target.closest('.acf-field[data-key="field_meza_business_location_use_site_logo"] input[type="checkbox"]');
+
+                if (!toggleInput) {
+                    return;
+                }
+
+                syncLocationLogoRow(getClosestRow(toggleInput));
+            });
+
+            syncAllLocationLogoRows();
+
+            if (window.acf && typeof window.acf.addAction === 'function') {
+                window.acf.addAction('append', syncAllLocationLogoRows);
+                window.acf.addAction('show_field', syncAllLocationLogoRows);
+                window.acf.addAction('hide_field', syncAllLocationLogoRows);
+            }
+        });
+    </script>
 <?php
 }, 20);
