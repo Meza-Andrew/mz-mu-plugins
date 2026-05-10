@@ -4202,6 +4202,11 @@ function meza_sort_submenu_items_with_standard_structure(array $items, string $p
         $pair_group_label = '';
         $pair_priority = 0;
 
+        if ($current_post_type === '' && $slug === $expected_list_slug) {
+            $dashboard_items[] = $item;
+            continue;
+        }
+
         if (strcasecmp($title, 'Dashboard') === 0) {
             $dashboard_items[] = $item;
             continue;
@@ -9220,8 +9225,10 @@ function meza_is_settings_utility_menu_item($item): bool
         || $label === 'security';
     $is_backups = str_contains($slug, 'updraft')
         || in_array($label, ['backups', 'updraft', 'updraftplus'], true);
+    $is_make = str_contains($slug, 'ds-make')
+        || $label === 'make';
 
-    return $is_acf || $is_mail || $is_security || $is_backups;
+    return $is_acf || $is_mail || $is_security || $is_backups || $is_make;
 }
 
 function meza_is_backups_menu_item(string $parent_slug, array $item): bool
@@ -9756,11 +9763,12 @@ function meza_group_post_settings_utilities(): void
     usort($utility_items, static function (array $a, array $b): int {
         $priority = [
             'acf' => 10,
-            'backups' => 10,
-            'updraft' => 10,
-            'updraftplus' => 10,
-            'mail' => 10,
-            'security' => 10,
+            'backups' => 20,
+            'updraft' => 20,
+            'updraftplus' => 20,
+            'security' => 30,
+            'mail' => 40,
+            'make' => 50,
         ];
 
         $label_a = strtolower((string) ($a['label'] ?? ''));
@@ -9807,8 +9815,16 @@ function meza_group_post_settings_utilities(): void
     array_splice($menu, $settings_index + 1, 0, $items_to_insert);
 }
 
-// Keep ACF, Backups, Mail, and Security in their own utility group below Settings.
+// Keep ACF, Backups, Security, Mail, and Make in their own utility group below Settings.
 add_action('admin_menu', 'meza_group_post_settings_utilities', PHP_INT_MAX);
+
+function meza_finalize_post_settings_utilities_group(): void
+{
+    meza_group_post_settings_utilities();
+    meza_cleanup_menu_separators();
+    meza_restore_settings_utility_group_separator();
+    meza_restore_default_fallback_group_separator();
+}
 
 function meza_alphabetize_default_admin_menu_group(): void
 {
@@ -11788,6 +11804,7 @@ function meza_apply_late_admin_menu_mutations(): void
     meza_cleanup_menu_separators();
     meza_ensure_separator_before_appearance_group();
     meza_position_business_settings_menu();
+    meza_finalize_post_settings_utilities_group();
     meza_remove_content_editor_separator_between_profile_and_tools();
 }
 
@@ -11822,6 +11839,7 @@ function meza_apply_missing_late_admin_menu_mutations(): void
     meza_cleanup_menu_separators();
     meza_ensure_separator_before_appearance_group();
     meza_position_business_settings_menu();
+    meza_finalize_post_settings_utilities_group();
     meza_remove_content_editor_separator_between_profile_and_tools();
 }
 
