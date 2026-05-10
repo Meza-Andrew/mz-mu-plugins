@@ -160,7 +160,7 @@
                         'conditional_logic' => 0,
                         'wrapper' => [
                             'width' => '',
-                            'class' => 'meza-location-field-row meza-location-field-row-cta meza-location-field-row-start',
+                            'class' => '',
                             'id' => '',
                         ],
                         'default_value' => '',
@@ -181,7 +181,7 @@
                         'conditional_logic' => 0,
                         'wrapper' => [
                             'width' => '',
-                            'class' => 'meza-location-field-row meza-location-field-row-cta meza-location-field-row-end',
+                            'class' => '',
                             'id' => '',
                         ],
                         'default_value' => '',
@@ -213,6 +213,39 @@
                         'field_type' => 'multi_select',
                         'allow_null' => 0,
                         'multiple' => 1,
+                        'parent_repeater' => 'field_meza_business_locations',
+                    ],
+                    [
+                        'key' => 'field_meza_business_location_primary_service',
+                        'label' => 'Primary Service',
+                        'name' => 'primary_service',
+                        'aria-label' => '',
+                        'type' => 'relationship',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'post_type' => [
+                            'service',
+                        ],
+                        'post_status' => [
+                            'publish',
+                        ],
+                        'taxonomy' => '',
+                        'filters' => [
+                            'search',
+                        ],
+                        'return_format' => 'id',
+                        'min' => '',
+                        'max' => 1,
+                        'allow_in_bindings' => 0,
+                        'elements' => '',
+                        'bidirectional' => 0,
+                        'bidirectional_target' => [],
                         'parent_repeater' => 'field_meza_business_locations',
                     ],
                     [
