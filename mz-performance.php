@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Performance
  * Description: Front-end asset, markup, and performance optimizations.
- * Version: 1.1.2
+ * Version: 1.1.3
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -158,7 +158,23 @@ function meza_remove_query_strings($src)
         return $src;
     }
 
-    return strpos($src, '?') ? substr($src, 0, strpos($src, '?')) : $src;
+    $query = wp_parse_url($src, PHP_URL_QUERY);
+    if (!is_string($query) || $query === '') {
+        return $src;
+    }
+
+    parse_str($query, $query_args);
+    if (!is_array($query_args) || !array_key_exists('ver', $query_args)) {
+        return $src;
+    }
+
+    unset($query_args['ver']);
+
+    if ($query_args === []) {
+        return remove_query_arg('ver', $src);
+    }
+
+    return add_query_arg($query_args, remove_query_arg('ver', $src));
 }
 
 /** Replace front-end page links with "#" during staging/QA reviews to prevent unfinished page navigation. */
