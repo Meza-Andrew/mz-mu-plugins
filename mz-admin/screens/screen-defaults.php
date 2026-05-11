@@ -2384,7 +2384,18 @@ function meza_admin_menu_content_group(string $menu_slug): string
     parse_str($post_type, $query_args);
     $post_type = (string) ($query_args['post_type'] ?? '');
     if ($post_type === '') return '';
-    if ($post_type === 'product') return 'with';
+    if ($post_type === 'product') {
+        if (
+            function_exists('meza_woocommerce_ecommerce_is_enabled')
+            && function_exists('meza_woocommerce_product_indexing_is_enabled')
+            && meza_woocommerce_ecommerce_is_enabled()
+            && !meza_woocommerce_product_indexing_is_enabled()
+        ) {
+            return 'without';
+        }
+
+        return 'with';
+    }
     if (function_exists('meza_is_acf_admin_post_type') && meza_is_acf_admin_post_type($post_type)) return '';
 
     $post_type_object = get_post_type_object($post_type);

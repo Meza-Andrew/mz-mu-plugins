@@ -1434,6 +1434,12 @@ function meza_is_native_plugin_admin_shell_page(): bool
         return true;
     }
 
+    // Make Connector uses "integromat*" page slugs that do not mirror the plugin slug.
+    // Keep those pages on the untouched core admin shell so WordPress prints native assets.
+    if (str_starts_with($page, 'integromat')) {
+        return true;
+    }
+
     if (in_array($page, [
         'webpc_optimization_page',
         'webpc_admin_page',
@@ -6946,6 +6952,10 @@ if (!function_exists('meza_is_admin_chrome_exempt_screen')) {
         }
 
         $page = sanitize_key((string) ($_GET['page'] ?? ''));
+        if (str_starts_with($page, 'integromat')) {
+            return true;
+        }
+
         if (in_array($page, [
             meza_get_site_manager_aios_security_menu_slug(),
             meza_get_site_manager_aios_two_factor_menu_slug(),

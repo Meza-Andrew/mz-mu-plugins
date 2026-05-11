@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.690
+ * Version: 1.1.694
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -742,6 +742,41 @@ if (!function_exists('meza_woocommerce_product_capabilities')) {
         ];
     }
 }
+
+if (!function_exists('meza_admin_should_group_products_as_content_only')) {
+    function meza_admin_should_group_products_as_content_only(): bool
+    {
+        if (!meza_has_woocommerce_plugin()) {
+            return false;
+        }
+
+        if (
+            !function_exists('meza_saved_business_information_enables_ecommerce')
+            || !function_exists('meza_saved_business_information_enables_product_indexing')
+        ) {
+            return false;
+        }
+
+        return meza_saved_business_information_enables_ecommerce()
+            && !meza_saved_business_information_enables_product_indexing();
+    }
+}
+
+add_filter('meza_admin_menu_content_group_rules', function (array $rules): array {
+    if (!meza_admin_should_group_products_as_content_only()) {
+        return $rules;
+    }
+
+    $rules[] = [
+        'id' => 'woocommerce-products-content-only-when-noindex',
+        'group' => 'without',
+        'menu_slug_equals' => [
+            'edit.php?post_type=product',
+        ],
+    ];
+
+    return $rules;
+}, 20);
 
 if (!function_exists('meza_managed_custom_post_type_capability_map')) {
     function meza_managed_custom_post_type_capability_map(): array
@@ -1897,6 +1932,12 @@ if (!function_exists('meza_content_editor_capabilities')) {
             $caps[(string) $cap] = (bool) $grant;
         }
 
+        if (function_exists('meza_site_documentation_content_manager_caps')) {
+            foreach (meza_site_documentation_content_manager_caps() as $cap => $grant) {
+                $caps[(string) $cap] = (bool) $grant;
+            }
+        }
+
         return $caps;
     }
 }
@@ -2280,6 +2321,12 @@ if (!function_exists('meza_sync_shop_manager_content_access_caps')) {
         }
 
         $allowed_caps = meza_get_content_access_capabilities_for_role($role_key);
+
+        if (function_exists('meza_site_documentation_shop_manager_caps')) {
+            foreach (meza_site_documentation_shop_manager_caps() as $cap => $grant) {
+                $allowed_caps[(string) $cap] = (bool) $grant;
+            }
+        }
         $caps_to_remove = [];
 
         foreach (['post', 'page'] as $post_type) {

@@ -411,6 +411,10 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
                 break;
 
             case 'plugins':
+                if ($row_key === 'acf_content_analysis') {
+                    break;
+                }
+
                 $map = [
                     'acf_content_analysis' => admin_url('plugins.php'),
                     'admin_columns' => admin_url('options-general.php?page=codepress-admin-columns'),

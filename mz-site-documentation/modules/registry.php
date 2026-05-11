@@ -333,7 +333,11 @@ if (!function_exists('meza_site_documentation_dashboards_registry')) {
                 'capability' => 'meza_doc_dashboard_google_site_kit',
                 'plugin' => 'google-site-kit/google-site-kit.php',
                 'hide_when_dependency_missing' => true,
-                'roles' => array_keys(meza_site_documentation_access_roles()),
+                'roles' => [
+                    'administrator',
+                    meza_site_documentation_site_manager_role_key(),
+                    meza_site_documentation_seo_manager_role_key(),
+                ],
                 'action' => 'View',
             ],
             'security' => [
@@ -357,17 +361,19 @@ if (!function_exists('meza_site_documentation_tools_registry')) {
                 'label' => 'Import',
                 'description' => 'Import WordPress content exported from another WordPress website.',
                 'capability' => 'meza_doc_tool_import',
-                'roles' => array_keys(meza_site_documentation_access_roles()),
+                'roles' => [
+                    'administrator',
+                    meza_site_documentation_site_manager_role_key(),
+                    meza_site_documentation_seo_manager_role_key(),
+                    meza_site_documentation_content_manager_role_key(),
+                ],
                 'action' => 'Use',
             ],
             'export' => [
                 'label' => 'Export',
                 'description' => 'Export WordPress content for importing into another WordPress website.',
                 'capability' => 'meza_doc_tool_export',
-                'roles' => [
-                    meza_site_documentation_site_manager_role_key(),
-                    'administrator',
-                ],
+                'roles' => [],
                 'action' => 'Use',
             ],
             'seo_bulk_edit' => [
@@ -380,6 +386,7 @@ if (!function_exists('meza_site_documentation_tools_registry')) {
                     'administrator',
                     meza_site_documentation_site_manager_role_key(),
                     meza_site_documentation_seo_manager_role_key(),
+                    meza_site_documentation_content_manager_role_key(),
                 ],
                 'action' => 'Use',
             ],
@@ -521,8 +528,11 @@ if (!function_exists('meza_site_documentation_plugins_registry')) {
                 'label' => 'Post Duplicator',
                 'description' => 'Allows content editors to duplicate posts and pages more quickly.',
                 'capability' => 'meza_doc_plugin_post_duplicator',
-                'plugin_installed' => 'post-duplicator/post-duplicator.php',
-                'roles' => ['administrator'],
+                'plugin_installed' => 'post-duplicator/m4c-postduplicator.php',
+                'roles' => [
+                    'administrator',
+                    meza_site_documentation_site_manager_role_key(),
+                ],
                 'importance' => 'Nice to have',
                 'action' => 'Settings',
             ],
@@ -531,7 +541,10 @@ if (!function_exists('meza_site_documentation_plugins_registry')) {
                 'description' => 'Adds a UI to manage redirects more easily.',
                 'capability' => 'meza_doc_plugin_redirection',
                 'plugin_installed' => 'redirection/redirection.php',
-                'roles' => ['administrator'],
+                'roles' => [
+                    'administrator',
+                    meza_site_documentation_site_manager_role_key(),
+                ],
                 'importance' => 'Important',
                 'action' => 'Settings',
             ],
@@ -549,7 +562,10 @@ if (!function_exists('meza_site_documentation_plugins_registry')) {
                 'description' => 'Adds object caching to improve performance on supported environments.',
                 'capability' => 'meza_doc_plugin_object_cache',
                 'plugin_installed' => 'sqlite-object-cache/sqlite-object-cache.php',
-                'roles' => ['administrator'],
+                'roles' => [
+                    'administrator',
+                    meza_site_documentation_site_manager_role_key(),
+                ],
                 'importance' => 'Important',
                 'action' => 'Settings',
             ],
@@ -568,8 +584,10 @@ if (!function_exists('meza_site_documentation_plugins_registry')) {
                 'capability' => 'meza_doc_plugin_wordpress_importer',
                 'plugin_installed' => 'wordpress-importer/wordpress-importer.php',
                 'roles' => [
-                    meza_site_documentation_site_manager_role_key(),
                     'administrator',
+                    meza_site_documentation_site_manager_role_key(),
+                    meza_site_documentation_seo_manager_role_key(),
+                    meza_site_documentation_content_manager_role_key(),
                 ],
                 'importance' => 'Nice to have',
                 'action' => '',
@@ -579,7 +597,11 @@ if (!function_exists('meza_site_documentation_plugins_registry')) {
                 'description' => 'Adds SEO essentials and a more complete interface for managing metadata.',
                 'capability' => 'meza_doc_plugin_yoast_seo',
                 'plugin_installed' => 'wordpress-seo/wp-seo.php',
-                'roles' => array_keys(meza_site_documentation_access_roles()),
+                'roles' => [
+                    'administrator',
+                    meza_site_documentation_site_manager_role_key(),
+                    meza_site_documentation_seo_manager_role_key(),
+                ],
                 'importance' => 'Essential',
                 'action' => 'Settings',
             ],
@@ -1466,5 +1488,21 @@ if (!function_exists('meza_site_documentation_administrator_caps')) {
     {
         $grants = meza_site_documentation_get_capability_grants_by_role();
         return $grants['administrator'] ?? [];
+    }
+}
+
+if (!function_exists('meza_site_documentation_content_manager_caps')) {
+    function meza_site_documentation_content_manager_caps(): array
+    {
+        $grants = meza_site_documentation_get_capability_grants_by_role();
+        return $grants[meza_site_documentation_content_manager_role_key()] ?? [];
+    }
+}
+
+if (!function_exists('meza_site_documentation_shop_manager_caps')) {
+    function meza_site_documentation_shop_manager_caps(): array
+    {
+        $grants = meza_site_documentation_get_capability_grants_by_role();
+        return $grants[meza_site_documentation_shop_manager_role_key()] ?? [];
     }
 }
