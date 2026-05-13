@@ -280,6 +280,24 @@ if (!function_exists('meza_get_business_information_menu_label')) {
     }
 }
 
+if (!function_exists('meza_get_business_settings_menu_label')) {
+    function meza_get_business_settings_menu_label(): string
+    {
+        return meza_get_business_information_type() === 'nonprofit'
+            ? 'Nonprofit'
+            : 'Business';
+    }
+}
+
+if (!function_exists('meza_get_business_settings_menu_icon')) {
+    function meza_get_business_settings_menu_icon(): string
+    {
+        return meza_get_business_information_type() === 'nonprofit'
+            ? 'dashicons-heart'
+            : 'dashicons-store';
+    }
+}
+
 add_filter('acf/load_value/key=field_meza_business_woocommerce', function ($value) {
     if (!function_exists('meza_get_saved_business_information_ecommerce_settings')) {
         return $value;

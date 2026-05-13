@@ -12513,15 +12513,22 @@ function meza_register_business_settings_top_level_menu(): void
         return;
     }
 
+    $menu_label = function_exists('meza_get_business_settings_menu_label')
+        ? meza_get_business_settings_menu_label()
+        : 'Business';
+    $menu_icon = function_exists('meza_get_business_settings_menu_icon')
+        ? meza_get_business_settings_menu_icon()
+        : 'dashicons-store';
+
     add_menu_page(
-        'Business',
-        'Business',
+        $menu_label,
+        $menu_label,
         function_exists('meza_shared_project_options_page_capability')
             ? meza_shared_project_options_page_capability()
             : 'meza_manage_shared_project_options',
         meza_get_business_settings_menu_slug(),
         '__return_null',
-        'dashicons-store',
+        $menu_icon,
         58
     );
 }
