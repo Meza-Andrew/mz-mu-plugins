@@ -645,6 +645,75 @@ add_action('acf/include_admin_tools', function (): void {
     if (!class_exists('Meza_ACF_Admin_Tool_Export')) {
         class Meza_ACF_Admin_Tool_Export extends ACF_Admin_Tool_Export
         {
+            private function get_bucket_field_name(string $base_name, string $group_key): string
+            {
+                return $base_name . '__' . $group_key;
+            }
+
+            public function get_selected_keys()
+            {
+                if (!meza_current_user_can_see_hardcoded_acf_export_items()) {
+                    return parent::get_selected_keys();
+                }
+
+                $all_keys = [];
+                $base_names = [
+                    'keys',
+                    'taxonomy_keys',
+                    'post_type_keys',
+                    'ui_options_page_keys',
+                ];
+                $group_keys = [
+                    'custom',
+                    'defaults',
+                    'built_in',
+                ];
+                $append_keys = static function ($keys) use (&$all_keys): void {
+                    if (!$keys) {
+                        return;
+                    }
+
+                    foreach ((array) $keys as $key) {
+                        if (!is_scalar($key)) {
+                            continue;
+                        }
+
+                        $key = (string) $key;
+                        if ($key === '') {
+                            continue;
+                        }
+
+                        $all_keys[] = $key;
+                    }
+                };
+
+                foreach ($base_names as $base_name) {
+                    $append_keys(acf_maybe_get_POST($base_name));
+
+                    foreach ($group_keys as $group_key) {
+                        $append_keys(acf_maybe_get_POST($this->get_bucket_field_name($base_name, $group_key)));
+                    }
+
+                    $keys = acf_maybe_get_GET($base_name);
+                    if ($keys) {
+                        $append_keys(explode('+', str_replace(' ', '+', (string) $keys)));
+                    }
+
+                    foreach ($group_keys as $group_key) {
+                        $keys = acf_maybe_get_GET($this->get_bucket_field_name($base_name, $group_key));
+                        if ($keys) {
+                            $append_keys(explode('+', str_replace(' ', '+', (string) $keys)));
+                        }
+                    }
+                }
+
+                if (empty($all_keys)) {
+                    return false;
+                }
+
+                return array_values(array_unique($all_keys));
+            }
+
             public function load()
             {
                 if (!meza_current_user_can_see_hardcoded_acf_export_items()) {
@@ -746,7 +815,7 @@ add_action('acf/include_admin_tools', function (): void {
                                 [
                                     'label' => $group_label,
                                     'type' => 'checkbox',
-                                    'name' => $section['name'],
+                                    'name' => $this->get_bucket_field_name($section['name'], $group_key),
                                     'prefix' => false,
                                     'value' => $selected,
                                     'toggle' => true,
