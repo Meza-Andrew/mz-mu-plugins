@@ -5,7 +5,7 @@
  * Description: Core site settings, defaults, and bootstrap configuration.
  * Author: Meza LLC
  * Author URI: https://meza.design
- * Version: 1.8.42
+ * Version: 1.8.44
  */
 
 /** ================================
@@ -21,6 +21,22 @@ function meza_target_blog_public_value(): int
 {
     $env = defined('WP_ENV') ? strtolower(WP_ENV) : '';
     return ($env === 'production') ? 1 : 0;
+}
+
+/** Build a lowercase environment label for admin messaging. */
+function meza_current_environment_label(): string
+{
+    $env = defined('WP_ENV') ? strtolower(trim((string) WP_ENV)) : '';
+
+    if ($env !== '') {
+        return $env;
+    }
+
+    $env_type = function_exists('wp_get_environment_type')
+        ? strtolower(trim((string) wp_get_environment_type()))
+        : '';
+
+    return $env_type !== '' ? $env_type : 'unknown';
 }
 
 const MEZA_THUMB_W    = 300;
@@ -55,6 +71,8 @@ const MEZA_POSTS_PER_PAGE      = 10;
 const MEZA_POSTS_PER_RSS       = 10;
 const MEZA_UPLOADS_YM_FOLDERS  = 1;
 const MEZA_PERMALINK_STRUCTURE = '/%postname%/';
+const MEZA_CATEGORY_BASE       = '';
+const MEZA_TAG_BASE            = '';
 const MEZA_ADMIN_ITEMS_PER_PAGE = 20;
 
 /** Editor defaults */
@@ -148,6 +166,24 @@ function meza_resolve_gmt_offset()
     }
 
     return MEZA_GMT_OFFSET;
+}
+
+/** Normalize optional permalink bases so config can omit leading/trailing slashes. */
+function meza_normalize_permalink_base(string $base): string
+{
+    return trim($base, " \t\n\r\0\x0B/");
+}
+
+/** Return the locked category base value used on the Permalinks screen. */
+function meza_get_target_category_base(): string
+{
+    return meza_normalize_permalink_base((string) MEZA_CATEGORY_BASE);
+}
+
+/** Return the locked tag base value used on the Permalinks screen. */
+function meza_get_target_tag_base(): string
+{
+    return meza_normalize_permalink_base((string) MEZA_TAG_BASE);
 }
 
 /** Check whether WordPress already has both a front page and posts page assigned. */
@@ -737,6 +773,8 @@ add_action('muplugins_loaded', function () {
     meza_force_option_read('blog_public',     meza_target_blog_public_value());
     meza_force_option_read('posts_per_page',  MEZA_POSTS_PER_PAGE);
     meza_force_option_read('posts_per_rss',   MEZA_POSTS_PER_RSS);
+    meza_force_option_read('category_base',   meza_get_target_category_base());
+    meza_force_option_read('tag_base',        meza_get_target_tag_base());
     if (function_exists('meza_are_posts_enabled') && !meza_are_posts_enabled()) {
         meza_force_option_read('page_for_posts', 0);
     }
@@ -776,6 +814,8 @@ add_action('muplugins_loaded', function () {
             'blog_public'        => meza_target_blog_public_value(),
             'posts_per_page'     => MEZA_POSTS_PER_PAGE,
             'posts_per_rss'      => MEZA_POSTS_PER_RSS,
+            'category_base'      => meza_get_target_category_base(),
+            'tag_base'           => meza_get_target_tag_base(),
             'thumbnail_size_w'   => MEZA_THUMB_W,
             'thumbnail_size_h'   => MEZA_THUMB_H,
             'thumbnail_crop'     => MEZA_THUMB_CROP,
@@ -989,9 +1029,27 @@ add_action('admin_init', function () {
     update_option('large_size_h',     MEZA_LG_H);
     update_option('uploads_use_yearmonth_folders', MEZA_UPLOADS_YM_FOLDERS);
 
+    $flush_rewrite_needed = false;
+
     $current_structure = (string) get_option('permalink_structure');
     if ($current_structure === '' && MEZA_PERMALINK_STRUCTURE !== '') {
         update_option('permalink_structure', MEZA_PERMALINK_STRUCTURE);
+        $flush_rewrite_needed = true;
+    }
+
+    $target_category_base = meza_get_target_category_base();
+    if ((string) get_option('category_base', '') !== $target_category_base) {
+        update_option('category_base', $target_category_base);
+        $flush_rewrite_needed = true;
+    }
+
+    $target_tag_base = meza_get_target_tag_base();
+    if ((string) get_option('tag_base', '') !== $target_tag_base) {
+        update_option('tag_base', $target_tag_base);
+        $flush_rewrite_needed = true;
+    }
+
+    if ($flush_rewrite_needed) {
         set_transient('meza_flush_rewrite_needed', 1, 5 * MINUTE_IN_SECONDS);
     }
 }, 10);
@@ -1065,6 +1123,153 @@ add_action('admin_init', function () {
 
     wp_mail($target, $subject, $message);
 }, 5);
+
+/** Keep Search Engine Visibility environment-controlled and visibly read-only on Reading Settings. */
+add_action('admin_footer-options-reading.php', function (): void {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+
+    $message = sprintf(
+        ' This setting is automatically set by the environment <code>%s</code>.',
+        esc_html(meza_current_environment_label())
+    );
+    ?>
+    <script id="meza-search-engine-visibility-lock">
+        document.addEventListener('DOMContentLoaded', function() {
+            var blogPublicCheckbox = document.getElementById('blog_public');
+            if (!blogPublicCheckbox) {
+                return;
+            }
+
+            blogPublicCheckbox.disabled = true;
+            blogPublicCheckbox.setAttribute('aria-disabled', 'true');
+
+            var settingsCell = blogPublicCheckbox.closest('td');
+            if (!settingsCell) {
+                return;
+            }
+
+            var description = settingsCell.querySelector('p.description');
+            if (description) {
+                if (!description.classList.contains('meza-blog-public-environment-note')) {
+                    description.classList.add('meza-blog-public-environment-note');
+                }
+
+                if (!description.textContent.includes('This setting is automatically set by the environment')) {
+                    description.insertAdjacentHTML('beforeend', <?php echo wp_json_encode($message); ?>);
+                }
+
+                return;
+            }
+
+            var existingMessage = settingsCell.querySelector('.meza-blog-public-environment-note');
+            if (existingMessage) {
+                return;
+            }
+
+            var message = document.createElement('p');
+            message.className = 'description meza-blog-public-environment-note';
+            message.textContent = <?php echo wp_json_encode(trim($message)); ?>;
+            settingsCell.appendChild(message);
+        });
+    </script>
+    <?php
+});
+
+/** Lock optional permalink bases and hide unsupported rows on Permalinks Settings. */
+add_action('admin_footer-options-permalink.php', function (): void {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+
+    $posts_enabled = !function_exists('meza_are_posts_enabled') || meza_are_posts_enabled();
+    $categories_enabled = $posts_enabled
+        && (!function_exists('meza_are_post_categories_enabled') || meza_are_post_categories_enabled());
+    $tags_enabled = $posts_enabled
+        && (!function_exists('meza_are_post_tags_enabled') || meza_are_post_tags_enabled());
+
+    $message = 'These permalink bases are managed automatically by the content model.';
+    ?>
+    <script id="meza-permalink-optional-lock">
+        document.addEventListener('DOMContentLoaded', function() {
+            var postsEnabled = <?php echo wp_json_encode($posts_enabled); ?>;
+            var categoriesEnabled = <?php echo wp_json_encode($categories_enabled); ?>;
+            var tagsEnabled = <?php echo wp_json_encode($tags_enabled); ?>;
+            var categoryBase = <?php echo wp_json_encode(meza_get_target_category_base()); ?>;
+            var tagBase = <?php echo wp_json_encode(meza_get_target_tag_base()); ?>;
+            var message = <?php echo wp_json_encode($message); ?>;
+
+            var categoryInput = document.getElementById('category_base');
+            var tagInput = document.getElementById('tag_base');
+            var categoryRow = categoryInput ? categoryInput.closest('tr') : null;
+            var tagRow = tagInput ? tagInput.closest('tr') : null;
+            var table = categoryRow ? categoryRow.closest('table.form-table') : (tagRow ? tagRow.closest('table.form-table') : null);
+
+            var lockInput = function(input, value) {
+                if (!input) {
+                    return;
+                }
+
+                input.value = value;
+                input.readOnly = true;
+                input.setAttribute('aria-readonly', 'true');
+            };
+
+            var hideElement = function(element) {
+                if (!element) {
+                    return;
+                }
+
+                element.style.display = 'none';
+            };
+
+            lockInput(categoryInput, categoryBase);
+            lockInput(tagInput, tagBase);
+
+            if (!postsEnabled || !categoriesEnabled) {
+                hideElement(categoryRow);
+            }
+
+            if (!postsEnabled || !tagsEnabled) {
+                hideElement(tagRow);
+            }
+
+            if (!table) {
+                return;
+            }
+
+            var visibleRows = [categoryRow, tagRow].filter(function(row) {
+                return row && row.style.display !== 'none';
+            });
+
+            var description = table.previousElementSibling;
+            while (description && description.tagName !== 'P') {
+                description = description.previousElementSibling;
+            }
+
+            var heading = description ? description.previousElementSibling : table.previousElementSibling;
+            while (heading && heading.tagName !== 'H2') {
+                heading = heading.previousElementSibling;
+            }
+
+            if (visibleRows.length === 0) {
+                hideElement(description);
+                hideElement(heading);
+                hideElement(table);
+                return;
+            }
+
+            if (description && !description.parentNode.querySelector('.meza-permalink-lock-note')) {
+                var note = document.createElement('p');
+                note.className = 'description meza-permalink-lock-note';
+                note.textContent = message;
+                description.insertAdjacentElement('afterend', note);
+            }
+        });
+    </script>
+    <?php
+});
 
 /** Create any missing core menus and assign them to registered theme locations when those slots are empty. */
 function meza_ensure_menus_exist_and_assigned(): void
