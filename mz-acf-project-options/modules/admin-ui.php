@@ -302,6 +302,20 @@ add_filter('acf/load_value/key=field_69b5a2b623bc0', static function ($value, $p
     return '';
 }, 5, 3);
 
+add_filter('acf/load_value/key=field_6913c90ee4d75', static function ($value, $post_id, $field) {
+    $normalized = meza_normalize_certification_url_meta_value($value);
+    if ($normalized !== '') {
+        return $normalized;
+    }
+
+    $normalized_post_id = is_scalar($post_id) ? (int) $post_id : 0;
+    if ($normalized_post_id <= 0 || get_post_type($normalized_post_id) !== 'certification') {
+        return '';
+    }
+
+    return meza_normalize_certification_url_meta_value(get_post_meta($normalized_post_id, 'link', true));
+}, 5, 3);
+
 add_filter('acf/update_value', static function ($value, $post_id, $field) {
     if (($field['type'] ?? '') !== 'textarea' || !is_array($value)) {
         return $value;
@@ -321,6 +335,10 @@ add_filter('acf/update_value/key=field_69b5a2b623bc0', static function ($value, 
     }
 
     return '';
+}, 5, 3);
+
+add_filter('acf/update_value/key=field_6913c90ee4d75', static function ($value, $post_id, $field) {
+    return meza_normalize_certification_url_meta_value($value);
 }, 5, 3);
 
 add_filter('acf/validate_value/name=locations', static function ($valid, $value, $field, $input) {
@@ -568,11 +586,11 @@ add_filter('acf/ui_options_page/registration_args', function (array $args, array
         return $args;
     }
 
-    if ($menu_slug === 'content-structure') {
+    if ($menu_slug === 'content-model') {
         $args['page_title'] = meza_get_content_structure_page_title();
-        $args['menu_title'] = 'Configuration';
-        $args['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('content-structure');
-        $args['capability'] = meza_get_shared_project_acf_options_page_capability('content-structure');
+        $args['menu_title'] = 'Content Model';
+        $args['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('content-model');
+        $args['capability'] = meza_get_shared_project_acf_options_page_capability('content-model');
 
         return $args;
     }
@@ -647,14 +665,14 @@ add_filter('acf/get_options_page', function ($page, $slug) {
         $page['menu_title'] = 'Branding';
         $page['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('branding');
         $page['capability'] = meza_get_shared_project_acf_options_page_capability('branding');
-    } elseif ($slug === 'content-structure') {
-        $page['page_title'] = $current_page_slug === 'content-structure'
+    } elseif ($slug === 'content-model') {
+        $page['page_title'] = in_array($current_page_slug, ['content-model', 'content-structure'], true)
             ? meza_get_content_structure_admin_page_title()
             : meza_get_content_structure_page_title();
-        $page['menu_title'] = 'Configuration';
-        $page['menu_slug'] = 'content-structure';
-        $page['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('content-structure');
-        $page['capability'] = meza_get_shared_project_acf_options_page_capability('content-structure');
+        $page['menu_title'] = 'Content Model';
+        $page['menu_slug'] = 'content-model';
+        $page['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('content-model');
+        $page['capability'] = meza_get_shared_project_acf_options_page_capability('content-model');
     } elseif ($slug === 'business-information') {
         $page['page_title'] = $current_page_slug === 'business-information'
             ? meza_get_business_information_admin_page_title()
@@ -770,6 +788,32 @@ add_action('admin_init', function (): void {
     exit;
 }, 1);
 
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    global $pagenow;
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page === '' || !in_array($page, meza_get_shared_project_acf_options_page_slugs(), true)) {
+        return;
+    }
+
+    $canonical_menu_slug = meza_get_shared_project_acf_options_page_menu_slug($page);
+    if ($canonical_menu_slug === '') {
+        return;
+    }
+
+    $current_menu_slug = trim(strtolower((string) $pagenow)) . '?page=' . $page;
+    if ($current_menu_slug === strtolower($canonical_menu_slug)) {
+        return;
+    }
+
+    wp_safe_redirect(admin_url($canonical_menu_slug));
+    exit;
+}, 2);
+
 add_filter('parent_file', function ($parent_file) {
     if (!is_admin()) {
         return $parent_file;
@@ -841,7 +885,7 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
         $acf_options_available = meza_shared_project_acf_options_are_available();
         $branding_capability = meza_get_shared_project_acf_options_page_capability('branding');
         $business_information_capability = meza_get_shared_project_acf_options_page_capability('business-information');
-        $content_structure_capability = meza_get_shared_project_acf_options_page_capability('content-structure');
+        $content_structure_capability = meza_get_shared_project_acf_options_page_capability('content-model');
         $crm_capability = meza_get_shared_project_acf_options_page_capability('crm');
         $ecommerce_capability = meza_get_shared_project_acf_options_page_capability('ecommerce');
 
@@ -858,9 +902,9 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             meza_get_branding_admin_page_title(),
         ];
         $content_structure_item = [
-            'Configuration',
+            'Content Model',
             $content_structure_capability,
-            meza_get_shared_project_acf_options_page_submenu_slug('content-structure'),
+            meza_get_shared_project_acf_options_page_submenu_slug('content-model'),
             meza_get_content_structure_admin_page_title(),
         ];
         $crm_item = [
@@ -897,6 +941,8 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             'admin.php?page=branding',
             'themes.php?page=branding',
             'options-general.php?page=branding',
+            'content-model',
+            'admin.php?page=content-model',
             'content-structure',
             'admin.php?page=content-structure',
             'options-general.php?page=content-structure',

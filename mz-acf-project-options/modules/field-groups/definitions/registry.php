@@ -5,7 +5,7 @@
         $groups = [
             [
                 'key' => 'group_meza_business_information_general',
-                'title' => 'General',
+                'title' => 'Information',
                 'fields' => meza_get_business_information_general_fields(),
                 'location' => [
                     [
@@ -29,18 +29,186 @@
             ],
             [
                 'key' => 'group_meza_site_content_structure',
-                'title' => 'Configuration',
+                'title' => 'Framework',
                 'fields' => meza_get_content_structure_fields(),
                 'location' => [
                     [
                         [
                             'param' => 'options_page',
                             'operator' => '==',
-                            'value' => 'content-structure',
+                            'value' => 'content-model',
                         ],
                     ],
                 ],
                 'menu_order' => 1,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'left',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
+                'key' => 'group_meza_site_events',
+                'title' => 'Event',
+                'fields' => meza_get_events_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'content-model',
+                        ],
+                    ],
+                ],
+                'menu_order' => 11,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'left',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
+                'key' => 'group_meza_site_season',
+                'title' => 'Annual Year',
+                'fields' => meza_get_season_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'content-model',
+                        ],
+                    ],
+                ],
+                'menu_order' => 12,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'left',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
+                'key' => 'group_meza_content_model_field_groups',
+                'title' => 'Field Groups',
+                'fields' => meza_get_content_model_field_group_management_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'content-model',
+                        ],
+                    ],
+                ],
+                'menu_order' => 10,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'left',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
+                'key' => 'group_meza_content_model_post_types',
+                'title' => 'Post Types',
+                'fields' => meza_get_content_model_post_type_management_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'content-model',
+                        ],
+                    ],
+                ],
+                'menu_order' => 7,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'left',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
+                'key' => 'group_meza_content_model_taxonomies',
+                'title' => 'Taxonomies',
+                'fields' => meza_get_content_model_taxonomy_management_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'content-model',
+                        ],
+                    ],
+                ],
+                'menu_order' => 8,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'left',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
+                'key' => 'group_meza_content_model_taxonomy_terms',
+                'title' => 'Taxonomy Terms',
+                'fields' => meza_get_content_model_taxonomy_term_management_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'content-model',
+                        ],
+                    ],
+                ],
+                'menu_order' => 9,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'left',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+            ],
+            [
+                'key' => 'group_meza_content_model_options_pages',
+                'title' => 'Option Pages',
+                'fields' => meza_get_content_model_options_page_management_fields(),
+                'location' => [
+                    [
+                        [
+                            'param' => 'options_page',
+                            'operator' => '==',
+                            'value' => 'content-model',
+                        ],
+                    ],
+                ],
+                'menu_order' => 10,
                 'position' => 'normal',
                 'style' => 'default',
                 'label_placement' => 'left',
@@ -400,20 +568,37 @@
                 'show_in_rest' => 0,
                 'display_title' => '',
             ],
-            meza_get_hero_section_field_group_definition(),
-            meza_get_form_section_field_group_definition(),
-            meza_get_cta_section_field_group_definition(),
-            meza_get_list_services_section_field_group_definition(),
-            meza_get_list_posts_section_field_group_definition(),
-            meza_get_list_resources_section_field_group_definition(),
-            meza_get_list_faqs_section_field_group_definition(),
-            meza_get_list_reviews_section_field_group_definition(),
-            meza_get_cta_field_group_definition(),
-            meza_get_profile_field_group_definition(),
-            meza_get_organization_field_group_definition(),
-            meza_get_faq_field_group_definition(),
-            meza_get_review_field_group_definition(),
         ];
+
+        $groups[] = meza_get_hero_section_field_group_definition();
+        $groups[] = meza_get_form_section_field_group_definition();
+        $groups[] = meza_get_cta_section_field_group_definition();
+
+        if (function_exists('meza_are_services_enabled') && meza_are_services_enabled()) {
+            $groups[] = meza_get_list_services_section_field_group_definition();
+        }
+
+        $groups[] = meza_get_list_posts_section_field_group_definition();
+        $groups[] = meza_get_list_resources_section_field_group_definition();
+        $groups[] = meza_get_list_faqs_section_field_group_definition();
+        $groups[] = meza_get_list_reviews_section_field_group_definition();
+        $groups[] = meza_get_cta_field_group_definition();
+        $groups[] = meza_get_profile_field_group_definition();
+        $groups[] = meza_get_organization_field_group_definition();
+        $groups[] = meza_get_faq_field_group_definition();
+        $groups[] = meza_get_review_field_group_definition();
+
+        if (function_exists('meza_supports_profile_features') && meza_supports_profile_features()) {
+            $groups[] = meza_get_post_field_group_definition();
+        }
+
+        if (function_exists('meza_is_nonprofit_business_type') && meza_is_nonprofit_business_type()) {
+            $groups[] = meza_get_certification_field_group_definition();
+        }
+
+        if (function_exists('meza_is_event_functionality_enabled') && meza_is_event_functionality_enabled()) {
+            $groups[] = meza_get_list_events_section_field_group_definition();
+        }
 
         foreach ($groups as $index => $group) {
             if (!is_array($group)) {
@@ -427,4 +612,3 @@
 
         return is_array($groups) ? array_values($groups) : [];
     }
-

@@ -28,10 +28,10 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
             ],
             [
                 'page_title'      => meza_get_content_structure_page_title(),
-                'menu_title'      => 'Configuration',
-                'menu_slug'       => 'content-structure',
-                'parent_slug'     => meza_get_shared_project_acf_options_page_parent_slug('content-structure'),
-                'capability'      => meza_get_shared_project_acf_options_page_capability('content-structure'),
+                'menu_title'      => 'Content Model',
+                'menu_slug'       => 'content-model',
+                'parent_slug'     => meza_get_shared_project_acf_options_page_parent_slug('content-model'),
+                'capability'      => meza_get_shared_project_acf_options_page_capability('content-model'),
                 'redirect'        => false,
                 'update_button'   => 'Update',
                 'updated_message' => 'Settings Updated',
@@ -116,7 +116,7 @@ if (!function_exists('meza_get_legacy_shared_project_acf_options_page_slug_map')
             'business-info' => 'business-information',
             'organization-info' => 'business-information',
             'event-info' => 'conference',
+            'content-structure' => 'content-model',
         ];
     }
 }
-

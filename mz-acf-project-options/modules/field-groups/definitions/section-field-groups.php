@@ -57,6 +57,27 @@
         ];
     }
 
+    function meza_get_standard_list_section_description_field(string $key, int $rows = 2): array
+    {
+        return [
+            'key' => $key,
+            'label' => 'Description',
+            'name' => 'description',
+            'aria-label' => '',
+            'type' => 'textarea',
+            'instructions' => '',
+            'required' => 0,
+            'conditional_logic' => 0,
+            'wrapper' => meza_get_section_field_wrapper(),
+            'default_value' => '',
+            'maxlength' => '',
+            'allow_in_bindings' => 0,
+            'rows' => $rows,
+            'placeholder' => '',
+            'new_lines' => 'wpautop',
+        ];
+    }
+
     function meza_get_standard_list_section_link_field(string $key): array
     {
         return [
@@ -105,6 +126,49 @@
 
     function meza_get_standard_list_section_field_group_definition(array $config): array
     {
+        $sub_fields = [
+            meza_get_standard_list_section_text_field(
+                (string) $config['headline_key'],
+                'Headline (H2)',
+                'headline',
+                (string) ($config['headline_default'] ?? ''),
+                1
+            ),
+        ];
+
+        if (!empty($config['include_display'])) {
+            $sub_fields[] = meza_get_standard_list_section_text_field(
+                (string) $config['display_key'],
+                'Display',
+                'display',
+                (string) ($config['display_default'] ?? '')
+            );
+        }
+
+        $sub_fields[] = meza_get_standard_list_section_text_field(
+            (string) $config['subhead_key'],
+            'Subhead',
+            'subhead',
+            (string) ($config['subhead_default'] ?? '')
+        );
+
+        if (!empty($config['include_description'])) {
+            $sub_fields[] = meza_get_standard_list_section_description_field(
+                (string) $config['description_key'],
+                (int) ($config['description_rows'] ?? 2)
+            );
+        }
+
+        $sub_fields[] = meza_get_standard_list_section_link_field((string) $config['link_key']);
+        $sub_fields[] = meza_get_standard_list_section_text_field(
+            (string) $config['id_key'],
+            'ID',
+            'id',
+            (string) ($config['id_default'] ?? ''),
+            0,
+            (int) ($config['id_allow_in_bindings'] ?? 0)
+        );
+
         return [
             'key' => (string) $config['group_key'],
             'title' => (string) $config['title'],
@@ -118,30 +182,7 @@
                     (string) $config['section_key'],
                     (string) $config['section_name'],
                     (string) $config['visibility_key'],
-                    [
-                        meza_get_standard_list_section_text_field(
-                            (string) $config['headline_key'],
-                            'Headline (H2)',
-                            'headline',
-                            (string) ($config['headline_default'] ?? ''),
-                            1
-                        ),
-                        meza_get_standard_list_section_text_field(
-                            (string) $config['subhead_key'],
-                            'Subhead',
-                            'subhead',
-                            (string) ($config['subhead_default'] ?? '')
-                        ),
-                        meza_get_standard_list_section_link_field((string) $config['link_key']),
-                        meza_get_standard_list_section_text_field(
-                            (string) $config['id_key'],
-                            'ID',
-                            'id',
-                            (string) ($config['id_default'] ?? ''),
-                            0,
-                            (int) ($config['id_allow_in_bindings'] ?? 0)
-                        ),
-                    ]
+                    $sub_fields
                 ),
             ],
             'location' => $config['location'],
@@ -581,6 +622,38 @@
                             'new_lines' => '',
                         ],
                         [
+                            'key' => 'field_681651f0f8f01',
+                            'label' => 'FAQs',
+                            'name' => 'faqs',
+                            'aria-label' => '',
+                            'type' => 'relationship',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'post_type' => [
+                                'faq',
+                            ],
+                            'post_status' => [
+                                'publish',
+                            ],
+                            'taxonomy' => '',
+                            'filters' => [
+                                'search',
+                            ],
+                            'return_format' => 'id',
+                            'min' => 0,
+                            'max' => 1,
+                            'allow_in_bindings' => 0,
+                            'elements' => '',
+                            'bidirectional' => 0,
+                            'bidirectional_target' => [],
+                        ],
+                        [
                             'key' => 'field_697ffe37abb58',
                             'label' => 'Form',
                             'name' => 'form',
@@ -606,38 +679,6 @@
                             ],
                             'return_format' => 'id',
                             'min' => 1,
-                            'max' => 1,
-                            'allow_in_bindings' => 0,
-                            'elements' => '',
-                            'bidirectional' => 0,
-                            'bidirectional_target' => [],
-                        ],
-                        [
-                            'key' => 'field_681651f0f8f01',
-                            'label' => 'FAQ',
-                            'name' => 'faq',
-                            'aria-label' => '',
-                            'type' => 'relationship',
-                            'instructions' => '',
-                            'required' => 0,
-                            'conditional_logic' => 0,
-                            'wrapper' => [
-                                'width' => '',
-                                'class' => '',
-                                'id' => '',
-                            ],
-                            'post_type' => [
-                                'faq',
-                            ],
-                            'post_status' => [
-                                'publish',
-                            ],
-                            'taxonomy' => '',
-                            'filters' => [
-                                'search',
-                            ],
-                            'return_format' => 'id',
-                            'min' => 0,
                             'max' => 1,
                             'allow_in_bindings' => 0,
                             'elements' => '',
@@ -684,39 +725,167 @@
         ];
     }
 
+    function meza_get_content_section_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_meza_content_section',
+            'title' => 'Content Section',
+            'fields' => [
+                [
+                    'key' => 'field_meza_show_content',
+                    'label' => 'Visibility',
+                    'name' => 'show_content',
+                    'aria-label' => '',
+                    'type' => 'true_false',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => meza_get_section_field_wrapper(),
+                    'message' => '',
+                    'default_value' => 0,
+                    'allow_in_bindings' => 0,
+                    'ui' => 0,
+                    'ui_on_text' => '',
+                    'ui_off_text' => '',
+                ],
+                [
+                    'key' => 'field_meza_section_content',
+                    'label' => 'Section',
+                    'name' => 'section_content',
+                    'aria-label' => '',
+                    'type' => 'group',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => [
+                        [
+                            [
+                                'field' => 'field_meza_show_content',
+                                'operator' => '==',
+                                'value' => '1',
+                            ],
+                        ],
+                    ],
+                    'wrapper' => meza_get_section_field_wrapper(),
+                    'layout' => 'block',
+                    'sub_fields' => [
+                        meza_get_standard_list_section_text_field(
+                            'field_meza_content_headline',
+                            'Headline (H2)',
+                            'headline',
+                            '',
+                            1
+                        ),
+                        meza_get_standard_list_section_text_field(
+                            'field_meza_content_subhead',
+                            'Subhead',
+                            'subhead'
+                        ),
+                        [
+                            'key' => 'field_meza_content_description',
+                            'label' => 'Description',
+                            'name' => 'description',
+                            'aria-label' => '',
+                            'type' => 'wysiwyg',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => meza_get_section_field_wrapper(),
+                            'default_value' => '',
+                            'tabs' => 'all',
+                            'toolbar' => 'full',
+                            'media_upload' => 1,
+                            'delay' => 0,
+                        ],
+                        meza_get_standard_list_section_link_field('field_meza_content_link'),
+                        [
+                            'key' => 'field_meza_content_image',
+                            'label' => 'Image',
+                            'name' => 'image',
+                            'aria-label' => '',
+                            'type' => 'image',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => meza_get_section_field_wrapper(),
+                            'return_format' => 'id',
+                            'library' => 'all',
+                            'preview_size' => 'medium',
+                            'min_width' => '',
+                            'min_height' => '',
+                            'min_size' => '',
+                            'max_width' => '',
+                            'max_height' => '',
+                            'max_size' => '',
+                            'mime_types' => '',
+                            'allow_in_bindings' => 0,
+                        ],
+                        meza_get_standard_list_section_text_field(
+                            'field_meza_content_id',
+                            'ID',
+                            'id'
+                        ),
+                    ],
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'page',
+                        'operator' => '==',
+                        'value' => '201',
+                    ],
+                ],
+            ],
+            'menu_order' => 15,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
     function meza_get_cta_section_field_group_definition(): array
     {
+        $cta_field = [
+            'key' => 'field_232e234f',
+            'label' => 'CTA',
+            'name' => 'cta',
+            'aria-label' => '',
+            'type' => 'relationship',
+            'instructions' => '',
+            'required' => false,
+            'conditional_logic' => false,
+            'wrapper' => [
+                'width' => '',
+                'class' => '',
+                'id' => '',
+            ],
+            'post_type' => [
+                'cta',
+            ],
+            'filters' => [
+                'search',
+            ],
+            'return_format' => 'id',
+            'taxonomy' => [],
+            'min' => 0,
+            'max' => 0,
+            'elements' => [],
+            'bidirectional_target' => [],
+        ];
+
         return [
             'key' => 'group_f7b16b48',
             'title' => 'CTA Section',
             'fields' => [
-                [
-                    'key' => 'field_232e234f',
-                    'label' => 'CTA',
-                    'name' => 'cta',
-                    'aria-label' => '',
-                    'type' => 'relationship',
-                    'instructions' => '',
-                    'required' => false,
-                    'conditional_logic' => false,
-                    'wrapper' => [
-                        'width' => '',
-                        'class' => '',
-                        'id' => '',
-                    ],
-                    'post_type' => [
-                        'cta',
-                    ],
-                    'filters' => [
-                        'search',
-                    ],
-                    'return_format' => 'id',
-                    'taxonomy' => [],
-                    'min' => 0,
-                    'max' => 0,
-                    'elements' => [],
-                    'bidirectional_target' => [],
-                ],
+                $cta_field,
             ],
             'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
             'menu_order' => 20,
@@ -828,32 +997,6 @@
                             'append' => '',
                         ],
                         [
-                            'key' => 'field_69ce52d4d29eb',
-                            'label' => 'Image',
-                            'name' => 'image',
-                            'aria-label' => '',
-                            'type' => 'image',
-                            'instructions' => '',
-                            'required' => 0,
-                            'conditional_logic' => 0,
-                            'wrapper' => [
-                                'width' => '',
-                                'class' => '',
-                                'id' => '',
-                            ],
-                            'return_format' => 'id',
-                            'library' => 'all',
-                            'min_width' => '',
-                            'min_height' => '',
-                            'min_size' => '',
-                            'max_width' => '',
-                            'max_height' => '',
-                            'max_size' => '',
-                            'mime_types' => '',
-                            'allow_in_bindings' => 0,
-                            'preview_size' => 'medium',
-                        ],
-                        [
                             'key' => 'field_69b11ab5d9e51',
                             'label' => 'Description',
                             'name' => 'description',
@@ -922,6 +1065,32 @@
                             'elements' => '',
                             'bidirectional' => 0,
                             'bidirectional_target' => [],
+                        ],
+                        [
+                            'key' => 'field_69ce52d4d29eb',
+                            'label' => 'Image',
+                            'name' => 'image',
+                            'aria-label' => '',
+                            'type' => 'image',
+                            'instructions' => '',
+                            'required' => 0,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'return_format' => 'id',
+                            'library' => 'all',
+                            'min_width' => '',
+                            'min_height' => '',
+                            'min_size' => '',
+                            'max_width' => '',
+                            'max_height' => '',
+                            'max_size' => '',
+                            'mime_types' => '',
+                            'allow_in_bindings' => 0,
+                            'preview_size' => 'medium',
                         ],
                         [
                             'key' => 'field_69b03f4e673a5',
@@ -1022,6 +1191,45 @@
         ]);
     }
 
+    function meza_get_list_events_section_field_group_definition(): array
+    {
+        return meza_get_standard_list_section_field_group_definition([
+            'group_key' => 'group_meza_list_events_section',
+            'title' => 'List Events Section',
+            'visibility_key' => 'field_meza_show_list_events',
+            'visibility_name' => 'show_list-events',
+            'section_key' => 'field_meza_section_list_events',
+            'section_name' => 'section_list-events',
+            'headline_key' => 'field_meza_list_events_headline',
+            'headline_default' => 'events',
+            'include_display' => true,
+            'display_key' => 'field_meza_list_events_display',
+            'subhead_key' => 'field_meza_list_events_subhead',
+            'include_description' => true,
+            'description_key' => 'field_meza_list_events_description',
+            'link_key' => 'field_meza_list_events_link',
+            'id_key' => 'field_meza_list_events_id',
+            'id_default' => 'events',
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'page',
+                    ],
+                ],
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'event',
+                    ],
+                ],
+            ],
+            'menu_order' => 24,
+        ]);
+    }
+
     function meza_get_list_services_section_field_group_definition(): array
     {
         return meza_get_standard_list_section_field_group_definition([
@@ -1045,164 +1253,24 @@
 
     function meza_get_list_partners_section_field_group_definition(): array
     {
-        return [
-            'key' => 'group_688f8c2740e76',
+        return meza_get_standard_list_section_field_group_definition([
+            'group_key' => 'group_688f8c2740e76',
             'title' => 'List Partners Section',
-            'fields' => [
-                [
-                    'key' => 'field_688f8c2757d70',
-                    'label' => 'Visibility',
-                    'name' => 'show_list-partners',
-                    'aria-label' => '',
-                    'type' => 'true_false',
-                    'instructions' => '',
-                    'required' => 0,
-                    'conditional_logic' => 0,
-                    'wrapper' => [
-                        'width' => '',
-                        'class' => '',
-                        'id' => '',
-                    ],
-                    'message' => '',
-                    'default_value' => 0,
-                    'allow_in_bindings' => 0,
-                    'ui' => 0,
-                    'ui_on_text' => '',
-                    'ui_off_text' => '',
-                ],
-                [
-                    'key' => 'field_688f8c2757dd7',
-                    'label' => 'Section',
-                    'name' => 'section_list-partners',
-                    'aria-label' => '',
-                    'type' => 'group',
-                    'instructions' => '',
-                    'required' => 0,
-                    'conditional_logic' => [
-                        [
-                            [
-                                'field' => 'field_688f8c2757d70',
-                                'operator' => '==',
-                                'value' => '1',
-                            ],
-                        ],
-                    ],
-                    'wrapper' => [
-                        'width' => '',
-                        'class' => '',
-                        'id' => '',
-                    ],
-                    'layout' => 'block',
-                    'sub_fields' => [
-                        [
-                            'key' => 'field_688f8c275f9ac',
-                            'label' => 'Headline (H2)',
-                            'name' => 'headline',
-                            'aria-label' => '',
-                            'type' => 'text',
-                            'instructions' => '',
-                            'required' => 0,
-                            'conditional_logic' => 0,
-                            'wrapper' => [
-                                'width' => '',
-                                'class' => '',
-                                'id' => '',
-                            ],
-                            'default_value' => '',
-                            'maxlength' => '',
-                            'allow_in_bindings' => 0,
-                            'placeholder' => '',
-                            'prepend' => '',
-                            'append' => '',
-                        ],
-                        [
-                            'key' => 'field_6897509e5631e',
-                            'label' => 'Summary',
-                            'name' => 'summary',
-                            'aria-label' => '',
-                            'type' => 'text',
-                            'instructions' => '',
-                            'required' => 0,
-                            'conditional_logic' => 0,
-                            'wrapper' => [
-                                'width' => '',
-                                'class' => '',
-                                'id' => '',
-                            ],
-                            'default_value' => '',
-                            'maxlength' => '',
-                            'allow_in_bindings' => 0,
-                            'placeholder' => '',
-                            'prepend' => '',
-                            'append' => '',
-                        ],
-                        [
-                            'key' => 'field_688f8c275fa67',
-                            'label' => 'Disclaimer',
-                            'name' => 'disclaimer',
-                            'aria-label' => '',
-                            'type' => 'text',
-                            'instructions' => '',
-                            'required' => 0,
-                            'conditional_logic' => 0,
-                            'wrapper' => [
-                                'width' => '',
-                                'class' => '',
-                                'id' => '',
-                            ],
-                            'default_value' => '',
-                            'maxlength' => '',
-                            'allow_in_bindings' => 0,
-                            'placeholder' => '',
-                            'prepend' => '',
-                            'append' => '',
-                        ],
-                        [
-                            'key' => 'field_689750c55631f',
-                            'label' => 'Button Text',
-                            'name' => 'button_text',
-                            'aria-label' => '',
-                            'type' => 'text',
-                            'instructions' => '',
-                            'required' => 0,
-                            'conditional_logic' => 0,
-                            'wrapper' => [
-                                'width' => '',
-                                'class' => '',
-                                'id' => '',
-                            ],
-                            'default_value' => '',
-                            'maxlength' => '',
-                            'allow_in_bindings' => 0,
-                            'placeholder' => '',
-                            'prepend' => '',
-                            'append' => '',
-                        ],
-                        [
-                            'key' => 'field_688f8c275faa1',
-                            'label' => 'ID',
-                            'name' => 'id',
-                            'aria-label' => '',
-                            'type' => 'text',
-                            'instructions' => '',
-                            'required' => 0,
-                            'conditional_logic' => 0,
-                            'wrapper' => [
-                                'width' => '',
-                                'class' => '',
-                                'id' => '',
-                            ],
-                            'default_value' => '',
-                            'maxlength' => '',
-                            'allow_in_bindings' => 0,
-                            'placeholder' => '',
-                            'prepend' => '',
-                            'append' => '',
-                        ],
-                    ],
-                ],
-            ],
-            'location' => [
+            'visibility_key' => 'field_688f8c2757d70',
+            'visibility_name' => 'show_list-partners',
+            'section_key' => 'field_688f8c2757dd7',
+            'section_name' => 'section_list-partners',
+            'headline_key' => 'field_688f8c275f9ac',
+            'headline_default' => 'List Partners',
+            'include_display' => true,
+            'display_key' => 'field_meza_list_partners_display',
+            'subhead_key' => 'field_meza_list_partners_subhead',
+            'include_description' => true,
+            'description_key' => 'field_meza_list_partners_description',
+            'link_key' => 'field_meza_list_partners_link',
+            'id_key' => 'field_688f8c275faa1',
+            'id_default' => 'partners',
+            'location' => array_values(array_filter([
                 [
                     [
                         'param' => 'post_type',
@@ -1210,20 +1278,18 @@
                         'value' => 'page',
                     ],
                 ],
-            ],
+                (function_exists('meza_is_event_functionality_enabled') && meza_is_event_functionality_enabled())
+                    ? [
+                        [
+                            'param' => 'post_type',
+                            'operator' => '==',
+                            'value' => 'event',
+                        ],
+                    ]
+                    : null,
+            ])),
             'menu_order' => 11,
-            'position' => 'normal',
-            'style' => 'default',
-            'label_placement' => 'top',
-            'instruction_placement' => 'label',
-            'hide_on_screen' => '',
-            'active' => true,
-            'description' => '',
-            'show_in_rest' => 0,
-            'display_title' => '',
-            'allow_ai_access' => false,
-            'ai_description' => '',
-        ];
+        ]);
     }
 
     function meza_get_list_sponsors_section_field_group_definition(): array
@@ -1236,7 +1302,11 @@
             'section_key' => 'field_688f8aced88a6',
             'section_name' => 'section_list-sponsors',
             'headline_key' => 'field_688f8acee3d3c',
+            'include_display' => true,
+            'display_key' => 'field_meza_list_sponsors_display',
             'subhead_key' => 'field_688f8acee3d82',
+            'include_description' => true,
+            'description_key' => 'field_meza_list_sponsors_description',
             'link_key' => 'field_688f8acee3dc0',
             'id_key' => 'field_688f8acee3e3c',
             'location' => [

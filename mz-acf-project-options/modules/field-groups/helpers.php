@@ -156,6 +156,97 @@ if (!function_exists('meza_get_acf_field_group_merge_signature')) {
         return md5(wp_json_encode($normalized_fields));
     }
 
+    function meza_get_acf_field_signature_match_token(array $field): string
+    {
+        $name = sanitize_key((string) ($field['name'] ?? ''));
+        if ($name !== '') {
+            return 'name:' . $name;
+        }
+
+        $key = sanitize_key((string) ($field['key'] ?? ''));
+        if ($key !== '') {
+            return 'key:' . $key;
+        }
+
+        $label = sanitize_title((string) ($field['label'] ?? ''));
+        $type = sanitize_key((string) ($field['type'] ?? ''));
+
+        return 'label:' . $label . '|type:' . $type;
+    }
+
+    function meza_get_acf_field_signature_aligned_to_definition(array $candidate_field, array $definition_field): array
+    {
+        foreach (['key', 'name', 'label', 'type', 'required'] as $property) {
+            if (array_key_exists($property, $definition_field)) {
+                $candidate_field[$property] = $definition_field[$property];
+            }
+        }
+
+        if (isset($definition_field['sub_fields']) && is_array($definition_field['sub_fields'])) {
+            $candidate_sub_fields = isset($candidate_field['sub_fields']) && is_array($candidate_field['sub_fields'])
+                ? array_values(array_filter($candidate_field['sub_fields'], 'is_array'))
+                : [];
+
+            $candidate_sub_fields_by_token = [];
+            foreach ($candidate_sub_fields as $sub_field) {
+                $candidate_sub_fields_by_token[meza_get_acf_field_signature_match_token($sub_field)] = $sub_field;
+            }
+
+            $aligned_sub_fields = [];
+            foreach (array_values(array_filter($definition_field['sub_fields'], 'is_array')) as $definition_sub_field) {
+                $token = meza_get_acf_field_signature_match_token($definition_sub_field);
+                if (!isset($candidate_sub_fields_by_token[$token])) {
+                    continue;
+                }
+
+                $aligned_sub_fields[] = meza_get_acf_field_signature_aligned_to_definition(
+                    $candidate_sub_fields_by_token[$token],
+                    $definition_sub_field
+                );
+            }
+
+            $candidate_field['sub_fields'] = $aligned_sub_fields;
+        }
+
+        return $candidate_field;
+    }
+
+    function meza_get_acf_field_group_fields_signature_aligned_to_definition(array $candidate, array $definition): string
+    {
+        $candidate_fields = isset($candidate['fields']) && is_array($candidate['fields'])
+            ? array_values(array_filter($candidate['fields'], 'is_array'))
+            : [];
+        $definition_fields = isset($definition['fields']) && is_array($definition['fields'])
+            ? array_values(array_filter($definition['fields'], 'is_array'))
+            : [];
+
+        if ($candidate_fields === [] || $definition_fields === []) {
+            return meza_get_acf_field_group_fields_signature($candidate);
+        }
+
+        $candidate_fields_by_token = [];
+        foreach ($candidate_fields as $candidate_field) {
+            $candidate_fields_by_token[meza_get_acf_field_signature_match_token($candidate_field)] = $candidate_field;
+        }
+
+        $aligned_fields = [];
+        foreach ($definition_fields as $definition_field) {
+            $token = meza_get_acf_field_signature_match_token($definition_field);
+            if (!isset($candidate_fields_by_token[$token])) {
+                continue;
+            }
+
+            $aligned_fields[] = meza_get_acf_field_signature_aligned_to_definition(
+                $candidate_fields_by_token[$token],
+                $definition_field
+            );
+        }
+
+        $candidate['fields'] = $aligned_fields;
+
+        return meza_get_acf_field_group_fields_signature($candidate);
+    }
+
     function meza_get_acf_field_group_merge_signature(array $field_group): string
     {
         $title = trim((string) ($field_group['title'] ?? ''));
@@ -393,13 +484,6 @@ if (!function_exists('meza_get_acf_export_tool_choices')) {
             }
         }
 
-        if ($post_type === 'acf-taxonomy' && !meza_supports_sponsor_features()) {
-            $slug = sanitize_key((string) ($post['taxonomy'] ?? ''));
-            if ($slug === 'sponsor-type') {
-                return false;
-            }
-        }
-
         if ($post_type === 'acf-ui-options-page' && !meza_is_conference_business_type()) {
             $slug = sanitize_key((string) ($post['menu_slug'] ?? ''));
             if (in_array($slug, ['conference', 'conference-schedule'], true)) {
@@ -494,7 +578,16 @@ if (!function_exists('meza_get_acf_export_tool_grouped_choice_maps')) {
     function meza_get_builtin_acf_field_group_definitions(): array
     {
         $definitions = meza_get_shared_project_acf_field_groups();
-        $definitions[] = meza_get_service_field_group_definition();
+
+        if (function_exists('meza_are_services_enabled') && meza_are_services_enabled()) {
+            $definitions[] = meza_get_service_field_group_definition();
+        }
+
+        if (function_exists('meza_is_event_functionality_enabled') && meza_is_event_functionality_enabled()) {
+            $definitions[] = meza_get_event_field_group_definition();
+        }
+
+        $definitions[] = meza_get_hero_section_field_group_definition();
 
         if (function_exists('mzf_get_form_field_group_definition')) {
             $definitions[] = mzf_get_form_field_group_definition();
@@ -568,6 +661,7 @@ if (!function_exists('meza_get_acf_export_tool_grouped_choice_maps')) {
                 if (is_array($default_definition)) {
                     $definition_title = trim((string) ($default_definition['title'] ?? ''));
                     $definition_fields_signature = meza_get_acf_field_group_fields_signature($default_definition);
+                    $post_fields_signature = meza_get_acf_field_group_fields_signature_aligned_to_definition($post, $default_definition);
 
                     if (
                         $post_title !== ''
@@ -847,4 +941,3 @@ if (!function_exists('meza_get_mergeable_db_acf_field_groups_for_local_group')) 
         }));
     }
 }
-
