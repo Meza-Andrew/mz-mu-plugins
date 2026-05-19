@@ -146,9 +146,14 @@ if (!function_exists('meza_site_documentation_active_access_roles')) {
     function meza_site_documentation_active_access_roles(): array
     {
         $roles = [];
+        $active_role_keys = array_fill_keys(meza_site_documentation_active_role_keys(), true);
 
         foreach (meza_site_documentation_access_roles() as $role_key => $role_label) {
             if (!(get_role($role_key) instanceof WP_Role)) {
+                continue;
+            }
+
+            if (!isset($active_role_keys[$role_key])) {
                 continue;
             }
 
@@ -204,6 +209,32 @@ if (!function_exists('meza_site_documentation_role_labels_for_capability')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_access_role_labels_by_key')) {
+    function meza_site_documentation_access_role_labels_by_key(): array
+    {
+        return meza_site_documentation_access_roles();
+    }
+}
+
+if (!function_exists('meza_site_documentation_access_role_keys_by_label')) {
+    function meza_site_documentation_access_role_keys_by_label(): array
+    {
+        $role_keys_by_label = [];
+
+        foreach (meza_site_documentation_access_role_labels_by_key() as $role_key => $role_label) {
+            $normalized_label = trim((string) $role_label);
+
+            if ($normalized_label === '') {
+                continue;
+            }
+
+            $role_keys_by_label[$normalized_label] = $role_key;
+        }
+
+        return $role_keys_by_label;
+    }
+}
+
 if (!function_exists('meza_site_documentation_format_role_labels')) {
     function meza_site_documentation_role_label_priority(string $label): int
     {
@@ -223,9 +254,32 @@ if (!function_exists('meza_site_documentation_format_role_labels')) {
 if (!function_exists('meza_site_documentation_format_role_labels')) {
     function meza_site_documentation_format_role_labels(array $labels): string
     {
-        $labels = array_values(array_unique(array_filter(array_map(static function ($label): string {
-            return trim((string) $label);
-        }, $labels))));
+        $active_roles = meza_site_documentation_active_access_roles();
+        $role_keys_by_label = meza_site_documentation_access_role_keys_by_label();
+        $normalized_labels = [];
+
+        foreach ($labels as $label) {
+            $label = trim((string) $label);
+
+            if ($label === '') {
+                continue;
+            }
+
+            $role_key = $role_keys_by_label[$label] ?? '';
+
+            if ($role_key !== '') {
+                if (!isset($active_roles[$role_key])) {
+                    continue;
+                }
+
+                $normalized_labels[] = (string) $active_roles[$role_key];
+                continue;
+            }
+
+            $normalized_labels[] = $label;
+        }
+
+        $labels = array_values(array_unique($normalized_labels));
 
         usort($labels, static function (string $left, string $right): int {
             $left_priority = meza_site_documentation_role_label_priority($left);
