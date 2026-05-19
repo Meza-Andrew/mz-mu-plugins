@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.755
+ * Version: 1.1.758
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -3582,15 +3582,28 @@ if (!function_exists('meza_get_non_ameza_administrator_ids')) {
 
         $ids = [];
         foreach ($administrators as $administrator) {
-            if (!($administrator instanceof WP_User)) {
+            if ($administrator instanceof WP_User) {
+                $administrator_id = (int) $administrator->ID;
+                $administrator_login = (string) $administrator->user_login;
+            } elseif (is_object($administrator)) {
+                $administrator_id = isset($administrator->ID) ? (int) $administrator->ID : 0;
+                $administrator_login = isset($administrator->user_login) ? (string) $administrator->user_login : '';
+            } elseif (is_array($administrator)) {
+                $administrator_id = isset($administrator['ID']) ? (int) $administrator['ID'] : 0;
+                $administrator_login = isset($administrator['user_login']) ? (string) $administrator['user_login'] : '';
+            } else {
                 continue;
             }
 
-            if (strtolower(trim((string) $administrator->user_login)) === 'ameza') {
+            if ($administrator_id <= 0) {
                 continue;
             }
 
-            $ids[] = (int) $administrator->ID;
+            if (meza_normalize_ameza_login_alias($administrator_login) === 'ameza') {
+                continue;
+            }
+
+            $ids[] = $administrator_id;
         }
 
         return array_values(array_unique(array_filter($ids)));
