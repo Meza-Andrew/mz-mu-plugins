@@ -145,6 +145,76 @@ function meza_guard_option_write($opt, callable $allow_fn)
     }, 9999, 2);
 }
 
+/** Read the stored option value directly from the database, bypassing forced option filters. */
+function meza_get_stored_option_value(string $option_name, $default = '')
+{
+    global $wpdb;
+
+    if (!isset($wpdb) || !is_object($wpdb) || !isset($wpdb->options)) {
+        return $default;
+    }
+
+    $stored_value = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+            $option_name
+        )
+    );
+
+    return $stored_value === null ? $default : maybe_unserialize($stored_value);
+}
+
+/** Persist a locked option directly so stored values match the hardcoded runtime values. */
+function meza_set_stored_option_value(string $option_name, $value, bool $autoload = false): bool
+{
+    global $wpdb;
+
+    if (!isset($wpdb) || !is_object($wpdb) || !isset($wpdb->options)) {
+        return false;
+    }
+
+    $autoload_value = $autoload ? 'yes' : 'no';
+    $serialized_value = maybe_serialize($value);
+    $option_exists = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT option_id FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+            $option_name
+        )
+    );
+
+    if ($option_exists === null) {
+        $result = $wpdb->insert(
+            $wpdb->options,
+            [
+                'option_name' => $option_name,
+                'option_value' => $serialized_value,
+                'autoload' => $autoload_value,
+            ],
+            ['%s', '%s', '%s']
+        );
+    } else {
+        $result = $wpdb->update(
+            $wpdb->options,
+            [
+                'option_value' => $serialized_value,
+                'autoload' => $autoload_value,
+            ],
+            ['option_name' => $option_name],
+            ['%s', '%s'],
+            ['%s']
+        );
+    }
+
+    if ($result === false) {
+        return false;
+    }
+
+    wp_cache_delete($option_name, 'options');
+    wp_cache_delete('alloptions', 'options');
+
+    return true;
+}
+
 /** Use the configured constant when present; otherwise fall back to a callback or literal default value. */
 function meza_resolve_target($const, $fallback_cb)
 {
@@ -1038,14 +1108,14 @@ add_action('admin_init', function () {
     }
 
     $target_category_base = meza_get_target_category_base();
-    if ((string) get_option('category_base', '') !== $target_category_base) {
-        update_option('category_base', $target_category_base);
+    if ((string) meza_get_stored_option_value('category_base', '') !== $target_category_base) {
+        meza_set_stored_option_value('category_base', $target_category_base);
         $flush_rewrite_needed = true;
     }
 
     $target_tag_base = meza_get_target_tag_base();
-    if ((string) get_option('tag_base', '') !== $target_tag_base) {
-        update_option('tag_base', $target_tag_base);
+    if ((string) meza_get_stored_option_value('tag_base', '') !== $target_tag_base) {
+        meza_set_stored_option_value('tag_base', $target_tag_base);
         $flush_rewrite_needed = true;
     }
 
