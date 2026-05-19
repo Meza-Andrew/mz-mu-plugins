@@ -472,6 +472,166 @@ if (!function_exists('meza_site_documentation_section_template_label')) {
 }
 
 if (!function_exists('meza_site_documentation_section_template_order_map')) {
+    function meza_site_documentation_normalize_section_template_row_key(string $value): string
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return '';
+        }
+
+        $normalized = sanitize_key(str_replace('_', '-', $value));
+
+        return trim((string) preg_replace('/-+/', '-', $normalized), '-');
+    }
+
+    function meza_site_documentation_section_template_row_key_from_field_group_title(string $title): string
+    {
+        $title = trim($title);
+
+        if ($title === '') {
+            return '';
+        }
+
+        $title_to_row_key = meza_site_documentation_section_template_title_map();
+
+        if (isset($title_to_row_key[$title])) {
+            return (string) $title_to_row_key[$title];
+        }
+
+        if (preg_match('/^(?<label>.+?)\s+Section$/i', $title, $matches)) {
+            return meza_site_documentation_normalize_section_template_row_key((string) ($matches['label'] ?? ''));
+        }
+
+        return '';
+    }
+
+    function meza_site_documentation_section_template_row_key_from_field_group(array $field_group): string
+    {
+        $field_group_id = $field_group['key'] ?? $field_group['ID'] ?? null;
+        $field_group_fields = function_exists('acf_get_fields')
+            ? acf_get_fields($field_group_id)
+            : [];
+
+        if (is_array($field_group_fields)) {
+            foreach ($field_group_fields as $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+
+                $field_name = trim((string) ($field['name'] ?? ''));
+
+                if ($field_name === '') {
+                    continue;
+                }
+
+                if (str_starts_with($field_name, 'show_')) {
+                    return meza_site_documentation_normalize_section_template_row_key(substr($field_name, 5));
+                }
+
+                if (str_starts_with($field_name, 'section_')) {
+                    return meza_site_documentation_normalize_section_template_row_key(substr($field_name, 8));
+                }
+            }
+        }
+
+        return meza_site_documentation_section_template_row_key_from_field_group_title((string) ($field_group['title'] ?? ''));
+    }
+
+    function meza_site_documentation_section_template_field_group_configs(): array
+    {
+        $configs = [];
+
+        if (function_exists('meza_get_section_field_group_menu_order_map')) {
+            foreach ((array) meza_get_section_field_group_menu_order_map() as $title => $menu_order) {
+                $row_key = meza_site_documentation_section_template_row_key_from_field_group_title((string) $title);
+
+                if ($row_key === '') {
+                    continue;
+                }
+
+                $configs[$row_key] = [
+                    'row_key' => $row_key,
+                    'title' => trim((string) $title),
+                    'menu_order' => (int) $menu_order,
+                ];
+            }
+        }
+
+        if (function_exists('acf_get_field_groups')) {
+            foreach ((array) acf_get_field_groups() as $field_group) {
+                if (!is_array($field_group)) {
+                    continue;
+                }
+
+                $row_key = meza_site_documentation_section_template_row_key_from_field_group($field_group);
+
+                if ($row_key === '') {
+                    continue;
+                }
+
+                $configs[$row_key] = [
+                    'row_key' => $row_key,
+                    'title' => trim((string) ($field_group['title'] ?? ($configs[$row_key]['title'] ?? ''))),
+                    'menu_order' => (int) ($field_group['menu_order'] ?? ($configs[$row_key]['menu_order'] ?? 0)),
+                ];
+            }
+        }
+
+        return $configs;
+    }
+
+    function meza_site_documentation_enabled_section_template_field_group_configs(): array
+    {
+        $all_configs = meza_site_documentation_section_template_field_group_configs();
+
+        if (
+            !function_exists('meza_get_content_model_field_group_management_choice_map')
+            || !function_exists('meza_get_content_model_field_group_management_current_selection')
+            || !function_exists('meza_get_content_model_field_group_management_definition_map')
+            || !function_exists('meza_get_content_model_custom_field_group_records')
+        ) {
+            return $all_configs;
+        }
+
+        $enabled_configs = [];
+        $definition_sources = [
+            'built_in' => function (): array {
+                return meza_get_content_model_field_group_management_definition_map('built_in');
+            },
+            'defaults' => function (): array {
+                return meza_get_content_model_field_group_management_definition_map('defaults');
+            },
+            'custom' => function (): array {
+                return meza_get_content_model_custom_field_group_records();
+            },
+        ];
+
+        foreach ($definition_sources as $bucket => $get_definitions) {
+            $choices = meza_get_content_model_field_group_management_choice_map($bucket);
+            $selected_keys = meza_get_content_model_field_group_management_current_selection($bucket, $choices);
+            $definitions = $get_definitions();
+
+            foreach ($selected_keys as $selected_key) {
+                $selected_key = sanitize_key((string) $selected_key);
+
+                if ($selected_key === '' || !isset($definitions[$selected_key]) || !is_array($definitions[$selected_key])) {
+                    continue;
+                }
+
+                $row_key = meza_site_documentation_section_template_row_key_from_field_group($definitions[$selected_key]);
+
+                if ($row_key === '' || !isset($all_configs[$row_key])) {
+                    continue;
+                }
+
+                $enabled_configs[$row_key] = $all_configs[$row_key];
+            }
+        }
+
+        return $enabled_configs;
+    }
+
     function meza_site_documentation_section_template_title_map(): array
     {
         return [
@@ -497,69 +657,25 @@ if (!function_exists('meza_site_documentation_section_template_order_map')) {
 if (!function_exists('meza_site_documentation_section_template_field_group_row_keys')) {
     function meza_site_documentation_section_template_field_group_row_keys(): array
     {
-        $title_to_row_key = meza_site_documentation_section_template_title_map();
-        $row_keys = [];
-
-        if (function_exists('meza_get_section_field_group_menu_order_map')) {
-            foreach ((array) meza_get_section_field_group_menu_order_map() as $title => $menu_order) {
-                $row_key = $title_to_row_key[trim((string) $title)] ?? '';
-
-                if ($row_key !== '') {
-                    $row_keys[$row_key] = true;
-                }
-            }
-        }
-
-        if (function_exists('acf_get_field_groups')) {
-            foreach ((array) acf_get_field_groups() as $field_group) {
-                $title = trim((string) ($field_group['title'] ?? ''));
-                $row_key = $title_to_row_key[$title] ?? '';
-
-                if ($row_key !== '') {
-                    $row_keys[$row_key] = true;
-                }
-            }
-        }
-
-        return array_keys($row_keys);
+        return array_keys(meza_site_documentation_enabled_section_template_field_group_configs());
     }
 }
 
 if (!function_exists('meza_site_documentation_section_template_order_map')) {
     function meza_site_documentation_section_template_order_map(): array
     {
-        $title_to_row_key = meza_site_documentation_section_template_title_map();
-
         $order_map = [
             'content' => 2,
         ];
 
-        if (!function_exists('meza_get_section_field_group_menu_order_map')) {
-            return $order_map;
-        }
-
-        foreach ((array) meza_get_section_field_group_menu_order_map() as $title => $menu_order) {
-            $title = trim((string) $title);
-            $row_key = $title_to_row_key[$title] ?? '';
+        foreach (meza_site_documentation_section_template_field_group_configs() as $config) {
+            $row_key = trim((string) ($config['row_key'] ?? ''));
 
             if ($row_key === '') {
                 continue;
             }
 
-            $order_map[$row_key] = (int) $menu_order;
-        }
-
-        if (function_exists('acf_get_field_groups')) {
-            foreach ((array) acf_get_field_groups() as $field_group) {
-                $title = trim((string) ($field_group['title'] ?? ''));
-                $row_key = $title_to_row_key[$title] ?? '';
-
-                if ($row_key === '') {
-                    continue;
-                }
-
-                $order_map[$row_key] = (int) ($field_group['menu_order'] ?? $order_map[$row_key] ?? 0);
-            }
+            $order_map[$row_key] = (int) ($config['menu_order'] ?? ($order_map[$row_key] ?? 0));
         }
 
         return $order_map;
@@ -1173,7 +1289,8 @@ if (!function_exists('meza_site_documentation_get_section_template_rows')) {
     {
         $rows = [];
         $order_map = meza_site_documentation_section_template_order_map();
-        $allowed_row_keys = array_fill_keys(meza_site_documentation_section_template_field_group_row_keys(), true);
+        $field_group_configs = meza_site_documentation_enabled_section_template_field_group_configs();
+        $allowed_row_keys = array_fill_keys(array_keys($field_group_configs), true);
 
         foreach (meza_site_documentation_template_directories() as $directory) {
             $section_directory = trailingslashit($directory) . 'section';
@@ -1210,7 +1327,7 @@ if (!function_exists('meza_site_documentation_get_section_template_rows')) {
                     continue;
                 }
 
-                if (!isset($allowed_row_keys[$row_key])) {
+                if ($row_key !== 'hero' && !isset($allowed_row_keys[$row_key])) {
                     continue;
                 }
 
@@ -1248,10 +1365,6 @@ if (!function_exists('meza_site_documentation_get_section_template_rows')) {
         }
 
         unset($row);
-
-        $rows = array_values(array_filter($rows, static function (array $row): bool {
-            return (int) ($row['page_count'] ?? 0) > 0;
-        }));
 
         usort($rows, static function (array $left, array $right) use ($order_map): int {
             $left_key = trim((string) ($left['key'] ?? ''));
