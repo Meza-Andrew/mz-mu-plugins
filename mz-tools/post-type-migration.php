@@ -1376,7 +1376,7 @@ if (!function_exists('mz_ptm_render_tools_page')) {
         $faq_source_key = isset($_GET['source_key']) ? sanitize_text_field(wp_unslash((string) $_GET['source_key'])) : '';
         $faq_result = function_exists('mzfmt_get_result') ? mzfmt_get_result() : [];
         $active_tab = isset($_GET['tab']) ? sanitize_key((string) $_GET['tab']) : 'post-type';
-        if (!in_array($active_tab, ['post-type', 'locality', 'media', 'faq', 'form'], true)) {
+        if (!in_array($active_tab, ['post-type', 'event', 'locality', 'media', 'faq', 'form'], true)) {
             $active_tab = 'post-type';
         }
         $result = mz_ptm_get_result();
@@ -1388,6 +1388,7 @@ if (!function_exists('mz_ptm_render_tools_page')) {
             <hr class="wp-header-end" />
             <h2 class="nav-tab-wrapper">
                 <a href="<?php echo esc_url(add_query_arg('tab', 'post-type', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'post-type' ? 'nav-tab-active' : ''; ?>">Post Type Migration</a>
+                <a href="<?php echo esc_url(add_query_arg('tab', 'event', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'event' ? 'nav-tab-active' : ''; ?>">Event Field Migration</a>
                 <a href="<?php echo esc_url(add_query_arg('tab', 'locality', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'locality' ? 'nav-tab-active' : ''; ?>">Locality Migration</a>
                 <a href="<?php echo esc_url(add_query_arg('tab', 'media', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'media' ? 'nav-tab-active' : ''; ?>">Media Migration</a>
                 <a href="<?php echo esc_url(add_query_arg('tab', 'faq', mz_ptm_get_redirect_url())); ?>" class="nav-tab <?php echo $active_tab === 'faq' ? 'nav-tab-active' : ''; ?>">FAQ Migration</a>
@@ -1440,6 +1441,12 @@ if (!function_exists('mz_ptm_render_tools_page')) {
                 </form>
 
                 <?php mz_ptm_render_result_summary($result); ?>
+            <?php elseif ($active_tab === 'event') : ?>
+                <?php if (!function_exists('mz_etm_render_tools_tab')) : ?>
+                    <div class="notice notice-error inline"><p>Event field migration tools are not available.</p></div>
+                <?php else : ?>
+                    <?php mz_etm_render_tools_tab(); ?>
+                <?php endif; ?>
             <?php elseif ($active_tab === 'locality') : ?>
                 <p>Move every duplicate locality term into its <code>City, State</code> version within the active <code><?php echo esc_html($locality_taxonomy !== '' ? $locality_taxonomy : 'locality/location'); ?></code> taxonomy, then remove the old terms when they are no longer used.</p>
 

@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Tools
  * Description: Migration and reconciliation tools for Meza WordPress projects.
- * Version: 1.0.36
+ * Version: 1.0.37
  * Author: Meza
  */
 
@@ -13,6 +13,7 @@ if (!defined('ABSPATH')) {
 
 $mz_tools_modules = [
     __DIR__ . '/mz-tools/post-type-migration.php',
+    __DIR__ . '/mz-tools/event-field-migration.php',
     __DIR__ . '/mz-tools/faq-migration.php',
     __DIR__ . '/mz-tools/form-migration.php',
 ];
