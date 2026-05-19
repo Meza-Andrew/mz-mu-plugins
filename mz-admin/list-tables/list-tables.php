@@ -4070,7 +4070,22 @@ function meza_render_users_website_admin_column(string $output, string $column_n
         return '&mdash;';
     }
 
-    return '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html(meza_get_admin_link_column_display_text($url)) . '</a>';
+    $label = meza_get_admin_link_column_display_text($url);
+    if ($label === '/') {
+        $site_root_urls = array_filter([
+            untrailingslashit(home_url('/')),
+            untrailingslashit(site_url('/')),
+        ]);
+
+        foreach ($site_root_urls as $site_root_url) {
+            if ($site_root_url !== '' && untrailingslashit($url) === $site_root_url) {
+                $label = $site_root_url;
+                break;
+            }
+        }
+    }
+
+    return '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($label) . '</a>';
 }
 
 add_filter('manage_users_columns', 'meza_customize_users_admin_columns', 1000);
