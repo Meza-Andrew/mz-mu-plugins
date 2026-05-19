@@ -3753,6 +3753,242 @@ add_action('admin_notices', function (): void {
         . '</p></div>';
 });
 
+if (!function_exists('meza_get_hardcoded_yoast_author_profile_meta')) {
+    function meza_get_hardcoded_yoast_author_profile_meta(): array
+    {
+        return [
+            'wpseo_title' => '',
+            'wpseo_metadesc' => '',
+            'wpseo_pronouns' => '',
+            'wpseo_noindex_author' => 'on',
+        ];
+    }
+}
+
+if (!function_exists('meza_get_hardcoded_user_profile_meta')) {
+    function meza_get_hardcoded_user_profile_meta(): array
+    {
+        return [
+            'description' => '',
+            'facebook' => '',
+            'instagram' => '',
+            'linkedin' => '',
+            'myspace' => '',
+            'pinterest' => '',
+            'soundcloud' => '',
+            'tumblr' => '',
+            'twitter' => '',
+            'wikipedia' => '',
+            'x' => '',
+            'youtube' => '',
+        ];
+    }
+}
+
+if (!function_exists('meza_refresh_yoast_author_indexable')) {
+    function meza_refresh_yoast_author_indexable(int $user_id): void
+    {
+        if (
+            $user_id <= 0
+            || !function_exists('YoastSEO')
+            || !class_exists('\Yoast\WP\SEO\Integrations\Watchers\Indexable_Author_Watcher')
+        ) {
+            return;
+        }
+
+        try {
+            $watcher = YoastSEO()->classes->get(\Yoast\WP\SEO\Integrations\Watchers\Indexable_Author_Watcher::class);
+            if (is_object($watcher) && method_exists($watcher, 'build_indexable')) {
+                $watcher->build_indexable($user_id);
+            }
+        } catch (Throwable $exception) {
+            return;
+        }
+    }
+}
+
+if (!function_exists('meza_sync_hardcoded_yoast_author_profile_meta')) {
+    function meza_sync_hardcoded_yoast_author_profile_meta(int $user_id, bool $refresh_indexable = false): void
+    {
+        if ($user_id <= 0 || !get_userdata($user_id)) {
+            return;
+        }
+
+        foreach (meza_get_hardcoded_yoast_author_profile_meta() as $meta_key => $meta_value) {
+            if ($meta_value === '') {
+                delete_user_meta($user_id, $meta_key);
+                continue;
+            }
+
+            update_user_meta($user_id, $meta_key, $meta_value);
+        }
+
+        if ($refresh_indexable) {
+            meza_refresh_yoast_author_indexable($user_id);
+        }
+    }
+}
+
+add_filter('get_user_metadata', function ($value, int $user_id, string $meta_key, bool $single) {
+    if ($user_id <= 0 || $meta_key === '') {
+        return $value;
+    }
+
+    $hardcoded_meta = meza_get_hardcoded_yoast_author_profile_meta();
+    if (!array_key_exists($meta_key, $hardcoded_meta)) {
+        return $value;
+    }
+
+    $hardcoded_value = (string) $hardcoded_meta[$meta_key];
+    return $single ? $hardcoded_value : [$hardcoded_value];
+}, 10, 4);
+
+add_filter('get_user_metadata', function ($value, int $user_id, string $meta_key, bool $single) {
+    if ($user_id <= 0 || $meta_key === '') {
+        return $value;
+    }
+
+    $hardcoded_meta = meza_get_hardcoded_user_profile_meta();
+    if (!array_key_exists($meta_key, $hardcoded_meta)) {
+        return $value;
+    }
+
+    $hardcoded_value = (string) $hardcoded_meta[$meta_key];
+    return $single ? $hardcoded_value : [$hardcoded_value];
+}, 10, 4);
+
+if (!function_exists('meza_sync_hardcoded_user_profile_meta')) {
+    function meza_sync_hardcoded_user_profile_meta(int $user_id): void
+    {
+        if ($user_id <= 0 || !get_userdata($user_id)) {
+            return;
+        }
+
+        foreach (meza_get_hardcoded_user_profile_meta() as $meta_key => $meta_value) {
+            if ($meta_value === '') {
+                delete_user_meta($user_id, $meta_key);
+                continue;
+            }
+
+            update_user_meta($user_id, $meta_key, $meta_value);
+        }
+    }
+}
+
+add_action('user_register', function (int $user_id): void {
+    meza_sync_hardcoded_yoast_author_profile_meta($user_id);
+    meza_sync_hardcoded_user_profile_meta($user_id);
+}, 10);
+
+add_action('profile_update', function (int $user_id): void {
+    meza_sync_hardcoded_yoast_author_profile_meta($user_id);
+    meza_sync_hardcoded_user_profile_meta($user_id);
+}, 10);
+
+add_filter('user_contactmethods', function (array $contactmethods): array {
+    foreach (array_keys(meza_get_hardcoded_user_profile_meta()) as $meta_key) {
+        if ($meta_key === 'description') {
+            continue;
+        }
+
+        unset($contactmethods[$meta_key]);
+    }
+
+    return $contactmethods;
+}, 1000);
+
+if (!function_exists('meza_remove_action_callbacks_by_class')) {
+    function meza_remove_action_callbacks_by_class(string $hook_name, string $class_name, string $method_name): void
+    {
+        global $wp_filter;
+
+        $hook = $wp_filter[$hook_name] ?? null;
+        if (!($hook instanceof WP_Hook) || empty($hook->callbacks) || !is_array($hook->callbacks)) {
+            return;
+        }
+
+        foreach ($hook->callbacks as $priority => $callbacks) {
+            foreach ((array) $callbacks as $callback_data) {
+                $callback = $callback_data['function'] ?? null;
+                if (
+                    !is_array($callback)
+                    || !isset($callback[0], $callback[1])
+                    || !is_object($callback[0])
+                    || !is_a($callback[0], $class_name)
+                    || $callback[1] !== $method_name
+                ) {
+                    continue;
+                }
+
+                remove_action($hook_name, $callback, (int) $priority);
+            }
+        }
+    }
+}
+
+if (!function_exists('meza_remove_yoast_author_profile_settings_section')) {
+    function meza_remove_yoast_author_profile_settings_section(): void
+    {
+        $yoast_profile_class = 'Yoast\\WP\\SEO\\User_Meta\\User_Interface\\Custom_Meta_Integration';
+
+        foreach (['show_user_profile', 'edit_user_profile'] as $hook_name) {
+            meza_remove_action_callbacks_by_class($hook_name, $yoast_profile_class, 'user_profile');
+        }
+
+        foreach (['personal_options_update', 'edit_user_profile_update'] as $hook_name) {
+            meza_remove_action_callbacks_by_class($hook_name, $yoast_profile_class, 'process_user_option_update');
+        }
+    }
+}
+
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    global $pagenow;
+    if (!in_array($pagenow, ['profile.php', 'user-edit.php'], true)) {
+        return;
+    }
+
+    meza_remove_yoast_author_profile_settings_section();
+}, 1000);
+
+if (!function_exists('meza_render_locked_user_profile_field_css')) {
+    function meza_render_locked_user_profile_field_css(): void
+    {
+        echo '<style id="meza-locked-user-profile-fields">'
+            . '.user-description-wrap{display:none!important;}'
+            . '</style>';
+    }
+}
+
+add_action('admin_head-profile.php', 'meza_render_locked_user_profile_field_css');
+add_action('admin_head-user-edit.php', 'meza_render_locked_user_profile_field_css');
+
+add_action('admin_init', function (): void {
+    if (!is_admin() || !current_user_can('manage_options')) {
+        return;
+    }
+
+    $sync_version = '2026-05-19-user-profile-defaults-v2';
+    if (get_option('meza_yoast_author_profile_meta_sync_version') === $sync_version) {
+        return;
+    }
+
+    $user_ids = get_users([
+        'fields' => 'ids',
+        'number' => -1,
+    ]);
+
+    foreach ($user_ids as $user_id) {
+        meza_sync_hardcoded_yoast_author_profile_meta((int) $user_id, true);
+        meza_sync_hardcoded_user_profile_meta((int) $user_id);
+    }
+
+    update_option('meza_yoast_author_profile_meta_sync_version', $sync_version, false);
+}, 20);
+
 if (!function_exists('meza_sync_site_kit_dashboard_sharing')) {
     function meza_sync_site_kit_dashboard_sharing(): void
     {
