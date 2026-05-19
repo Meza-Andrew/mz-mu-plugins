@@ -97,6 +97,23 @@ function meza_activity_log_get_action_labels(): array
         'restored' => 'Restored',
         'deleted' => 'Deleted',
         'uploaded' => 'Uploaded',
+        'settings_updated' => 'Settings updated',
+        'user_created' => 'User created',
+        'user_updated' => 'User updated',
+        'role_changed' => 'Role changed',
+        'user_deleted' => 'User deleted',
+        'password_reset' => 'Password reset',
+        'menu_updated' => 'Menu updated',
+        'plugin_activated' => 'Plugin activated',
+        'plugin_deactivated' => 'Plugin deactivated',
+        'plugin_updated' => 'Plugin updated',
+        'plugin_installed' => 'Plugin installed',
+        'theme_switched' => 'Theme switched',
+        'theme_updated' => 'Theme updated',
+        'theme_installed' => 'Theme installed',
+        'core_updated' => 'WordPress updated',
+        'integration_failed' => 'Integration failed',
+        'log_reset' => 'Activity log reset',
     ];
 }
 
@@ -120,9 +137,41 @@ function meza_activity_log_get_action_dashicon(string $action): string
         'restored' => 'dashicons-undo',
         'deleted' => 'dashicons-remove',
         'uploaded' => 'dashicons-upload',
+        'settings_updated' => 'dashicons-admin-settings',
+        'user_created' => 'dashicons-admin-users',
+        'user_updated' => 'dashicons-admin-users',
+        'role_changed' => 'dashicons-admin-users',
+        'user_deleted' => 'dashicons-dismiss',
+        'password_reset' => 'dashicons-lock',
+        'menu_updated' => 'dashicons-menu',
+        'plugin_activated' => 'dashicons-admin-plugins',
+        'plugin_deactivated' => 'dashicons-admin-plugins',
+        'plugin_updated' => 'dashicons-update',
+        'plugin_installed' => 'dashicons-download',
+        'theme_switched' => 'dashicons-admin-appearance',
+        'theme_updated' => 'dashicons-update',
+        'theme_installed' => 'dashicons-admin-appearance',
+        'core_updated' => 'dashicons-update',
+        'integration_failed' => 'dashicons-warning',
+        'log_reset' => 'dashicons-backup',
     ];
 
     return $map[$action] ?? 'dashicons-admin-post';
+}
+
+function meza_activity_log_get_category_labels(): array
+{
+    return [
+        'content' => 'Content Activity',
+        'site' => 'Site Activity',
+    ];
+}
+
+function meza_activity_log_get_category_label(string $category): string
+{
+    $labels = meza_activity_log_get_category_labels();
+
+    return $labels[$category] ?? ucwords(str_replace('_', ' ', $category));
 }
 
 function meza_activity_log_get_post_type_label(string $post_type): string
@@ -177,6 +226,42 @@ function meza_activity_log_get_user_display_name(int $user_id, string $fallback 
     return $fallback !== '' ? $fallback : 'System';
 }
 
+function meza_activity_log_get_user_object_title($user): string
+{
+    if ($user instanceof WP_User) {
+        $display_name = trim((string) $user->display_name);
+        $user_login = trim((string) $user->user_login);
+
+        if ($display_name !== '' && $user_login !== '' && strcasecmp($display_name, $user_login) !== 0) {
+            return $display_name . ' (' . $user_login . ')';
+        }
+
+        if ($display_name !== '') {
+            return $display_name;
+        }
+
+        if ($user_login !== '') {
+            return $user_login;
+        }
+    }
+
+    return 'User account';
+}
+
+function meza_activity_log_get_user_edit_url(int $user_id): string
+{
+    return $user_id > 0 ? (string) get_edit_user_link($user_id) : '';
+}
+
+function meza_activity_log_values_equal($left, $right): bool
+{
+    if (is_scalar($left) && is_scalar($right)) {
+        return (string) $left === (string) $right;
+    }
+
+    return wp_json_encode($left) === wp_json_encode($right);
+}
+
 function meza_activity_log_should_track_post(WP_Post $post): bool
 {
     if (
@@ -224,23 +309,80 @@ function meza_activity_log_store_entry(array $entry): void
     update_option($option_name, $entries, false);
 }
 
+function meza_activity_log_maybe_reset_entries(): void
+{
+    if (
+        !is_admin()
+        || !defined('MZ_RESET_ACTIVITY_LOG')
+        || !MZ_RESET_ACTIVITY_LOG
+    ) {
+        return;
+    }
+
+    delete_option(MEZA_ACTIVITY_LOG_OPTION);
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'log_reset',
+        'object_type' => 'activity_log',
+        'object_subtype' => 'manual_reset',
+        'object_label' => 'Activity Log',
+        'object_title' => 'Activity Log',
+        'details' => 'Activity log was reset from wp-config.php.',
+    ]);
+}
+add_action('admin_init', 'meza_activity_log_maybe_reset_entries', 1);
+
+function meza_activity_log_record_event(array $entry): void
+{
+    $action = sanitize_key((string) ($entry['action'] ?? ''));
+    if ($action === '') {
+        return;
+    }
+
+    $user_id = isset($entry['user_id']) ? (int) $entry['user_id'] : get_current_user_id();
+    $object_type = sanitize_key((string) ($entry['object_type'] ?? 'site'));
+    $category = sanitize_key((string) ($entry['category'] ?? ($object_type === 'post' ? 'content' : 'site')));
+    if (!in_array($category, ['content', 'site'], true)) {
+        $category = 'site';
+    }
+
+    meza_activity_log_store_entry([
+        'timestamp' => isset($entry['timestamp']) ? (int) $entry['timestamp'] : current_time('timestamp'),
+        'category' => $category,
+        'category_label' => meza_activity_log_get_category_label($category),
+        'action' => $action,
+        'action_label' => meza_activity_log_get_action_label($action),
+        'user_id' => $user_id,
+        'user_name' => meza_activity_log_get_user_display_name($user_id, (string) ($entry['user_name'] ?? '')),
+        'object_id' => isset($entry['object_id']) ? (int) $entry['object_id'] : 0,
+        'object_type' => $object_type,
+        'object_subtype' => sanitize_key((string) ($entry['object_subtype'] ?? '')),
+        'object_label' => trim((string) ($entry['object_label'] ?? '')),
+        'object_title' => trim((string) ($entry['object_title'] ?? '')),
+        'object_url' => isset($entry['object_url']) && is_string($entry['object_url']) ? $entry['object_url'] : '',
+        'status' => sanitize_key((string) ($entry['status'] ?? '')),
+        'status_label' => trim((string) ($entry['status_label'] ?? '')),
+        'details' => trim((string) ($entry['details'] ?? '')),
+        'is_inferred' => !empty($entry['is_inferred']),
+    ]);
+}
+
 function meza_activity_log_record_post_event(string $action, WP_Post $post, array $overrides = []): void
 {
     if (!meza_activity_log_should_track_post($post)) {
         return;
     }
 
-    $user_id = isset($overrides['user_id']) ? (int) $overrides['user_id'] : get_current_user_id();
-    $timestamp = isset($overrides['timestamp']) ? (int) $overrides['timestamp'] : current_time('timestamp');
     $status = isset($overrides['status']) ? sanitize_key((string) $overrides['status']) : (string) $post->post_status;
     $url = get_edit_post_link($post->ID, 'raw');
 
-    meza_activity_log_store_entry([
-        'timestamp' => $timestamp,
-        'action' => sanitize_key($action),
-        'action_label' => meza_activity_log_get_action_label($action),
-        'user_id' => $user_id,
-        'user_name' => meza_activity_log_get_user_display_name($user_id, (string) ($overrides['user_name'] ?? '')),
+    meza_activity_log_record_event([
+        'category' => 'content',
+        'timestamp' => isset($overrides['timestamp']) ? (int) $overrides['timestamp'] : current_time('timestamp'),
+        'action' => $action,
+        'user_id' => isset($overrides['user_id']) ? (int) $overrides['user_id'] : get_current_user_id(),
+        'user_name' => (string) ($overrides['user_name'] ?? ''),
         'object_id' => (int) $post->ID,
         'object_type' => 'post',
         'object_subtype' => (string) $post->post_type,
@@ -268,6 +410,246 @@ function meza_activity_log_get_transition_details(string $old_status, string $ne
     }
 
     return '';
+}
+
+function meza_activity_log_get_tracked_option_definitions(): array
+{
+    return [
+        'blogname' => 'Site Title',
+        'blogdescription' => 'Tagline',
+        'show_on_front' => 'Homepage Displays',
+        'page_on_front' => 'Homepage',
+        'page_for_posts' => 'Posts Page',
+        'blog_public' => 'Search Engine Visibility',
+        'permalink_structure' => 'Permalink Structure',
+    ];
+}
+
+function meza_activity_log_get_setting_option_label(string $option_name): string
+{
+    $definitions = meza_activity_log_get_tracked_option_definitions();
+
+    return $definitions[$option_name] ?? ucwords(str_replace(['-', '_'], ' ', $option_name));
+}
+
+function meza_activity_log_get_post_reference_label($value): string
+{
+    $post_id = (int) $value;
+    if ($post_id < 1) {
+        return 'None';
+    }
+
+    $post = get_post($post_id);
+    if (!($post instanceof WP_Post)) {
+        return '#' . $post_id;
+    }
+
+    $title = meza_activity_log_get_post_title($post);
+
+    return $title . ' (#' . $post_id . ')';
+}
+
+function meza_activity_log_get_menu_reference_label($value): string
+{
+    $menu_id = (int) $value;
+    if ($menu_id < 1) {
+        return 'Unassigned';
+    }
+
+    $menu = wp_get_nav_menu_object($menu_id);
+    if ($menu instanceof WP_Term && !empty($menu->name)) {
+        return trim((string) $menu->name);
+    }
+
+    return '#' . $menu_id;
+}
+
+function meza_activity_log_format_setting_value(string $option_name, $value): string
+{
+    if ($option_name === 'show_on_front') {
+        return $value === 'page' ? 'A static page' : 'Your latest posts';
+    }
+
+    if (in_array($option_name, ['page_on_front', 'page_for_posts'], true)) {
+        return meza_activity_log_get_post_reference_label($value);
+    }
+
+    if ($option_name === 'blog_public') {
+        return ((int) $value === 1) ? 'Discourage disabled' : 'Discourage enabled';
+    }
+
+    if ($option_name === 'permalink_structure') {
+        $value = trim((string) $value);
+        return $value !== '' ? $value : 'Plain';
+    }
+
+    $value = trim((string) $value);
+    return $value !== '' ? $value : 'Empty';
+}
+
+function meza_activity_log_record_option_change(string $option_name, $new_value, $old_value): void
+{
+    if (meza_activity_log_values_equal($new_value, $old_value)) {
+        return;
+    }
+
+    $details = sprintf(
+        '%s changed from %s to %s.',
+        meza_activity_log_get_setting_option_label($option_name),
+        meza_activity_log_format_setting_value($option_name, $old_value),
+        meza_activity_log_format_setting_value($option_name, $new_value)
+    );
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'settings_updated',
+        'object_type' => 'setting',
+        'object_subtype' => sanitize_key($option_name),
+        'object_label' => 'Site Setting',
+        'object_title' => meza_activity_log_get_setting_option_label($option_name),
+        'object_url' => admin_url('options-general.php'),
+        'details' => $details,
+    ]);
+}
+
+function meza_activity_log_record_theme_locations_change(array $new_locations, array $old_locations): void
+{
+    $normalized_old = [];
+    foreach ($old_locations as $location => $menu_id) {
+        $normalized_old[sanitize_key((string) $location)] = (int) $menu_id;
+    }
+
+    $normalized_new = [];
+    foreach ($new_locations as $location => $menu_id) {
+        $normalized_new[sanitize_key((string) $location)] = (int) $menu_id;
+    }
+
+    if ($normalized_new === $normalized_old) {
+        return;
+    }
+
+    $location_labels = get_registered_nav_menus();
+    $changes = [];
+
+    foreach (array_unique(array_merge(array_keys($normalized_old), array_keys($normalized_new))) as $location) {
+        $old_menu_id = $normalized_old[$location] ?? 0;
+        $new_menu_id = $normalized_new[$location] ?? 0;
+
+        if ($old_menu_id === $new_menu_id) {
+            continue;
+        }
+
+        $location_label = trim((string) ($location_labels[$location] ?? ucwords(str_replace(['-', '_'], ' ', $location))));
+        $changes[] = sprintf(
+            '%s changed from %s to %s',
+            $location_label,
+            meza_activity_log_get_menu_reference_label($old_menu_id),
+            meza_activity_log_get_menu_reference_label($new_menu_id)
+        );
+    }
+
+    if ($changes === []) {
+        return;
+    }
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'settings_updated',
+        'object_type' => 'menu',
+        'object_subtype' => 'nav_menu_locations',
+        'object_label' => 'Menu Locations',
+        'object_title' => 'Menu Assignments',
+        'object_url' => admin_url('nav-menus.php'),
+        'details' => implode('. ', $changes) . '.',
+    ]);
+}
+
+function meza_activity_log_record_acf_options_page_save(string $post_id): void
+{
+    if (!function_exists('meza_get_settings_admin_page_title_for_slug')) {
+        return;
+    }
+
+    $normalized_post_id = strtolower(trim($post_id));
+    if ($normalized_post_id === '' || ($normalized_post_id !== 'options' && $normalized_post_id !== 'option' && !str_starts_with($normalized_post_id, 'options_'))) {
+        return;
+    }
+
+    $slug = 'options';
+    if (str_starts_with($normalized_post_id, 'options_')) {
+        $slug = str_replace('_', '-', substr($normalized_post_id, 8));
+    }
+
+    $allowed_slugs = [
+        'options',
+        'branding',
+        'business-information',
+        'content-model',
+        'crm',
+        'ecommerce',
+    ];
+
+    if (!in_array($slug, $allowed_slugs, true)) {
+        return;
+    }
+
+    $title = $slug === 'options'
+        ? 'Site Settings'
+        : meza_get_settings_admin_page_title_for_slug($slug);
+
+    $url = $slug === 'options'
+        ? admin_url('options-general.php')
+        : (
+            function_exists('meza_get_shared_project_acf_options_page_menu_slug')
+                ? admin_url(meza_get_shared_project_acf_options_page_menu_slug($slug))
+                : admin_url('options-general.php')
+        );
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'settings_updated',
+        'object_type' => 'setting',
+        'object_subtype' => sanitize_key($slug),
+        'object_label' => 'Settings Page',
+        'object_title' => $title,
+        'object_url' => $url,
+        'details' => $title . ' was updated.',
+    ]);
+}
+
+function meza_activity_log_record_integration_failure(string $provider, string $message, array $context = []): void
+{
+    $provider = sanitize_key($provider);
+    if ($provider === '') {
+        $provider = 'integration';
+    }
+
+    $provider_label = ucwords(str_replace('_', ' ', $provider));
+    $email = isset($context['Email']) ? sanitize_email((string) $context['Email']) : '';
+    $form_label = isset($context['FormLabel']) ? sanitize_text_field((string) $context['FormLabel']) : '';
+
+    $details_parts = [trim($message)];
+
+    if ($form_label !== '') {
+        $details_parts[] = 'Form: ' . $form_label;
+    }
+
+    if ($email !== '') {
+        $details_parts[] = 'Email: ' . $email;
+    }
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'integration_failed',
+        'object_type' => 'integration',
+        'object_subtype' => $provider,
+        'object_label' => 'Integration',
+        'object_title' => $provider_label,
+        'object_url' => function_exists('meza_get_shared_project_acf_options_page_menu_slug')
+            ? admin_url(meza_get_shared_project_acf_options_page_menu_slug('crm'))
+            : admin_url('options-general.php'),
+        'details' => implode('. ', array_filter($details_parts)) . '.',
+    ]);
 }
 
 add_action('transition_post_status', function (string $new_status, string $old_status, WP_Post $post): void {
@@ -342,6 +724,322 @@ add_action('before_delete_post', function (int $post_id, WP_Post $post): void {
     meza_activity_log_record_post_event('deleted', $post);
 }, 20, 2);
 
+foreach (array_keys(meza_activity_log_get_tracked_option_definitions()) as $tracked_option_name) {
+    add_filter('pre_update_option_' . $tracked_option_name, function ($new_value, $old_value) use ($tracked_option_name) {
+        meza_activity_log_record_option_change($tracked_option_name, $new_value, $old_value);
+        return $new_value;
+    }, 10, 2);
+}
+
+add_action('set_theme_mod_custom_logo', function ($value, $old_value): void {
+    if (meza_activity_log_values_equal($value, $old_value)) {
+        return;
+    }
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'settings_updated',
+        'object_type' => 'appearance',
+        'object_subtype' => 'custom_logo',
+        'object_label' => 'Appearance',
+        'object_title' => 'Site Logo',
+        'object_url' => admin_url('themes.php?page=custom-header'),
+        'details' => sprintf(
+            'Site logo changed from %s to %s.',
+            meza_activity_log_get_post_reference_label($old_value),
+            meza_activity_log_get_post_reference_label($value)
+        ),
+    ]);
+}, 10, 2);
+
+add_action('updated_option', function (string $option, $old_value, $value): void {
+    if (!str_starts_with($option, 'theme_mods_')) {
+        return;
+    }
+
+    $old_locations = is_array($old_value) ? (array) ($old_value['nav_menu_locations'] ?? []) : [];
+    $new_locations = is_array($value) ? (array) ($value['nav_menu_locations'] ?? []) : [];
+    meza_activity_log_record_theme_locations_change($new_locations, $old_locations);
+}, 10, 3);
+
+add_action('wp_update_nav_menu', function (int $menu_id): void {
+    $menu = wp_get_nav_menu_object($menu_id);
+    $menu_name = $menu instanceof WP_Term && !empty($menu->name)
+        ? trim((string) $menu->name)
+        : 'Navigation Menu';
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'menu_updated',
+        'object_id' => $menu_id,
+        'object_type' => 'menu',
+        'object_subtype' => 'navigation',
+        'object_label' => 'Menu',
+        'object_title' => $menu_name,
+        'object_url' => admin_url('nav-menus.php?action=edit&menu=' . $menu_id),
+        'details' => $menu_name . ' was updated.',
+    ]);
+}, 20);
+
+add_action('user_register', function (int $user_id): void {
+    $user = get_userdata($user_id);
+    if (!($user instanceof WP_User)) {
+        return;
+    }
+
+    $roles = array_map('translate_user_role', array_map('strval', (array) $user->roles));
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'user_created',
+        'object_id' => $user_id,
+        'object_type' => 'user',
+        'object_subtype' => 'account',
+        'object_label' => 'User',
+        'object_title' => meza_activity_log_get_user_object_title($user),
+        'object_url' => meza_activity_log_get_user_edit_url($user_id),
+        'details' => $roles !== [] ? ('Assigned role: ' . implode(', ', $roles) . '.') : 'User account created.',
+    ]);
+}, 20);
+
+add_action('profile_update', function (int $user_id, WP_User $old_user_data): void {
+    $user = get_userdata($user_id);
+    if (!($user instanceof WP_User)) {
+        return;
+    }
+
+    $changes = [];
+
+    if ((string) $old_user_data->display_name !== (string) $user->display_name) {
+        $changes[] = sprintf(
+            'Display name changed from %s to %s',
+            trim((string) $old_user_data->display_name) !== '' ? $old_user_data->display_name : 'Empty',
+            trim((string) $user->display_name) !== '' ? $user->display_name : 'Empty'
+        );
+    }
+
+    if ((string) $old_user_data->user_email !== (string) $user->user_email) {
+        $changes[] = sprintf(
+            'Email changed from %s to %s',
+            trim((string) $old_user_data->user_email) !== '' ? $old_user_data->user_email : 'Empty',
+            trim((string) $user->user_email) !== '' ? $user->user_email : 'Empty'
+        );
+    }
+
+    if ($changes === []) {
+        return;
+    }
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'user_updated',
+        'object_id' => $user_id,
+        'object_type' => 'user',
+        'object_subtype' => 'account',
+        'object_label' => 'User',
+        'object_title' => meza_activity_log_get_user_object_title($user),
+        'object_url' => meza_activity_log_get_user_edit_url($user_id),
+        'details' => implode('. ', $changes) . '.',
+    ]);
+}, 20, 2);
+
+add_action('set_user_role', function (int $user_id, string $role, array $old_roles): void {
+    $user = get_userdata($user_id);
+    if (!($user instanceof WP_User)) {
+        return;
+    }
+
+    $old_role_labels = array_map('translate_user_role', array_map('strval', $old_roles));
+    $new_role_label = $role !== '' ? translate_user_role($role) : 'None';
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'role_changed',
+        'object_id' => $user_id,
+        'object_type' => 'user',
+        'object_subtype' => 'role',
+        'object_label' => 'User Role',
+        'object_title' => meza_activity_log_get_user_object_title($user),
+        'object_url' => meza_activity_log_get_user_edit_url($user_id),
+        'details' => sprintf(
+            'Role changed from %s to %s.',
+            $old_role_labels !== [] ? implode(', ', $old_role_labels) : 'None',
+            $new_role_label
+        ),
+    ]);
+}, 20, 3);
+
+add_action('delete_user', function (int $user_id, $reassign, WP_User $user): void {
+    $details = 'User account deleted.';
+    if ((int) $reassign > 0) {
+        $details = 'User account deleted and reassigned to user #' . (int) $reassign . '.';
+    }
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'user_deleted',
+        'object_id' => $user_id,
+        'object_type' => 'user',
+        'object_subtype' => 'account',
+        'object_label' => 'User',
+        'object_title' => meza_activity_log_get_user_object_title($user),
+        'details' => $details,
+    ]);
+}, 20, 3);
+
+add_action('password_reset', function (WP_User $user): void {
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'password_reset',
+        'object_id' => (int) $user->ID,
+        'object_type' => 'user',
+        'object_subtype' => 'security',
+        'object_label' => 'User Security',
+        'object_title' => meza_activity_log_get_user_object_title($user),
+        'object_url' => meza_activity_log_get_user_edit_url((int) $user->ID),
+        'details' => 'Password reset completed.',
+    ]);
+}, 20);
+
+add_action('activated_plugin', function (string $plugin, bool $network_wide): void {
+    $plugin_name = $plugin;
+    if (function_exists('get_plugin_data')) {
+        $plugin_file = WP_PLUGIN_DIR . '/' . ltrim($plugin, '/');
+        if (is_readable($plugin_file)) {
+            $plugin_data = get_plugin_data($plugin_file, false, false);
+            $plugin_name = trim((string) ($plugin_data['Name'] ?? '')) ?: $plugin;
+        }
+    }
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'plugin_activated',
+        'object_type' => 'plugin',
+        'object_subtype' => sanitize_key(dirname($plugin)),
+        'object_label' => 'Plugin',
+        'object_title' => $plugin_name,
+        'object_url' => admin_url('plugins.php'),
+        'details' => $network_wide ? 'Plugin activated network-wide.' : 'Plugin activated.',
+    ]);
+}, 20, 2);
+
+add_action('deactivated_plugin', function (string $plugin, bool $network_wide): void {
+    $plugin_name = $plugin;
+    if (function_exists('get_plugin_data')) {
+        $plugin_file = WP_PLUGIN_DIR . '/' . ltrim($plugin, '/');
+        if (is_readable($plugin_file)) {
+            $plugin_data = get_plugin_data($plugin_file, false, false);
+            $plugin_name = trim((string) ($plugin_data['Name'] ?? '')) ?: $plugin;
+        }
+    }
+
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'plugin_deactivated',
+        'object_type' => 'plugin',
+        'object_subtype' => sanitize_key(dirname($plugin)),
+        'object_label' => 'Plugin',
+        'object_title' => $plugin_name,
+        'object_url' => admin_url('plugins.php'),
+        'details' => $network_wide ? 'Plugin deactivated network-wide.' : 'Plugin deactivated.',
+    ]);
+}, 20, 2);
+
+add_action('switch_theme', function ($new_name, WP_Theme $new_theme, WP_Theme $old_theme): void {
+    meza_activity_log_record_event([
+        'category' => 'site',
+        'action' => 'theme_switched',
+        'object_type' => 'theme',
+        'object_subtype' => sanitize_key((string) $new_theme->get_stylesheet()),
+        'object_label' => 'Theme',
+        'object_title' => trim((string) $new_theme->get('Name')) ?: (string) $new_name,
+        'object_url' => admin_url('themes.php'),
+        'details' => sprintf(
+            'Theme switched from %s to %s.',
+            trim((string) $old_theme->get('Name')) ?: $old_theme->get_stylesheet(),
+            trim((string) $new_theme->get('Name')) ?: $new_theme->get_stylesheet()
+        ),
+    ]);
+}, 20, 3);
+
+add_action('upgrader_process_complete', function ($upgrader, array $hook_extra): void {
+    $type = sanitize_key((string) ($hook_extra['type'] ?? ''));
+    $action = sanitize_key((string) ($hook_extra['action'] ?? ''));
+
+    if ($action === '' || $type === '') {
+        return;
+    }
+
+    if ($type === 'plugin') {
+        $plugins = array_map('strval', (array) ($hook_extra['plugins'] ?? []));
+        foreach ($plugins as $plugin) {
+            $plugin_name = $plugin;
+            if (function_exists('get_plugin_data')) {
+                $plugin_file = WP_PLUGIN_DIR . '/' . ltrim($plugin, '/');
+                if (is_readable($plugin_file)) {
+                    $plugin_data = get_plugin_data($plugin_file, false, false);
+                    $plugin_name = trim((string) ($plugin_data['Name'] ?? '')) ?: $plugin;
+                }
+            }
+
+            meza_activity_log_record_event([
+                'category' => 'site',
+                'action' => $action === 'install' ? 'plugin_installed' : 'plugin_updated',
+                'object_type' => 'plugin',
+                'object_subtype' => sanitize_key(dirname($plugin)),
+                'object_label' => 'Plugin',
+                'object_title' => $plugin_name,
+                'object_url' => admin_url('plugins.php'),
+                'details' => $action === 'install' ? 'Plugin installed.' : 'Plugin updated.',
+            ]);
+        }
+        return;
+    }
+
+    if ($type === 'theme') {
+        $themes = array_map('strval', (array) ($hook_extra['themes'] ?? []));
+        foreach ($themes as $stylesheet) {
+            $theme = wp_get_theme($stylesheet);
+            $theme_name = $theme instanceof WP_Theme
+                ? (trim((string) $theme->get('Name')) ?: $stylesheet)
+                : $stylesheet;
+
+            meza_activity_log_record_event([
+                'category' => 'site',
+                'action' => $action === 'install' ? 'theme_installed' : 'theme_updated',
+                'object_type' => 'theme',
+                'object_subtype' => sanitize_key($stylesheet),
+                'object_label' => 'Theme',
+                'object_title' => $theme_name,
+                'object_url' => admin_url('themes.php'),
+                'details' => $action === 'install' ? 'Theme installed.' : 'Theme updated.',
+            ]);
+        }
+        return;
+    }
+
+    if ($type === 'core' && $action === 'update') {
+        meza_activity_log_record_event([
+            'category' => 'site',
+            'action' => 'core_updated',
+            'object_type' => 'core',
+            'object_subtype' => 'wordpress',
+            'object_label' => 'WordPress Core',
+            'object_title' => 'WordPress',
+            'object_url' => admin_url('update-core.php'),
+            'details' => 'WordPress core updated.',
+        ]);
+    }
+}, 20, 2);
+
+add_action('acf/save_post', function ($post_id): void {
+    if (!is_string($post_id)) {
+        return;
+    }
+
+    meza_activity_log_record_acf_options_page_save($post_id);
+}, 40);
+
 function meza_activity_log_get_entries(): array
 {
     $entries = get_option(MEZA_ACTIVITY_LOG_OPTION, []);
@@ -368,7 +1066,14 @@ function meza_activity_log_get_filter_definitions(): array
     return [
         'all' => [
             'label' => 'All',
-            'actions' => [],
+        ],
+        'content' => [
+            'label' => 'Content Activity',
+            'categories' => ['content'],
+        ],
+        'site' => [
+            'label' => 'Site Activity',
+            'categories' => ['site'],
         ],
         'published' => [
             'label' => 'Published',
@@ -389,18 +1094,32 @@ function meza_activity_log_get_filter_definitions(): array
     ];
 }
 
+function meza_activity_log_entry_matches_filter(array $entry, array $definition): bool
+{
+    $category = sanitize_key((string) ($entry['category'] ?? ''));
+    if (!empty($definition['categories']) && !in_array($category, array_map('strval', (array) $definition['categories']), true)) {
+        return false;
+    }
+
+    $action = sanitize_key((string) ($entry['action'] ?? ''));
+    if (!empty($definition['actions']) && !in_array($action, array_map('strval', (array) $definition['actions']), true)) {
+        return false;
+    }
+
+    return true;
+}
+
 function meza_activity_log_filter_entries(array $entries, string $filter): array
 {
     $definitions = meza_activity_log_get_filter_definitions();
-    if (!isset($definitions[$filter]) || $definitions[$filter]['actions'] === []) {
+    $definition = $definitions[$filter] ?? null;
+
+    if (!is_array($definition) || $filter === 'all') {
         return $entries;
     }
 
-    $allowed_actions = array_map('strval', (array) $definitions[$filter]['actions']);
-
-    return array_values(array_filter($entries, function ($entry) use ($allowed_actions) {
-        $action = sanitize_key((string) ($entry['action'] ?? ''));
-        return in_array($action, $allowed_actions, true);
+    return array_values(array_filter($entries, static function ($entry) use ($definition): bool {
+        return is_array($entry) && meza_activity_log_entry_matches_filter($entry, $definition);
     }));
 }
 
@@ -419,7 +1138,8 @@ function meza_activity_log_get_today_counts(array $entries): array
 {
     $today = wp_date('Y-m-d', current_time('timestamp'));
     $counts = [
-        'updated' => 0,
+        'content' => 0,
+        'site' => 0,
         'published' => 0,
         'removed' => 0,
     ];
@@ -430,10 +1150,15 @@ function meza_activity_log_get_today_counts(array $entries): array
             continue;
         }
 
+        $category = sanitize_key((string) ($entry['category'] ?? ''));
+        if ($category === 'content') {
+            $counts['content']++;
+        } elseif ($category === 'site') {
+            $counts['site']++;
+        }
+
         $action = sanitize_key((string) ($entry['action'] ?? ''));
-        if ($action === 'updated') {
-            $counts['updated']++;
-        } elseif ($action === 'published') {
+        if ($action === 'published') {
             $counts['published']++;
         } elseif (in_array($action, ['trashed', 'deleted'], true)) {
             $counts['removed']++;
@@ -473,6 +1198,8 @@ function meza_activity_log_get_bootstrap_entries(int $limit = 20): array
 
         $entries[] = [
             'timestamp' => max(0, (int) get_post_modified_time('U', false, $post)),
+            'category' => 'content',
+            'category_label' => meza_activity_log_get_category_label('content'),
             'action' => 'updated',
             'action_label' => 'Updated',
             'user_id' => $last_editor_id,
@@ -585,7 +1312,7 @@ function meza_activity_log_get_list_table_instance(array $entries, bool $using_b
                     'when' => 'When',
                     'user' => 'User',
                     'action' => 'Action',
-                    'content' => 'Content',
+                    'content' => 'Item',
                     'details' => 'Details',
                 ];
             }
@@ -684,13 +1411,15 @@ function meza_activity_log_get_list_table_instance(array $entries, bool $using_b
 
             public function column_content(array $item): string
             {
-                $title = trim((string) ($item['object_title'] ?? 'Untitled content'));
+                $title = trim((string) ($item['object_title'] ?? 'Untitled item'));
                 $url = trim((string) ($item['object_url'] ?? ''));
-                $object_label = trim((string) ($item['object_label'] ?? 'Content'));
+                $object_label = trim((string) ($item['object_label'] ?? 'Item'));
                 $status_label = trim((string) ($item['status_label'] ?? ''));
+                $category_label = trim((string) ($item['category_label'] ?? ''));
                 $is_inferred = !empty($item['is_inferred']);
 
                 $meta_parts = array_filter([
+                    $category_label,
                     $object_label,
                     $status_label,
                     $is_inferred ? 'Snapshot' : '',
@@ -723,17 +1452,19 @@ function meza_activity_log_get_list_table_instance(array $entries, bool $using_b
 function meza_activity_log_render_summary_table(array $today_counts): void
 {
     ?>
-    <table class="widefat striped" style="max-width: 720px; margin-bottom: 16px;">
+    <table class="widefat striped" style="max-width: 820px; margin-bottom: 16px;">
         <thead>
             <tr>
-                <th>Updated today</th>
+                <th>Content today</th>
+                <th>Site today</th>
                 <th>Published today</th>
                 <th>Removed today</th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td><?= esc_html(number_format_i18n((int) $today_counts['updated'])) ?></td>
+                <td><?= esc_html(number_format_i18n((int) $today_counts['content'])) ?></td>
+                <td><?= esc_html(number_format_i18n((int) $today_counts['site'])) ?></td>
                 <td><?= esc_html(number_format_i18n((int) $today_counts['published'])) ?></td>
                 <td><?= esc_html(number_format_i18n((int) $today_counts['removed'])) ?></td>
             </tr>
@@ -758,7 +1489,7 @@ function meza_render_activity_log_dashboard_page(): void
     ?>
     <div class="wrap">
         <h1>Activity</h1>
-        <p>Latest editorial activity across posts, pages, media, and editable content types.</p>
+        <p>Review recent content changes separately from broader site-management activity.</p>
 
         <?php if ($using_bootstrap_entries) : ?>
             <div class="notice notice-info inline">
