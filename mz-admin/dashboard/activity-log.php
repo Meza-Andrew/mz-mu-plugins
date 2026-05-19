@@ -22,7 +22,9 @@ if (!defined('MEZA_ACTIVITY_LOG_PER_PAGE_DEFAULT')) {
 
 function meza_activity_log_get_menu_capability(): string
 {
-    return 'manage_options';
+    return function_exists('meza_view_site_activity_capability')
+        ? meza_view_site_activity_capability()
+        : 'meza_doc_view_site_activity';
 }
 
 function meza_activity_log_can_view(): bool
@@ -58,6 +60,7 @@ function meza_register_activity_log_dashboard_page(): void
     }
 }
 add_action('admin_menu', 'meza_register_activity_log_dashboard_page', 30);
+add_action('admin_menu_editor-menu_replaced', 'meza_register_activity_log_dashboard_page', 30);
 
 function meza_activity_log_load_dashboard_page(): void
 {

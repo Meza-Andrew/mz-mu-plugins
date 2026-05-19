@@ -65,6 +65,14 @@ if (!function_exists('meza_get_site_overview_dashboard_post_type_items')) {
             }
 
             if (
+                $post_type_name === 'post'
+                && function_exists('meza_are_posts_enabled')
+                && !meza_are_posts_enabled()
+            ) {
+                continue;
+            }
+
+            if (
                 in_array($post_type_name, ['attachment', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request'], true)
                 || str_starts_with($post_type_name, 'wp_')
                 || (function_exists('meza_is_acf_admin_post_type') && meza_is_acf_admin_post_type($post_type_name))
@@ -434,6 +442,7 @@ function meza_render_yoast_panel_state_script(): void
             const storageKey = 'mezaYoastPanelOpen';
             const defaultOpen = false;
             const boundTargets = new WeakSet();
+            const postType = <?php echo wp_json_encode($post_type); ?> || '';
             const taxonomyLabels = <?php echo wp_json_encode($taxonomy_labels); ?> || [];
 
             const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -477,6 +486,31 @@ function meza_render_yoast_panel_state_script(): void
                 if (controls.includes('taxonomy') || labelledBy.includes('taxonomy')) return true;
 
                 return taxonomyLabels.some((taxonomyLabel) => taxonomyLabel !== '' && label === taxonomyLabel);
+            };
+            const getBlockEditorTaxonomyPanels = (container) => {
+                const panels = getSidebarButtons()
+                    .filter((button) => matchesPanelButton(button, isTaxonomyPanelButton))
+                    .map((button) => ({
+                        button,
+                        label: getButtonText(button),
+                        panel: getBlockEditorPanel(button),
+                    }))
+                    .filter((entry) => isElement(entry.panel) && (!isElement(container) || entry.panel.parentElement === container));
+
+                panels.sort((left, right) => left.label.localeCompare(right.label, undefined, {
+                    sensitivity: 'base',
+                    numeric: true,
+                }));
+
+                const seenPanels = new WeakSet();
+
+                return panels
+                    .map((entry) => entry.panel)
+                    .filter((panel) => {
+                        if (!isElement(panel) || seenPanels.has(panel)) return false;
+                        seenPanels.add(panel);
+                        return true;
+                    });
             };
 
             const readPreference = () => {
@@ -606,26 +640,8 @@ function meza_render_yoast_panel_state_script(): void
                 targetAnchor.after(featuredImagePanel);
             };
 
-            const moveBlockEditorAttributesAheadOfTaxonomies = () => {
-                const attributesPanel = findBlockEditorPanelByButton(({
-                    label,
-                    controls,
-                    labelledBy
-                }) => (
-                    label === 'attributes' ||
-                    controls.includes('page-attributes') ||
-                    labelledBy.includes('page-attributes')
-                ));
-
-                if (!isElement(attributesPanel) || !isElement(attributesPanel.parentElement)) return;
-
-                const container = attributesPanel.parentElement;
-                const taxonomyAnchor = findBlockEditorPanelByButton(isTaxonomyPanelButton);
-                if (
-                    !isElement(taxonomyAnchor) ||
-                    taxonomyAnchor.parentElement !== container ||
-                    taxonomyAnchor === attributesPanel
-                ) {
+            const moveBlockEditorTaxonomiesAndAttributes = () => {
+                if (postType === 'page') {
                     return;
                 }
 
@@ -638,6 +654,23 @@ function meza_render_yoast_panel_state_script(): void
                     controls.includes('featured-image') ||
                     labelledBy.includes('featured-image')
                 ));
+                const attributesPanel = findBlockEditorPanelByButton(({
+                    label,
+                    controls,
+                    labelledBy
+                }) => (
+                    label === 'attributes' ||
+                    controls.includes('page-attributes') ||
+                    labelledBy.includes('page-attributes')
+                ));
+
+                const basePanel = isElement(featuredImagePanel) ? featuredImagePanel : attributesPanel;
+                if (!isElement(basePanel) || !isElement(basePanel.parentElement)) {
+                    return;
+                }
+
+                const container = basePanel.parentElement;
+                const taxonomyPanels = getBlockEditorTaxonomyPanels(container).filter((panel) => panel !== attributesPanel);
                 const publishAnchor = findBlockEditorPanelByButton(({
                     label,
                     controls,
@@ -653,33 +686,57 @@ function meza_render_yoast_panel_state_script(): void
                 ));
                 const anchor = (
                         isElement(featuredImagePanel) &&
-                        featuredImagePanel.parentElement === container &&
-                        featuredImagePanel !== attributesPanel
+                        featuredImagePanel.parentElement === container
                     ) ?
                     featuredImagePanel :
                     (
                         isElement(publishAnchor) &&
-                        publishAnchor.parentElement === container &&
-                        publishAnchor !== attributesPanel ?
+                        publishAnchor.parentElement === container ?
                         publishAnchor :
                         null
                     );
 
-                if (isElement(anchor)) {
-                    if (anchor.nextElementSibling !== attributesPanel) {
-                        anchor.after(attributesPanel);
+                let insertionAnchor = isElement(anchor) ? anchor : null;
+
+                for (const taxonomyPanel of taxonomyPanels) {
+                    if (!isElement(taxonomyPanel) || taxonomyPanel.parentElement !== container) {
+                        continue;
+                    }
+
+                    if (isElement(insertionAnchor)) {
+                        if (insertionAnchor.nextElementSibling !== taxonomyPanel) {
+                            insertionAnchor.after(taxonomyPanel);
+                        }
+                        insertionAnchor = taxonomyPanel;
+                        continue;
+                    }
+
+                    if (container.firstElementChild !== taxonomyPanel) {
+                        container.insertBefore(taxonomyPanel, container.firstElementChild);
+                    }
+
+                    insertionAnchor = taxonomyPanel;
+                }
+
+                if (!isElement(attributesPanel) || attributesPanel.parentElement !== container) {
+                    return;
+                }
+
+                if (isElement(insertionAnchor)) {
+                    if (insertionAnchor.nextElementSibling !== attributesPanel) {
+                        insertionAnchor.after(attributesPanel);
                     }
                     return;
                 }
 
-                if (taxonomyAnchor.previousElementSibling !== attributesPanel) {
-                    container.insertBefore(attributesPanel, taxonomyAnchor);
+                if (container.firstElementChild !== attributesPanel) {
+                    container.insertBefore(attributesPanel, container.firstElementChild);
                 }
             };
 
             const moveYoastToBottom = () => {
                 moveBlockEditorFeaturedImageUnderPublish();
-                moveBlockEditorAttributesAheadOfTaxonomies();
+                moveBlockEditorTaxonomiesAndAttributes();
                 moveClassicYoastToBottom();
                 moveBlockEditorYoastToBottom();
             };

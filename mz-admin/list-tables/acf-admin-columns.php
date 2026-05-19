@@ -9,6 +9,342 @@ function meza_is_acf_admin_post_type(string $post_type): bool
     return str_starts_with($post_type, 'acf-');
 }
 
+function meza_get_acf_admin_definition_status_query_var(): string
+{
+    return 'mz_acf_definition_status';
+}
+
+function meza_get_acf_admin_definition_status_labels(): array
+{
+    return [
+        'default' => 'Default',
+        'custom' => 'Custom',
+    ];
+}
+
+function meza_normalize_acf_admin_definition_status(string $status): string
+{
+    $status = sanitize_key($status);
+
+    if ($status === 'custom') {
+        return 'custom';
+    }
+
+    if (in_array($status, ['default', 'defaults'], true)) {
+        return 'default';
+    }
+
+    return '';
+}
+
+function meza_get_acf_admin_definition_kind(string $post_type): string
+{
+    switch ($post_type) {
+        case 'acf-field-group':
+            return 'field_groups';
+
+        case 'acf-post-type':
+            return 'post_types';
+
+        case 'acf-taxonomy':
+            return 'taxonomies';
+
+        case 'acf-ui-options-page':
+            return 'options_pages';
+    }
+
+    return '';
+}
+
+function meza_is_acf_admin_definition_status_supported_post_type(string $post_type): bool
+{
+    return meza_get_acf_admin_definition_kind($post_type) !== '';
+}
+
+function meza_get_acf_admin_definition_export_group(string $post_type, array $object): string
+{
+    if (!function_exists('meza_get_acf_export_tool_group_for_post')) {
+        return 'custom';
+    }
+
+    $group = meza_get_acf_export_tool_group_for_post($post_type, $object);
+
+    return in_array($group, ['custom', 'defaults', 'built_in'], true)
+        ? $group
+        : 'custom';
+}
+
+function meza_map_acf_admin_definition_export_group_to_status(string $group): string
+{
+    return meza_normalize_acf_admin_definition_status($group);
+}
+
+function meza_is_acf_admin_definition_status_special_view(string $view): bool
+{
+    return in_array($view, ['trash', 'sync'], true);
+}
+
+function meza_get_current_acf_admin_definition_status_filter(): string
+{
+    $query_var = meza_get_acf_admin_definition_status_query_var();
+    $value = isset($_GET[$query_var]) ? sanitize_key((string) wp_unslash($_GET[$query_var])) : '';
+
+    if ($value === '') {
+        return '';
+    }
+
+    if ($value === 'defaults') {
+        return 'default';
+    }
+
+    return array_key_exists($value, meza_get_acf_admin_definition_status_labels()) ? $value : '';
+}
+
+function meza_get_acf_admin_definition_status_object(string $post_type, int $post_id): array
+{
+    switch ($post_type) {
+        case 'acf-field-group':
+            if (!function_exists('acf_get_field_group')) {
+                return [];
+            }
+
+            $field_group = acf_get_field_group($post_id);
+
+            return is_array($field_group)
+                ? meza_get_full_acf_field_group_for_matching($field_group)
+                : [];
+
+        case 'acf-post-type':
+            return function_exists('acf_get_post_type')
+                ? (array) acf_get_post_type($post_id)
+                : [];
+
+        case 'acf-taxonomy':
+            return function_exists('acf_get_taxonomy')
+                ? (array) acf_get_taxonomy($post_id)
+                : [];
+
+        case 'acf-ui-options-page':
+            return function_exists('acf_get_ui_options_page')
+                ? (array) acf_get_ui_options_page($post_id)
+                : [];
+    }
+
+    return [];
+}
+
+function meza_get_acf_admin_definition_status_for_post(string $post_type, int $post_id): string
+{
+    static $cache = [];
+
+    $cache_key = $post_type . ':' . $post_id;
+    if (isset($cache[$cache_key])) {
+        return $cache[$cache_key];
+    }
+
+    $object = meza_get_acf_admin_definition_status_object($post_type, $post_id);
+
+    $cache[$cache_key] = $object !== []
+        ? meza_map_acf_admin_definition_export_group_to_status(
+            meza_get_acf_admin_definition_export_group($post_type, $object)
+        )
+        : 'custom';
+
+    return $cache[$cache_key];
+}
+
+function meza_is_listed_acf_admin_definition_object(array $object): bool
+{
+    return (int) ($object['ID'] ?? 0) > 0;
+}
+
+function meza_get_acf_admin_definition_status_filter_url(string $post_type, string $status): string
+{
+    $query_var = meza_get_acf_admin_definition_status_query_var();
+    $query_args = [
+        'post_type' => $post_type,
+        $query_var => $status,
+    ];
+
+    if (isset($_GET['s']) && $_GET['s'] !== '') {
+        $query_args['s'] = sanitize_text_field((string) wp_unslash($_GET['s']));
+    }
+
+    if (isset($_GET['orderby']) && $_GET['orderby'] !== '') {
+        $query_args['orderby'] = sanitize_key((string) wp_unslash($_GET['orderby']));
+    }
+
+    if (isset($_GET['order']) && $_GET['order'] !== '') {
+        $query_args['order'] = sanitize_key((string) wp_unslash($_GET['order']));
+    }
+
+    return add_query_arg($query_args, admin_url('edit.php'));
+}
+
+function meza_insert_acf_definition_status_column(array $columns): array
+{
+    if (!is_array($columns)) {
+        return $columns;
+    }
+
+    $updated = [];
+    $inserted = false;
+
+    foreach ($columns as $key => $label) {
+        $updated[$key] = $label;
+
+        if ($key === 'title') {
+            $updated['meza-acf-definition-status'] = 'Config';
+            $inserted = true;
+        }
+    }
+
+    if (!$inserted) {
+        $updated['meza-acf-definition-status'] = 'Config';
+    }
+
+    return $updated;
+}
+
+function meza_render_acf_definition_status_column(string $column_name, int $post_id): void
+{
+    if ($column_name !== 'meza-acf-definition-status') {
+        return;
+    }
+
+    $post_type = get_post_type($post_id);
+    if (!is_string($post_type) || !meza_is_acf_admin_definition_status_supported_post_type($post_type)) {
+        echo '<span class="acf-emdash" aria-hidden="true">—</span>';
+        return;
+    }
+
+    $status = meza_get_acf_admin_definition_status_for_post($post_type, $post_id);
+    if ($status === '') {
+        echo '<span class="acf-emdash" aria-hidden="true">—</span>';
+        return;
+    }
+
+    $labels = meza_get_acf_admin_definition_status_labels();
+    $label = $labels[$status] ?? ucfirst($status);
+
+    echo '<a href="' . esc_url(meza_get_acf_admin_definition_status_filter_url($post_type, $status)) . '">' . esc_html($label) . '</a>';
+}
+
+function meza_get_acf_admin_definition_status_counts(string $post_type): array
+{
+    static $counts_cache = [];
+
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '') {
+        return [];
+    }
+
+    if (isset($counts_cache[$post_type])) {
+        return $counts_cache[$post_type];
+    }
+
+    if (!meza_is_acf_admin_definition_status_supported_post_type($post_type) || !function_exists('acf_get_internal_post_type_posts')) {
+        $counts_cache[$post_type] = [];
+        return $counts_cache[$post_type];
+    }
+
+    $counts = [
+        'default' => 0,
+        'custom' => 0,
+    ];
+
+    foreach ((array) acf_get_internal_post_type_posts($post_type) as $object) {
+        if (!is_array($object) || !meza_is_listed_acf_admin_definition_object($object)) {
+            continue;
+        }
+
+        $status = meza_map_acf_admin_definition_export_group_to_status(
+            meza_get_acf_admin_definition_export_group($post_type, $object)
+        );
+        if ($status === '') {
+            continue;
+        }
+
+        if (!isset($counts[$status])) {
+            $counts[$status] = 0;
+        }
+
+        $counts[$status]++;
+    }
+
+    $counts_cache[$post_type] = $counts;
+
+    return $counts_cache[$post_type];
+}
+
+function meza_add_acf_definition_status_views(array $views): array
+{
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') {
+        return $views;
+    }
+
+    $post_type = sanitize_key((string) ($screen->post_type ?? ''));
+    $view = isset($_GET['post_status']) ? sanitize_key((string) wp_unslash($_GET['post_status'])) : '';
+    if (
+        !meza_is_acf_admin_definition_status_supported_post_type($post_type)
+        || meza_is_acf_admin_definition_status_special_view($view)
+    ) {
+        return $views;
+    }
+
+    $counts = meza_get_acf_admin_definition_status_counts($post_type);
+    $current_filter = meza_get_current_acf_admin_definition_status_filter();
+    $labels = meza_get_acf_admin_definition_status_labels();
+    $updated_views = [];
+    $inserted = false;
+
+    $legacy_status_view_keys = [
+        'meza_acf_definition_status_built_in',
+        'meza_acf_definition_status_defaults',
+        'meza_acf_definition_status_default',
+        'meza_acf_definition_status_custom',
+        'built_in',
+        'defaults',
+    ];
+
+    foreach ($views as $key => $html) {
+        if (in_array($key, $legacy_status_view_keys, true)) {
+            continue;
+        }
+
+        $updated_views[$key] = $html;
+
+        if ($key === 'all') {
+            foreach ($labels as $status => $label) {
+                $updated_views['meza_acf_definition_status_' . $status] = sprintf(
+                    '<a href="%1$s"%2$s>%3$s <span class="count">(%4$s)</span></a>',
+                    esc_url(meza_get_acf_admin_definition_status_filter_url($post_type, $status)),
+                    $current_filter === $status ? ' class="current" aria-current="page"' : '',
+                    esc_html($label),
+                    number_format_i18n((int) ($counts[$status] ?? 0))
+                );
+            }
+
+            $inserted = true;
+        }
+    }
+
+    if (!$inserted) {
+        foreach ($labels as $status => $label) {
+            $updated_views['meza_acf_definition_status_' . $status] = sprintf(
+                '<a href="%1$s"%2$s>%3$s <span class="count">(%4$s)</span></a>',
+                esc_url(meza_get_acf_admin_definition_status_filter_url($post_type, $status)),
+                $current_filter === $status ? ' class="current" aria-current="page"' : '',
+                esc_html($label),
+                number_format_i18n((int) ($counts[$status] ?? 0))
+            );
+        }
+    }
+
+    return $updated_views;
+}
+
 function meza_strip_acf_key_description_columns(array $columns): array
 {
     if (!is_array($columns)) return $columns;
@@ -57,6 +393,7 @@ function meza_strip_acf_key_description_columns(array $columns): array
 
     $order = [
         ['title'],
+        ['meza-acf-definition-status', 'meza_acf_definition_status', 'definition status', 'type'],
         ['location'],
         ['post_types', 'post_type', 'post types', 'post type'],
         ['taxonomies', 'taxonomy'],
@@ -84,7 +421,69 @@ add_action('current_screen', function ($screen) {
     $post_type = (string) ($screen->post_type ?? '');
     if (!meza_is_acf_admin_post_type($post_type)) return;
 
+    $current_view = isset($_GET['post_status']) ? sanitize_key((string) wp_unslash($_GET['post_status'])) : '';
+
+    if (
+        meza_is_acf_admin_definition_status_supported_post_type($post_type)
+        && !meza_is_acf_admin_definition_status_special_view($current_view)
+    ) {
+        add_filter("manage_{$post_type}_posts_columns", 'meza_insert_acf_definition_status_column', 9998);
+        add_action("manage_{$post_type}_posts_custom_column", 'meza_render_acf_definition_status_column', 10, 2);
+        add_filter("views_edit-{$post_type}", 'meza_add_acf_definition_status_views', 1000);
+    }
+
     add_filter("manage_{$post_type}_posts_columns", 'meza_strip_acf_key_description_columns', 9999);
+});
+
+add_action('pre_get_posts', function (WP_Query $query): void {
+    if (
+        !is_admin()
+        || !$query->is_main_query()
+        || $query->get('post_type') === null
+    ) {
+        return;
+    }
+
+    $post_type = sanitize_key((string) $query->get('post_type'));
+    if (!meza_is_acf_admin_definition_status_supported_post_type($post_type)) {
+        return;
+    }
+
+    $current_view = isset($_GET['post_status']) ? sanitize_key((string) wp_unslash($_GET['post_status'])) : '';
+    if (meza_is_acf_admin_definition_status_special_view($current_view)) {
+        return;
+    }
+
+    $status_filter = meza_get_current_acf_admin_definition_status_filter();
+    if ($status_filter === '' || !function_exists('acf_get_internal_post_type_posts')) {
+        return;
+    }
+
+    $matching_ids = [];
+
+    foreach ((array) acf_get_internal_post_type_posts($post_type) as $object) {
+        if (!is_array($object) || !meza_is_listed_acf_admin_definition_object($object)) {
+            continue;
+        }
+
+        $object_status = meza_map_acf_admin_definition_export_group_to_status(
+            meza_get_acf_admin_definition_export_group($post_type, $object)
+        );
+        if ($object_status === '') {
+            continue;
+        }
+
+        if ($object_status !== $status_filter) {
+            continue;
+        }
+
+        $object_id = (int) ($object['ID'] ?? 0);
+        if ($object_id > 0) {
+            $matching_ids[] = $object_id;
+        }
+    }
+
+    $query->set('post__in', $matching_ids === [] ? [0] : array_values(array_unique($matching_ids)));
 });
 
 function meza_render_admin_list_table_scroll_styles(): void
@@ -166,9 +565,11 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-website{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-mz_faq_count{width:80px;min-width:80px;max-width:80px;}' .
             '.wp-list-table .column-mz_form_recipients{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_form_submissions{width:110px;min-width:110px;max-width:110px;}' .
             '.wp-list-table .column-mz_slug{width:175px;min-width:175px;max-width:175px;}' .
             '.wp-list-table .column-mz_organization_url{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-mz_profile_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_certification_link{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-mz_profile_title{width:175px;min-width:175px;max-width:175px;}' .
             '.wp-list-table .column-mz_summary{width:325px;min-width:325px;max-width:325px;}' .
             '.wp-list-table .column-mz_review_quote{width:325px;min-width:325px;max-width:325px;}' .
@@ -176,6 +577,7 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-mz_review_link{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;min-width:225px;max-width:225px;}' .
             '.wp-list-table .column-acf-count{width:125px;min-width:125px;max-width:125px;}' .
+            '.wp-list-table .column-meza-acf-definition-status{width:125px;min-width:125px;max-width:125px;}' .
             '.wp-list-table .column-mz_thumbnail{width:125px;min-width:125px;max-width:125px;}' .
             '.wp-list-table .column-title{width:225px;min-width:225px;max-width:225px;}' .
             '.wp-list-table .column-mz_modified,.wp-list-table .column-modified,.wp-list-table .column-mz_published,.wp-list-table .column-date{width:225px;min-width:225px;max-width:225px;}' .
@@ -208,9 +610,11 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-website{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-mz_faq_count{width:80px;min-width:80px;max-width:80px;}' .
             '.wp-list-table .column-mz_form_recipients{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_form_submissions{width:110px;min-width:110px;max-width:110px;}' .
             '.wp-list-table .column-mz_slug{width:175px;min-width:175px;max-width:175px;}' .
             '.wp-list-table .column-mz_organization_url{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-mz_profile_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-mz_certification_link{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-mz_profile_title{width:175px;min-width:175px;max-width:175px;}' .
             '.wp-list-table .column-mz_summary{width:325px;min-width:325px;max-width:325px;}' .
             '.wp-list-table .column-mz_review_quote{width:325px;min-width:325px;max-width:325px;}' .
@@ -218,6 +622,7 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-mz_review_link{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;min-width:225px;max-width:225px;}' .
             '.wp-list-table .column-acf-count{width:125px;min-width:125px;max-width:125px;}' .
+            '.wp-list-table .column-meza-acf-definition-status{width:125px;min-width:125px;max-width:125px;}' .
             '.wp-list-table .column-mz_thumbnail{width:125px;min-width:125px;max-width:125px;}' .
             '.wp-list-table .column-title{width:225px;min-width:225px;max-width:225px;}' .
             '.wp-list-table .column-mz_modified,.wp-list-table .column-modified,.wp-list-table .column-mz_published,.wp-list-table .column-date{width:225px;min-width:225px;max-width:225px;}' .
@@ -258,9 +663,11 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table .column-website{width:200px;max-width:200px;}' .
         '.wp-list-table .column-mz_faq_count{width:80px;max-width:80px;}' .
         '.wp-list-table .column-mz_form_recipients{width:200px;max-width:200px;}' .
+        '.wp-list-table .column-mz_form_submissions{width:110px;max-width:110px;}' .
         '.wp-list-table .column-mz_slug{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_organization_url{width:200px;max-width:200px;}' .
         '.wp-list-table .column-mz_profile_link{width:200px;max-width:200px;}' .
+        '.wp-list-table .column-mz_certification_link{width:200px;max-width:200px;}' .
         '.wp-list-table .column-mz_profile_title{width:175px;max-width:175px;}' .
         '.wp-list-table .column-mz_summary{width:325px;max-width:325px;}' .
         '.wp-list-table .column-mz_review_quote{width:325px;max-width:325px;}' .
@@ -268,6 +675,7 @@ add_action('admin_head-edit.php', function () {
         '.wp-list-table .column-mz_review_link{width:200px;max-width:200px;}' .
         '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;max-width:225px;}' .
         '.wp-list-table .column-acf-count{width:125px;max-width:125px;}' .
+        '.wp-list-table .column-meza-acf-definition-status{width:125px;max-width:125px;}' .
         '.wp-list-table .column-mz_thumbnail{width:125px;}' .
         '.wp-list-table td.column-mz_thumbnail{vertical-align:top!important;}' .
         '.wp-list-table td.column-mz_thumbnail .mz-thumb-wrap{display:inline-block!important;max-width:100%!important;line-height:0!important;margin:0 0 6px!important;}' .

@@ -968,6 +968,25 @@ add_filter('screen_settings', function ($screen_settings, $screen) {
     ) ?? $screen_settings;
 }, 200, 2);
 
+add_filter('screen_settings', function ($screen_settings, $screen) {
+    if (
+        !($screen instanceof WP_Screen)
+        || (string) ($screen->base ?? '') !== 'edit'
+        || (string) ($screen->post_type ?? '') !== 'post'
+        || (function_exists('meza_are_post_categories_enabled') && meza_are_post_categories_enabled())
+    ) {
+        return $screen_settings;
+    }
+
+    $updated = preg_replace(
+        '#<label[^>]+for="(?:taxonomy-category|categories|category)-hide"[^>]*>.*?</label>#si',
+        '',
+        (string) $screen_settings
+    );
+
+    return is_string($updated) ? $updated : $screen_settings;
+}, 200, 2);
+
 function meza_render_admin_help_tab_hide(): void
 {
     echo '<style id="meza-admin-help-tab-hide">#contextual-help-link-wrap,#contextual-help-wrap{display:none!important;}</style>';
@@ -979,13 +998,30 @@ function meza_render_post_screen_options_cleanup(): void
     if (!($screen instanceof WP_Screen)) return;
 
     $post_type = (string) ($screen->post_type ?? '');
+    $post_tags_enabled = function_exists('meza_are_post_tags_enabled') && meza_are_post_tags_enabled();
 
     echo '<style id="meza-post-screen-options-cleanup">#screen-options-wrap .columns-prefs,#screen-options-wrap .metabox-prefs>p{display:none!important;}</style>';
     if (meza_content_permissions_metabox_module_is_available() && !meza_can_access_content_permissions_panel()) {
         echo '<style id="meza-post-content-permissions-hide">#ame-cpe-content-permissions,#screen-options-wrap label[for="ame-cpe-content-permissions-hide"]{display:none!important;}</style>';
     }
     if ($post_type === 'post') {
-        echo '<style id="meza-post-screen-elements-hide">#screen-options-wrap label[for="trackbacksdiv-hide"],#screen-options-wrap label[for="slugdiv-hide"],#screen-options-wrap label[for="commentstatusdiv-hide"],#screen-options-wrap label[for="commentsdiv-hide"],#screen-options-wrap label[for="tagsdiv-post_tag-hide"],#screen-options-wrap label[for="authordiv-hide"]{display:none!important;}</style>';
+        $selectors = [
+            '#screen-options-wrap label[for="trackbacksdiv-hide"]',
+            '#screen-options-wrap label[for="slugdiv-hide"]',
+            '#screen-options-wrap label[for="commentstatusdiv-hide"]',
+            '#screen-options-wrap label[for="commentsdiv-hide"]',
+            '#screen-options-wrap label[for="authordiv-hide"]',
+        ];
+
+        if (!$post_tags_enabled) {
+            $selectors[] = '#screen-options-wrap label[for="tagsdiv-post_tag-hide"]';
+        }
+
+        if (!(function_exists('meza_are_post_categories_enabled') && meza_are_post_categories_enabled())) {
+            $selectors[] = '#screen-options-wrap label[for="categorydiv-hide"]';
+        }
+
+        echo '<style id="meza-post-screen-elements-hide">' . implode(',', $selectors) . '{display:none!important;}</style>';
     }
     echo <<<'HTML'
 <script id="meza-post-screen-options-sort">
@@ -1013,6 +1049,72 @@ document.addEventListener('DOMContentLoaded', function () {
 HTML;
 }
 
+function meza_render_posts_list_screen_options_cleanup(): void
+{
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (
+        !($screen instanceof WP_Screen)
+        || (string) ($screen->base ?? '') !== 'edit'
+        || (string) ($screen->post_type ?? '') !== 'post'
+        || (function_exists('meza_are_post_categories_enabled') && meza_are_post_categories_enabled())
+    ) {
+        return;
+    }
+
+    echo <<<'HTML'
+<style id="meza-posts-list-category-screen-option-hide">
+#screen-options-wrap label[for="taxonomy-category-hide"],
+#screen-options-wrap label[for="categories-hide"],
+#screen-options-wrap label[for="category-hide"] {
+    display: none !important;
+}
+</style>
+<script id="meza-posts-list-category-screen-option-remove">
+document.addEventListener('DOMContentLoaded', function () {
+    [
+        'taxonomy-category-hide',
+        'categories-hide',
+        'category-hide'
+    ].forEach(function (id) {
+        var label = document.querySelector('#screen-options-wrap label[for="' + id + '"]');
+        if (label) {
+            label.remove();
+        }
+    });
+});
+</script>
+HTML;
+}
+
+function meza_render_writing_settings_category_cleanup(): void
+{
+    if (function_exists('meza_are_post_categories_enabled') && meza_are_post_categories_enabled()) {
+        return;
+    }
+
+    echo <<<'HTML'
+<style id="meza-writing-settings-category-hide">
+#default_category {
+    display: none !important;
+}
+</style>
+<script id="meza-writing-settings-category-remove">
+document.addEventListener('DOMContentLoaded', function () {
+    var field = document.getElementById('default_category');
+    if (!field) {
+        return;
+    }
+
+    var row = field.closest('tr');
+    if (row) {
+        row.remove();
+    }
+});
+</script>
+HTML;
+}
+add_action('admin_head-options-writing.php', 'meza_render_writing_settings_category_cleanup');
+
 function meza_render_term_content_permissions_cleanup(): void
 {
     if (meza_can_access_content_permissions_panel()) {
@@ -1039,6 +1141,11 @@ add_action('current_screen', function ($screen): void {
 
     if (in_array($screen_base, ['post', 'post-new'], true)) {
         add_action('admin_head', 'meza_render_post_screen_options_cleanup', 200);
+        return;
+    }
+
+    if ($screen_base === 'edit' && (string) ($screen->post_type ?? '') === 'post') {
+        add_action('admin_head', 'meza_render_posts_list_screen_options_cleanup', 200);
         return;
     }
 
@@ -1290,7 +1397,35 @@ function meza_get_side_metabox_priority_ids(string $post_type): array
         return ['submitdiv', 'pageparentdiv', 'postimagediv'];
     }
 
-    return ['submitdiv', 'postimagediv', 'pageparentdiv'];
+    $taxonomy_priorities = [];
+
+    foreach (get_object_taxonomies($post_type, 'objects') as $taxonomy) {
+        if (!($taxonomy instanceof WP_Taxonomy) || empty($taxonomy->show_ui)) {
+            continue;
+        }
+
+        $taxonomy_name = sanitize_key((string) ($taxonomy->name ?? ''));
+        if ($taxonomy_name === '') {
+            continue;
+        }
+
+        $taxonomy_priorities[] = [
+            'id' => !empty($taxonomy->hierarchical)
+                ? $taxonomy_name . 'div'
+                : 'tagsdiv-' . $taxonomy_name,
+            'label' => trim((string) ($taxonomy->labels->name ?? $taxonomy->labels->singular_name ?? $taxonomy_name)),
+        ];
+    }
+
+    usort($taxonomy_priorities, static function (array $left, array $right): int {
+        return strnatcasecmp((string) ($left['label'] ?? ''), (string) ($right['label'] ?? ''));
+    });
+
+    $taxonomy_ids = array_values(array_filter(array_map(static function (array $taxonomy): string {
+        return sanitize_key((string) ($taxonomy['id'] ?? ''));
+    }, $taxonomy_priorities)));
+
+    return array_merge(['submitdiv', 'postimagediv'], $taxonomy_ids, ['pageparentdiv']);
 }
 
 function meza_normalize_metabox_order_contexts($order_value): array
@@ -1366,6 +1501,31 @@ function meza_post_metabox_order_with_side_priorities($order_value, string $post
 
     return $pairs;
 }
+
+// Post edit screens: re-apply side-column priority updates once per user when the priority rules change.
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen)) return;
+    if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) return;
+
+    $post_type = sanitize_key((string) ($screen->post_type ?? ''));
+    if ($post_type === '' || $post_type === 'page') return;
+
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) return;
+
+    $screen_id = sanitize_key((string) ($screen->id ?? ''));
+    if ($screen_id === '') return;
+
+    $migration_key = 'meza_side_metabox_priority_initialized_v1_' . $screen_id;
+    if (get_user_meta($user_id, $migration_key, true)) return;
+
+    $order_key = 'meta-box-order_' . $screen_id;
+    $saved_order = get_user_option($order_key, $user_id);
+    $updated_order = meza_post_metabox_order_with_side_priorities($saved_order, $post_type);
+    update_user_option($user_id, $order_key, $updated_order, false);
+
+    update_user_meta($user_id, $migration_key, 1);
+}, 190);
 
 function meza_post_metabox_order_with_excerpt_in_context($order_value, string $preferred_context, string $post_type): array
 {
@@ -1584,12 +1744,221 @@ if (!function_exists('meza_normalize_screen_option_value')) {
     }
 }
 
+if (!function_exists('meza_normalize_post_list_hidden_columns_for_defaults')) {
+    function meza_normalize_post_list_hidden_columns_for_defaults(array $hidden, string $screen_id): array
+    {
+        $hidden = array_values(array_unique(array_map('strval', $hidden)));
+        $screen_id = trim($screen_id);
+
+        if ($screen_id === '' || !str_starts_with($screen_id, 'edit-')) {
+            return $hidden;
+        }
+
+        $post_type = sanitize_key(substr($screen_id, strlen('edit-')));
+        if ($post_type === '') {
+            return $hidden;
+        }
+
+        if (
+            function_exists('meza_post_type_supports_menu_order_admin_column')
+            && function_exists('meza_post_type_menu_order_admin_column_is_default_visible')
+            && meza_post_type_supports_menu_order_admin_column($post_type)
+            && meza_post_type_menu_order_admin_column_is_default_visible($post_type)
+        ) {
+            $hidden = array_values(array_diff($hidden, ['mz_menu_order']));
+        }
+
+        if (
+            function_exists('meza_certification_link_admin_column_is_default_visible')
+            && $post_type === 'certification'
+            && meza_certification_link_admin_column_is_default_visible($post_type)
+        ) {
+            $hidden = array_values(array_diff($hidden, ['mz_certification_link']));
+        }
+
+        return $hidden;
+    }
+}
+
+if (!function_exists('meza_get_admin_screen_option_storage_meta_keys')) {
+    function meza_get_admin_screen_option_storage_meta_keys(string $meta_key): array
+    {
+        $meta_key = trim($meta_key);
+        if ($meta_key === '') {
+            return [];
+        }
+
+        global $wpdb;
+
+        $keys = [$meta_key];
+        if ($wpdb instanceof wpdb) {
+            $keys[] = $wpdb->get_blog_prefix() . $meta_key;
+        }
+
+        return array_values(array_unique(array_filter(array_map('strval', $keys))));
+    }
+}
+
+if (!function_exists('meza_get_raw_user_option')) {
+    function meza_get_raw_user_option(string $meta_key, int $user_id, ?bool &$found = null)
+    {
+        $found = false;
+        if ($user_id <= 0) {
+            return null;
+        }
+
+        foreach (meza_get_admin_screen_option_storage_meta_keys($meta_key) as $storage_key) {
+            if (!metadata_exists('user', $user_id, $storage_key)) {
+                continue;
+            }
+
+            $found = true;
+            return get_user_meta($user_id, $storage_key, true);
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('meza_get_screen_option_signature')) {
+    function meza_get_screen_option_signature($value): string
+    {
+        return md5((string) wp_json_encode(meza_normalize_screen_option_value($value)));
+    }
+}
+
+if (!function_exists('meza_get_screen_option_inheritance_state_meta_key')) {
+    function meza_get_screen_option_inheritance_state_meta_key(): string
+    {
+        return 'meza_admin_screen_option_inheritance_' . get_current_blog_id();
+    }
+}
+
+if (!function_exists('meza_get_user_screen_option_inheritance_state')) {
+    function meza_get_user_screen_option_inheritance_state(int $user_id): array
+    {
+        if ($user_id <= 0) {
+            return [];
+        }
+
+        $state = get_user_meta($user_id, meza_get_screen_option_inheritance_state_meta_key(), true);
+        return is_array($state) ? $state : [];
+    }
+}
+
+if (!function_exists('meza_get_user_screen_option_inheritance_signature')) {
+    function meza_get_user_screen_option_inheritance_signature(int $user_id, string $meta_key): string
+    {
+        $state = meza_get_user_screen_option_inheritance_state($user_id);
+        $signature = $state[$meta_key] ?? '';
+        return is_string($signature) ? $signature : '';
+    }
+}
+
+if (!function_exists('meza_set_user_screen_option_inheritance_signature')) {
+    function meza_set_user_screen_option_inheritance_signature(int $user_id, string $meta_key, string $signature): void
+    {
+        if ($user_id <= 0 || $meta_key === '' || $signature === '') {
+            return;
+        }
+
+        $state = meza_get_user_screen_option_inheritance_state($user_id);
+        $state[$meta_key] = $signature;
+        update_user_meta($user_id, meza_get_screen_option_inheritance_state_meta_key(), $state);
+    }
+}
+
+if (!function_exists('meza_forget_user_screen_option_inheritance_signature')) {
+    function meza_forget_user_screen_option_inheritance_signature(int $user_id, string $meta_key): void
+    {
+        if ($user_id <= 0 || $meta_key === '') {
+            return;
+        }
+
+        $state = meza_get_user_screen_option_inheritance_state($user_id);
+        if (!array_key_exists($meta_key, $state)) {
+            return;
+        }
+
+        unset($state[$meta_key]);
+        if ($state === []) {
+            delete_user_meta($user_id, meza_get_screen_option_inheritance_state_meta_key());
+            return;
+        }
+
+        update_user_meta($user_id, meza_get_screen_option_inheritance_state_meta_key(), $state);
+    }
+}
+
+if (!function_exists('meza_is_screen_option_sync_in_progress')) {
+    function meza_is_screen_option_sync_in_progress(): bool
+    {
+        return !empty($GLOBALS['meza_screen_option_sync_in_progress']);
+    }
+}
+
+if (!function_exists('meza_set_screen_option_sync_in_progress')) {
+    function meza_set_screen_option_sync_in_progress(bool $in_progress): void
+    {
+        $GLOBALS['meza_screen_option_sync_in_progress'] = $in_progress;
+    }
+}
+
+if (!function_exists('meza_normalize_screen_option_storage_meta_key')) {
+    function meza_normalize_screen_option_storage_meta_key(string $storage_meta_key): string
+    {
+        $storage_meta_key = trim($storage_meta_key);
+        if ($storage_meta_key === '') {
+            return '';
+        }
+
+        global $wpdb;
+
+        if ($wpdb instanceof wpdb) {
+            $prefix = $wpdb->get_blog_prefix();
+            if ($prefix !== '' && str_starts_with($storage_meta_key, $prefix)) {
+                return substr($storage_meta_key, strlen($prefix));
+            }
+        }
+
+        return $storage_meta_key;
+    }
+}
+
+if (!function_exists('meza_is_managed_screen_option_meta_key')) {
+    function meza_is_managed_screen_option_meta_key(string $meta_key): bool
+    {
+        $meta_key = trim($meta_key);
+        if ($meta_key === '') {
+            return false;
+        }
+
+        foreach (meza_get_screen_option_default_meta_like_patterns() as $pattern) {
+            $regex = '/^' . str_replace(['%', '_'], ['.*', '.'], preg_quote($pattern, '/')) . '$/';
+            if (preg_match($regex, $meta_key) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
 if (!function_exists('meza_get_admin_screen_option_defaults')) {
     function meza_get_admin_screen_option_defaults(): array
     {
         $defaults = get_option('meza_admin_screen_option_defaults', []);
 
         return is_array($defaults) ? $defaults : [];
+    }
+}
+
+if (!function_exists('meza_current_user_is_administrator')) {
+    function meza_current_user_is_administrator(): bool
+    {
+        $user = wp_get_current_user();
+        return $user instanceof WP_User
+            && in_array('administrator', (array) $user->roles, true);
     }
 }
 
@@ -1603,9 +1972,22 @@ if (!function_exists('meza_get_admin_screen_option_default_value')) {
 
         $defaults = meza_get_admin_screen_option_defaults();
 
-        return array_key_exists($meta_key, $defaults)
-            ? meza_normalize_screen_option_value($defaults[$meta_key])
-            : null;
+        if (!array_key_exists($meta_key, $defaults)) {
+            return null;
+        }
+
+        $value = meza_normalize_screen_option_value($defaults[$meta_key]);
+
+        if (
+            is_array($value)
+            && str_starts_with($meta_key, 'manageedit-')
+            && str_ends_with($meta_key, 'columnshidden')
+        ) {
+            $screen_id = substr($meta_key, strlen('manage'), -strlen('columnshidden'));
+            return meza_normalize_post_list_hidden_columns_for_defaults($value, (string) $screen_id);
+        }
+
+        return $value;
     }
 }
 
@@ -1642,25 +2024,27 @@ if (!function_exists('meza_register_admin_screen_option_default_filters')) {
 }
 
 if (!function_exists('meza_capture_admin_screen_option_defaults_for_screen')) {
-    function meza_capture_admin_screen_option_defaults_for_screen(WP_Screen $screen): void
+    function meza_capture_admin_screen_option_defaults_for_screen(WP_Screen $screen): array
     {
-        if (!is_admin() || !current_user_can('manage_options')) {
-            return;
+        if (!is_admin() || !current_user_can('manage_options') || !meza_current_user_is_administrator()) {
+            return [];
         }
 
         $user_id = get_current_user_id();
         $screen_id = (string) ($screen->id ?? '');
         if ($user_id <= 0 || $screen_id === '') {
-            return;
+            return [];
         }
 
-        $defaults = meza_get_admin_screen_option_defaults();
-        $updated = $defaults;
+        $captured = [];
 
-        $updated['manage' . $screen_id . 'columnshidden'] = meza_normalize_screen_option_value(get_hidden_columns($screen));
+        $captured['manage' . $screen_id . 'columnshidden'] = meza_normalize_post_list_hidden_columns_for_defaults(
+            meza_normalize_screen_option_value(get_hidden_columns($screen)),
+            $screen_id
+        );
 
         if (function_exists('get_hidden_meta_boxes')) {
-            $updated['metaboxhidden_' . $screen_id] = meza_normalize_screen_option_value(get_hidden_meta_boxes($screen));
+            $captured['metaboxhidden_' . $screen_id] = meza_normalize_screen_option_value(get_hidden_meta_boxes($screen));
         }
 
         foreach ([
@@ -1673,7 +2057,7 @@ if (!function_exists('meza_capture_admin_screen_option_defaults_for_screen')) {
                 continue;
             }
 
-            $updated[$meta_key] = meza_normalize_screen_option_value($value);
+            $captured[$meta_key] = meza_normalize_screen_option_value($value);
         }
 
         if (method_exists($screen, 'get_option')) {
@@ -1681,27 +2065,190 @@ if (!function_exists('meza_capture_admin_screen_option_defaults_for_screen')) {
             if ($per_page_option !== '') {
                 $per_page_value = get_user_option($per_page_option, $user_id);
                 if ($per_page_value !== false && $per_page_value !== null && $per_page_value !== '') {
-                    $updated[$per_page_option] = meza_normalize_screen_option_value($per_page_value);
+                    $captured[$per_page_option] = meza_normalize_screen_option_value($per_page_value);
                 }
             }
         }
 
-        if ($updated === $defaults) {
-            return;
+        return $captured;
+    }
+}
+
+if (!function_exists('meza_should_sync_screen_option_for_user')) {
+    function meza_should_sync_screen_option_for_user(int $user_id, string $meta_key, $old_default): bool
+    {
+        if ($user_id <= 0 || $meta_key === '') {
+            return false;
         }
 
-        update_option('meza_admin_screen_option_defaults', $updated, false);
-        meza_register_admin_screen_option_default_filters();
+        $raw_value = meza_get_raw_user_option($meta_key, $user_id, $has_raw_value);
+        $stored_signature = meza_get_user_screen_option_inheritance_signature($user_id, $meta_key);
+        $old_signature = ($old_default !== null)
+            ? meza_get_screen_option_signature($old_default)
+            : '';
+
+        if ($stored_signature !== '' && $old_signature !== '' && hash_equals($stored_signature, $old_signature)) {
+            return true;
+        }
+
+        if (!$has_raw_value) {
+            return true;
+        }
+
+        return $old_default !== null
+            && meza_normalize_screen_option_value($raw_value) === meza_normalize_screen_option_value($old_default);
+    }
+}
+
+if (!function_exists('meza_apply_admin_screen_option_defaults_for_screen')) {
+    function meza_apply_admin_screen_option_defaults_for_screen(WP_Screen $screen): bool
+    {
+        $captured = meza_capture_admin_screen_option_defaults_for_screen($screen);
+        if ($captured === []) {
+            return false;
+        }
+
+        $existing_defaults = meza_get_admin_screen_option_defaults();
+        $updated_defaults = array_merge($existing_defaults, $captured);
+        $changed_keys = [];
+
+        foreach ($captured as $meta_key => $new_value) {
+            $old_value = array_key_exists($meta_key, $existing_defaults)
+                ? meza_normalize_screen_option_value($existing_defaults[$meta_key])
+                : null;
+            $new_value = meza_normalize_screen_option_value($new_value);
+
+            if ($old_value === $new_value) {
+                continue;
+            }
+
+            $changed_keys[$meta_key] = [
+                'old' => $old_value,
+                'new' => $new_value,
+            ];
+        }
+
+        if ($updated_defaults !== $existing_defaults) {
+            update_option('meza_admin_screen_option_defaults', $updated_defaults, false);
+            meza_register_admin_screen_option_default_filters();
+        }
+
+        if ($changed_keys === []) {
+            return false;
+        }
+
+        $user_ids = get_users(['fields' => 'ids']);
+        if (!is_array($user_ids) || $user_ids === []) {
+            return true;
+        }
+
+        meza_set_screen_option_sync_in_progress(true);
+
+        foreach (array_map('intval', $user_ids) as $user_id) {
+            if ($user_id <= 0) {
+                continue;
+            }
+
+            foreach ($changed_keys as $meta_key => $change) {
+                if (!meza_should_sync_screen_option_for_user($user_id, $meta_key, $change['old'])) {
+                    continue;
+                }
+
+                update_user_option($user_id, $meta_key, $change['new'], false);
+                meza_set_user_screen_option_inheritance_signature(
+                    $user_id,
+                    $meta_key,
+                    meza_get_screen_option_signature($change['new'])
+                );
+            }
+        }
+
+        meza_set_screen_option_sync_in_progress(false);
+
+        update_user_meta(
+            get_current_user_id(),
+            'meza_admin_screen_option_defaults_notice',
+            sanitize_key((string) ($screen->id ?? ''))
+        );
+
+        return true;
+    }
+}
+
+if (!function_exists('meza_is_screen_options_apply_request')) {
+    function meza_is_screen_options_apply_request(WP_Screen $screen): bool
+    {
+        if (!is_admin() || !current_user_can('manage_options') || !meza_current_user_is_administrator()) {
+            return false;
+        }
+
+        $request_method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if ($request_method !== 'POST') {
+            return false;
+        }
+
+        if (!isset($_POST['screenoptionnonce'])) {
+            return false;
+        }
+
+        $nonce = (string) wp_unslash($_POST['screenoptionnonce']);
+        if ($nonce === '' || !wp_verify_nonce($nonce, 'screen-options-nonce')) {
+            return false;
+        }
+
+        return method_exists($screen, 'get_option');
     }
 }
 
 add_action('current_screen', function ($screen): void {
-    if (!($screen instanceof WP_Screen)) {
+    if ($screen instanceof WP_Screen) {
+        $GLOBALS['meza_active_admin_screen_for_defaults'] = $screen;
+    }
+}, 1);
+
+add_action('shutdown', function (): void {
+    $screen = $GLOBALS['meza_active_admin_screen_for_defaults'] ?? null;
+    if (!($screen instanceof WP_Screen) || !meza_is_screen_options_apply_request($screen)) {
         return;
     }
 
-    meza_capture_admin_screen_option_defaults_for_screen($screen);
-}, 999);
+    meza_apply_admin_screen_option_defaults_for_screen($screen);
+}, 1);
+
+add_action('admin_notices', function (): void {
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) {
+        return;
+    }
+
+    $screen_id = get_user_meta($user_id, 'meza_admin_screen_option_defaults_notice', true);
+    if (!is_string($screen_id) || $screen_id === '') {
+        return;
+    }
+
+    delete_user_meta($user_id, 'meza_admin_screen_option_defaults_notice');
+
+    echo '<div class="notice notice-success is-dismissible"><p>'
+        . esc_html__('Screen defaults were updated for users who are still inheriting this screen configuration.')
+        . '</p></div>';
+});
+
+foreach (['added_user_meta', 'updated_user_meta', 'deleted_user_meta'] as $meta_hook) {
+    add_action($meta_hook, function ($meta_id, $user_id, $meta_key) {
+        unset($meta_id);
+
+        if (meza_is_screen_option_sync_in_progress()) {
+            return;
+        }
+
+        $normalized_meta_key = meza_normalize_screen_option_storage_meta_key((string) $meta_key);
+        if ($normalized_meta_key === '' || !meza_is_managed_screen_option_meta_key($normalized_meta_key)) {
+            return;
+        }
+
+        meza_forget_user_screen_option_inheritance_signature((int) $user_id, $normalized_meta_key);
+    }, 1000, 3);
+}
 
 meza_register_admin_screen_option_default_filters();
 
@@ -1966,6 +2513,10 @@ function meza_get_allowed_tag_post_types(): array
 {
     $post_types = apply_filters('meza_allowed_tag_post_types', ['product']);
 
+    if (function_exists('meza_are_post_tags_enabled') && meza_are_post_tags_enabled()) {
+        $post_types[] = 'post';
+    }
+
     return array_values(array_unique(array_filter(array_map('sanitize_key', (array) $post_types))));
 }
 
@@ -2048,6 +2599,55 @@ function meza_should_disable_tag_taxonomy_registration(string $taxonomy, array $
     return empty(array_intersect($object_types, meza_get_allowed_tag_post_types()));
 }
 
+function meza_should_disable_post_category_taxonomy_registration(string $taxonomy, array $args, $object_type): bool
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if ($taxonomy !== 'category') {
+        return false;
+    }
+
+    if (function_exists('meza_are_post_categories_enabled') && meza_are_post_categories_enabled()) {
+        return false;
+    }
+
+    $object_types = array_values(array_unique(array_filter(array_map('sanitize_key', (array) $object_type))));
+    if (empty($object_types)) {
+        $object_types = array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($args['object_type'] ?? [])))));
+    }
+
+    return in_array('post', $object_types, true);
+}
+
+function meza_should_disable_product_taxonomy_registration(string $taxonomy, array $args, $object_type): bool
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if (!in_array($taxonomy, ['product_brand', 'product_cat', 'product_tag'], true)) {
+        return false;
+    }
+
+    $object_types = array_values(array_unique(array_filter(array_map('sanitize_key', (array) $object_type))));
+    if (empty($object_types)) {
+        $object_types = array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($args['object_type'] ?? [])))));
+    }
+
+    if (!in_array('product', $object_types, true)) {
+        return false;
+    }
+
+    switch ($taxonomy) {
+        case 'product_cat':
+            return !(function_exists('meza_are_product_categories_enabled') && meza_are_product_categories_enabled());
+
+        case 'product_tag':
+            return !(function_exists('meza_are_product_tags_enabled') && meza_are_product_tags_enabled());
+
+        case 'product_brand':
+            return !(function_exists('meza_are_product_brands_enabled') && meza_are_product_brands_enabled());
+    }
+
+    return false;
+}
+
 function meza_is_disabled_tag_taxonomy(string $taxonomy): bool
 {
     $taxonomy = sanitize_key($taxonomy);
@@ -2067,6 +2667,51 @@ function meza_is_disabled_tag_taxonomy(string $taxonomy): bool
     return empty(array_intersect((array) $taxonomy_object->object_type, meza_get_allowed_tag_post_types()));
 }
 
+function meza_is_disabled_post_category_taxonomy(string $taxonomy): bool
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if ($taxonomy !== 'category' || !taxonomy_exists($taxonomy)) {
+        return false;
+    }
+
+    if (function_exists('meza_are_post_categories_enabled') && meza_are_post_categories_enabled()) {
+        return false;
+    }
+
+    $taxonomy_object = get_taxonomy($taxonomy);
+    if (!($taxonomy_object instanceof WP_Taxonomy)) {
+        return false;
+    }
+
+    return in_array('post', (array) $taxonomy_object->object_type, true);
+}
+
+function meza_is_disabled_product_taxonomy(string $taxonomy): bool
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if ($taxonomy === '' || !taxonomy_exists($taxonomy) || !in_array($taxonomy, ['product_brand', 'product_cat', 'product_tag'], true)) {
+        return false;
+    }
+
+    $taxonomy_object = get_taxonomy($taxonomy);
+    if (!($taxonomy_object instanceof WP_Taxonomy) || !in_array('product', (array) $taxonomy_object->object_type, true)) {
+        return false;
+    }
+
+    switch ($taxonomy) {
+        case 'product_cat':
+            return !(function_exists('meza_are_product_categories_enabled') && meza_are_product_categories_enabled());
+
+        case 'product_tag':
+            return !(function_exists('meza_are_product_tags_enabled') && meza_are_product_tags_enabled());
+
+        case 'product_brand':
+            return !(function_exists('meza_are_product_brands_enabled') && meza_are_product_brands_enabled());
+    }
+
+    return false;
+}
+
 function meza_get_design_redirect_url(): string
 {
     return current_user_can('edit_theme_options') ? admin_url('nav-menus.php') : admin_url();
@@ -2077,7 +2722,11 @@ add_filter('register_taxonomy_args', function ($args, $taxonomy, $object_type) {
         return $args;
     }
 
-    if (!meza_should_disable_tag_taxonomy_registration((string) $taxonomy, $args, $object_type)) {
+    $disable_tags = meza_should_disable_tag_taxonomy_registration((string) $taxonomy, $args, $object_type);
+    $disable_categories = meza_should_disable_post_category_taxonomy_registration((string) $taxonomy, $args, $object_type);
+    $disable_product_taxonomy = meza_should_disable_product_taxonomy_registration((string) $taxonomy, $args, $object_type);
+
+    if (!$disable_tags && !$disable_categories && !$disable_product_taxonomy) {
         return $args;
     }
 
@@ -2087,6 +2736,7 @@ add_filter('register_taxonomy_args', function ($args, $taxonomy, $object_type) {
     $args['show_tagcloud'] = false;
     $args['show_in_quick_edit'] = false;
     $args['meta_box_cb'] = false;
+    $args['show_in_rest'] = false;
 
     return $args;
 }, 1000, 3);
@@ -2098,6 +2748,7 @@ add_action('admin_menu', function () {
     remove_menu_page('admin.php?page=godaddy-get-help');
 
     remove_submenu_page('edit.php', 'edit-tags.php?taxonomy=post_tag');
+    remove_submenu_page('edit.php', 'edit-tags.php?taxonomy=category');
     remove_submenu_page('options-general.php', 'options-discussion.php');
 
     remove_submenu_page('themes.php', 'customize.php');
@@ -2140,13 +2791,119 @@ function meza_filter_disabled_tag_taxonomy_submenus(): void
             }
 
             parse_str((string) parse_url($slug, PHP_URL_QUERY), $query_args);
-            return !meza_is_disabled_tag_taxonomy((string) ($query_args['taxonomy'] ?? ''));
+            $taxonomy = (string) ($query_args['taxonomy'] ?? '');
+
+            return !meza_is_disabled_tag_taxonomy($taxonomy)
+                && !meza_is_disabled_post_category_taxonomy($taxonomy)
+                && !meza_is_disabled_product_taxonomy($taxonomy);
         }));
     }
     unset($items);
 }
 
 add_action('admin_menu', 'meza_filter_disabled_tag_taxonomy_submenus', PHP_INT_MAX - 5);
+
+add_action('admin_init', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    global $pagenow;
+
+    if (!in_array((string) $pagenow, ['edit-tags.php', 'term.php'], true)) {
+        return;
+    }
+
+    $taxonomy = isset($_GET['taxonomy']) ? sanitize_key((string) wp_unslash($_GET['taxonomy'])) : '';
+    if (meza_is_disabled_post_category_taxonomy($taxonomy)) {
+        wp_safe_redirect(admin_url('edit.php'));
+        exit;
+    }
+
+    if (meza_is_disabled_product_taxonomy($taxonomy)) {
+        wp_safe_redirect(admin_url('edit.php?post_type=product'));
+        exit;
+    }
+}, 20);
+
+function meza_is_disabled_product_reviews_request(): bool
+{
+    if (!(function_exists('meza_are_product_reviews_enabled') && !meza_are_product_reviews_enabled())) {
+        return false;
+    }
+
+    global $pagenow;
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if (in_array($page, ['product-reviews', 'woocommerce-product-reviews'], true)) {
+        return true;
+    }
+
+    $comment_type = isset($_GET['comment_type']) ? sanitize_key((string) wp_unslash($_GET['comment_type'])) : '';
+    if ($comment_type === 'review') {
+        return true;
+    }
+
+    if (!in_array((string) $pagenow, ['comment.php', 'edit-comments.php'], true)) {
+        return false;
+    }
+
+    $comment_id = isset($_GET['c']) ? (int) $_GET['c'] : 0;
+    if ($comment_id <= 0 && isset($_GET['comment_ID'])) {
+        $comment_id = (int) $_GET['comment_ID'];
+    }
+    if ($comment_id <= 0 && isset($_GET['comment'])) {
+        $comment_id = (int) $_GET['comment'];
+    }
+    if ($comment_id <= 0) {
+        return false;
+    }
+
+    $comment = get_comment($comment_id);
+
+    return $comment instanceof WP_Comment && $comment->comment_type === 'review';
+}
+
+function meza_filter_disabled_product_review_submenus(): void
+{
+    if (!(function_exists('meza_are_product_reviews_enabled') && !meza_are_product_reviews_enabled())) {
+        return;
+    }
+
+    global $submenu;
+
+    if (!is_array($submenu)) {
+        return;
+    }
+
+    foreach ($submenu as &$items) {
+        if (!is_array($items)) {
+            continue;
+        }
+
+        $items = array_values(array_filter($items, static function ($item): bool {
+            if (!is_array($item)) {
+                return false;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+
+            return !str_contains($slug, 'product-reviews')
+                && !str_contains($slug, 'comment_type=review');
+        }));
+    }
+    unset($items);
+}
+add_action('admin_menu', 'meza_filter_disabled_product_review_submenus', PHP_INT_MAX - 4);
+
+add_action('admin_init', function (): void {
+    if (!is_admin() || !meza_is_disabled_product_reviews_request()) {
+        return;
+    }
+
+    wp_safe_redirect(admin_url('edit.php?post_type=product'));
+    exit;
+}, 20);
 
 function meza_remove_legacy_links_admin_menus(): void
 {
@@ -2375,7 +3132,9 @@ function meza_admin_menu_content_group(string $menu_slug): string
     }
 
     if ($menu_slug === 'edit.php') {
-        return 'with';
+        return function_exists('meza_post_type_has_permalink') && !meza_post_type_has_permalink('post')
+            ? 'without'
+            : 'with';
     }
 
     if (!str_starts_with($menu_slug, 'edit.php?post_type=')) return '';
