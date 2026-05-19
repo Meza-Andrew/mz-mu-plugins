@@ -38,8 +38,8 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
                 'autoload'        => false,
             ],
             [
-                'page_title'      => meza_get_crm_page_title(),
-                'menu_title'      => 'CRM Integration',
+                'page_title'      => 'Integrations',
+                'menu_title'      => 'Integrations',
                 'menu_slug'       => 'crm',
                 'parent_slug'     => meza_get_shared_project_acf_options_page_parent_slug('crm'),
                 'capability'      => meza_get_shared_project_acf_options_page_capability('crm'),
@@ -49,8 +49,8 @@ if (!function_exists('meza_get_shared_project_acf_options_pages')) {
                 'autoload'        => false,
             ],
             [
-                'page_title'      => meza_get_ecommerce_page_title(),
-                'menu_title'      => 'E-Commerce',
+                'page_title'      => 'Integrations',
+                'menu_title'      => 'Integrations',
                 'menu_slug'       => 'ecommerce',
                 'parent_slug'     => meza_get_shared_project_acf_options_page_parent_slug('ecommerce'),
                 'capability'      => meza_get_shared_project_acf_options_page_capability('ecommerce'),

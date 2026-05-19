@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.752
+ * Version: 1.1.753
  * Author: Meza LLC
  * Author URI: https://meza.design
  */

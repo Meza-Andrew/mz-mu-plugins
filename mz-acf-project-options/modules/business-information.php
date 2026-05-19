@@ -3220,6 +3220,12 @@ if (!function_exists('meza_get_shared_project_acf_options_page_capability')) {
                 : 'meza_manage_content_model';
         }
 
+        if (in_array($menu_slug, ['crm', 'ecommerce'], true)) {
+            return function_exists('meza_access_site_settings_capability')
+                ? meza_access_site_settings_capability()
+                : 'meza_access_site_settings';
+        }
+
         return 'manage_options';
     }
 }
@@ -3245,7 +3251,7 @@ if (!function_exists('meza_get_shared_project_acf_options_page_parent_slug')) {
         }
 
         if (in_array($menu_slug, ['crm', 'ecommerce'], true)) {
-            return 'meza-integrations-settings';
+            return 'meza-site-settings';
         }
 
         return 'options-general.php';
@@ -3308,14 +3314,14 @@ if (!function_exists('meza_get_shared_project_acf_options_page_submenu_slug')) {
 if (!function_exists('meza_get_crm_page_title')) {
     function meza_get_crm_page_title(): string
     {
-        return 'CRM Integration';
+        return 'Customer Relationship Management (CRM)';
     }
 }
 
 if (!function_exists('meza_get_crm_admin_page_title')) {
     function meza_get_crm_admin_page_title(): string
     {
-        return 'CRM Integration Settings';
+        return 'Integrations';
     }
 }
 
@@ -3329,7 +3335,7 @@ if (!function_exists('meza_get_ecommerce_page_title')) {
 if (!function_exists('meza_get_ecommerce_admin_page_title')) {
     function meza_get_ecommerce_admin_page_title(): string
     {
-        return 'E-Commerce Settings';
+        return 'Integrations';
     }
 }
 

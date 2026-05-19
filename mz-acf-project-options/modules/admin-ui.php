@@ -574,6 +574,27 @@ if (!function_exists('meza_is_business_information_options_screen')) {
     }
 }
 
+if (!function_exists('meza_is_integrations_options_screen')) {
+    function meza_is_integrations_options_screen(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        return in_array($page, ['crm', 'ecommerce'], true);
+    }
+}
+
+if (!function_exists('meza_is_integrations_read_only_for_current_user')) {
+    function meza_is_integrations_read_only_for_current_user(): bool
+    {
+        return meza_is_integrations_options_screen()
+            && function_exists('meza_is_site_manager_user')
+            && meza_is_site_manager_user(wp_get_current_user());
+    }
+}
+
 add_filter('acf/ui_options_page/registration_args', function (array $args, array $post): array {
     $menu_slug = (string) ($args['menu_slug'] ?? '');
 
@@ -605,8 +626,8 @@ add_filter('acf/ui_options_page/registration_args', function (array $args, array
     }
 
     if ($menu_slug === 'crm') {
-        $args['page_title'] = meza_get_crm_page_title();
-        $args['menu_title'] = 'CRM Integration';
+        $args['page_title'] = 'Integrations';
+        $args['menu_title'] = 'Integrations';
         $args['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('crm');
         $args['capability'] = meza_get_shared_project_acf_options_page_capability('crm');
 
@@ -614,8 +635,8 @@ add_filter('acf/ui_options_page/registration_args', function (array $args, array
     }
 
     if ($menu_slug === 'ecommerce') {
-        $args['page_title'] = meza_get_ecommerce_page_title();
-        $args['menu_title'] = 'E-Commerce';
+        $args['page_title'] = 'Integrations';
+        $args['menu_title'] = 'Integrations';
         $args['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('ecommerce');
         $args['capability'] = meza_get_shared_project_acf_options_page_capability('ecommerce');
 
@@ -682,18 +703,14 @@ add_filter('acf/get_options_page', function ($page, $slug) {
         $page['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('business-information');
         $page['capability'] = meza_get_shared_project_acf_options_page_capability('business-information');
     } elseif ($slug === 'crm') {
-        $page['page_title'] = $current_page_slug === 'crm'
-            ? meza_get_crm_admin_page_title()
-            : meza_get_crm_page_title();
-        $page['menu_title'] = 'CRM Integration';
+        $page['page_title'] = 'Integrations';
+        $page['menu_title'] = 'Integrations';
         $page['menu_slug'] = 'crm';
         $page['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('crm');
         $page['capability'] = meza_get_shared_project_acf_options_page_capability('crm');
     } elseif ($slug === 'ecommerce') {
-        $page['page_title'] = $current_page_slug === 'ecommerce'
-            ? meza_get_ecommerce_admin_page_title()
-            : meza_get_ecommerce_page_title();
-        $page['menu_title'] = 'E-Commerce';
+        $page['page_title'] = 'Integrations';
+        $page['menu_title'] = 'Integrations';
         $page['menu_slug'] = 'ecommerce';
         $page['parent_slug'] = meza_get_shared_project_acf_options_page_parent_slug('ecommerce');
         $page['capability'] = meza_get_shared_project_acf_options_page_capability('ecommerce');
@@ -908,23 +925,17 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             meza_get_content_structure_admin_page_title(),
         ];
         $crm_item = [
-            'CRM Integration',
+            'Integrations',
             $crm_capability,
             meza_get_shared_project_acf_options_page_submenu_slug('crm'),
             meza_get_crm_admin_page_title(),
         ];
-        $ecommerce_item = [
-            'E-Commerce',
-            $ecommerce_capability,
-            meza_get_shared_project_acf_options_page_submenu_slug('ecommerce'),
-            meza_get_ecommerce_admin_page_title(),
-        ];
         $site_management_items = array_values(array_filter([
-            function_exists('meza_get_dashboard_site_health_submenu_item')
-                ? meza_get_dashboard_site_health_submenu_item()
-                : null,
             function_exists('meza_get_dashboard_updates_submenu_item')
                 ? meza_get_dashboard_updates_submenu_item()
+                : null,
+            function_exists('meza_get_dashboard_site_health_submenu_item')
+                ? meza_get_dashboard_site_health_submenu_item()
                 : null,
             function_exists('meza_get_dashboard_activity_submenu_item')
                 ? meza_get_dashboard_activity_submenu_item()
@@ -996,19 +1007,13 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             $submenu['meza-site-settings'] = array_values(array_filter([
                 ...$site_management_items,
                 $content_structure_item,
+                $crm_item,
             ], 'is_array'));
         } else {
             unset($submenu['meza-site-settings']);
         }
 
-        if (current_user_can($crm_capability)) {
-            $submenu['meza-integrations-settings'] = array_values(array_filter([
-                $crm_item,
-                $ecommerce_item,
-            ], 'is_array'));
-        } else {
-            unset($submenu['meza-integrations-settings']);
-        }
+        unset($submenu['meza-integrations-settings']);
     }
 }
 
@@ -1016,6 +1021,72 @@ add_action('admin_menu', 'meza_normalize_branding_settings_submenu_item', PHP_IN
 add_action('admin_menu_editor-menu_replaced', 'meza_normalize_branding_settings_submenu_item', PHP_INT_MAX - 1);
 add_action('admin_menu', 'meza_normalize_branding_settings_submenu_item', PHP_INT_MAX);
 add_action('admin_menu_editor-menu_replaced', 'meza_normalize_branding_settings_submenu_item', PHP_INT_MAX);
+
+add_action('admin_init', function (): void {
+    if (!meza_is_integrations_options_screen()) {
+        return;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page === 'ecommerce') {
+        wp_safe_redirect(admin_url(meza_get_shared_project_acf_options_page_menu_slug('crm')));
+        exit;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !meza_is_integrations_read_only_for_current_user()) {
+        return;
+    }
+
+    wp_safe_redirect(add_query_arg(
+        'meza_integrations_read_only',
+        '1',
+        admin_url(meza_get_shared_project_acf_options_page_menu_slug('crm'))
+    ));
+    exit;
+}, 1);
+
+add_action('admin_notices', function (): void {
+    if (
+        !meza_is_integrations_read_only_for_current_user()
+        || !isset($_GET['meza_integrations_read_only'])
+        || wp_unslash($_GET['meza_integrations_read_only']) !== '1'
+    ) {
+        return;
+    }
+
+    echo '<div class="notice notice-info"><p>'
+        . esc_html__('Integrations is view-only for site managers.')
+        . '</p></div>';
+});
+
+add_action('admin_head', function (): void {
+    if (!meza_is_integrations_read_only_for_current_user()) {
+        return;
+    }
+    ?>
+    <style id="meza-integrations-read-only">
+        .acf-form-submit,
+        #submitdiv,
+        #minor-publishing,
+        #major-publishing-actions {
+            display: none !important;
+        }
+
+        .acf-field input,
+        .acf-field select,
+        .acf-field textarea,
+        .acf-field button,
+        .acf-field .acf-button,
+        .acf-field a.button,
+        .acf-field .acf-icon.-plus,
+        .acf-field .acf-icon.-minus,
+        .acf-field .acf-icon.-pencil,
+        .acf-field .acf-icon.-cancel {
+            pointer-events: none !important;
+        }
+    </style>
+    <?php
+}, 20);
 
 add_action('after_setup_theme', function (): void {
     if (function_exists('add_image_size')) {

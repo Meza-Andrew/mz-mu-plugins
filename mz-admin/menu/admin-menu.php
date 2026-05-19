@@ -44,7 +44,7 @@ function meza_is_resource_submenu_item(string $parent_slug, array $item): bool
 
 function meza_get_yoast_admin_menu_label(): string
 {
-    return 'Yoast SEO';
+    return 'SEO';
 }
 
 function meza_get_yoast_admin_menu_icon(): string
@@ -12851,6 +12851,48 @@ function meza_get_site_settings_configuration_submenu_item(): ?array
     ];
 }
 
+function meza_get_site_settings_integrations_menu_slug(): string
+{
+    if (function_exists('meza_get_shared_project_acf_options_page_menu_slug')) {
+        $menu_slug = meza_get_shared_project_acf_options_page_menu_slug('crm');
+        if (is_string($menu_slug) && $menu_slug !== '') {
+            return $menu_slug;
+        }
+    }
+
+    return 'admin.php?page=crm';
+}
+
+function meza_get_site_settings_integrations_submenu_slug(): string
+{
+    if (function_exists('meza_get_shared_project_acf_options_page_submenu_slug')) {
+        $submenu_slug = meza_get_shared_project_acf_options_page_submenu_slug('crm');
+        if (is_string($submenu_slug) && $submenu_slug !== '') {
+            return $submenu_slug;
+        }
+    }
+
+    return 'crm';
+}
+
+function meza_get_site_settings_integrations_submenu_item(): ?array
+{
+    $capability = function_exists('meza_get_shared_project_acf_options_page_capability')
+        ? (string) meza_get_shared_project_acf_options_page_capability('crm')
+        : 'manage_options';
+
+    if (!current_user_can($capability)) {
+        return null;
+    }
+
+    return [
+        'Integrations',
+        $capability,
+        meza_get_site_settings_integrations_submenu_slug(),
+        'Integrations',
+    ];
+}
+
 function meza_get_site_settings_submenu_target_slug(): string
 {
     if (!meza_can_access_site_settings(wp_get_current_user())) {
@@ -12860,6 +12902,8 @@ function meza_get_site_settings_submenu_target_slug(): string
     $analytics_target = meza_get_site_settings_analytics_target_slug();
     $configuration_target = meza_get_site_settings_configuration_submenu_slug();
     $configuration_menu_slug = meza_get_site_settings_configuration_menu_slug();
+    $integrations_target = meza_get_site_settings_integrations_submenu_slug();
+    $integrations_menu_slug = meza_get_site_settings_integrations_menu_slug();
     $activity_slug = defined('MEZA_ACTIVITY_LOG_PAGE_SLUG') ? (string) MEZA_ACTIVITY_LOG_PAGE_SLUG : '';
 
     foreach (meza_get_current_admin_menu_slug_candidates() as $candidate) {
@@ -12904,6 +12948,10 @@ function meza_get_site_settings_submenu_target_slug(): string
         if (in_array($candidate, ['content-model', 'admin.php?page=content-model', 'content-structure', 'admin.php?page=content-structure', $configuration_target, $configuration_menu_slug], true)) {
             return $configuration_target;
         }
+
+        if (in_array($candidate, ['crm', 'admin.php?page=crm', 'ecommerce', 'admin.php?page=ecommerce', $integrations_target, $integrations_menu_slug], true)) {
+            return $integrations_target;
+        }
     }
 
     return '';
@@ -12929,10 +12977,11 @@ function meza_move_dashboard_under_site_menu(): void
 
     $dashboard_item = ['Dashboard', 'read', 'index.php', 'Dashboard'];
     $analytics_item = meza_get_site_settings_analytics_submenu_item();
-    $health_item = meza_get_dashboard_site_health_submenu_item();
     $updates_item = meza_get_dashboard_updates_submenu_item();
-    $activity_item = meza_get_dashboard_activity_submenu_item();
+    $health_item = meza_get_dashboard_site_health_submenu_item();
     $configuration_item = meza_get_site_settings_configuration_submenu_item();
+    $integrations_item = meza_get_site_settings_integrations_submenu_item();
+    $activity_item = meza_get_dashboard_activity_submenu_item();
     $site_items = [];
     $consumed_slugs = [
         $site_slug => true,
@@ -12941,8 +12990,14 @@ function meza_move_dashboard_under_site_menu(): void
         'update-core.php' => true,
         meza_get_site_settings_configuration_menu_slug() => true,
         meza_get_site_settings_configuration_submenu_slug() => true,
+        meza_get_site_settings_integrations_menu_slug() => true,
+        meza_get_site_settings_integrations_submenu_slug() => true,
         'content-model' => true,
         'content-structure' => true,
+        'crm' => true,
+        'admin.php?page=crm' => true,
+        'ecommerce' => true,
+        'admin.php?page=ecommerce' => true,
     ];
 
     $analytics_target = meza_get_site_settings_analytics_target_slug();
@@ -12979,7 +13034,7 @@ function meza_move_dashboard_under_site_menu(): void
 
     $ordered_items = [$dashboard_item];
 
-    foreach ([$analytics_item, $health_item, $updates_item, $activity_item, $configuration_item] as $item) {
+    foreach ([$updates_item, $health_item, $configuration_item, $integrations_item, $activity_item] as $item) {
         if (is_array($item)) {
             $ordered_items[] = $item;
         }
@@ -13035,6 +13090,8 @@ function meza_register_site_settings_real_parent_mappings(): void
     $site_slug = meza_get_site_settings_menu_slug();
     $configuration_slug = meza_get_site_settings_configuration_menu_slug();
     $configuration_submenu_slug = meza_get_site_settings_configuration_submenu_slug();
+    $integrations_slug = meza_get_site_settings_integrations_menu_slug();
+    $integrations_submenu_slug = meza_get_site_settings_integrations_submenu_slug();
     $analytics_target = meza_get_site_settings_analytics_target_slug();
     $activity_slug = defined('MEZA_ACTIVITY_LOG_PAGE_SLUG') ? (string) MEZA_ACTIVITY_LOG_PAGE_SLUG : '';
 
@@ -13048,6 +13105,12 @@ function meza_register_site_settings_real_parent_mappings(): void
         'admin.php?page=content-structure',
         $configuration_slug,
         $configuration_submenu_slug,
+        'crm',
+        'admin.php?page=crm',
+        'ecommerce',
+        'admin.php?page=ecommerce',
+        $integrations_slug,
+        $integrations_submenu_slug,
     ];
 
     if ($analytics_target !== '') {
@@ -13322,11 +13385,7 @@ add_action('admin_menu_editor-menu_replaced', 'meza_register_site_settings_top_l
 
 function meza_can_access_integrations_settings($user = null): bool
 {
-    if ($user === null) {
-        return current_user_can('manage_options');
-    }
-
-    return user_can($user, 'manage_options');
+    return false;
 }
 
 function meza_register_integrations_settings_top_level_menu(): void
@@ -13578,10 +13637,6 @@ function meza_position_integrations_settings_menu(): void
 
 function meza_remove_integrations_settings_menu_for_non_admins(): void
 {
-    if (meza_can_access_integrations_settings(wp_get_current_user())) {
-        return;
-    }
-
     global $menu, $submenu;
 
     if (is_array($menu)) {

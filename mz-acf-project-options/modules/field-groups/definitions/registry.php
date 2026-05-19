@@ -269,7 +269,7 @@
             ],
             [
                 'key' => 'group_69b5b29b9d099',
-                'title' => 'CRM Integration',
+                'title' => 'Customer Relationship Management (CRM)',
                 'fields' => meza_get_crm_integration_fields(),
                 'location' => [
                     [
@@ -553,7 +553,7 @@
                         [
                             'param' => 'options_page',
                             'operator' => '==',
-                            'value' => 'ecommerce',
+                            'value' => 'crm',
                         ],
                     ],
                 ],
