@@ -5,7 +5,7 @@
  * Description: Core site settings, defaults, and bootstrap configuration.
  * Author: Meza LLC
  * Author URI: https://meza.design
- * Version: 1.8.44
+ * Version: 1.8.46
  */
 
 /** ================================
@@ -71,8 +71,6 @@ const MEZA_POSTS_PER_PAGE      = 10;
 const MEZA_POSTS_PER_RSS       = 10;
 const MEZA_UPLOADS_YM_FOLDERS  = 1;
 const MEZA_PERMALINK_STRUCTURE = '/%postname%/';
-const MEZA_CATEGORY_BASE       = '';
-const MEZA_TAG_BASE            = '';
 const MEZA_ADMIN_ITEMS_PER_PAGE = 20;
 
 /** Editor defaults */
@@ -145,76 +143,6 @@ function meza_guard_option_write($opt, callable $allow_fn)
     }, 9999, 2);
 }
 
-/** Read the stored option value directly from the database, bypassing forced option filters. */
-function meza_get_stored_option_value(string $option_name, $default = '')
-{
-    global $wpdb;
-
-    if (!isset($wpdb) || !is_object($wpdb) || !isset($wpdb->options)) {
-        return $default;
-    }
-
-    $stored_value = $wpdb->get_var(
-        $wpdb->prepare(
-            "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
-            $option_name
-        )
-    );
-
-    return $stored_value === null ? $default : maybe_unserialize($stored_value);
-}
-
-/** Persist a locked option directly so stored values match the hardcoded runtime values. */
-function meza_set_stored_option_value(string $option_name, $value, bool $autoload = false): bool
-{
-    global $wpdb;
-
-    if (!isset($wpdb) || !is_object($wpdb) || !isset($wpdb->options)) {
-        return false;
-    }
-
-    $autoload_value = $autoload ? 'yes' : 'no';
-    $serialized_value = maybe_serialize($value);
-    $option_exists = $wpdb->get_var(
-        $wpdb->prepare(
-            "SELECT option_id FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
-            $option_name
-        )
-    );
-
-    if ($option_exists === null) {
-        $result = $wpdb->insert(
-            $wpdb->options,
-            [
-                'option_name' => $option_name,
-                'option_value' => $serialized_value,
-                'autoload' => $autoload_value,
-            ],
-            ['%s', '%s', '%s']
-        );
-    } else {
-        $result = $wpdb->update(
-            $wpdb->options,
-            [
-                'option_value' => $serialized_value,
-                'autoload' => $autoload_value,
-            ],
-            ['option_name' => $option_name],
-            ['%s', '%s'],
-            ['%s']
-        );
-    }
-
-    if ($result === false) {
-        return false;
-    }
-
-    wp_cache_delete($option_name, 'options');
-    wp_cache_delete('alloptions', 'options');
-
-    return true;
-}
-
 /** Use the configured constant when present; otherwise fall back to a callback or literal default value. */
 function meza_resolve_target($const, $fallback_cb)
 {
@@ -236,24 +164,6 @@ function meza_resolve_gmt_offset()
     }
 
     return MEZA_GMT_OFFSET;
-}
-
-/** Normalize optional permalink bases so config can omit leading/trailing slashes. */
-function meza_normalize_permalink_base(string $base): string
-{
-    return trim($base, " \t\n\r\0\x0B/");
-}
-
-/** Return the locked category base value used on the Permalinks screen. */
-function meza_get_target_category_base(): string
-{
-    return meza_normalize_permalink_base((string) MEZA_CATEGORY_BASE);
-}
-
-/** Return the locked tag base value used on the Permalinks screen. */
-function meza_get_target_tag_base(): string
-{
-    return meza_normalize_permalink_base((string) MEZA_TAG_BASE);
 }
 
 /** Check whether WordPress already has both a front page and posts page assigned. */
@@ -843,8 +753,6 @@ add_action('muplugins_loaded', function () {
     meza_force_option_read('blog_public',     meza_target_blog_public_value());
     meza_force_option_read('posts_per_page',  MEZA_POSTS_PER_PAGE);
     meza_force_option_read('posts_per_rss',   MEZA_POSTS_PER_RSS);
-    meza_force_option_read('category_base',   meza_get_target_category_base());
-    meza_force_option_read('tag_base',        meza_get_target_tag_base());
     if (function_exists('meza_are_posts_enabled') && !meza_are_posts_enabled()) {
         meza_force_option_read('page_for_posts', 0);
     }
@@ -884,8 +792,6 @@ add_action('muplugins_loaded', function () {
             'blog_public'        => meza_target_blog_public_value(),
             'posts_per_page'     => MEZA_POSTS_PER_PAGE,
             'posts_per_rss'      => MEZA_POSTS_PER_RSS,
-            'category_base'      => meza_get_target_category_base(),
-            'tag_base'           => meza_get_target_tag_base(),
             'thumbnail_size_w'   => MEZA_THUMB_W,
             'thumbnail_size_h'   => MEZA_THUMB_H,
             'thumbnail_crop'     => MEZA_THUMB_CROP,
@@ -1107,18 +1013,6 @@ add_action('admin_init', function () {
         $flush_rewrite_needed = true;
     }
 
-    $target_category_base = meza_get_target_category_base();
-    if ((string) meza_get_stored_option_value('category_base', '') !== $target_category_base) {
-        meza_set_stored_option_value('category_base', $target_category_base);
-        $flush_rewrite_needed = true;
-    }
-
-    $target_tag_base = meza_get_target_tag_base();
-    if ((string) meza_get_stored_option_value('tag_base', '') !== $target_tag_base) {
-        meza_set_stored_option_value('tag_base', $target_tag_base);
-        $flush_rewrite_needed = true;
-    }
-
     if ($flush_rewrite_needed) {
         set_transient('meza_flush_rewrite_needed', 1, 5 * MINUTE_IN_SECONDS);
     }
@@ -1247,7 +1141,7 @@ add_action('admin_footer-options-reading.php', function (): void {
     <?php
 });
 
-/** Lock optional permalink bases and hide unsupported rows on Permalinks Settings. */
+/** Hide unsupported optional permalink rows on Permalinks Settings. */
 add_action('admin_footer-options-permalink.php', function (): void {
     if (!current_user_can('manage_options')) {
         return;
@@ -1259,32 +1153,18 @@ add_action('admin_footer-options-permalink.php', function (): void {
     $tags_enabled = $posts_enabled
         && (!function_exists('meza_are_post_tags_enabled') || meza_are_post_tags_enabled());
 
-    $message = 'These permalink bases are managed automatically by the content model.';
     ?>
     <script id="meza-permalink-optional-lock">
         document.addEventListener('DOMContentLoaded', function() {
             var postsEnabled = <?php echo wp_json_encode($posts_enabled); ?>;
             var categoriesEnabled = <?php echo wp_json_encode($categories_enabled); ?>;
             var tagsEnabled = <?php echo wp_json_encode($tags_enabled); ?>;
-            var categoryBase = <?php echo wp_json_encode(meza_get_target_category_base()); ?>;
-            var tagBase = <?php echo wp_json_encode(meza_get_target_tag_base()); ?>;
-            var message = <?php echo wp_json_encode($message); ?>;
 
             var categoryInput = document.getElementById('category_base');
             var tagInput = document.getElementById('tag_base');
             var categoryRow = categoryInput ? categoryInput.closest('tr') : null;
             var tagRow = tagInput ? tagInput.closest('tr') : null;
             var table = categoryRow ? categoryRow.closest('table.form-table') : (tagRow ? tagRow.closest('table.form-table') : null);
-
-            var lockInput = function(input, value) {
-                if (!input) {
-                    return;
-                }
-
-                input.value = value;
-                input.readOnly = true;
-                input.setAttribute('aria-readonly', 'true');
-            };
 
             var hideElement = function(element) {
                 if (!element) {
@@ -1293,9 +1173,6 @@ add_action('admin_footer-options-permalink.php', function (): void {
 
                 element.style.display = 'none';
             };
-
-            lockInput(categoryInput, categoryBase);
-            lockInput(tagInput, tagBase);
 
             if (!postsEnabled || !categoriesEnabled) {
                 hideElement(categoryRow);
@@ -1327,14 +1204,6 @@ add_action('admin_footer-options-permalink.php', function (): void {
                 hideElement(description);
                 hideElement(heading);
                 hideElement(table);
-                return;
-            }
-
-            if (description && !description.parentNode.querySelector('.meza-permalink-lock-note')) {
-                var note = document.createElement('p');
-                note.className = 'description meza-permalink-lock-note';
-                note.textContent = message;
-                description.insertAdjacentElement('afterend', note);
             }
         });
     </script>
