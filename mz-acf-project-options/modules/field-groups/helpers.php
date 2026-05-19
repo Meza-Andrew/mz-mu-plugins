@@ -835,6 +835,55 @@ if (!function_exists('meza_register_acf_export_tool_local_definitions')) {
         }
     }
 
+    function meza_prepare_acf_local_field_for_export(array $field): array
+    {
+        if (!array_key_exists('_name', $field)) {
+            $field['_name'] = isset($field['name']) ? (string) $field['name'] : '';
+        }
+
+        if (isset($field['sub_fields']) && is_array($field['sub_fields'])) {
+            $field['sub_fields'] = array_values(array_map(
+                static fn(array $sub_field): array => meza_prepare_acf_local_field_for_export($sub_field),
+                array_values(array_filter($field['sub_fields'], 'is_array'))
+            ));
+        }
+
+        if (isset($field['layouts']) && is_array($field['layouts'])) {
+            $normalized_layouts = [];
+
+            foreach ($field['layouts'] as $layout) {
+                if (!is_array($layout)) {
+                    continue;
+                }
+
+                if (isset($layout['sub_fields']) && is_array($layout['sub_fields'])) {
+                    $layout['sub_fields'] = array_values(array_map(
+                        static fn(array $sub_field): array => meza_prepare_acf_local_field_for_export($sub_field),
+                        array_values(array_filter($layout['sub_fields'], 'is_array'))
+                    ));
+                }
+
+                $normalized_layouts[] = $layout;
+            }
+
+            $field['layouts'] = $normalized_layouts;
+        }
+
+        return $field;
+    }
+
+    function meza_prepare_acf_local_field_group_for_export(array $group): array
+    {
+        if (isset($group['fields']) && is_array($group['fields'])) {
+            $group['fields'] = array_values(array_map(
+                static fn(array $field): array => meza_prepare_acf_local_field_for_export($field),
+                array_values(array_filter($group['fields'], 'is_array'))
+            ));
+        }
+
+        return $group;
+    }
+
     function meza_register_acf_export_tool_local_definitions(): void
     {
         static $did_register = false;
@@ -899,7 +948,7 @@ if (!function_exists('meza_register_acf_export_tool_local_definitions')) {
                     continue;
                 }
 
-                acf_add_local_field_group($group);
+                acf_add_local_field_group(meza_prepare_acf_local_field_group_for_export($group));
             }
         });
     }
