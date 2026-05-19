@@ -3007,6 +3007,84 @@ add_action('admin_head-edit-tags.php', function (): void {
     meza_remove_acf_taxonomy_admin_footer();
 }, 20);
 
+if (!function_exists('meza_render_export_screen_content_sort_script')) {
+    function meza_render_export_screen_content_sort_script(): void
+    {
+        ?>
+        <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var fieldset = document.querySelector('#export-filters > fieldset');
+            if (!fieldset) {
+                return;
+            }
+
+            var children = Array.prototype.slice.call(fieldset.children);
+            var allChoice = null;
+            var allDescription = null;
+            var entries = [];
+
+            for (var index = 0; index < children.length; index++) {
+                var child = children[index];
+                if (!child || child.tagName !== 'P') {
+                    continue;
+                }
+
+                var input = child.querySelector('input[type="radio"][name="content"]');
+                if (!input) {
+                    continue;
+                }
+
+                var nextChild = children[index + 1] || null;
+                if ((input.value || '') === 'all') {
+                    allChoice = child;
+                    if (nextChild && nextChild.matches('p.description')) {
+                        allDescription = nextChild;
+                        index++;
+                    }
+                    continue;
+                }
+
+                var filterNode = nextChild && nextChild.matches('ul.export-filters') ? nextChild : null;
+                var label = child.textContent ? child.textContent.replace(/\s+/g, ' ').trim() : '';
+
+                entries.push({
+                    label: label,
+                    choice: child,
+                    filters: filterNode
+                });
+
+                if (filterNode) {
+                    index++;
+                }
+            }
+
+            if (!allChoice || entries.length < 2) {
+                return;
+            }
+
+            entries.sort(function (left, right) {
+                return left.label.localeCompare(right.label, undefined, { sensitivity: 'base' });
+            });
+
+            var insertionPoint = allDescription || allChoice;
+
+            entries.forEach(function (entry) {
+                insertionPoint.insertAdjacentElement('afterend', entry.choice);
+                insertionPoint = entry.choice;
+
+                if (entry.filters) {
+                    insertionPoint.insertAdjacentElement('afterend', entry.filters);
+                    insertionPoint = entry.filters;
+                }
+            });
+        });
+        </script>
+        <?php
+    }
+}
+
+add_action('admin_head-export.php', 'meza_render_export_screen_content_sort_script', 20);
+
 add_action('admin_init', function (): void {
     if (meza_site_has_subscribers()) return;
     if (!is_admin()) return;
