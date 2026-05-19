@@ -5,7 +5,7 @@
  * Description: Core site settings, defaults, and bootstrap configuration.
  * Author: Meza LLC
  * Author URI: https://meza.design
- * Version: 1.8.41
+ * Version: 1.8.42
  */
 
 /** ================================
@@ -153,7 +153,16 @@ function meza_resolve_gmt_offset()
 /** Check whether WordPress already has both a front page and posts page assigned. */
 function meza_has_assigned_reading_pages(): bool
 {
-    return ((int)get_option('page_on_front', 0) > 0 && (int)get_option('page_for_posts', 0) > 0);
+    $front_page_id = (int) get_option('page_on_front', 0);
+    if ($front_page_id <= 0) {
+        return false;
+    }
+
+    if (function_exists('meza_are_posts_enabled') && !meza_are_posts_enabled()) {
+        return true;
+    }
+
+    return ((int) get_option('page_for_posts', 0) > 0);
 }
 
 /** Convert common "truthy" config values like 1/true/yes/on into a real boolean. */
@@ -728,6 +737,9 @@ add_action('muplugins_loaded', function () {
     meza_force_option_read('blog_public',     meza_target_blog_public_value());
     meza_force_option_read('posts_per_page',  MEZA_POSTS_PER_PAGE);
     meza_force_option_read('posts_per_rss',   MEZA_POSTS_PER_RSS);
+    if (function_exists('meza_are_posts_enabled') && !meza_are_posts_enabled()) {
+        meza_force_option_read('page_for_posts', 0);
+    }
     if (meza_has_assigned_reading_pages()) {
         meza_force_option_read('show_on_front', 'page');
     }
@@ -790,6 +802,12 @@ add_action('muplugins_loaded', function () {
         });
     }
 
+    if (function_exists('meza_are_posts_enabled') && !meza_are_posts_enabled()) {
+        meza_guard_option_write('page_for_posts', function ($n, $o) {
+            return ((int) $n === 0) ? 0 : null;
+        });
+    }
+
     meza_guard_option_write('admin_email', function ($n, $o) {
         return (strcasecmp((string) $n, (string) MEZA_ADMIN_EMAIL) === 0) ? $n : null;
     });
@@ -801,29 +819,50 @@ add_action('muplugins_loaded', function () {
 add_action('admin_init', function () {
     if (!current_user_can('manage_options')) return;
 
+    $posts_enabled = !function_exists('meza_are_posts_enabled') || meza_are_posts_enabled();
+    if (!$posts_enabled && (int) get_option('page_for_posts', 0) !== 0) {
+        update_option('page_for_posts', 0);
+    }
+
     $has_run = (int)get_option('meza_pages_initialized', 0) === 1;
     if ($has_run && !meza_should_rerun()) return;
 
     $current_front_page = (int)get_option('page_on_front', 0);
     $current_posts_page = (int)get_option('page_for_posts', 0);
-    $can_seed_pages = ($current_front_page <= 0 && $current_posts_page <= 0);
+    $can_seed_pages = ($current_front_page <= 0 && (!$posts_enabled || $current_posts_page <= 0));
 
     if ($can_seed_pages) {
-        $home_id  = meza_ensure_page_state(MEZA_FRONT_PAGE_TITLE, MEZA_FRONT_PAGE_SLUGS);
-        $posts_id = meza_ensure_page_state(MEZA_POSTS_PAGE_TITLE, MEZA_POSTS_PAGE_SLUGS);
+        $home_id = meza_ensure_page_state(MEZA_FRONT_PAGE_TITLE, MEZA_FRONT_PAGE_SLUGS);
 
-        if ($home_id && $posts_id && $home_id !== $posts_id) {
+        if ($posts_enabled) {
+            $posts_id = meza_ensure_page_state(MEZA_POSTS_PAGE_TITLE, MEZA_POSTS_PAGE_SLUGS);
+
+            if ($home_id && $posts_id && $home_id !== $posts_id) {
+                update_option('show_on_front', 'page');
+                update_option('page_on_front',  (int)$home_id);
+                update_option('page_for_posts', (int)$posts_id);
+
+                meza_force_option_read('page_on_front',  (int)$home_id);
+                meza_force_option_read('page_for_posts', (int)$posts_id);
+                meza_guard_option_write('page_on_front', function ($n, $o) use ($home_id) {
+                    return ((int) $n === (int) $home_id) ? $home_id : null;
+                });
+                meza_guard_option_write('page_for_posts', function ($n, $o) use ($posts_id) {
+                    return ((int) $n === (int) $posts_id) ? $posts_id : null;
+                });
+            }
+        } elseif ($home_id) {
             update_option('show_on_front', 'page');
             update_option('page_on_front',  (int)$home_id);
-            update_option('page_for_posts', (int)$posts_id);
+            update_option('page_for_posts', 0);
 
             meza_force_option_read('page_on_front',  (int)$home_id);
-            meza_force_option_read('page_for_posts', (int)$posts_id);
+            meza_force_option_read('page_for_posts', 0);
             meza_guard_option_write('page_on_front', function ($n, $o) use ($home_id) {
                 return ((int) $n === (int) $home_id) ? $home_id : null;
             });
-            meza_guard_option_write('page_for_posts', function ($n, $o) use ($posts_id) {
-                return ((int) $n === (int) $posts_id) ? $posts_id : null;
+            meza_guard_option_write('page_for_posts', function ($n, $o) {
+                return ((int) $n === 0) ? 0 : null;
             });
         }
     }
