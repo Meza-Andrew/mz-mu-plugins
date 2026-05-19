@@ -21,6 +21,163 @@ if (!mz_plugin_compat_enabled()) {
     return;
 }
 
+// Let UpdraftPlus keep operational warnings while suppressing its promo notice stack.
+if (!defined('UPDRAFTPLUS_NOADS_B')) {
+    define('UPDRAFTPLUS_NOADS_B', true);
+}
+
+if (!function_exists('mz_plugin_compat_is_updraft_admin_page')) {
+    function mz_plugin_compat_is_updraft_admin_page(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        return $page === 'updraftplus';
+    }
+}
+
+if (!function_exists('mz_plugin_compat_cleanup_updraft_admin_markup')) {
+    function mz_plugin_compat_cleanup_updraft_admin_markup(string $html): string
+    {
+        $html = (string) preg_replace(
+            '#\s*<tr class="backup-interval-description">.*?</tr>\s*#is',
+            '',
+            $html
+        );
+
+        $html = (string) preg_replace(
+            '#\s*<h2 class="updraft_settings_sectionheading">\s*Database Options\s*</h2>\s*<table class="form-table width-900">.*?</table>\s*#is',
+            '',
+            $html
+        );
+
+        $html = (string) preg_replace(
+            '#(<p>\s*The above includes all WordPress file directories, except for WordPress core which you can download afresh from WordPress\.org\.\s*).*?(</p>)#is',
+            '$1$2',
+            $html
+        );
+
+        $html = (string) preg_replace(
+            '#\s*<p>\s*<a\b[^>]*href="[^"]*(?:\?|&)utm_[^"]*"[^>]*>.*?</a>\s*</p>\s*#is',
+            '',
+            $html
+        );
+
+        $html = (string) preg_replace(
+            '#\s*<a\b[^>]*href="[^"]*(?:\?|&)utm_[^"]*"[^>]*>\s*For more reporting features, use the Premium version\s*</a>\s*#is',
+            '',
+            $html
+        );
+
+        $html = (string) preg_replace(
+            '#\s*<p>\s*<a\b[^>]*href="https?://wordpress\.org/plugins/[^"]*"[^>]*>.*?</a>\s*</p>\s*#is',
+            '',
+            $html
+        );
+
+        $html = (string) preg_replace(
+            '#\s*<br\s*/?>\s*<a\b[^>]*href="https?://wordpress\.org/plugins/[^"]*"[^>]*>.*?</a>\s*#is',
+            '',
+            $html
+        );
+
+        $html = (string) preg_replace(
+            '#\s*<div\b[^>]*id=(["\'])updraftcentral_cloud_connect_container\1[^>]*>\s*</div>\s*#i',
+            '',
+            $html
+        );
+
+        $html = (string) preg_replace(
+            '#\s*<div\b[^>]*id=(["\'])updraft_backup_started\1[^>]*>\s*</div>\s*#i',
+            '',
+            $html
+        );
+
+        return $html;
+    }
+}
+
+add_action('admin_init', function (): void {
+    if (
+        !mz_plugin_compat_is_updraft_admin_page()
+        || (defined('DOING_AJAX') && DOING_AJAX)
+    ) {
+        return;
+    }
+
+    ob_start('mz_plugin_compat_cleanup_updraft_admin_markup');
+}, 0);
+
+add_action('admin_footer', function (): void {
+    if (!mz_plugin_compat_is_updraft_admin_page()) {
+        return;
+    }
+    ?>
+<script>
+jQuery(function ($) {
+    $('#updraftplus-settings-save').on('click', function () {
+        if ($('#updraft_backup_started').length) {
+            return;
+        }
+
+        var $wrap = $('#updraft-wrap');
+        if (!$wrap.length) {
+            return;
+        }
+
+        $('<div id="updraft_backup_started" class="updated updraft-hidden" style="display:none;"></div>')
+            .prependTo($wrap);
+    });
+});
+</script>
+    <?php
+}, 20);
+
+add_filter('updraftplus_main_tabs', function (array $tabs): array {
+    unset($tabs['migrate']);
+    unset($tabs['addons']);
+    return $tabs;
+}, PHP_INT_MAX);
+
+add_filter('updraftplus_addonstab_content', function ($content) {
+    if (!mz_plugin_compat_is_updraft_admin_page()) {
+        return $content;
+    }
+
+    return '';
+}, PHP_INT_MAX);
+
+add_action('admin_init', function (): void {
+    if (!mz_plugin_compat_is_updraft_admin_page()) {
+        return;
+    }
+
+    $tab = isset($_GET['tab']) ? sanitize_key((string) wp_unslash($_GET['tab'])) : '';
+    if (!in_array($tab, ['addons', 'migrate'], true)) {
+        return;
+    }
+
+    wp_safe_redirect(admin_url('options-general.php?page=updraftplus'));
+    exit;
+}, 20);
+
+add_filter('updraftplus_template', function ($template_file, $path) {
+    $override_map = [
+        'wp-admin/settings/header.php' => __DIR__ . '/overrides/plugin-compat/updraftplus/header.php',
+        'wp-admin/settings/updraftcentral-connect.php' => __DIR__ . '/overrides/plugin-compat/updraftplus/updraftcentral-connect.php',
+    ];
+
+    if (!isset($override_map[$path])) {
+        return $template_file;
+    }
+
+    $override = $override_map[$path];
+
+    return is_file($override) ? $override : $template_file;
+}, 20, 2);
+
 if (!function_exists('mz_plugin_compat_toolset_value_is_enabled')) {
     function mz_plugin_compat_toolset_value_is_enabled($value): bool
     {
