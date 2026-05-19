@@ -323,7 +323,7 @@
                 'item_link' => 'Event Link',
                 'item_link_description' => 'A link to a event.',
             ],
-            'description' => '',
+            'description' => 'Manage concert and event content with scheduled dates and times, venue or virtual location details, media, CTA links, and related partners, sponsors, and speakers.',
             'public' => true,
             'hierarchical' => false,
             'exclude_from_search' => !$events_are_indexable,
@@ -413,7 +413,7 @@
                 'item_link' => 'Certification Link',
                 'item_link_description' => 'A link to a certification.',
             ],
-            'description' => '',
+            'description' => 'Manage certifications, accreditations, and trust badges used to highlight credibility with logos, short summaries, and outbound links.',
             'public' => true,
             'hierarchical' => false,
             'exclude_from_search' => true,
@@ -682,7 +682,7 @@
                 'item_link' => 'Organization Type Link',
                 'item_link_description' => 'A link to a organization type',
             ],
-            'description' => '',
+            'description' => 'Organize organizations by their role on the site, such as partners, sponsors, venues, and sponsor tiers used in event and sponsorship displays.',
             'capabilities' => [
                 'manage_terms' => 'manage_categories',
                 'edit_terms' => 'manage_categories',
@@ -760,7 +760,7 @@
                 'item_link' => 'Profile Type Link',
                 'item_link_description' => 'A link to a profile type',
             ],
-            'description' => '',
+            'description' => 'Organize profiles by role or group, such as choir sections, leadership, board positions, speakers, donors, and instrument-based categories.',
             'capabilities' => [
                 'manage_terms' => 'manage_categories',
                 'edit_terms' => 'manage_categories',
@@ -992,7 +992,7 @@
                 'item_link' => 'Topic Link',
                 'item_link_description' => 'A link to a topic',
             ],
-            'description' => '',
+            'description' => 'Organize posts and events by subject matter, program theme, or discussion area so related content can be grouped and filtered together.',
             'capabilities' => [
                 'manage_terms' => 'manage_categories',
                 'edit_terms' => 'manage_categories',
@@ -1070,7 +1070,7 @@
                 'item_link' => 'Event Type Link',
                 'item_link_description' => 'A link to an event type',
             ],
-            'description' => '',
+            'description' => 'Organize events by format or program category, such as concerts and similar event groupings, to support filtering, seasonal presentation, and admin organization.',
             'capabilities' => [
                 'manage_terms' => 'manage_categories',
                 'edit_terms' => 'manage_categories',

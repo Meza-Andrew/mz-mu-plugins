@@ -174,6 +174,10 @@ if (!function_exists('meza_site_documentation_content_type_description')) {
                 return 'Manage portfolio-style sign example content used to showcase completed work, sign types, and related project examples.';
             }
 
+            if ($post_type === 'song') {
+                return 'Manage reusable song content for concert programs, repertoire lists, and event-related music details such as featured pieces or setlists.';
+            }
+
             if ($description !== '') {
                 return $description;
             }
@@ -200,6 +204,10 @@ if (!function_exists('meza_site_documentation_content_type_description')) {
 
             if ((string) $object->name === 'sign_type') {
                 return 'Organize sign content by sign type so entries can be grouped by signage style or product type.';
+            }
+
+            if ((string) $object->name === 'season') {
+                return 'Organize concert and event content into seasonal groupings so programs can be filtered, styled, and presented within the current performance season.';
             }
 
             $description = trim((string) ($object->description ?? ''));

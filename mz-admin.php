@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.782
+ * Version: 1.1.785
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -3222,51 +3222,6 @@ add_filter('option_wpseo', function ($options) {
 
     return $options;
 }, 1001);
-
-if (!function_exists('meza_is_yoast_settings_admin_page')) {
-    function meza_is_yoast_settings_admin_page(): bool
-    {
-        global $pagenow;
-
-        return is_admin()
-            && $pagenow === 'admin.php'
-            && (string) ($_GET['page'] ?? '') === 'wpseo_page_settings';
-    }
-}
-
-if (!function_exists('meza_get_yoast_settings_sidebar_asset_path')) {
-    function meza_get_yoast_settings_sidebar_asset_path(string $filename): string
-    {
-        return __DIR__ . '/mz-admin/assets/' . ltrim($filename, '/');
-    }
-}
-
-if (!function_exists('meza_print_yoast_settings_sidebar_overrides')) {
-    function meza_print_yoast_settings_sidebar_overrides(): void
-    {
-        if (!meza_is_yoast_settings_admin_page()) {
-            return;
-        }
-
-        $style_path = meza_get_yoast_settings_sidebar_asset_path('yoast-settings-sidebar.css');
-        $script_path = meza_get_yoast_settings_sidebar_asset_path('yoast-settings-sidebar.js');
-        if (!file_exists($script_path)) {
-            return;
-        }
-
-        $css = file_exists($style_path) ? trim((string) file_get_contents($style_path)) : '';
-        $js = trim((string) file_get_contents($script_path));
-
-        if ($js === '') {
-            return;
-        }
-
-        $payload = 'window.mezaYoastSettingsSidebarCss = ' . wp_json_encode($css) . ";\n" . $js;
-        echo "<script>\n{$payload}\n</script>\n";
-    }
-}
-
-add_action('admin_print_footer_scripts', 'meza_print_yoast_settings_sidebar_overrides', 1000);
 
 if (!function_exists('meza_can_access_admin_bar_new_content_node')) {
     function meza_admin_bar_allows_hidden_post_type_new_node(string $post_type): bool
