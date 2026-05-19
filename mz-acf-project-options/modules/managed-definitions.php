@@ -631,7 +631,9 @@ if (!function_exists('meza_apply_default_editable_acf_field_group_location_rules
     {
         $location = meza_get_default_editable_acf_field_group_location_rules();
         $preserve_location_keys = [
+            'group_68f903208a8e1',
             'group_688f8c2740e76',
+            'group_meza_contact_locations_section',
         ];
 
         foreach ($definitions as $index => $definition) {
@@ -2437,7 +2439,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                         ],
                     ],
                 ],
-                'menu_order' => 13,
+                'menu_order' => 14,
             ]);
         }
 
