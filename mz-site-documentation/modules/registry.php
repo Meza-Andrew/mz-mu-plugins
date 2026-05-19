@@ -132,6 +132,41 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                 ],
                 'action' => 'View',
             ],
+            'manage_backups' => [
+                'label' => 'Manage Backups',
+                'description' => 'Create and delete backups. Automatic backups are enabled where supported.',
+                'capability' => 'meza_doc_manage_backups',
+                'plugin' => 'updraftplus/updraftplus.php',
+                'hide_when_dependency_missing' => true,
+                'access' => [
+                    $seo => '',
+                    $site => '',
+                    'administrator' => 'Full access',
+                ],
+                'action' => 'Manage',
+            ],
+            'view_site_health' => [
+                'label' => 'View Site Health Status',
+                'description' => 'View back-end health issues and recommendations surfaced by WordPress.',
+                'capability' => 'meza_doc_view_site_health',
+                'access' => [
+                    $seo => '',
+                    $site => '',
+                    'administrator' => 'Full access',
+                ],
+                'action' => 'View',
+            ],
+            'view_site_activity' => [
+                'label' => 'View Site Activity',
+                'description' => 'Review the admin activity log to monitor recent changes, publishing events, and other recorded site actions.',
+                'capability' => 'meza_doc_view_site_activity',
+                'access' => [
+                    $seo => '',
+                    $site => 'View access',
+                    'administrator' => 'Full access',
+                ],
+                'action' => 'View',
+            ],
             'manage_plugins' => [
                 'label' => 'Manage Plugins',
                 'description' => 'Add, activate, deactivate, and remove plugins used to enhance the website.',
@@ -147,6 +182,28 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                 'label' => 'Manage Users',
                 'description' => 'Add, remove, and update users who have access to the website admin.',
                 'capability' => 'meza_doc_manage_users',
+                'access' => [
+                    $seo => '',
+                    $site => 'View access',
+                    'administrator' => 'Full access',
+                ],
+                'action' => 'Manage',
+            ],
+            'manage_content_model' => [
+                'label' => 'Manage Content Model',
+                'description' => 'Manage post types, taxonomies, custom fields, and other structural content settings that define how content is organized.',
+                'capability' => 'meza_doc_manage_content_model',
+                'access' => [
+                    $seo => '',
+                    $site => 'View access',
+                    'administrator' => 'Full access',
+                ],
+                'action' => 'Manage',
+            ],
+            'manage_integrations' => [
+                'label' => 'Manage Integrations',
+                'description' => 'Manage third-party connections, service integrations, and related configuration used by the website.',
+                'capability' => 'meza_doc_manage_integrations',
                 'access' => [
                     $seo => '',
                     $site => 'View access',
@@ -226,6 +283,68 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                 ],
                 'action' => 'Manage',
             ],
+            'import_content' => [
+                'label' => 'Import Content',
+                'description' => 'Import WordPress content from another site when migrations or structured content handoff are needed.',
+                'capability' => 'meza_doc_import_content',
+                'access' => [
+                    $seo => 'Full access',
+                    $site => 'Full access',
+                    meza_site_documentation_content_manager_role_key() => 'Full access',
+                    'administrator' => 'Full access',
+                ],
+                'action' => 'Use',
+            ],
+            'export_content' => [
+                'label' => 'Export Content',
+                'description' => 'Export WordPress content for migration, archival, or support workflows.',
+                'capability' => 'meza_doc_export_content',
+                'access' => [
+                    $seo => '',
+                    $site => 'Full access',
+                    'administrator' => 'Full access',
+                ],
+                'action' => 'Use',
+            ],
+            'bulk_edit_seo_metadata' => [
+                'label' => 'Bulk Edit SEO Metadata',
+                'description' => 'Update SEO titles and meta descriptions across many posts or pages at once.',
+                'capability' => 'meza_doc_bulk_edit_seo_metadata',
+                'plugin' => 'wordpress-seo/wp-seo.php',
+                'hide_when_dependency_missing' => true,
+                'access' => [
+                    $seo => 'Full access',
+                    $site => 'Full access',
+                    'administrator' => 'Full access',
+                ],
+                'action' => 'Use',
+            ],
+            'optimize_seo_data' => [
+                'label' => 'Optimize SEO Data',
+                'description' => 'Run Yoast SEO data optimization when internal SEO records need to be rebuilt or refreshed.',
+                'capability' => 'meza_doc_optimize_seo_data',
+                'plugin' => 'wordpress-seo/wp-seo.php',
+                'hide_when_dependency_missing' => true,
+                'access' => [
+                    $seo => 'Full access',
+                    $site => 'Full access',
+                    'administrator' => 'Full access',
+                ],
+                'action' => 'Use',
+            ],
+            'edit_seo_files' => [
+                'label' => 'Edit SEO Files',
+                'description' => 'Update robots.txt and other SEO-related server-facing files when needed.',
+                'capability' => 'meza_doc_edit_seo_files',
+                'plugin' => 'wordpress-seo/wp-seo.php',
+                'hide_when_dependency_missing' => true,
+                'access' => [
+                    $seo => '',
+                    $site => '',
+                    'administrator' => 'Full access',
+                ],
+                'action' => 'Use',
+            ],
             'manage_analytics_settings' => [
                 'label' => 'Manage Analytics Settings',
                 'description' => 'Manage analytics account connections and dashboard access settings.',
@@ -251,41 +370,6 @@ if (!function_exists('meza_site_documentation_capabilities_registry')) {
                     'administrator' => 'Full access',
                 ],
                 'action' => 'Manage',
-            ],
-            'manage_backups' => [
-                'label' => 'Manage Backups',
-                'description' => 'Create and delete backups. Automatic backups are enabled where supported.',
-                'capability' => 'meza_doc_manage_backups',
-                'plugin' => 'updraftplus/updraftplus.php',
-                'hide_when_dependency_missing' => true,
-                'access' => [
-                    $seo => '',
-                    $site => '',
-                    'administrator' => 'Full access',
-                ],
-                'action' => 'Manage',
-            ],
-            'view_site_health' => [
-                'label' => 'View Site Health Status',
-                'description' => 'View back-end health issues and recommendations surfaced by WordPress.',
-                'capability' => 'meza_doc_view_site_health',
-                'access' => [
-                    $seo => '',
-                    $site => '',
-                    'administrator' => 'Full access',
-                ],
-                'action' => 'View',
-            ],
-            'view_site_activity' => [
-                'label' => 'View Site Activity',
-                'description' => 'Review the admin activity log to monitor recent changes, publishing events, and other recorded site actions.',
-                'capability' => 'meza_doc_view_site_activity',
-                'access' => [
-                    $seo => '',
-                    $site => '',
-                    'administrator' => 'Full access',
-                ],
-                'action' => 'View',
             ],
             'manage_maintenance_mode' => [
                 'label' => 'Manage Maintenance Mode',
@@ -358,7 +442,7 @@ if (!function_exists('meza_site_documentation_tools_registry')) {
     {
         return [
             'import' => [
-                'label' => 'Import',
+                'label' => 'WordPress Import',
                 'description' => 'Import WordPress content exported from another WordPress website.',
                 'capability' => 'meza_doc_tool_import',
                 'roles' => [
@@ -370,10 +454,13 @@ if (!function_exists('meza_site_documentation_tools_registry')) {
                 'action' => 'Use',
             ],
             'export' => [
-                'label' => 'Export',
+                'label' => 'WordPress Export',
                 'description' => 'Export WordPress content for importing into another WordPress website.',
                 'capability' => 'meza_doc_tool_export',
-                'roles' => [],
+                'roles' => [
+                    'administrator',
+                    meza_site_documentation_site_manager_role_key(),
+                ],
                 'action' => 'Use',
             ],
             'seo_bulk_edit' => [
@@ -386,7 +473,30 @@ if (!function_exists('meza_site_documentation_tools_registry')) {
                     'administrator',
                     meza_site_documentation_site_manager_role_key(),
                     meza_site_documentation_seo_manager_role_key(),
-                    meza_site_documentation_content_manager_role_key(),
+                ],
+                'action' => 'Use',
+            ],
+            'seo_file_editor' => [
+                'label' => 'SEO File Editor',
+                'description' => 'Edit key SEO-related files like robots.txt and .htaccess from WordPress when server permissions allow it.',
+                'capability' => 'meza_doc_tool_seo_file_editor',
+                'plugin' => 'wordpress-seo/wp-seo.php',
+                'hide_when_dependency_missing' => true,
+                'roles' => [
+                    'administrator',
+                ],
+                'action' => 'Use',
+            ],
+            'seo_optimize_data' => [
+                'label' => 'SEO Data Optimization',
+                'description' => 'Rebuild and optimize Yoast SEO data so metadata and internal SEO records stay current and performant.',
+                'capability' => 'meza_doc_tool_seo_optimize_data',
+                'plugin' => 'wordpress-seo/wp-seo.php',
+                'hide_when_dependency_missing' => true,
+                'roles' => [
+                    'administrator',
+                    meza_site_documentation_site_manager_role_key(),
+                    meza_site_documentation_seo_manager_role_key(),
                 ],
                 'action' => 'Use',
             ],

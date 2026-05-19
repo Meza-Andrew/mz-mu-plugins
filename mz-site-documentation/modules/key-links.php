@@ -352,6 +352,21 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
                     'manage_menus' => admin_url('nav-menus.php'),
                     'manage_redirects' => admin_url('tools.php?page=redirection.php'),
                     'manage_seo_settings' => admin_url('admin.php?page=wpseo_dashboard'),
+                    'import_content' => admin_url('import.php'),
+                    'export_content' => admin_url('export.php'),
+                    'bulk_edit_seo_metadata' => admin_url('admin.php?page=wpseo_bulk-editor'),
+                    'optimize_seo_data' => admin_url('admin.php?page=wpseo_tools'),
+                    'edit_seo_files' => admin_url('admin.php?page=wpseo_tools&tool=file-editor'),
+                    'manage_content_model' => admin_url(
+                        function_exists('meza_get_site_settings_configuration_menu_slug')
+                            ? meza_get_site_settings_configuration_menu_slug()
+                            : 'admin.php?page=content-model'
+                    ),
+                    'manage_integrations' => admin_url(
+                        function_exists('meza_get_site_settings_integrations_menu_slug')
+                            ? meza_get_site_settings_integrations_menu_slug()
+                            : 'admin.php?page=crm'
+                    ),
                     'manage_analytics_settings' => admin_url('admin.php?page=googlesitekit-dashboard'),
                     'manage_security_settings' => admin_url('admin.php?page=aiowpsec'),
                     'manage_backups' => admin_url('options-general.php?page=updraftplus'),
@@ -390,6 +405,8 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
                     'import' => admin_url('import.php'),
                     'export' => admin_url('export.php'),
                     'seo_bulk_edit' => admin_url('admin.php?page=wpseo_bulk-editor'),
+                    'seo_file_editor' => admin_url('admin.php?page=wpseo_tools&tool=file-editor'),
+                    'seo_optimize_data' => admin_url('admin.php?page=wpseo_tools'),
                     'two_factor_authentication' => admin_url('admin.php?page=aiowpsec_two_factor_auth_user'),
                     'password_strength' => admin_url('profile.php'),
                     'file_scan' => admin_url('admin.php?page=aiowpsec&tab=file-change-detect'),

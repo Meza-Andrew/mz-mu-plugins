@@ -1642,14 +1642,91 @@ function meza_can_access_yoast_admin_menu($user = null): bool
         && meza_can_access_yoast_capabilities($user);
 }
 
+function meza_can_access_yoast_tool(string $tool_slug, $user = null): bool
+{
+    $tool_slug = strtolower(trim($tool_slug));
+
+    if ($user === null) {
+        $user = wp_get_current_user();
+    } elseif (is_numeric($user)) {
+        $user = get_userdata((int) $user);
+    }
+
+    if (!($user instanceof WP_User) || $user->ID <= 0) {
+        return false;
+    }
+
+    if (is_multisite() && is_super_admin($user->ID)) {
+        return true;
+    }
+
+    if (meza_user_has_any_role($user, ['administrator'])) {
+        return true;
+    }
+
+    switch ($tool_slug) {
+        case 'bulk-editor':
+        case 'optimize-seo-data':
+            return meza_user_has_any_role($user, [
+                meza_site_manager_role_key(),
+                meza_seo_manager_role_key(),
+            ]);
+
+        case 'file-editor':
+        case 'import-export':
+        default:
+            return false;
+    }
+}
+
+function meza_can_access_any_yoast_tool($user = null): bool
+{
+    foreach (['import-export', 'bulk-editor', 'file-editor', 'optimize-seo-data'] as $tool_slug) {
+        if (meza_can_access_yoast_tool($tool_slug, $user)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function meza_get_current_yoast_tool_request_slug(): string
+{
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+
+    if ($page === 'wpseo_bulk-editor') {
+        return 'bulk-editor';
+    }
+
+    $tool = isset($_GET['tool']) ? sanitize_key((string) wp_unslash($_GET['tool'])) : '';
+    if ($tool !== '') {
+        return $tool;
+    }
+
+    if (isset($_GET['start-indexation'])) {
+        return 'optimize-seo-data';
+    }
+
+    return '';
+}
+
+function meza_get_default_yoast_tools_url($user = null): string
+{
+    if (meza_can_access_any_yoast_tool($user)) {
+        return admin_url('admin.php?page=wpseo_tools');
+    }
+
+    if (meza_can_access_yoast_admin_menu($user)) {
+        return meza_get_default_yoast_settings_url($user);
+    }
+
+    return admin_url();
+}
+
 function meza_get_default_yoast_settings_url($user = null): string
 {
     if (!($user instanceof WP_User)) {
         $user = wp_get_current_user();
-    }
-
-    if (meza_is_content_editor_user($user)) {
-        return admin_url('admin.php?page=wpseo_tools');
     }
 
     $target = (meza_is_site_manager_user($user) || meza_is_seo_manager_user($user))
@@ -1676,6 +1753,42 @@ function meza_is_yoast_plugin_available(): bool
 
     return defined('WP_PLUGIN_DIR') && is_readable(WP_PLUGIN_DIR . '/wordpress-seo/wp-seo.php');
 }
+
+add_action('admin_init', function (): void {
+    if (!is_admin() || (function_exists('wp_doing_ajax') && wp_doing_ajax())) {
+        return;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if (!in_array($page, ['wpseo_tools', 'wpseo_bulk-editor'], true)) {
+        return;
+    }
+
+    $user = wp_get_current_user();
+    if (!($user instanceof WP_User) || $user->ID <= 0) {
+        return;
+    }
+
+    if (!meza_can_access_yoast_admin_menu($user)) {
+        wp_safe_redirect(admin_url());
+        exit;
+    }
+
+    $requested_tool = meza_get_current_yoast_tool_request_slug();
+    if ($requested_tool === '') {
+        if (!meza_can_access_any_yoast_tool($user)) {
+            wp_safe_redirect(meza_get_default_yoast_settings_url($user));
+            exit;
+        }
+
+        return;
+    }
+
+    if (!meza_can_access_yoast_tool($requested_tool, $user)) {
+        wp_safe_redirect(meza_get_default_yoast_tools_url($user));
+        exit;
+    }
+}, 1);
 
 add_filter('user_has_cap', function (array $allcaps, array $caps, array $args, $user): array {
     if (!meza_can_access_yoast_admin_menu($user) || !meza_is_yoast_plugin_available()) {
@@ -1766,6 +1879,61 @@ add_action('admin_head', function (): void {
                 document.addEventListener('DOMContentLoaded', updateSettingsLink, { once: true });
             } else {
                 updateSettingsLink();
+            }
+        })();
+    </script>
+<?php
+}, 1001);
+
+add_action('admin_footer', function (): void {
+    if (!is_admin()) {
+        return;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    $tool = isset($_GET['tool']) ? sanitize_key((string) wp_unslash($_GET['tool'])) : '';
+    if ($page !== 'wpseo_tools' || $tool !== '') {
+        return;
+    }
+
+    $user = wp_get_current_user();
+    if (!($user instanceof WP_User) || !meza_can_access_yoast_admin_menu($user)) {
+        return;
+    }
+
+    $visibility = [
+        'import-export' => meza_can_access_yoast_tool('import-export', $user),
+        'bulk-editor' => meza_can_access_yoast_tool('bulk-editor', $user),
+        'file-editor' => meza_can_access_yoast_tool('file-editor', $user),
+        'optimize-seo-data' => meza_can_access_yoast_tool('optimize-seo-data', $user),
+    ];
+?>
+    <script id="meza-yoast-tools-visibility">
+        (() => {
+            const toolVisibility = <?php echo wp_json_encode($visibility); ?>;
+            const removeListItem = (selector) => {
+                document.querySelectorAll(selector).forEach((element) => {
+                    const item = element.closest('li');
+                    if (item) {
+                        item.remove();
+                    }
+                });
+            };
+
+            if (!toolVisibility['import-export']) {
+                removeListItem('a[href*="page=wpseo_tools"][href*="tool=import-export"]');
+            }
+
+            if (!toolVisibility['bulk-editor']) {
+                removeListItem('a[href*="page=wpseo_tools"][href*="tool=bulk-editor"]');
+            }
+
+            if (!toolVisibility['file-editor']) {
+                removeListItem('a[href*="page=wpseo_tools"][href*="tool=file-editor"]');
+            }
+
+            if (!toolVisibility['optimize-seo-data']) {
+                removeListItem('#yoast-seo-indexing-action');
             }
         })();
     </script>

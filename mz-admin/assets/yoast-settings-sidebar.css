@@ -1,0 +1,52 @@
+.meza-yoast-sidebar-force-open > .yst-sidebar-navigation__list,
+.meza-yoast-sidebar-force-open [id^="yst-animate-height-"],
+.meza-yoast-sidebar-force-open .rah-static {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    visibility: visible !important;
+}
+
+.meza-yoast-sidebar-force-open > .yst-sidebar-navigation__collapsible-button {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    color: inherit !important;
+    cursor: default !important;
+    pointer-events: none !important;
+}
+
+.meza-yoast-sidebar-force-open > .yst-sidebar-navigation__collapsible-button:hover,
+.meza-yoast-sidebar-force-open > .yst-sidebar-navigation__collapsible-button:focus,
+.meza-yoast-sidebar-force-open > .yst-sidebar-navigation__collapsible-button:active {
+    background: transparent !important;
+    box-shadow: none !important;
+    color: inherit !important;
+    outline: 0 !important;
+}
+
+.meza-yoast-sidebar-force-open > .yst-sidebar-navigation__collapsible-button .yst-ms-auto,
+.meza-yoast-sidebar-force-open > .yst-sidebar-navigation__collapsible-button svg:last-of-type {
+    display: none !important;
+}
+
+.meza-yoast-sidebar-force-open,
+.meza-yoast-sidebar-force-open > .yst-sidebar-navigation__list,
+.meza-yoast-sidebar-force-open > .yst-sidebar-navigation__list--indented {
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.yst-sidebar-navigation hr,
+.yst-sidebar-navigation .yst-relative,
+.yst-sidebar-navigation [class*="yst-border"] {
+    display: none !important;
+    border: 0 !important;
+}
+
+#button-search,
+button#button-search {
+    display: none !important;
+}

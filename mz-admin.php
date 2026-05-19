@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.759
+ * Version: 1.1.782
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -2011,9 +2011,7 @@ if (!function_exists('meza_content_editor_capabilities')) {
         $caps = [
             'read' => true,
             'import' => true,
-            'export' => true,
             'wpseo_edit_advanced_metadata' => true,
-            'wpseo_bulk_edit' => true,
         ];
 
         $editor_role = get_role('editor');
@@ -3093,12 +3091,37 @@ if (!function_exists('meza_is_yoast_redirect_upsell_notification')) {
     }
 }
 
+if (!function_exists('meza_is_yoast_content_type_visibility_notification')) {
+    function meza_is_yoast_content_type_visibility_notification($notification): bool
+    {
+        if ($notification instanceof Yoast_Notification) {
+            return (string) $notification->get_id() === 'content-types-made-public';
+        }
+
+        if (is_array($notification)) {
+            return (string) ($notification['id'] ?? '') === 'content-types-made-public';
+        }
+
+        return false;
+    }
+}
+
 if (!function_exists('meza_filter_yoast_redirect_upsell_notifications')) {
     function meza_filter_yoast_redirect_upsell_notifications(array $notifications): array
     {
         return array_values(array_filter(
             $notifications,
             static fn($notification): bool => !meza_is_yoast_redirect_upsell_notification($notification)
+        ));
+    }
+}
+
+if (!function_exists('meza_filter_yoast_content_type_visibility_notifications')) {
+    function meza_filter_yoast_content_type_visibility_notifications(array $notifications): array
+    {
+        return array_values(array_filter(
+            $notifications,
+            static fn($notification): bool => !meza_is_yoast_content_type_visibility_notification($notification)
         ));
     }
 }
@@ -3158,12 +3181,24 @@ if (!function_exists('meza_purge_yoast_redirect_upsell_notifications')) {
     }
 }
 
+if (!function_exists('meza_purge_yoast_content_type_visibility_notifications')) {
+    function meza_purge_yoast_content_type_visibility_notifications(): void
+    {
+        if (!class_exists('Yoast_Notification_Center')) {
+            return;
+        }
+
+        Yoast_Notification_Center::get()->remove_notification_by_id('content-types-made-public', false);
+    }
+}
+
 add_action('plugins_loaded', function (): void {
     meza_remove_yoast_slug_change_watcher_callbacks();
 }, 20);
 
 add_action('init', function (): void {
     meza_purge_yoast_redirect_upsell_notifications();
+    meza_purge_yoast_content_type_visibility_notifications();
 }, 20);
 
 add_filter('yoast_notifications_before_storage', function ($notifications) {
@@ -3171,8 +3206,67 @@ add_filter('yoast_notifications_before_storage', function ($notifications) {
         return $notifications;
     }
 
-    return meza_filter_yoast_redirect_upsell_notifications($notifications);
+    return meza_filter_yoast_content_type_visibility_notifications(
+        meza_filter_yoast_redirect_upsell_notifications($notifications)
+    );
 }, 20);
+
+add_filter('option_wpseo', function ($options) {
+    if (!is_array($options)) {
+        return $options;
+    }
+
+    $options['new_post_types'] = [];
+    $options['new_taxonomies'] = [];
+    $options['show_new_content_type_notification'] = false;
+
+    return $options;
+}, 1001);
+
+if (!function_exists('meza_is_yoast_settings_admin_page')) {
+    function meza_is_yoast_settings_admin_page(): bool
+    {
+        global $pagenow;
+
+        return is_admin()
+            && $pagenow === 'admin.php'
+            && (string) ($_GET['page'] ?? '') === 'wpseo_page_settings';
+    }
+}
+
+if (!function_exists('meza_get_yoast_settings_sidebar_asset_path')) {
+    function meza_get_yoast_settings_sidebar_asset_path(string $filename): string
+    {
+        return __DIR__ . '/mz-admin/assets/' . ltrim($filename, '/');
+    }
+}
+
+if (!function_exists('meza_print_yoast_settings_sidebar_overrides')) {
+    function meza_print_yoast_settings_sidebar_overrides(): void
+    {
+        if (!meza_is_yoast_settings_admin_page()) {
+            return;
+        }
+
+        $style_path = meza_get_yoast_settings_sidebar_asset_path('yoast-settings-sidebar.css');
+        $script_path = meza_get_yoast_settings_sidebar_asset_path('yoast-settings-sidebar.js');
+        if (!file_exists($script_path)) {
+            return;
+        }
+
+        $css = file_exists($style_path) ? trim((string) file_get_contents($style_path)) : '';
+        $js = trim((string) file_get_contents($script_path));
+
+        if ($js === '') {
+            return;
+        }
+
+        $payload = 'window.mezaYoastSettingsSidebarCss = ' . wp_json_encode($css) . ";\n" . $js;
+        echo "<script>\n{$payload}\n</script>\n";
+    }
+}
+
+add_action('admin_print_footer_scripts', 'meza_print_yoast_settings_sidebar_overrides', 1000);
 
 if (!function_exists('meza_can_access_admin_bar_new_content_node')) {
     function meza_admin_bar_allows_hidden_post_type_new_node(string $post_type): bool
@@ -4151,6 +4245,10 @@ if (!function_exists('meza_can_access_yoast_capabilities')) {
             return true;
         }
 
+        if (function_exists('meza_is_content_editor_user') && meza_is_content_editor_user($user)) {
+            return false;
+        }
+
         if (meza_user_has_any_role($user, [
             'administrator',
             meza_site_manager_role_key(),
@@ -4161,7 +4259,7 @@ if (!function_exists('meza_can_access_yoast_capabilities')) {
 
         $user->get_role_caps();
 
-        foreach (meza_get_yoast_management_caps() as $cap) {
+        foreach (['wpseo_manage_options', 'wpseo_bulk_edit'] as $cap) {
             if (!empty($user->allcaps[$cap])) {
                 return true;
             }
