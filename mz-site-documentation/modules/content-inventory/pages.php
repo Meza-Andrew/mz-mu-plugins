@@ -287,6 +287,16 @@ if (!function_exists('meza_site_documentation_page_template_label_for_page')) {
 
         $template_slug = trim((string) get_page_template_slug($page_id));
         if ($template_slug !== '') {
+            $template_path = locate_template($template_slug, false, false);
+            if (is_string($template_path) && $template_path !== '' && is_readable($template_path)) {
+                $header = get_file_data($template_path, ['template_name' => 'Template Name']);
+                $template_name = trim((string) ($header['template_name'] ?? ''));
+
+                if ($template_name !== '') {
+                    return $template_name;
+                }
+            }
+
             $registered_templates = [];
             $theme = wp_get_theme();
 

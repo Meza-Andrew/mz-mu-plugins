@@ -875,6 +875,75 @@ if (!function_exists('meza_site_documentation_page_type_choice_map')) {
     }
 }
 
+if (!function_exists('meza_site_documentation_page_type_choice_label')) {
+    function meza_site_documentation_page_type_choice_label(string $raw_value): string
+    {
+        $raw_value = trim($raw_value);
+
+        if ($raw_value === '') {
+            return '';
+        }
+
+        $choices = meza_site_documentation_page_type_choice_map();
+
+        foreach ($choices as $value => $label) {
+            if (strtolower($value) !== strtolower($raw_value)) {
+                continue;
+            }
+
+            return $label;
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('meza_site_documentation_is_internal_page_type_key')) {
+    function meza_site_documentation_is_internal_page_type_key(string $raw_value): bool
+    {
+        $raw_value = trim($raw_value);
+
+        if ($raw_value === '') {
+            return false;
+        }
+
+        return (bool) preg_match('/^[a-z0-9_-]+$/', $raw_value);
+    }
+}
+
+if (!function_exists('meza_site_documentation_normalize_page_type_term_label')) {
+    function meza_site_documentation_normalize_page_type_term_label($term): string
+    {
+        if (!($term instanceof WP_Term)) {
+            return '';
+        }
+
+        $name = trim((string) $term->name);
+        if ($name === '') {
+            return '';
+        }
+
+        $choice_label = meza_site_documentation_page_type_choice_label($name);
+        if ($choice_label !== '') {
+            return $choice_label;
+        }
+
+        $slug = trim((string) $term->slug);
+        if ($slug !== '') {
+            $choice_label = meza_site_documentation_page_type_choice_label($slug);
+            if ($choice_label !== '') {
+                return $choice_label;
+            }
+        }
+
+        if (meza_site_documentation_is_internal_page_type_key($name)) {
+            return '';
+        }
+
+        return $name;
+    }
+}
+
 if (!function_exists('meza_site_documentation_special_page_label')) {
     function meza_site_documentation_special_page_label(int $post_id): string
     {
@@ -915,10 +984,16 @@ if (!function_exists('meza_site_documentation_page_type_meta_label')) {
             return '';
         }
 
-        $choices = meza_site_documentation_page_type_choice_map();
-        $normalized_value = strtolower($raw_value);
+        $choice_label = meza_site_documentation_page_type_choice_label($raw_value);
+        if ($choice_label !== '') {
+            return $choice_label;
+        }
 
-        return $choices[$normalized_value] ?? $raw_value;
+        if (meza_site_documentation_is_internal_page_type_key($raw_value)) {
+            return '';
+        }
+
+        return $raw_value;
     }
 }
 
@@ -934,11 +1009,7 @@ if (!function_exists('meza_site_documentation_page_type_term_label')) {
         $labels = [];
 
         foreach ($terms as $term) {
-            if (!($term instanceof WP_Term)) {
-                continue;
-            }
-
-            $label = trim((string) $term->name);
+            $label = meza_site_documentation_normalize_page_type_term_label($term);
 
             if ($label !== '') {
                 $labels[] = $label;

@@ -8196,12 +8196,65 @@ add_action('current_screen', function ($screen) {
  *  PAGES LIST COLUMN NORMALIZATION
  *  ================================ */
 
+function meza_get_page_type_choice_label_for_value(string $raw_value): string
+{
+    $raw_value = trim($raw_value);
+    if ($raw_value === '') return '';
+
+    $choices = meza_get_page_type_choice_map();
+    if (isset($choices[$raw_value])) {
+        return trim((string) $choices[$raw_value]);
+    }
+
+    $normalized = strtolower($raw_value);
+    foreach ($choices as $value => $label) {
+        if (strtolower(trim((string) $value)) !== $normalized) continue;
+        return trim((string) $label);
+    }
+
+    return '';
+}
+
+function meza_is_internal_page_type_key(string $raw_value): bool
+{
+    $raw_value = trim($raw_value);
+    if ($raw_value === '') return false;
+
+    return (bool) preg_match('/^[a-z0-9_-]+$/', $raw_value);
+}
+
+function meza_normalize_page_type_term_label($term): string
+{
+    if (!($term instanceof WP_Term)) return '';
+
+    $name = trim((string) $term->name);
+    if ($name === '') return '';
+
+    $choice_label = meza_get_page_type_choice_label_for_value($name);
+    if ($choice_label !== '') return $choice_label;
+
+    $slug = trim((string) $term->slug);
+    if ($slug !== '') {
+        $choice_label = meza_get_page_type_choice_label_for_value($slug);
+        if ($choice_label !== '') return $choice_label;
+    }
+
+    if (meza_is_internal_page_type_key($name)) return '';
+
+    return $name;
+}
+
 function meza_get_page_type_label(int $post_id): string
 {
     // Prefer ACF value when available.
     if (function_exists('get_field')) {
         $acf_value = get_field('page_type', $post_id);
-        if (is_string($acf_value) && trim($acf_value) !== '') return trim($acf_value);
+        if (is_string($acf_value) && trim($acf_value) !== '') {
+            $acf_value = trim($acf_value);
+            $choice_label = meza_get_page_type_choice_label_for_value($acf_value);
+            if ($choice_label !== '') return $choice_label;
+            if (!meza_is_internal_page_type_key($acf_value)) return $acf_value;
+        }
         if (is_array($acf_value) && isset($acf_value['label']) && is_string($acf_value['label'])) {
             $label = trim($acf_value['label']);
             if ($label !== '') return $label;
@@ -8210,15 +8263,19 @@ function meza_get_page_type_label(int $post_id): string
 
     // Fallback to raw post meta.
     $meta_value = get_post_meta($post_id, 'page_type', true);
-    if (is_string($meta_value) && trim($meta_value) !== '') return trim($meta_value);
+    if (is_string($meta_value) && trim($meta_value) !== '') {
+        $meta_value = trim($meta_value);
+        $choice_label = meza_get_page_type_choice_label_for_value($meta_value);
+        if ($choice_label !== '') return $choice_label;
+        if (!meza_is_internal_page_type_key($meta_value)) return $meta_value;
+    }
 
     // Fallback to a `page_type` taxonomy term label when present.
     $terms = get_the_terms($post_id, 'page_type');
     if (!is_wp_error($terms) && !empty($terms)) {
         $first = reset($terms);
-        if ($first && isset($first->name) && is_string($first->name) && trim($first->name) !== '') {
-            return trim($first->name);
-        }
+        $label = meza_normalize_page_type_term_label($first);
+        if ($label !== '') return $label;
     }
 
     return '';

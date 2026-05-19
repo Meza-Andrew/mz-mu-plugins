@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Theme Config
  * Description: Loads client child theme config and maps it into Meza Starter filters.
- * Version: 1.0.2
+ * Version: 1.0.3
  */
 
 if (!defined('ABSPATH')) {
@@ -50,7 +50,7 @@ add_filter('theme_page_slugs', function ($slugs) use ($mz_theme_config) {
     return array_merge($slugs, mz_theme_config_value($mz_theme_config, 'additional_slugs', []));
 });
 
-add_filter('theme_page_templates', function ($templates) use ($mz_theme_config) {
+add_filter('meza_theme_template_map', function ($templates) use ($mz_theme_config) {
     return array_merge($templates, mz_theme_config_value($mz_theme_config, 'additional_templates', []));
 });
 
