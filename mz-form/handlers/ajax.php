@@ -376,7 +376,7 @@ if (!function_exists('send_form_data')) :
             }
         }
 
-        // Support original DS field names while keeping a stable internal contract.
+        // Support legacy field names while keeping a stable internal contract.
         if (trim((string) ($data['Website'] ?? '')) === '') {
             $data['Website'] = trim((string) ($data['Honeypot'] ?? ''));
         }
@@ -490,6 +490,12 @@ if (!function_exists('send_form_data')) :
             $data['LocationDisplay'] = trim((string) ($data['Location'] ?? $data['Place'] ?? $data['ReceivingAddressDisplay'] ?? $data['ReceivingAddress'] ?? ''));
         }
         $data = (array) apply_filters('mzf_normalized_data', $data, $src);
+        $normalized_slug = function_exists('mzf_get_form_slug')
+            ? mzf_get_form_slug($data)
+            : sanitize_key((string) ($data['FormSlug'] ?? ''));
+        if (function_exists('mzf_slug_matches_family') && mzf_slug_matches_family($normalized_slug, 'lead-gen')) {
+            $data['NewsletterSignup'] = 'Yes';
+        }
         // Canonical comments key only.
         $comments = isset($data['Comments']) ? trim((string) $data['Comments']) : '';
         $data['Comments'] = $comments;
@@ -623,11 +629,15 @@ if (!function_exists('send_form_data')) :
         $site_name = get_bloginfo('name');
         $site_url  = home_url();
 
-        $org_email_raw     = function_exists('get_field') ? (string) get_field('email', 'option') : '';
+        $org_email_raw = function_exists('meza_get_business_information_email')
+            ? meza_get_business_information_email()
+            : (function_exists('get_field') ? (string) get_field('email', 'option') : '');
         $org_email_hdr     = sanitize_email($org_email_raw);
         $org_email_display = $org_email_raw ? antispambot($org_email_raw) : '';
 
-        $org_phone      = function_exists('get_field') ? (string) get_field('phone', 'option') : '';
+        $org_phone = function_exists('meza_get_business_information_phone')
+            ? meza_get_business_information_phone()
+            : (function_exists('get_field') ? (string) get_field('phone', 'option') : '');
         $org_phone_href = preg_replace('/[^\d\+]/', '', $org_phone);
 
         $full_name = trim($data['FirstName'] . ' ' . $data['LastName']);
@@ -741,7 +751,10 @@ if (!function_exists('send_form_data')) :
             return [$display ?: null, $display ?: null, null, null];
         };
 
-        $org_addr_raw = function_exists('get_field') ? get_field('address', 'option') : null;
+        $business_address = function_exists('meza_get_business_information_address')
+            ? meza_get_business_information_address()
+            : ['raw' => function_exists('get_field') ? get_field('address', 'option') : null];
+        $org_addr_raw = $business_address['raw'] ?? null;
         [$org_addr_display, $org_addr_query, $org_place_id, $org_place_name] = $format_acf_map_address($org_addr_raw);
         $org_has_maps_meta = false;
         if (is_array($org_addr_raw)) {
@@ -871,7 +884,7 @@ if (!function_exists('send_form_data')) :
                 $subject = trim($subject) . $store_segment;
             }
         }
-        if ($site_domain) {
+        if ($site_domain && !preg_match('/\[[^\]]+\]\s*$/', (string) $subject)) {
             $subject = preg_replace('/\s*[\(\[]' . preg_quote($site_domain, '/') . '[\)\]]\s*/i', ' ', $subject);
             $subject = trim(preg_replace('/\s{2,}/', ' ', $subject));
             $subject .= ' [' . $site_domain . ']';
@@ -941,7 +954,7 @@ if (!function_exists('send_form_data')) :
         $admin_headers = (array) apply_filters('mzf_admin_headers', $admin_headers, $data, $env, $to);
         $user_headers  = (array) apply_filters('mzf_user_headers', $user_headers, $data, $env, $to);
 
-        // Core default BCC support (replaces DS adapter BCC bridge behavior).
+        // Core default BCC support (replaces the legacy adapter BCC bridge behavior).
         $default_bcc = sanitize_email((string) mzf_get('admin_bcc_email', ''));
         $bcc_allowed_envs = ['production', 'qa'];
         if (in_array((string) $env, $bcc_allowed_envs, true) && $default_bcc && is_email($default_bcc)) {

@@ -1,11 +1,11 @@
 <?php
 
 /**
- * Plugin Name: DS Settings
+ * Plugin Name: MZ Settings
  * Description: Core site settings, defaults, and bootstrap configuration.
  * Author: Meza LLC
  * Author URI: https://meza.design
- * Version: 1.8.6
+ * Version: 1.8.46
  */
 
 /** ================================
@@ -21,6 +21,22 @@ function meza_target_blog_public_value(): int
 {
     $env = defined('WP_ENV') ? strtolower(WP_ENV) : '';
     return ($env === 'production') ? 1 : 0;
+}
+
+/** Build a lowercase environment label for admin messaging. */
+function meza_current_environment_label(): string
+{
+    $env = defined('WP_ENV') ? strtolower(trim((string) WP_ENV)) : '';
+
+    if ($env !== '') {
+        return $env;
+    }
+
+    $env_type = function_exists('wp_get_environment_type')
+        ? strtolower(trim((string) wp_get_environment_type()))
+        : '';
+
+    return $env_type !== '' ? $env_type : 'unknown';
 }
 
 const MEZA_THUMB_W    = 300;
@@ -63,23 +79,41 @@ const MEZA_ALLOW_EDITOR_SWITCH = 0;
 
 /** Core pages */
 const MEZA_FRONT_PAGE_TITLE = 'Homepage';
-const MEZA_FRONT_PAGE_SLUG  = 'home';
+const MEZA_FRONT_PAGE_SLUGS = ['home', 'homepage'];
 const MEZA_POSTS_PAGE_TITLE = 'Posts Page';
-const MEZA_POSTS_PAGE_SLUG  = 'blog';
+const MEZA_POSTS_PAGE_SLUGS = ['blog'];
 
 const MEZA_PRIVACY_POLICY_TITLE = 'Privacy Policy';
-const MEZA_PRIVACY_POLICY_SLUG  = 'privacy-policy';
+const MEZA_PRIVACY_POLICY_SLUGS = ['privacy-policy', 'privacy'];
 
 const MEZA_COOKIE_POLICY_TITLE  = 'Cookie Policy';
-const MEZA_COOKIE_POLICY_SLUG   = 'cookie-policy';
+const MEZA_COOKIE_POLICY_SLUGS  = ['cookie-policy', 'cookies'];
+const MEZA_COOKIE_POLICY_OPTION = 'meza_page_for_cookie_policy';
 
-const MEZA_CONTACT_TITLE = 'Contact';
-const MEZA_CONTACT_SLUG  = 'contact';
-const MEZA_CONTACT_TPL   = 'page-form.php';
+const MEZA_CONTACT_TITLE      = 'Contact';
+const MEZA_CONTACT_SLUGS      = ['contact'];
+const MEZA_CONTACT_OPTION     = 'meza_page_for_contact';
+const MEZA_CONTACT_FORM_TITLE = 'Contact';
+const MEZA_CONTACT_FORM_SLUG  = 'contact';
 
-const MEZA_STYLE_GUIDE_TITLE = 'Style Guide';
-const MEZA_STYLE_GUIDE_SLUG  = 'styles';
-const MEZA_STYLE_GUIDE_TPL   = 'page-style.php';
+const MEZA_ABOUT_TITLE   = 'About';
+const MEZA_ABOUT_SLUGS   = ['about'];
+const MEZA_ABOUT_OPTION  = 'meza_page_for_about';
+
+const MEZA_STYLE_GUIDE_TITLE   = 'Style Guide';
+const MEZA_STYLE_GUIDE_SLUGS   = ['styles', 'style-guide'];
+const MEZA_STYLE_GUIDE_TPL     = 'page-style.php';
+const MEZA_STYLE_GUIDE_OPTION  = 'meza_page_for_style_guide';
+
+const MEZA_DOCUMENTATION_TITLE  = 'Documentation';
+const MEZA_DOCUMENTATION_SLUGS  = ['documentation', 'site-documentation'];
+const MEZA_DOCUMENTATION_TPL    = 'page-documentation.php';
+const MEZA_DOCUMENTATION_OPTION = 'meza_page_for_documentation';
+
+const MEZA_FAQ_TITLE  = 'Frequently Asked Questions (FAQ)';
+const MEZA_FAQ_SLUGS  = ['faq'];
+const MEZA_FAQ_TPL    = 'page-faq.php';
+const MEZA_FAQ_OPTION = 'meza_page_for_faq';
 
 /** Menu locations (theme should register these) */
 const MEZA_MENU_LOCATIONS = [
@@ -135,7 +169,16 @@ function meza_resolve_gmt_offset()
 /** Check whether WordPress already has both a front page and posts page assigned. */
 function meza_has_assigned_reading_pages(): bool
 {
-    return ((int)get_option('page_on_front', 0) > 0 && (int)get_option('page_for_posts', 0) > 0);
+    $front_page_id = (int) get_option('page_on_front', 0);
+    if ($front_page_id <= 0) {
+        return false;
+    }
+
+    if (function_exists('meza_are_posts_enabled') && !meza_are_posts_enabled()) {
+        return true;
+    }
+
+    return ((int) get_option('page_for_posts', 0) > 0);
 }
 
 /** Convert common "truthy" config values like 1/true/yes/on into a real boolean. */
@@ -176,37 +219,424 @@ function meza_assign_template(int $page_id, string $template_file): bool
     return $exists;
 }
 
+/** Build the standard SEO title used for seeded utility pages. */
+function meza_build_page_meta_title(string $page_title): string
+{
+    $page_title = trim(wp_strip_all_tags($page_title));
+    $site_name = trim((string) get_option('blogname', ''));
+
+    if ($page_title === '') return $site_name;
+    if ($site_name === '') return $page_title;
+
+    return sprintf('%s | %s', $page_title, $site_name);
+}
+
+/** Store the standard Yoast meta title for a page. */
+function meza_assign_page_meta_title(int $page_id, string $page_title = ''): void
+{
+    if ($page_id <= 0) return;
+
+    if ($page_title === '') {
+        $page_title = (string) get_the_title($page_id);
+    }
+
+    $meta_title = meza_build_page_meta_title($page_title);
+    if ($meta_title === '') return;
+
+    update_post_meta($page_id, '_yoast_wpseo_title', $meta_title);
+}
+
+/** Ask Yoast to rebuild its indexable record for a post after manual SEO meta changes. */
+function meza_refresh_yoast_indexable(int $post_id): void
+{
+    if ($post_id <= 0 || !function_exists('YoastSEO')) {
+        return;
+    }
+
+    if (!class_exists('\Yoast\WP\SEO\Integrations\Watchers\Indexable_Post_Watcher')) {
+        return;
+    }
+
+    try {
+        $watcher = YoastSEO()->classes->get(\Yoast\WP\SEO\Integrations\Watchers\Indexable_Post_Watcher::class);
+        if (is_object($watcher) && method_exists($watcher, 'build_indexable')) {
+            $watcher->build_indexable($post_id);
+        }
+    } catch (Throwable $e) {
+    }
+}
+
+/** Apply Yoast Advanced tab robots defaults for a page. */
+function meza_assign_yoast_robots(int $page_id, bool $allow_indexing = true, bool $allow_follow = true): void
+{
+    if ($page_id <= 0) return;
+
+    update_post_meta($page_id, '_yoast_wpseo_meta-robots-noindex', $allow_indexing ? '2' : '1');
+    update_post_meta($page_id, '_yoast_wpseo_meta-robots-nofollow', $allow_follow ? '0' : '1');
+}
+
+/** Normalize and de-duplicate page slug candidates while preserving order. */
+function meza_normalize_slug_candidates(array $slugs): array
+{
+    $normalized = [];
+
+    foreach ($slugs as $slug) {
+        $slug = sanitize_title((string) $slug);
+        if ($slug === '' || in_array($slug, $normalized, true)) continue;
+        $normalized[] = $slug;
+    }
+
+    return $normalized;
+}
+
+/** Return the option name that stores manually deleted seeded pages. */
+function meza_get_deleted_seeded_pages_option_name(): string
+{
+    return 'meza_deleted_seeded_pages_v1';
+}
+
+/** Build the list of auto-seeded pages that should respect manual deletion. */
+function meza_get_seeded_page_definitions(): array
+{
+    return [
+        [
+            'slugs' => MEZA_FRONT_PAGE_SLUGS,
+            'option_keys' => ['page_on_front'],
+        ],
+        [
+            'slugs' => MEZA_POSTS_PAGE_SLUGS,
+            'option_keys' => ['page_for_posts'],
+        ],
+        [
+            'slugs' => MEZA_PRIVACY_POLICY_SLUGS,
+            'option_keys' => ['wp_page_for_privacy_policy'],
+        ],
+        [
+            'slugs' => MEZA_COOKIE_POLICY_SLUGS,
+            'option_keys' => [MEZA_COOKIE_POLICY_OPTION],
+        ],
+        [
+            'slugs' => MEZA_CONTACT_SLUGS,
+            'option_keys' => [MEZA_CONTACT_OPTION],
+        ],
+        [
+            'slugs' => MEZA_ABOUT_SLUGS,
+            'option_keys' => [MEZA_ABOUT_OPTION],
+        ],
+        [
+            'slugs' => MEZA_STYLE_GUIDE_SLUGS,
+            'option_keys' => [MEZA_STYLE_GUIDE_OPTION],
+        ],
+        [
+            'slugs' => MEZA_DOCUMENTATION_SLUGS,
+            'option_keys' => [MEZA_DOCUMENTATION_OPTION],
+        ],
+        [
+            'slugs' => MEZA_FAQ_SLUGS,
+            'option_keys' => [MEZA_FAQ_OPTION],
+        ],
+    ];
+}
+
+/** Normalize the stored list of seeded page deletions. */
+function meza_normalize_deleted_seeded_pages($value): array
+{
+    return array_values(array_unique(array_filter(array_map(
+        static function ($slug): string {
+            return sanitize_title((string) $slug);
+        },
+        is_array($value) ? $value : []
+    ))));
+}
+
+/** Return the primary identifier for a seeded page definition. */
+function meza_get_seeded_page_definition_identifier(array $definition): string
+{
+    $slugs = meza_normalize_slug_candidates((array) ($definition['slugs'] ?? []));
+
+    return $slugs[0] ?? '';
+}
+
+/** Check whether a seeded page slug has been manually trashed or deleted. */
+function meza_is_seeded_page_manually_deleted(array $slugs): bool
+{
+    $deleted_slugs = meza_normalize_deleted_seeded_pages(
+        get_option(meza_get_deleted_seeded_pages_option_name(), [])
+    );
+
+    foreach (meza_normalize_slug_candidates($slugs) as $slug) {
+        if (in_array($slug, $deleted_slugs, true)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/** Persist a manual deletion marker for a seeded page and clear stale option references. */
+function meza_mark_seeded_page_deleted(array $definition): void
+{
+    $identifier = meza_get_seeded_page_definition_identifier($definition);
+    if ($identifier === '') {
+        return;
+    }
+
+    $deleted_slugs = meza_normalize_deleted_seeded_pages(
+        get_option(meza_get_deleted_seeded_pages_option_name(), [])
+    );
+
+    if (!in_array($identifier, $deleted_slugs, true)) {
+        $deleted_slugs[] = $identifier;
+        update_option(meza_get_deleted_seeded_pages_option_name(), $deleted_slugs, false);
+    }
+
+    foreach ((array) ($definition['option_keys'] ?? []) as $option_key) {
+        if ($option_key === '') {
+            continue;
+        }
+
+        update_option((string) $option_key, 0);
+    }
+}
+
+/** Remove a manual deletion marker when a seeded page is restored from the trash. */
+function meza_clear_seeded_page_deleted(array $definition): void
+{
+    $identifier = meza_get_seeded_page_definition_identifier($definition);
+    if ($identifier === '') {
+        return;
+    }
+
+    $deleted_slugs = array_values(array_filter(
+        meza_normalize_deleted_seeded_pages(get_option(meza_get_deleted_seeded_pages_option_name(), [])),
+        static function (string $slug) use ($identifier): bool {
+            return $slug !== $identifier;
+        }
+    ));
+
+    update_option(meza_get_deleted_seeded_pages_option_name(), $deleted_slugs, false);
+}
+
+/** Match a page post to one of the auto-seeded page definitions. */
+function meza_get_seeded_page_definition_for_post(int $post_id): ?array
+{
+    $post = get_post($post_id);
+    if (!($post instanceof WP_Post) || $post->post_type !== 'page') {
+        return null;
+    }
+
+    $post_slug = sanitize_title((string) $post->post_name);
+    if ($post_slug === '') {
+        return null;
+    }
+
+    foreach (meza_get_seeded_page_definitions() as $definition) {
+        $slugs = meza_normalize_slug_candidates((array) ($definition['slugs'] ?? []));
+        if (in_array($post_slug, $slugs, true)) {
+            return $definition;
+        }
+    }
+
+    return null;
+}
+
+/** Remember when an auto-seeded page is manually trashed or deleted. */
+function meza_track_seeded_page_deletion(int $post_id): void
+{
+    $definition = meza_get_seeded_page_definition_for_post($post_id);
+    if (is_array($definition)) {
+        meza_mark_seeded_page_deleted($definition);
+    }
+}
+
+/** Remove the manual deletion marker when a seeded page is restored. */
+function meza_track_seeded_page_restoration(int $post_id): void
+{
+    $definition = meza_get_seeded_page_definition_for_post($post_id);
+    if (is_array($definition)) {
+        meza_clear_seeded_page_deleted($definition);
+    }
+}
+
+add_action('wp_trash_post', 'meza_track_seeded_page_deletion', 5);
+add_action('before_delete_post', 'meza_track_seeded_page_deletion', 5);
+add_action('untrashed_post', 'meza_track_seeded_page_restoration', 5);
+
+/** Return the first existing page that matches one of the candidate slugs. */
+function meza_get_page_by_candidate_slugs(array $slugs): ?WP_Post
+{
+    foreach (meza_normalize_slug_candidates($slugs) as $slug) {
+        $page = get_page_by_path($slug, OBJECT, 'page');
+        if (
+            $page instanceof WP_Post
+            && $page->post_type === 'page'
+            && !in_array((string) $page->post_status, ['auto-draft', 'trash'], true)
+        ) {
+            return $page;
+        }
+    }
+
+    return null;
+}
+
 /**
  * Ensure a page exists at $slug:
  * - Creates it when missing
- * - Leaves existing pages untouched
- * - Applies the template only on newly created pages
+ * - Supports alias slugs
+ * - Can optionally enforce status and template updates
  * Returns the page ID (0 on failure).
  */
-function meza_ensure_page_state(string $title, string $slug, string $template_file = ''): int
+function meza_ensure_page_state(string $title, array $slugs, array $args = []): int
 {
-    $page = get_page_by_path($slug);
+    $args = wp_parse_args($args, [
+        'status' => 'publish',
+        'force_status' => false,
+        'force_title' => false,
+        'template' => '',
+        'always_apply_template' => false,
+        'meta_title' => true,
+        'yoast_allow_indexing' => true,
+        'yoast_allow_follow' => true,
+    ]);
+
+    $slugs = meza_normalize_slug_candidates($slugs);
+    if ($slugs === []) return 0;
+
+    $page = meza_get_page_by_candidate_slugs($slugs);
     $created = false;
 
-    if (!$page || $page->post_type !== 'page') {
+    if (!$page instanceof WP_Post && meza_is_seeded_page_manually_deleted($slugs)) {
+        return 0;
+    }
+
+    if (!$page instanceof WP_Post) {
         $id = wp_insert_post([
             'post_type'   => 'page',
             'post_title'  => $title,
-            'post_name'   => sanitize_title($slug),
-            'post_status' => 'publish',
+            'post_name'   => $slugs[0],
+            'post_status' => (string) $args['status'],
         ]);
         if (is_wp_error($id)) return 0;
         $page = get_post($id);
         $created = true;
     }
 
+    if (!$page instanceof WP_Post) return 0;
+
     $id = (int)$page->ID;
 
-    if ($created && $template_file) {
+    if (!empty($args['force_status']) && $page->post_status !== (string) $args['status']) {
+        wp_update_post([
+            'ID' => $id,
+            'post_status' => (string) $args['status'],
+        ]);
+    }
+
+    if (!empty($args['force_title']) && $page->post_title !== $title) {
+        wp_update_post([
+            'ID' => $id,
+            'post_title' => $title,
+        ]);
+    }
+
+    $template_file = (string) ($args['template'] ?? '');
+    if (
+        $template_file !== ''
+        && ($created || !empty($args['always_apply_template']))
+    ) {
         meza_assign_template($id, $template_file);
     }
 
+    if (!empty($args['meta_title'])) {
+        meza_assign_page_meta_title($id, $title);
+    }
+
+    meza_assign_yoast_robots(
+        $id,
+        !empty($args['yoast_allow_indexing']),
+        !empty($args['yoast_allow_follow'])
+    );
+
+    meza_refresh_yoast_indexable($id);
+
     return $id;
+}
+
+/** Return the first existing form post that matches the target slug. */
+function meza_get_form_by_slug(string $slug): ?WP_Post
+{
+    $slug = sanitize_title($slug);
+    if ($slug === '') return null;
+
+    $forms = get_posts([
+        'post_type' => 'form',
+        'name' => $slug,
+        'post_status' => ['draft', 'publish', 'pending', 'private', 'future'],
+        'posts_per_page' => 1,
+        'orderby' => 'ID',
+        'order' => 'ASC',
+        'fields' => 'all',
+        'suppress_filters' => true,
+        'no_found_rows' => true,
+    ]);
+
+    $form = $forms[0] ?? null;
+
+    return $form instanceof WP_Post ? $form : null;
+}
+
+/** Ensure the default Contact form exists as a draft form post. */
+function meza_ensure_form_state(string $title, string $slug, string $status = 'draft'): int
+{
+    $form = meza_get_form_by_slug($slug);
+
+    if (!$form instanceof WP_Post) {
+        $id = wp_insert_post([
+            'post_type' => 'form',
+            'post_title' => $title,
+            'post_name' => sanitize_title($slug),
+            'post_status' => $status,
+        ]);
+
+        if (is_wp_error($id)) return 0;
+        $form = get_post($id);
+    }
+
+    if (!$form instanceof WP_Post) return 0;
+
+    if ($form->post_status !== $status) {
+        wp_update_post([
+            'ID' => (int) $form->ID,
+            'post_status' => $status,
+        ]);
+    }
+
+    return (int) $form->ID;
+}
+
+/** Attach a form to a page's form section while keeping the section hidden by default. */
+function meza_assign_contact_form_to_page(int $page_id, int $form_id): void
+{
+    if ($page_id <= 0 || $form_id <= 0) return;
+
+    update_post_meta($page_id, 'show_form', 0);
+    update_post_meta($page_id, 'section_form_form', $form_id);
+    update_post_meta($page_id, 'section_form', ['form' => $form_id]);
+}
+
+/** Update one or more option keys that reference a special page ID. */
+function meza_update_page_reference_options(string $filter_name, int $page_id, array $option_keys): void
+{
+    if ($page_id <= 0) return;
+
+    $option_keys = apply_filters($filter_name, $option_keys, $page_id);
+    if (!is_array($option_keys)) return;
+
+    foreach ($option_keys as $option_key) {
+        $option_key = sanitize_key((string) $option_key);
+        if ($option_key === '') continue;
+        update_option($option_key, $page_id);
+    }
 }
 
 /** Build the encoded payload ACF expects for storing a license key against this site's URL. */
@@ -323,6 +753,9 @@ add_action('muplugins_loaded', function () {
     meza_force_option_read('blog_public',     meza_target_blog_public_value());
     meza_force_option_read('posts_per_page',  MEZA_POSTS_PER_PAGE);
     meza_force_option_read('posts_per_rss',   MEZA_POSTS_PER_RSS);
+    if (function_exists('meza_are_posts_enabled') && !meza_are_posts_enabled()) {
+        meza_force_option_read('page_for_posts', 0);
+    }
     if (meza_has_assigned_reading_pages()) {
         meza_force_option_read('show_on_front', 'page');
     }
@@ -385,6 +818,12 @@ add_action('muplugins_loaded', function () {
         });
     }
 
+    if (function_exists('meza_are_posts_enabled') && !meza_are_posts_enabled()) {
+        meza_guard_option_write('page_for_posts', function ($n, $o) {
+            return ((int) $n === 0) ? 0 : null;
+        });
+    }
+
     meza_guard_option_write('admin_email', function ($n, $o) {
         return (strcasecmp((string) $n, (string) MEZA_ADMIN_EMAIL) === 0) ? $n : null;
     });
@@ -396,52 +835,119 @@ add_action('muplugins_loaded', function () {
 add_action('admin_init', function () {
     if (!current_user_can('manage_options')) return;
 
+    $posts_enabled = !function_exists('meza_are_posts_enabled') || meza_are_posts_enabled();
+    if (!$posts_enabled && (int) get_option('page_for_posts', 0) !== 0) {
+        update_option('page_for_posts', 0);
+    }
+
     $has_run = (int)get_option('meza_pages_initialized', 0) === 1;
     if ($has_run && !meza_should_rerun()) return;
 
     $current_front_page = (int)get_option('page_on_front', 0);
     $current_posts_page = (int)get_option('page_for_posts', 0);
-    $can_seed_pages = ($current_front_page <= 0 && $current_posts_page <= 0);
+    $can_seed_pages = ($current_front_page <= 0 && (!$posts_enabled || $current_posts_page <= 0));
 
-    if (!$can_seed_pages) {
-        update_option('meza_pages_initialized', 1);
-        return;
-    }
+    if ($can_seed_pages) {
+        $home_id = meza_ensure_page_state(MEZA_FRONT_PAGE_TITLE, MEZA_FRONT_PAGE_SLUGS);
 
-    // Home & Posts pages
-    $home_id  = meza_ensure_page_state(MEZA_FRONT_PAGE_TITLE,  MEZA_FRONT_PAGE_SLUG);
-    $posts_id = meza_ensure_page_state(MEZA_POSTS_PAGE_TITLE,  MEZA_POSTS_PAGE_SLUG);
+        if ($posts_enabled) {
+            $posts_id = meza_ensure_page_state(MEZA_POSTS_PAGE_TITLE, MEZA_POSTS_PAGE_SLUGS);
 
-    if ($home_id && $posts_id && $home_id !== $posts_id) {
-        update_option('show_on_front', 'page');
-        update_option('page_on_front',  (int)$home_id);
-        update_option('page_for_posts', (int)$posts_id);
+            if ($home_id && $posts_id && $home_id !== $posts_id) {
+                update_option('show_on_front', 'page');
+                update_option('page_on_front',  (int)$home_id);
+                update_option('page_for_posts', (int)$posts_id);
 
-        meza_force_option_read('page_on_front',  (int)$home_id);
-        meza_force_option_read('page_for_posts', (int)$posts_id);
-        meza_guard_option_write('page_on_front', function ($n, $o) use ($home_id) {
-            return ((int) $n === (int) $home_id) ? $home_id : null;
-        });
-        meza_guard_option_write('page_for_posts', function ($n, $o) use ($posts_id) {
-            return ((int) $n === (int) $posts_id) ? $posts_id : null;
-        });
+                meza_force_option_read('page_on_front',  (int)$home_id);
+                meza_force_option_read('page_for_posts', (int)$posts_id);
+                meza_guard_option_write('page_on_front', function ($n, $o) use ($home_id) {
+                    return ((int) $n === (int) $home_id) ? $home_id : null;
+                });
+                meza_guard_option_write('page_for_posts', function ($n, $o) use ($posts_id) {
+                    return ((int) $n === (int) $posts_id) ? $posts_id : null;
+                });
+            }
+        } elseif ($home_id) {
+            update_option('show_on_front', 'page');
+            update_option('page_on_front',  (int)$home_id);
+            update_option('page_for_posts', 0);
+
+            meza_force_option_read('page_on_front',  (int)$home_id);
+            meza_force_option_read('page_for_posts', 0);
+            meza_guard_option_write('page_on_front', function ($n, $o) use ($home_id) {
+                return ((int) $n === (int) $home_id) ? $home_id : null;
+            });
+            meza_guard_option_write('page_for_posts', function ($n, $o) {
+                return ((int) $n === 0) ? 0 : null;
+            });
+        }
     }
 
     // Privacy Policy
-    $privacy_id = meza_ensure_page_state(MEZA_PRIVACY_POLICY_TITLE, MEZA_PRIVACY_POLICY_SLUG);
+    $privacy_id = meza_ensure_page_state(MEZA_PRIVACY_POLICY_TITLE, MEZA_PRIVACY_POLICY_SLUGS, [
+        'status' => 'draft',
+        'force_status' => true,
+        'yoast_allow_indexing' => false,
+        'yoast_allow_follow' => false,
+    ]);
     if ($privacy_id) {
         if (function_exists('set_privacy_policy_page')) set_privacy_policy_page($privacy_id);
         else update_option('wp_page_for_privacy_policy', $privacy_id);
     }
 
     // Cookie Policy
-    meza_ensure_page_state(MEZA_COOKIE_POLICY_TITLE, MEZA_COOKIE_POLICY_SLUG);
+    $cookie_id = meza_ensure_page_state(MEZA_COOKIE_POLICY_TITLE, MEZA_COOKIE_POLICY_SLUGS, [
+        'yoast_allow_indexing' => false,
+        'yoast_allow_follow' => false,
+    ]);
+    meza_update_page_reference_options('meza_cookie_policy_page_option_keys', $cookie_id, [MEZA_COOKIE_POLICY_OPTION]);
 
     // Style Guide + template
-    meza_ensure_page_state(MEZA_STYLE_GUIDE_TITLE, MEZA_STYLE_GUIDE_SLUG, MEZA_STYLE_GUIDE_TPL);
+    $style_guide_id = meza_ensure_page_state(MEZA_STYLE_GUIDE_TITLE, MEZA_STYLE_GUIDE_SLUGS, [
+        'template' => MEZA_STYLE_GUIDE_TPL,
+        'always_apply_template' => true,
+        'yoast_allow_indexing' => false,
+        'yoast_allow_follow' => false,
+    ]);
+    meza_update_page_reference_options('meza_style_guide_page_option_keys', $style_guide_id, [MEZA_STYLE_GUIDE_OPTION]);
 
-    // Contact + template
-    meza_ensure_page_state(MEZA_CONTACT_TITLE, MEZA_CONTACT_SLUG, MEZA_CONTACT_TPL);
+    // Contact page + draft form attachment
+    $contact_page_id = meza_ensure_page_state(MEZA_CONTACT_TITLE, MEZA_CONTACT_SLUGS, [
+        'status' => 'publish',
+        'force_status' => true,
+        'force_title' => true,
+    ]);
+    meza_update_page_reference_options('meza_contact_page_option_keys', $contact_page_id, [MEZA_CONTACT_OPTION]);
+    $contact_form_id = meza_ensure_form_state(MEZA_CONTACT_FORM_TITLE, MEZA_CONTACT_FORM_SLUG, 'draft');
+    meza_assign_contact_form_to_page($contact_page_id, $contact_form_id);
+
+    // About page
+    $about_page_id = meza_ensure_page_state(MEZA_ABOUT_TITLE, MEZA_ABOUT_SLUGS, [
+        'status' => 'publish',
+        'force_status' => true,
+        'force_title' => true,
+    ]);
+    meza_update_page_reference_options('meza_about_page_option_keys', $about_page_id, [MEZA_ABOUT_OPTION]);
+
+    // Documentation + template
+    $documentation_id = meza_ensure_page_state(MEZA_DOCUMENTATION_TITLE, MEZA_DOCUMENTATION_SLUGS, [
+        'status' => 'private',
+        'force_status' => true,
+        'force_title' => true,
+        'template' => MEZA_DOCUMENTATION_TPL,
+        'always_apply_template' => true,
+    ]);
+    meza_update_page_reference_options('meza_documentation_page_option_keys', $documentation_id, [MEZA_DOCUMENTATION_OPTION]);
+
+    // FAQ + template
+    $faq_page_id = meza_ensure_page_state(MEZA_FAQ_TITLE, MEZA_FAQ_SLUGS, [
+        'status' => 'publish',
+        'force_status' => true,
+        'force_title' => true,
+        'template' => MEZA_FAQ_TPL,
+        'always_apply_template' => true,
+    ]);
+    meza_update_page_reference_options('meza_faq_page_option_keys', $faq_page_id, [MEZA_FAQ_OPTION]);
 
     update_option('meza_pages_initialized', 1);
 }, 9);
@@ -499,9 +1005,15 @@ add_action('admin_init', function () {
     update_option('large_size_h',     MEZA_LG_H);
     update_option('uploads_use_yearmonth_folders', MEZA_UPLOADS_YM_FOLDERS);
 
+    $flush_rewrite_needed = false;
+
     $current_structure = (string) get_option('permalink_structure');
     if ($current_structure === '' && MEZA_PERMALINK_STRUCTURE !== '') {
         update_option('permalink_structure', MEZA_PERMALINK_STRUCTURE);
+        $flush_rewrite_needed = true;
+    }
+
+    if ($flush_rewrite_needed) {
         set_transient('meza_flush_rewrite_needed', 1, 5 * MINUTE_IN_SECONDS);
     }
 }, 10);
@@ -575,6 +1087,128 @@ add_action('admin_init', function () {
 
     wp_mail($target, $subject, $message);
 }, 5);
+
+/** Keep Search Engine Visibility environment-controlled and visibly read-only on Reading Settings. */
+add_action('admin_footer-options-reading.php', function (): void {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+
+    $message = sprintf(
+        ' This setting is automatically set by the environment <code>%s</code>.',
+        esc_html(meza_current_environment_label())
+    );
+    ?>
+    <script id="meza-search-engine-visibility-lock">
+        document.addEventListener('DOMContentLoaded', function() {
+            var blogPublicCheckbox = document.getElementById('blog_public');
+            if (!blogPublicCheckbox) {
+                return;
+            }
+
+            blogPublicCheckbox.disabled = true;
+            blogPublicCheckbox.setAttribute('aria-disabled', 'true');
+
+            var settingsCell = blogPublicCheckbox.closest('td');
+            if (!settingsCell) {
+                return;
+            }
+
+            var description = settingsCell.querySelector('p.description');
+            if (description) {
+                if (!description.classList.contains('meza-blog-public-environment-note')) {
+                    description.classList.add('meza-blog-public-environment-note');
+                }
+
+                if (!description.textContent.includes('This setting is automatically set by the environment')) {
+                    description.insertAdjacentHTML('beforeend', <?php echo wp_json_encode($message); ?>);
+                }
+
+                return;
+            }
+
+            var existingMessage = settingsCell.querySelector('.meza-blog-public-environment-note');
+            if (existingMessage) {
+                return;
+            }
+
+            var message = document.createElement('p');
+            message.className = 'description meza-blog-public-environment-note';
+            message.textContent = <?php echo wp_json_encode(trim($message)); ?>;
+            settingsCell.appendChild(message);
+        });
+    </script>
+    <?php
+});
+
+/** Hide unsupported optional permalink rows on Permalinks Settings. */
+add_action('admin_footer-options-permalink.php', function (): void {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+
+    $posts_enabled = !function_exists('meza_are_posts_enabled') || meza_are_posts_enabled();
+    $categories_enabled = $posts_enabled
+        && (!function_exists('meza_are_post_categories_enabled') || meza_are_post_categories_enabled());
+    $tags_enabled = $posts_enabled
+        && (!function_exists('meza_are_post_tags_enabled') || meza_are_post_tags_enabled());
+
+    ?>
+    <script id="meza-permalink-optional-lock">
+        document.addEventListener('DOMContentLoaded', function() {
+            var postsEnabled = <?php echo wp_json_encode($posts_enabled); ?>;
+            var categoriesEnabled = <?php echo wp_json_encode($categories_enabled); ?>;
+            var tagsEnabled = <?php echo wp_json_encode($tags_enabled); ?>;
+
+            var categoryInput = document.getElementById('category_base');
+            var tagInput = document.getElementById('tag_base');
+            var categoryRow = categoryInput ? categoryInput.closest('tr') : null;
+            var tagRow = tagInput ? tagInput.closest('tr') : null;
+            var table = categoryRow ? categoryRow.closest('table.form-table') : (tagRow ? tagRow.closest('table.form-table') : null);
+
+            var hideElement = function(element) {
+                if (!element) {
+                    return;
+                }
+
+                element.style.display = 'none';
+            };
+
+            if (!postsEnabled || !categoriesEnabled) {
+                hideElement(categoryRow);
+            }
+
+            if (!postsEnabled || !tagsEnabled) {
+                hideElement(tagRow);
+            }
+
+            if (!table) {
+                return;
+            }
+
+            var visibleRows = [categoryRow, tagRow].filter(function(row) {
+                return row && row.style.display !== 'none';
+            });
+
+            var description = table.previousElementSibling;
+            while (description && description.tagName !== 'P') {
+                description = description.previousElementSibling;
+            }
+
+            var heading = description ? description.previousElementSibling : table.previousElementSibling;
+            while (heading && heading.tagName !== 'H2') {
+                heading = heading.previousElementSibling;
+            }
+
+            if (visibleRows.length === 0) {
+                hideElement(description);
+                hideElement(heading);
+                hideElement(table);
+            }
+        });
+    </script>
+    <?php
+});
 
 /** Create any missing core menus and assign them to registered theme locations when those slots are empty. */
 function meza_ensure_menus_exist_and_assigned(): void
@@ -710,7 +1344,10 @@ function meza_plugins_admin_item_count(): int
 /** Count admin-visible users so user-list pagination UI only appears when needed. */
 function meza_users_admin_item_count(): int
 {
-    $counts = count_users();
+    $counts = function_exists('meza_get_cached_user_counts')
+        ? meza_get_cached_user_counts()
+        : count_users();
+
     if (!is_array($counts)) {
         return 0;
     }
@@ -752,20 +1389,19 @@ function meza_action_scheduler_admin_item_count(): int
     }
 }
 
-/** Force admin "items per page" to one value across post types/taxonomies/list tables. */
+/** Default admin "items per page" to one value without overriding saved user choices. */
 add_action('admin_init', function () {
     foreach (meza_admin_per_page_option_keys() as $option_key) {
-        add_filter("get_user_option_{$option_key}", function ($value, $option, $user) {
+        add_filter("default_user_option_{$option_key}", function ($default_value) {
             return meza_admin_items_per_page_target();
+        }, 9999, 1);
+
+        add_filter("get_user_option_{$option_key}", function ($value, $option, $user) {
+            $value = (int) $value;
+            return $value > 0 ? $value : meza_admin_items_per_page_target();
         }, 9999, 3);
     }
 }, 1);
-
-/** Keep saved screen-option values locked to MEZA_ADMIN_ITEMS_PER_PAGE. */
-add_filter('set-screen-option', function ($status, $option, $value) {
-    if (!in_array((string)$option, meza_admin_per_page_option_keys(), true)) return $status;
-    return meza_admin_items_per_page_target();
-}, 9999, 3);
 
 /** Hide the Pagination screen option on post and taxonomy lists that do not exceed the forced page size. */
 add_action('admin_head', function () {

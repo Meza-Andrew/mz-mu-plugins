@@ -4,14 +4,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-if (!defined('MAILCHIMP_CLIENT_ID')) {
-    define('MAILCHIMP_CLIENT_ID', '');
-}
-if (!defined('MAILCHIMP_CLIENT_SECRET')) {
-    define('MAILCHIMP_CLIENT_SECRET', '');
-}
-if (!defined('MAILCHIMP_REDIRECT_URI')) {
-    define('MAILCHIMP_REDIRECT_URI', home_url('/mc-oauth-callback/'));
+if (!defined('MAILCHIMP_API_KEY')) {
+    define('MAILCHIMP_API_KEY', '');
 }
 if (!defined('MZ_MC_SUBMISSION_BACKFILL_OPTION')) {
     define('MZ_MC_SUBMISSION_BACKFILL_OPTION', 'mz_mc_submission_backfill');
@@ -23,9 +17,16 @@ if (!defined('MZ_MC_SUBMISSION_BACKFILL_HOOK')) {
     define('MZ_MC_SUBMISSION_BACKFILL_HOOK', 'mz_mc_submission_backfill_batch');
 }
 
-if (!function_exists('mz_mc_get_client_id')) {
-    function mz_mc_get_client_id(): string
+if (!function_exists('mz_mc_get_api_key')) {
+    function mz_mc_get_api_key(): string
     {
+        if (function_exists('mzf_crm_api_key')) {
+            $crm_api_key = mzf_crm_api_key('mailchimp');
+            if ($crm_api_key !== '') {
+                return $crm_api_key;
+            }
+        }
+
         $crm = function_exists('mzf_get_crm_group') ? mzf_get_crm_group() : [];
         if (empty($crm) && function_exists('get_field')) {
             $acf_crm = get_field('crm', 'option');
@@ -42,9 +43,9 @@ if (!function_exists('mz_mc_get_client_id')) {
 
         $nested = $crm['mailchimp'] ?? $crm['mail_chimp'] ?? null;
         if (is_array($nested)) {
-            $client_id = trim((string) ($nested['client_id'] ?? ''));
-            if ($client_id !== '') {
-                return $client_id;
+            $api_key = trim((string) ($nested['api'] ?? ''));
+            if ($api_key !== '') {
+                return $api_key;
             }
         }
 
@@ -62,18 +63,23 @@ if (!function_exists('mz_mc_get_client_id')) {
             }
         }
         if (!empty($direct_group)) {
-            $client_id = trim((string) ($direct_group['client_id'] ?? ''));
-            if ($client_id !== '') {
-                return $client_id;
+            $api_key = trim((string) ($direct_group['api'] ?? ''));
+            if ($api_key !== '') {
+                return $api_key;
             }
         }
 
         $candidates = [
-            trim((string) ($crm['client_id_mailchimp'] ?? '')),
-            trim((string) get_option('options_crm_client_id_mailchimp', '')),
-            trim((string) get_option('options_mailchimp_client_id', '')),
-            trim((string) get_option('mc_client_id', '')),
-            trim((string) (defined('MAILCHIMP_CLIENT_ID') ? MAILCHIMP_CLIENT_ID : '')),
+            trim((string) ($crm['api_mailchimp'] ?? '')),
+            trim((string) get_option('options_crm_api_mailchimp', '')),
+            trim((string) get_option('options_crm_mailchimp_api', '')),
+            trim((string) get_option('options_mailchimp_api', '')),
+            trim((string) get_option('options_mz_mc_api_key', '')),
+            trim((string) get_option('options_mailchimp_api_key', '')),
+            trim((string) get_option('mz_mc_api_key', '')),
+            trim((string) get_option('mailchimp_api_key', '')),
+            trim((string) get_option('mc_api_key', '')),
+            trim((string) (defined('MAILCHIMP_API_KEY') ? MAILCHIMP_API_KEY : '')),
         ];
         foreach ($candidates as $candidate) {
             if ($candidate !== '') {
@@ -85,121 +91,34 @@ if (!function_exists('mz_mc_get_client_id')) {
     }
 }
 
-if (!function_exists('mz_mc_get_client_secret')) {
-    function mz_mc_get_client_secret(): string
+if (!function_exists('mz_mc_get_api_dc')) {
+    function mz_mc_get_api_dc(): string
     {
-        $crm = function_exists('mzf_get_crm_group') ? mzf_get_crm_group() : [];
-        if (empty($crm) && function_exists('get_field')) {
-            $acf_crm = get_field('crm', 'option');
-            if (is_array($acf_crm)) {
-                $crm = $acf_crm;
-            }
-        }
-        if (empty($crm)) {
-            $opt_crm = get_option('crm');
-            if (is_array($opt_crm)) {
-                $crm = $opt_crm;
-            }
-        }
-
-        $nested = $crm['mailchimp'] ?? $crm['mail_chimp'] ?? null;
-        if (is_array($nested)) {
-            $client_secret = trim((string) ($nested['client_secret'] ?? ''));
-            if ($client_secret !== '') {
-                return $client_secret;
-            }
-        }
-
-        $direct_group = [];
-        if (function_exists('get_field')) {
-            $acf_group = get_field('mailchimp', 'option');
-            if (is_array($acf_group)) {
-                $direct_group = $acf_group;
-            }
-        }
-        if (empty($direct_group)) {
-            $opt_group = get_option('options_mailchimp');
-            if (is_array($opt_group)) {
-                $direct_group = $opt_group;
-            }
-        }
-        if (!empty($direct_group)) {
-            $client_secret = trim((string) ($direct_group['client_secret'] ?? ''));
-            if ($client_secret !== '') {
-                return $client_secret;
-            }
-        }
-
-        $candidates = [
-            trim((string) ($crm['client_secret_mailchimp'] ?? '')),
-            trim((string) get_option('options_crm_client_secret_mailchimp', '')),
-            trim((string) get_option('options_mailchimp_client_secret', '')),
-            trim((string) get_option('mc_client_secret', '')),
-            trim((string) (defined('MAILCHIMP_CLIENT_SECRET') ? MAILCHIMP_CLIENT_SECRET : '')),
-        ];
-        foreach ($candidates as $candidate) {
-            if ($candidate !== '') {
-                return $candidate;
-            }
+        $api_key = mz_mc_get_api_key();
+        if ($api_key !== '' && preg_match('/-([a-z0-9]+)$/i', $api_key, $matches)) {
+            return strtolower((string) $matches[1]);
         }
 
         return '';
     }
 }
 
-if (!function_exists('mz_mc_get_oauth_data')) {
-    function mz_mc_get_oauth_data(): array
+if (!function_exists('mz_mc_get_api_base')) {
+    function mz_mc_get_api_base(): string
     {
-        $data = get_option('mz_mc_oauth');
-        return is_array($data) ? $data : [];
-    }
-}
-
-if (!function_exists('mz_mc_get_oauth_token')) {
-    function mz_mc_get_oauth_token(): string
-    {
-        $data = mz_mc_get_oauth_data();
-        return trim((string) ($data['access_token'] ?? ''));
-    }
-}
-
-if (!function_exists('mz_mc_get_oauth_dc')) {
-    function mz_mc_get_oauth_dc(): string
-    {
-        $data = mz_mc_get_oauth_data();
-        return trim((string) ($data['dc'] ?? ''));
-    }
-}
-
-if (!function_exists('mz_mc_get_oauth_base')) {
-    function mz_mc_get_oauth_base(): string
-    {
-        $data = mz_mc_get_oauth_data();
-        $api_endpoint = trim((string) ($data['api_endpoint'] ?? ''));
-        if ($api_endpoint !== '' && preg_match('#^https?://#i', $api_endpoint)) {
-            return rtrim($api_endpoint, '/');
+        $dc = mz_mc_get_api_dc();
+        if ($dc === '') {
+            return '';
         }
 
-        $dc = mz_mc_get_oauth_dc();
-        if ($dc !== '') {
-            return 'https://' . $dc . '.api.mailchimp.com/3.0';
-        }
-
-        return '';
+        return 'https://' . $dc . '.api.mailchimp.com/3.0';
     }
 }
 
-if (!function_exists('mz_mc_has_oauth_app_keys')) {
-    function mz_mc_has_oauth_app_keys(): bool
+if (!function_exists('mz_mc_has_api_key')) {
+    function mz_mc_has_api_key(): bool
     {
-        return mz_mc_get_client_id() !== '' && mz_mc_get_client_secret() !== '';
-    }
-}
-
-if (!function_exists('mz_mc_is_oauth_connected')) {
-    function mz_mc_is_oauth_connected(): bool
-    {
-        return mz_mc_get_oauth_token() !== '' && mz_mc_get_oauth_base() !== '';
+        return mz_mc_get_api_key() !== '';
     }
 }
 
@@ -277,22 +196,22 @@ if (!function_exists('mz_mc_get_list_id')) {
 if (!function_exists('mz_mc_is_configured')) {
     function mz_mc_is_configured(): bool
     {
-        return mz_mc_is_oauth_connected();
+        return !empty(mz_mc_get_auth_context()['ok']);
     }
 }
 
 if (!function_exists('mz_mc_get_auth_context')) {
     function mz_mc_get_auth_context(): array
     {
-        $oauth_token = mz_mc_get_oauth_token();
-        $oauth_base = mz_mc_get_oauth_base();
-        if ($oauth_token !== '' && $oauth_base !== '') {
+        $api_key = mz_mc_get_api_key();
+        $api_base = mz_mc_get_api_base();
+        if ($api_key !== '' && $api_base !== '') {
             return [
                 'ok' => true,
-                'mode' => 'oauth',
-                'token' => $oauth_token,
-                'base' => $oauth_base,
-                'dc' => mz_mc_get_oauth_dc(),
+                'mode' => 'api_key',
+                'api_key' => $api_key,
+                'base' => $api_base,
+                'dc' => mz_mc_get_api_dc(),
             ];
         }
 
@@ -309,12 +228,12 @@ if (!function_exists('mz_mc_get_default_list_id')) {
         if (empty($auth['ok'])) {
             return '';
         }
-        $cache_material = (string) ($auth['token'] ?? '');
+        $cache_material = (string) ($auth['api_key'] ?? '');
         if ($cache_material === '') {
             return '';
         }
 
-        $cache_key = md5('oauth|' . $cache_material);
+        $cache_key = md5('api|' . $cache_material);
         if (array_key_exists($cache_key, $resolved)) {
             return $resolved[$cache_key];
         }
@@ -392,12 +311,12 @@ if (!function_exists('mz_mc_get_available_merge_tags')) {
         if (empty($auth['ok'])) {
             return [];
         }
-        $cache_material = (string) ($auth['token'] ?? '');
+        $cache_material = (string) ($auth['api_key'] ?? '');
         if ($cache_material === '') {
             return [];
         }
 
-        $cache_key = md5('oauth|' . $cache_material . '|' . $list_id);
+        $cache_key = md5('api|' . $cache_material . '|' . $list_id);
         if (array_key_exists($cache_key, $resolved)) {
             return $resolved[$cache_key];
         }
@@ -485,21 +404,24 @@ if (!function_exists('mz_mc_api_request')) {
     {
         $auth = mz_mc_get_auth_context();
         if (empty($auth['ok'])) {
-            return new WP_Error('mz_mc_missing_auth', 'Mailchimp authentication is missing.');
+            return new WP_Error('mz_mc_missing_auth', 'Mailchimp API key is missing or invalid.');
         }
 
         $base = (string) ($auth['base'] ?? '');
         if ($base === '') {
-            return new WP_Error('mz_mc_missing_base', 'Mailchimp API base URL is missing.');
+            return new WP_Error('mz_mc_missing_base', 'Mailchimp API base URL could not be derived from the API key.');
         }
         $url  = rtrim($base, '/') . '/' . ltrim($path, '/');
 
-        $authorization = 'OAuth ' . (string) ($auth['token'] ?? '');
+        $api_key = (string) ($auth['api_key'] ?? '');
+        if ($api_key === '') {
+            return new WP_Error('mz_mc_missing_api_key', 'Mailchimp API key is missing.');
+        }
 
         $args = [
             'method'  => strtoupper($method),
             'headers' => [
-                'Authorization' => $authorization,
+                'Authorization' => 'Basic ' . base64_encode('meza:' . $api_key),
                 'Accept'        => 'application/json',
             ],
             'timeout' => 20,
@@ -549,12 +471,12 @@ if (!function_exists('mz_mc_upsert_contact')) {
 
         $auth = mz_mc_get_auth_context();
         if (empty($auth['ok'])) {
-            return new WP_Error('mz_mc_missing_auth', 'Mailchimp authentication is missing.');
+            return new WP_Error('mz_mc_missing_auth', 'Mailchimp API key is missing or invalid.');
         }
 
         $list_id = mz_mc_resolve_list_id();
         if ($list_id === '') {
-            return new WP_Error('mz_mc_missing_list', 'Mailchimp audience/list ID is missing and no default audience was found for this Mailchimp connection.');
+            return new WP_Error('mz_mc_missing_list', 'Mailchimp audience/list ID is missing and no default audience was found for this Mailchimp configuration.');
         }
 
         $member_hash = md5(strtolower(trim($email)));
@@ -788,103 +710,14 @@ if (!function_exists('mz_mc_is_platform_selected')) {
     }
 }
 
-if (!function_exists('mz_mc_build_auth_url')) {
-    function mz_mc_build_auth_url(): string
+if (!function_exists('mz_mc_clear_legacy_oauth_state')) {
+    function mz_mc_clear_legacy_oauth_state(): void
     {
-        $params = [
-            'response_type' => 'code',
-            'client_id' => mz_mc_get_client_id(),
-            'redirect_uri' => MAILCHIMP_REDIRECT_URI,
-            'state' => wp_create_nonce('mz_mc_oauth_state'),
-        ];
-        return 'https://login.mailchimp.com/oauth2/authorize?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+        if (get_option('mz_mc_oauth', null) !== null) {
+            delete_option('mz_mc_oauth');
+        }
     }
 }
-
-if (!function_exists('mz_mc_fetch_oauth_metadata')) {
-    function mz_mc_fetch_oauth_metadata(string $access_token): array
-    {
-        $resp = wp_remote_get('https://login.mailchimp.com/oauth2/metadata', [
-            'headers' => [
-                'Authorization' => 'OAuth ' . $access_token,
-                'Accept' => 'application/json',
-            ],
-            'timeout' => 20,
-        ]);
-        if (is_wp_error($resp)) {
-            return [];
-        }
-        $code = (int) wp_remote_retrieve_response_code($resp);
-        $body = json_decode((string) wp_remote_retrieve_body($resp), true);
-        if ($code < 200 || $code >= 300 || !is_array($body)) {
-            return [];
-        }
-        return $body;
-    }
-}
-
-if (!function_exists('mz_mc_process_oauth_callback')) {
-    function mz_mc_process_oauth_callback(): void
-    {
-        $code  = isset($_GET['code']) ? sanitize_text_field((string) $_GET['code']) : '';
-        $state = isset($_GET['state']) ? sanitize_text_field((string) $_GET['state']) : '';
-        if ($code === '' || $state === '' || !wp_verify_nonce($state, 'mz_mc_oauth_state')) {
-            wp_die('Invalid Mailchimp OAuth response.');
-        }
-        if (!mz_mc_has_oauth_app_keys()) {
-            wp_die('Missing Mailchimp OAuth app credentials.');
-        }
-
-        $resp = wp_remote_post('https://login.mailchimp.com/oauth2/token', [
-            'body' => [
-                'grant_type' => 'authorization_code',
-                'client_id' => mz_mc_get_client_id(),
-                'client_secret' => mz_mc_get_client_secret(),
-                'redirect_uri' => MAILCHIMP_REDIRECT_URI,
-                'code' => $code,
-            ],
-            'timeout' => 20,
-        ]);
-        if (is_wp_error($resp)) {
-            wp_die('Mailchimp token request failed.');
-        }
-
-        $http_code = (int) wp_remote_retrieve_response_code($resp);
-        $body = json_decode((string) wp_remote_retrieve_body($resp), true);
-        $access_token = is_array($body) ? trim((string) ($body['access_token'] ?? '')) : '';
-        if ($http_code < 200 || $http_code >= 300 || $access_token === '') {
-            wp_die('Mailchimp token exchange failed.');
-        }
-
-        $meta = mz_mc_fetch_oauth_metadata($access_token);
-        $oauth = [
-            'access_token' => $access_token,
-            'dc' => trim((string) ($meta['dc'] ?? '')),
-            'api_endpoint' => trim((string) ($meta['api_endpoint'] ?? '')),
-            'accountname' => trim((string) ($meta['accountname'] ?? '')),
-            'login' => trim((string) ($meta['login'] ?? '')),
-            'obtained_at' => time(),
-        ];
-        update_option('mz_mc_oauth', $oauth, false);
-        if (function_exists('mz_mc_queue_submission_backfill')) {
-            mz_mc_queue_submission_backfill('oauth_connect');
-        }
-
-        wp_safe_redirect(add_query_arg('mc_connected', '1', admin_url('options-general.php?page=crm')));
-        exit;
-    }
-}
-
-add_action('template_redirect', function () {
-    $uri = wp_parse_url(MAILCHIMP_REDIRECT_URI, PHP_URL_PATH);
-    $req = isset($_SERVER['REQUEST_URI'])
-        ? wp_parse_url((is_ssl() ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'], PHP_URL_PATH)
-        : '';
-    if (rtrim((string) $req, '/') === rtrim((string) $uri, '/')) {
-        mz_mc_process_oauth_callback();
-        exit;
-    }
-});
 
 if (!function_exists('mz_mc_set_submission_backfill_notice')) {
     function mz_mc_set_submission_backfill_notice(string $message, string $type = 'info'): void
@@ -1164,7 +997,7 @@ if (!function_exists('mz_mc_process_submission_backfill_batch')) {
 
         if (!mz_mc_is_platform_selected() || !mz_mc_is_configured()) {
             delete_option(MZ_MC_SUBMISSION_BACKFILL_OPTION);
-            mz_mc_set_submission_backfill_notice('Mailchimp submission backfill stopped because Mailchimp is no longer connected.', 'warning');
+            mz_mc_set_submission_backfill_notice('Mailchimp submission backfill stopped because Mailchimp is no longer configured.', 'warning');
             return;
         }
 
@@ -1251,64 +1084,45 @@ add_action('admin_notices', function () {
     }
 
     echo '<div class="notice notice-info"><p><strong>Mailchimp Integration</strong></p>';
-    if (!mz_mc_has_oauth_app_keys()) {
-        echo '<p>OAuth app credentials are missing. Set Client ID and Client Secret in CRM Integration (Mailchimp group), or fallback constants <code>MAILCHIMP_CLIENT_ID</code> and <code>MAILCHIMP_CLIENT_SECRET</code>.</p>';
+    $api_key = mz_mc_get_api_key();
+    if ($api_key === '') {
+        echo '<p>Mailchimp settings are missing. Set API Key and List ID in CRM Integration (Mailchimp group), or fallback constants <code>MAILCHIMP_API_KEY</code> and <code>MAILCHIMP_LIST_ID</code>.</p>';
         echo '</div>';
         return;
     }
 
-    echo '<style>
-        .mz-oauth-row{display:flex;align-items:center;gap:10px;margin:4px 0 6px 0}
-        .wp-core-ui .button.button-primary.mz-oauth-connected,
-        .wp-core-ui .button.button-primary.mz-oauth-connected:disabled,
-        .wp-core-ui .button.button-primary.mz-oauth-connected[disabled],
-        .wp-core-ui .button.button-primary.mz-oauth-connected.disabled{
-            display:inline-flex !important;align-items:center !important;gap:5px;height:auto;line-height:1.2;padding-top:6px;padding-bottom:6px;
-            color:#fff !important;background-color:#72aee6 !important;border-color:#72aee6 !important;opacity:1 !important;filter:none !important;
-            box-shadow:none !important;text-shadow:none !important;cursor:default
-        }
-        .wp-core-ui .button.button-primary.mz-oauth-connected .dashicons{font-size:14px;line-height:16px;display:inline-flex;align-items:center;justify-content:center;color:#fff !important;vertical-align:middle;width:16px;height:16px;flex:0 0 16px}
-        .mz-oauth-status{margin:0}
-        @media (max-width:782px){.mz-oauth-row{flex-direction:column;align-items:flex-start;gap:6px}}
-    </style>';
-    echo '<div class="mz-oauth-row">';
-
-    $oauth = mz_mc_get_oauth_data();
-    $token = trim((string) ($oauth['access_token'] ?? ''));
-    if ($token === '') {
-        echo '<a class="button button-primary" href="' . esc_url(mz_mc_build_auth_url()) . '">Connect Mailchimp</a>';
-        echo '<span class="mz-oauth-status">Refresh token not available until you connect.</span>';
-        echo '</div>';
-        echo '<p style="margin:0 0 10px 0;"><strong>Redirect URI:</strong> <code>' . esc_html((string) MAILCHIMP_REDIRECT_URI) . '</code></p>';
+    $list_id = mz_mc_get_list_id();
+    if ($list_id === '') {
+        echo '<p>Mailchimp List ID is missing. Set API Key and List ID in CRM Integration (Mailchimp group), or fallback constants <code>MAILCHIMP_API_KEY</code> and <code>MAILCHIMP_LIST_ID</code>.</p>';
         echo '</div>';
         return;
     }
-    echo '<button type="button" class="button button-primary mz-oauth-connected" disabled aria-disabled="true">';
-    echo '<span class="dashicons dashicons-yes-alt"></span>';
-    echo 'Connected to Mailchimp!';
-    echo '</button>';
-    echo '<span class="mz-oauth-status">Refresh token saved. Access token auto-refreshes.</span>';
-    echo '</div>';
-    echo '<p style="margin:0 0 10px 0;"><strong>Redirect URI:</strong> <code>' . esc_html((string) MAILCHIMP_REDIRECT_URI) . '</code></p>';
+
+    $auth = mz_mc_get_auth_context();
+    if (empty($auth['ok'])) {
+        echo '<p>Mailchimp API Key is saved, but it appears invalid. Mailchimp API keys should end with a data center suffix like <code>-us6</code>. You can set the API Key and List ID in CRM Integration (Mailchimp group), or fallback constants <code>MAILCHIMP_API_KEY</code> and <code>MAILCHIMP_LIST_ID</code>.</p>';
+        echo '</div>';
+        return;
+    }
+
+    echo '<p>Mailchimp is configured with the saved API Key and List ID <code>' . esc_html($list_id) . '</code>. You can also provide these via <code>MAILCHIMP_API_KEY</code> and <code>MAILCHIMP_LIST_ID</code> in <code>wp-config.php</code>.</p>';
     echo '</div>';
 });
 
-if (!function_exists('mz_mc_maybe_disconnect_when_platform_changes')) {
-    function mz_mc_maybe_disconnect_when_platform_changes($post_id): void
+if (!function_exists('mz_mc_maybe_clear_legacy_oauth_state_on_save')) {
+    function mz_mc_maybe_clear_legacy_oauth_state_on_save($post_id): void
     {
         if (!in_array((string) $post_id, ['options', 'option'], true)) {
             return;
         }
-        if (mz_mc_is_platform_selected()) {
-            return;
-        }
-        if (get_option('mz_mc_oauth', null) !== null) {
-            delete_option('mz_mc_oauth');
+
+        if (!mz_mc_is_platform_selected() || mz_mc_is_crm_options_save_request($post_id)) {
+            mz_mc_clear_legacy_oauth_state();
         }
     }
 }
 
-add_action('acf/save_post', 'mz_mc_maybe_disconnect_when_platform_changes', 30);
+add_action('acf/save_post', 'mz_mc_maybe_clear_legacy_oauth_state_on_save', 30);
 
 if (!function_exists('mz_mc_maybe_queue_submission_backfill_on_crm_save')) {
     function mz_mc_maybe_queue_submission_backfill_on_crm_save($post_id): void

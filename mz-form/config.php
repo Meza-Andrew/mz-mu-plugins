@@ -617,7 +617,6 @@ if (!function_exists('mzf_default_fields')) {
             'Postal Code',
             'postal_code',
             'postal',
-            'CondomCount',
             'MondayTimes',
             'TuesdayTimes',
             'WednesdayTimes',
@@ -793,7 +792,6 @@ if (!function_exists('mzf_default_form_slug_map')) {
             'ccfbg-contact'          => 'contact',
             'fahass-contact'         => 'contact',
             'fahass-volunteer'       => 'volunteer',
-            'fahass-condoms'         => 'condoms',
             'fahass-medical'         => 'medical',
             'afl-contact'            => 'contact',
             'afl-volunteer'          => 'volunteer',
@@ -870,8 +868,6 @@ if (!function_exists('mzf_default_interest_reason_map')) {
             'medical'           => 'medical',
             'hiv testing'       => 'medical',
             'appointments'      => 'medical',
-            'free condoms'      => 'condoms',
-            'condoms'           => 'condoms',
             'apply'             => 'program-application',
             'program application' => 'program-application',
             'contact'           => 'contact',
@@ -933,6 +929,12 @@ if (!function_exists('mzf_apply_subject_templates')) {
 
         $templates = (array) apply_filters('mzf_subject_templates', mzf_default_subject_templates(), $data, $context);
         $template = isset($templates[$slug]) ? (string) $templates[$slug] : '';
+        if ($template === '' && function_exists('mzf_slug_profile')) {
+            $profile = mzf_slug_profile($slug);
+            if (!empty($profile['subject'])) {
+                $template = (string) $profile['subject'];
+            }
+        }
         if ($template === '') {
             return $default_subject;
         }
@@ -945,6 +947,15 @@ if (!function_exists('mzf_apply_subject_templates')) {
         if ($company !== '') {
             $name_company .= ' at ' . $company;
         }
+        $page_id = isset($data['PageId']) ? (int) $data['PageId'] : 0;
+        $page_title = $page_id > 0 ? trim((string) get_the_title($page_id)) : '';
+        if ($page_title === '') {
+            $page_title = 'this page';
+        }
+        $site_name = trim((string) get_bloginfo('name'));
+        if ($site_name === '') {
+            $site_name = 'Website';
+        }
 
         $vocals_value = trim((string) ($data['Vocals'] ?? ''));
         $vocals_subject = $vocals_value !== ''
@@ -955,89 +966,19 @@ if (!function_exists('mzf_apply_subject_templates')) {
             $vocals_or_vocalist = 'vocalist';
         }
 
-        $state = trim((string) (
-            $data['ReceivingAddressState']
-            ?? $data['State']
-            ?? $data['state']
-            ?? ''
-        ));
-        if ($state === '') {
-            $address_sources = [
-                (string) ($data['LocationDisplay'] ?? ''),
-                (string) ($data['ReceivingAddressDisplay'] ?? ''),
-                (string) ($data['ReceivingAddress'] ?? ''),
-                (string) ($data['Address'] ?? ''),
-                (string) ($data['Location'] ?? ''),
-            ];
-            foreach ($address_sources as $address_source) {
-                $address_source = trim($address_source);
-                if ($address_source === '') {
-                    continue;
-                }
-                if (preg_match('/,\s*([A-Z]{2})\s+\d{5}(?:-\d{4})?(?:,|$)/', $address_source, $state_match)) {
-                    $state = (string) ($state_match[1] ?? '');
-                    break;
-                }
-            }
+        $experience_value = strtolower(trim((string) ($data['Experience'] ?? '')));
+        $co_lender_value = trim((string) ($data['CoLender'] ?? ''));
+        $co_lender_subject_prefix = 'A ';
+        if (str_starts_with($experience_value, 'no')) {
+            $co_lender_subject_prefix = 'A first-time ';
+        } elseif (str_starts_with($experience_value, 'yes') && $co_lender_value !== '') {
+            $co_lender_subject_prefix = 'An experienced ';
         }
-        if ($state !== '') {
-            $state_map = [
-                'AL' => 'Alabama',
-                'AK' => 'Alaska',
-                'AZ' => 'Arizona',
-                'AR' => 'Arkansas',
-                'CA' => 'California',
-                'CO' => 'Colorado',
-                'CT' => 'Connecticut',
-                'DE' => 'Delaware',
-                'FL' => 'Florida',
-                'GA' => 'Georgia',
-                'HI' => 'Hawaii',
-                'ID' => 'Idaho',
-                'IL' => 'Illinois',
-                'IN' => 'Indiana',
-                'IA' => 'Iowa',
-                'KS' => 'Kansas',
-                'KY' => 'Kentucky',
-                'LA' => 'Louisiana',
-                'ME' => 'Maine',
-                'MD' => 'Maryland',
-                'MA' => 'Massachusetts',
-                'MI' => 'Michigan',
-                'MN' => 'Minnesota',
-                'MS' => 'Mississippi',
-                'MO' => 'Missouri',
-                'MT' => 'Montana',
-                'NE' => 'Nebraska',
-                'NV' => 'Nevada',
-                'NH' => 'New Hampshire',
-                'NJ' => 'New Jersey',
-                'NM' => 'New Mexico',
-                'NY' => 'New York',
-                'NC' => 'North Carolina',
-                'ND' => 'North Dakota',
-                'OH' => 'Ohio',
-                'OK' => 'Oklahoma',
-                'OR' => 'Oregon',
-                'PA' => 'Pennsylvania',
-                'RI' => 'Rhode Island',
-                'SC' => 'South Carolina',
-                'SD' => 'South Dakota',
-                'TN' => 'Tennessee',
-                'TX' => 'Texas',
-                'UT' => 'Utah',
-                'VT' => 'Vermont',
-                'VA' => 'Virginia',
-                'WA' => 'Washington',
-                'WV' => 'West Virginia',
-                'WI' => 'Wisconsin',
-                'WY' => 'Wyoming',
-                'DC' => 'District of Columbia',
-            ];
-            $state_key = strtoupper($state);
-            if (isset($state_map[$state_key])) {
-                $state = $state_map[$state_key];
-            }
+        $lead_gen_role = 'interested party';
+        if (str_contains($slug, 'co-lender') || str_contains($slug, 'lender')) {
+            $lead_gen_role = 'interested co-lender';
+        } elseif (str_contains($slug, 'borrower')) {
+            $lead_gen_role = 'interested borrower';
         }
 
         $tokens = [
@@ -1045,19 +986,17 @@ if (!function_exists('mzf_apply_subject_templates')) {
             'company'      => $company,
             'name_company' => $name_company,
             'form_slug'    => $slug,
+            'page_title'   => $page_title,
+            'site_name'    => $site_name,
             'domain'       => (string) ($context['domain'] ?? ''),
             'site_domain'  => (string) ($context['domain'] ?? ''),
             'vocals'       => $vocals_subject,
             'vocals_or_vocalist' => $vocals_or_vocalist,
-            'condom_count' => trim((string) ($data['CondomCount'] ?? '')),
-            'state'        => $state,
+            'co_lender_subject_prefix' => $co_lender_subject_prefix,
+            'lead_gen_role' => $lead_gen_role,
             'state_clause' => (trim((string) ($data['LocationDisplay'] ?? '')) !== '' ? (' for ' . trim((string) ($data['LocationDisplay'] ?? ''))) : ''),
         ];
         $rendered = mzf_render_template($template, $tokens);
-        if ($slug === 'condoms') {
-            $rendered = preg_replace('/\(\)\s*/', '', (string) $rendered);
-            $rendered = preg_replace('/\s+for\s*$/i', '', (string) $rendered);
-        }
         return $rendered;
     }
 }
@@ -1095,9 +1034,6 @@ if (!function_exists('mzf_infer_form_slug')) {
 
         if (!empty($data['Vocals'])) {
             return 'audition';
-        }
-        if (!empty($data['CondomCount'])) {
-            return 'condoms';
         }
         if (!empty($data['MondayTimes']) || !empty($data['TuesdayTimes']) || !empty($data['WednesdayTimes']) || !empty($data['ThursdayTimes']) || !empty($data['FridayTimes']) || !empty($data['SaturdayTimes']) || !empty($data['SundayTimes'])) {
             return 'volunteer';

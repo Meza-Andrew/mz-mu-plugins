@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Plugin Name: DS Performance
+ * Plugin Name: MZ Performance
  * Description: Front-end asset, markup, and performance optimizations.
- * Version: 1.1.0
+ * Version: 1.1.4
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -147,10 +147,61 @@ if (in_array(strtolower((string) (defined('WP_ENV') ? WP_ENV : 'production')), [
     add_filter('style_loader_src', 'meza_remove_query_strings', 15, 1);
 }
 
-/** Strip the version query string from a CSS or JS URL so cache layers see a cleaner asset path. */
+/** Keep cache-busting query strings on the active child theme's local assets. */
+function meza_should_preserve_theme_asset_version(string $src): bool
+{
+    $asset_host = wp_parse_url($src, PHP_URL_HOST);
+    $site_host = wp_parse_url(home_url(), PHP_URL_HOST);
+
+    if (!empty($asset_host) && !empty($site_host) && strtolower((string) $asset_host) !== strtolower((string) $site_host)) {
+        return false;
+    }
+
+    $asset_path = (string) wp_parse_url($src, PHP_URL_PATH);
+    if ($asset_path === '') {
+        return false;
+    }
+
+    $theme_base_path = wp_parse_url(get_stylesheet_directory_uri(), PHP_URL_PATH);
+    if (!is_string($theme_base_path) || $theme_base_path === '') {
+        return false;
+    }
+
+    return str_starts_with($asset_path, untrailingslashit($theme_base_path) . '/');
+}
+
+/** Strip the version query string from a local CSS or JS URL so cache layers see a cleaner asset path. */
 function meza_remove_query_strings($src)
 {
-    return strpos($src, '?') ? substr($src, 0, strpos($src, '?')) : $src;
+    if (meza_should_preserve_theme_asset_version((string) $src)) {
+        return $src;
+    }
+
+    $asset_host = wp_parse_url($src, PHP_URL_HOST);
+    $site_host = wp_parse_url(home_url(), PHP_URL_HOST);
+
+    // External URLs can depend on query strings for the actual asset definition, like Google Fonts.
+    if (!empty($asset_host) && !empty($site_host) && strtolower((string) $asset_host) !== strtolower((string) $site_host)) {
+        return $src;
+    }
+
+    $query = wp_parse_url($src, PHP_URL_QUERY);
+    if (!is_string($query) || $query === '') {
+        return $src;
+    }
+
+    parse_str($query, $query_args);
+    if (!is_array($query_args) || !array_key_exists('ver', $query_args)) {
+        return $src;
+    }
+
+    unset($query_args['ver']);
+
+    if ($query_args === []) {
+        return remove_query_arg('ver', $src);
+    }
+
+    return add_query_arg($query_args, remove_query_arg('ver', $src));
 }
 
 /** Replace front-end page links with "#" during staging/QA reviews to prevent unfinished page navigation. */

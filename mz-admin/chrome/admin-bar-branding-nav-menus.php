@@ -697,6 +697,190 @@ add_action('wp_before_admin_bar_render', function () {
     meza_remove_admin_bar_nodes($wp_admin_bar);
 }, PHP_INT_MAX);
 
+if (!function_exists('meza_get_site_name_reference_admin_bar_links')) {
+    function meza_get_site_name_reference_admin_bar_links(): array
+    {
+        if (!is_user_logged_in()) {
+            return [];
+        }
+
+        $links = [];
+
+        $documentation_url = function_exists('meza_site_documentation_url')
+            ? (string) meza_site_documentation_url()
+            : '';
+        if ($documentation_url !== '') {
+            $links[] = [
+                'id' => 'meza-documentation',
+                'title' => 'Documentation',
+                'href' => $documentation_url,
+            ];
+        }
+
+        $style_guide_url = function_exists('meza_site_documentation_style_guide_url')
+            ? (string) meza_site_documentation_style_guide_url()
+            : '';
+        if ($style_guide_url !== '') {
+            $links[] = [
+                'id' => 'meza-style-guide',
+                'title' => 'Style Guide',
+                'href' => $style_guide_url,
+            ];
+        }
+
+        $current_user = wp_get_current_user();
+        $current_user_roles = ($current_user instanceof WP_User) ? (array) $current_user->roles : [];
+
+        if (
+            in_array('administrator', $current_user_roles, true)
+            && strtolower((string) ($current_user->user_login ?? '')) !== 'ameza'
+        ) {
+            $links[] = [
+                'id' => 'meza-support',
+                'title' => 'Support',
+                'href' => 'mailto:wordpress@meza.design',
+            ];
+        }
+
+        return $links;
+    }
+}
+
+if (!function_exists('meza_rebuild_site_name_admin_bar_children')) {
+    function meza_rebuild_site_name_admin_bar_children($wp_admin_bar): void
+    {
+        if (!($wp_admin_bar instanceof WP_Admin_Bar) || !is_user_logged_in()) {
+            return;
+        }
+
+        $reference_links = meza_get_site_name_reference_admin_bar_links();
+        if ($reference_links === []) {
+            return;
+        }
+
+        $nodes = $wp_admin_bar->get_nodes();
+        if (!is_array($nodes)) {
+            return;
+        }
+
+        $site_name_node = $wp_admin_bar->get_node('site-name');
+        if (!($site_name_node instanceof stdClass)) {
+            return;
+        }
+
+        $children = [];
+        foreach ($nodes as $node) {
+            if (!is_object($node) || (string) ($node->parent ?? '') !== 'site-name') {
+                continue;
+            }
+
+            $children[] = $node;
+        }
+
+        if ($children === []) {
+            return;
+        }
+
+        $reference_group_id = 'meza-site-name-reference-links';
+        $reference_link_ids = array_map(static function (array $link): string {
+            return (string) ($link['id'] ?? '');
+        }, $reference_links);
+        $reference_link_ids[] = $reference_group_id;
+
+        $view_site_child = null;
+        $dashboard_child = null;
+        $remaining_children = [];
+
+        foreach ($children as $child) {
+            $child_id = (string) ($child->id ?? '');
+            $wp_admin_bar->remove_node($child_id);
+
+            if ($child_id === 'view-site') {
+                $view_site_child = $child;
+                continue;
+            }
+
+            if ($child_id === 'dashboard') {
+                $dashboard_child = $child;
+                continue;
+            }
+
+            if (in_array($child_id, $reference_link_ids, true)) {
+                continue;
+            }
+
+            $remaining_children[] = $child;
+        }
+
+        $wp_admin_bar->remove_node($reference_group_id);
+
+        $add_clone = static function ($node, bool $open_in_new_tab = false) use ($wp_admin_bar): void {
+            if (!($node instanceof stdClass)) {
+                return;
+            }
+
+            $meta = is_array($node->meta ?? null) ? $node->meta : [];
+            if ($open_in_new_tab) {
+                $meta['target'] = '_blank';
+                $meta['rel'] = trim(((string) ($meta['rel'] ?? '')) . ' noopener noreferrer');
+            }
+
+            $wp_admin_bar->add_node([
+                'id' => (string) ($node->id ?? ''),
+                'parent' => 'site-name',
+                'title' => $node->title ?? '',
+                'href' => $node->href ?? false,
+                'group' => !empty($node->group),
+                'meta' => $meta,
+            ]);
+        };
+
+        if ($view_site_child instanceof stdClass) {
+            $add_clone($view_site_child, true);
+        }
+
+        if ($dashboard_child instanceof stdClass) {
+            $add_clone($dashboard_child);
+        }
+
+        $wp_admin_bar->add_group([
+            'parent' => 'site-name',
+            'id' => $reference_group_id,
+            'meta' => [
+                'class' => 'ab-sub-secondary',
+            ],
+        ]);
+
+        foreach ($reference_links as $reference_link) {
+            $wp_admin_bar->add_node([
+                'id' => (string) $reference_link['id'],
+                'parent' => $reference_group_id,
+                'title' => (string) $reference_link['title'],
+                'href' => (string) $reference_link['href'],
+                'group' => false,
+                'meta' => [
+                    'title' => (string) $reference_link['title'],
+                    'target' => '_blank',
+                    'rel' => 'noopener noreferrer',
+                ],
+            ]);
+        }
+
+        foreach ($remaining_children as $remaining_child) {
+            $add_clone($remaining_child);
+        }
+    }
+}
+
+add_action('admin_bar_menu', function ($wp_admin_bar) {
+    meza_rebuild_site_name_admin_bar_children($wp_admin_bar);
+}, PHP_INT_MAX);
+
+add_action('wp_before_admin_bar_render', function () {
+    global $wp_admin_bar;
+    meza_rebuild_site_name_admin_bar_children($wp_admin_bar);
+}, PHP_INT_MAX);
+
 function meza_get_custom_logo_id(): int
 {
     $theme_mod_logo_id = (int) get_theme_mod('custom_logo');
@@ -738,10 +922,15 @@ function meza_get_logo_link_html(int $attachment_id): string
         return '';
     }
 
-    $logo = wp_get_attachment_image($attachment_id, 'full', false, [
+    $logo_size = function_exists('meza_get_custom_logo_image_size')
+        ? meza_get_custom_logo_image_size($attachment_id)
+        : 'medium';
+
+    $logo = wp_get_attachment_image($attachment_id, $logo_size, false, [
         'class' => 'custom-logo',
         'loading' => 'lazy',
         'decoding' => 'async',
+        'sizes' => function_exists('meza_get_image_sizes_attr') ? meza_get_image_sizes_attr('custom-logo') : '(max-width: 767px) 180px, 250px',
     ]);
 
     if (!is_string($logo) || $logo === '') {
@@ -774,7 +963,11 @@ function meza_get_footer_logo_html(): string
     }
 
     if (function_exists('get_custom_logo')) {
-        $custom_logo = (string) get_custom_logo();
+        $custom_logo = function_exists('meza_get_custom_logo_html')
+            ? meza_get_custom_logo_html([
+                'loading' => 'lazy',
+            ])
+            : (string) get_custom_logo();
         if ($custom_logo !== '') {
             return $custom_logo;
         }
@@ -1218,7 +1411,7 @@ add_action('admin_head-upload.php', function (): void {
     echo '<style id="meza-media-list-layout">'
         . '.upload-php .wp-list-table .column-mz_id{width:65px;min-width:65px;max-width:65px;}'
         . '.upload-php .wp-list-table .column-mz_converted{width:90px;min-width:90px;max-width:90px;text-align:center;}'
-        . '.upload-php .wp-list-table .column-title{width:450px;min-width:450px;max-width:450px;}'
+        . '.upload-php .wp-list-table .column-title{width:350px;min-width:350px;max-width:350px;}'
         . '.upload-php .wp-list-table .column-alt_text{width:225px;min-width:225px;max-width:225px;}'
         . '.upload-php .wp-list-table .column-mime_type{width:125px;min-width:125px;max-width:125px;}'
         . '.upload-php .wp-list-table .column-dimensions{width:125px;min-width:125px;max-width:125px;}'
@@ -1234,6 +1427,8 @@ add_action('admin_head-upload.php', function (): void {
         . '.upload-php .wp-list-table td.column-title .media-icon{display:inline-flex!important;align-items:flex-start!important;justify-content:flex-start!important;width:100px!important;max-width:100%!important;max-height:100px!important;line-height:0!important;margin:0 12px 6px 0!important;vertical-align:top!important;float:left!important;overflow:visible!important;}'
         . '.upload-php .wp-list-table td.column-title .media-icon img{display:block!important;width:auto!important;height:auto!important;max-width:100px!important;max-height:100px!important;object-fit:contain!important;margin:0!important;}'
         . '.upload-php .wp-list-table td.column-title .row-title{display:block;}'
+        . '.upload-php .wp-list-table td.column-title p.filename,.upload-php .wp-list-table td.column-title .row-actions{margin-left:112px!important;}'
+        . '.upload-php .wp-list-table td.column-title .row-actions{display:block!important;min-height:1.5em;}'
         . '</style>';
 }, 1000);
 
