@@ -392,13 +392,35 @@
         return '';
     }
 
-    function meza_section_field_group_supports_event_context(array $field_group): bool
+    function meza_get_runtime_context_post_type(int $post_id = 0): string
     {
-        if (!function_exists('meza_events_have_after_content') || !meza_events_have_after_content()) {
-            return false;
+        if ($post_id > 0) {
+            $post_type = get_post_type($post_id);
+            if (is_string($post_type) && $post_type !== '') {
+                return sanitize_key($post_type);
+            }
         }
 
-        if (meza_get_event_context_request_post_type() !== 'event') {
+        return meza_get_event_context_request_post_type();
+    }
+
+    function meza_runtime_post_supports_event_context(int $post_id = 0): bool
+    {
+        return function_exists('meza_events_have_after_content')
+            && meza_events_have_after_content()
+            && meza_get_runtime_context_post_type($post_id) === 'event';
+    }
+
+    function meza_runtime_post_supports_season_context(int $post_id = 0): bool
+    {
+        return function_exists('meza_annual_years_have_end_of_year_content')
+            && meza_annual_years_have_end_of_year_content()
+            && meza_get_runtime_context_post_type($post_id) === 'event';
+    }
+
+    function meza_section_field_group_supports_event_context(array $field_group): bool
+    {
+        if (!meza_runtime_post_supports_event_context()) {
             return false;
         }
 
@@ -427,7 +449,7 @@
 
     function meza_section_field_group_supports_season_context(array $field_group): bool
     {
-        if (!function_exists('meza_annual_years_have_end_of_year_content') || !meza_annual_years_have_end_of_year_content()) {
+        if (!meza_runtime_post_supports_season_context()) {
             return false;
         }
 
@@ -488,6 +510,28 @@
         }
 
         return null;
+    }
+
+    function meza_get_event_context_effective_field_type(array $field): string
+    {
+        $field_type = sanitize_key((string) ($field['type'] ?? ''));
+        if ($field_type !== 'group') {
+            return $field_type;
+        }
+
+        foreach (['before', 'base', 'after', 'season_after'] as $slot) {
+            $sub_field = meza_get_event_context_nested_sub_field($field, $slot);
+            if (!is_array($sub_field)) {
+                continue;
+            }
+
+            $sub_field_type = sanitize_key((string) ($sub_field['type'] ?? ''));
+            if ($sub_field_type !== '' && $sub_field_type !== 'group') {
+                return $sub_field_type;
+            }
+        }
+
+        return $field_type;
     }
 
     function meza_is_event_context_group_field(array $field): bool
@@ -599,6 +643,40 @@
         return false;
     }
 
+    function meza_get_runtime_normalized_section_group_field(array $field, int $post_id = 0): array
+    {
+        $field_name = sanitize_key((string) ($field['name'] ?? ''));
+
+        if ((string) ($field['type'] ?? '') !== 'group' || !str_starts_with($field_name, 'section_')) {
+            return $field;
+        }
+
+        $supports_event_context = meza_runtime_post_supports_event_context($post_id);
+        $supports_season_context = meza_runtime_post_supports_season_context($post_id);
+        $sub_fields = isset($field['sub_fields']) && is_array($field['sub_fields']) ? $field['sub_fields'] : [];
+
+        $sub_fields = meza_normalize_section_sub_fields(
+            $sub_fields,
+            $field_name,
+            '',
+            $supports_event_context
+        );
+        $sub_fields = meza_normalize_event_context_child_fields(
+            $sub_fields,
+            $supports_event_context,
+            ''
+        );
+        $sub_fields = meza_normalize_season_context_child_fields(
+            $sub_fields,
+            $supports_season_context,
+            ''
+        );
+
+        $field['sub_fields'] = meza_apply_section_display_dependency($sub_fields);
+
+        return $field;
+    }
+
     function meza_event_context_field_value_is_empty($value): bool
     {
         return meza_section_field_value_is_empty($value);
@@ -620,10 +698,46 @@
         return 2;
     }
 
+    function meza_get_textarea_role(array $field): string
+    {
+        $role = sanitize_key((string) ($field['meza_textarea_role'] ?? ''));
+        if ($role !== '') {
+            return $role;
+        }
+
+        $name = sanitize_key((string) ($field['name'] ?? ''));
+        if (in_array($name, ['subhead', 'description'], true)) {
+            return $name;
+        }
+
+        return '';
+    }
+
+    function meza_is_context_value_textarea_field(array $field): bool
+    {
+        $name = sanitize_key((string) ($field['name'] ?? ''));
+        $key = sanitize_key((string) ($field['key'] ?? ''));
+
+        if (in_array($name, ['before', 'base', 'after', 'season_after'], true)) {
+            return true;
+        }
+
+        return str_starts_with($key, 'field_meza_event_context_') || str_starts_with($key, 'field_meza_season_context_');
+    }
+
+    function meza_get_textarea_rows_for_field(array $field): int
+    {
+        if (meza_get_textarea_role($field) === 'subhead') {
+            return meza_is_context_value_textarea_field($field) ? 2 : 1;
+        }
+
+        return meza_get_textarea_rows_preference();
+    }
+
     function meza_apply_textarea_rows_to_field_tree(array $field): array
     {
         if ((string) ($field['type'] ?? '') === 'textarea') {
-            $field['rows'] = meza_get_textarea_rows_preference();
+            $field['rows'] = meza_get_textarea_rows_for_field($field);
         }
 
         $field_type = (string) ($field['type'] ?? '');
@@ -697,6 +811,64 @@
         ];
     }
 
+    function meza_merge_event_context_link_field_values(...$candidates): array
+    {
+        $merged = [];
+        $merged_url = '';
+
+        foreach ($candidates as $candidate) {
+            $normalized = meza_normalize_event_context_link_field_value($candidate);
+            $candidate_url = isset($normalized['url']) ? trim((string) $normalized['url']) : '';
+
+            if ($candidate_url === '') {
+                continue;
+            }
+
+            if ($merged_url === '') {
+                $merged = $normalized;
+                $merged_url = $candidate_url;
+                continue;
+            }
+
+            if ($candidate_url !== $merged_url) {
+                continue;
+            }
+
+            $candidate_title = isset($normalized['title']) ? trim((string) $normalized['title']) : '';
+            $candidate_target = isset($normalized['target']) ? trim((string) $normalized['target']) : '';
+
+            if ((string) ($merged['title'] ?? '') === '' && $candidate_title !== '') {
+                $merged['title'] = $candidate_title;
+            }
+
+            if ((string) ($merged['target'] ?? '') === '' && $candidate_target !== '') {
+                $merged['target'] = $candidate_target;
+            }
+        }
+
+        if ($merged_url === '') {
+            return [];
+        }
+
+        return [
+            'url' => $merged_url,
+            'title' => isset($merged['title']) ? trim((string) $merged['title']) : '',
+            'target' => isset($merged['target']) ? trim((string) $merged['target']) : '',
+        ];
+    }
+
+    function meza_enrich_event_context_link_field_value($value, ...$fallbacks): array
+    {
+        $normalized = meza_normalize_event_context_link_field_value($value);
+        $normalized_url = isset($normalized['url']) ? trim((string) $normalized['url']) : '';
+
+        if ($normalized_url === '') {
+            return [];
+        }
+
+        return meza_merge_event_context_link_field_values($normalized, ...$fallbacks);
+    }
+
     function meza_normalize_event_context_scalar_field_value($value)
     {
         if (is_string($value)) {
@@ -724,6 +896,72 @@
         }
 
         return '';
+    }
+
+    function meza_normalize_event_context_relationship_field_value($value)
+    {
+        if (is_string($value)) {
+            $maybe_unserialized = maybe_unserialize($value);
+            if (is_array($maybe_unserialized)) {
+                $value = $maybe_unserialized;
+            }
+        }
+
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        foreach (['before', 'base', 'after', 'season_after', 'value'] as $key) {
+            if (array_key_exists($key, $value)) {
+                return meza_normalize_event_context_relationship_field_value($value[$key]);
+            }
+        }
+
+        if (array_key_exists('ID', $value) || array_key_exists('id', $value)) {
+            return $value;
+        }
+
+        $normalized_value = [];
+
+        foreach ($value as $nested_value) {
+            $resolved_nested_value = meza_normalize_event_context_relationship_field_value($nested_value);
+
+            if (meza_section_field_value_is_empty($resolved_nested_value)) {
+                continue;
+            }
+
+            $normalized_value[] = $resolved_nested_value;
+        }
+
+        if ($normalized_value === []) {
+            return [];
+        }
+
+        return $normalized_value;
+    }
+
+    function meza_normalize_event_context_field_value($value, string $field_type)
+    {
+        if ($field_type === 'link') {
+            return meza_normalize_event_context_link_field_value($value);
+        }
+
+        if ($field_type === 'relationship') {
+            return meza_normalize_event_context_relationship_field_value($value);
+        }
+
+        return meza_normalize_event_context_scalar_field_value($value);
+    }
+
+    function meza_event_context_slot_has_usable_value($value, string $field_type): bool
+    {
+        if ($field_type === 'relationship') {
+            if ($value === false || $value === 0 || $value === '0') {
+                return false;
+            }
+        }
+
+        return !meza_section_field_value_is_empty($value);
     }
 
     function meza_section_sub_field_supports_event_context(array $sub_field): bool
@@ -806,6 +1044,7 @@
         }
         $field['label'] = $context === 'after' ? 'Post-Event' : 'Pre-Event';
         $field['name'] = $context;
+        $field['_name'] = $context;
         $field['required'] = $context === 'before' ? (int) ($prototype['required'] ?? 0) : 0;
         $field['conditional_logic'] = $context === 'after' && $before_key !== ''
             ? [
@@ -822,8 +1061,12 @@
             $field['default_value'] = '';
         }
 
+        if ($context === 'after' && array_key_exists('min', $field)) {
+            $field['min'] = '';
+        }
+
         if ((string) ($field['type'] ?? '') === 'textarea') {
-            $field['rows'] = meza_get_textarea_rows_preference();
+            $field['rows'] = meza_get_textarea_rows_for_field($field);
         }
 
         return $field;
@@ -844,6 +1087,7 @@
 
         $field['label'] = $context === 'season_after' ? 'End-of-Year' : 'Annual Year';
         $field['name'] = $context === 'season_after' ? 'season_after' : 'before';
+        $field['_name'] = $field['name'];
         $field['required'] = $context === 'before' ? (int) ($prototype['required'] ?? 0) : 0;
         $field['conditional_logic'] = 0;
 
@@ -852,7 +1096,7 @@
         }
 
         if ((string) ($field['type'] ?? '') === 'textarea') {
-            $field['rows'] = meza_get_textarea_rows_preference();
+            $field['rows'] = meza_get_textarea_rows_for_field($field);
         }
 
         return $field;
@@ -1259,22 +1503,94 @@
         return $value;
     }
 
+    function meza_get_field_tree_child_value(array $container, array $field)
+    {
+        $field_name = sanitize_key((string) ($field['name'] ?? ''));
+        $field_key = (string) ($field['key'] ?? '');
+
+        if ($field_name !== '' && array_key_exists($field_name, $container)) {
+            return $container[$field_name];
+        }
+
+        if ($field_key !== '' && array_key_exists($field_key, $container)) {
+            return $container[$field_key];
+        }
+
+        return null;
+    }
+
+    function meza_set_field_tree_child_value(array $container, array $field, $value): array
+    {
+        $field_name = sanitize_key((string) ($field['name'] ?? ''));
+        $field_key = (string) ($field['key'] ?? '');
+
+        if ($field_name !== '') {
+            $container[$field_name] = $value;
+        }
+
+        if ($field_key !== '') {
+            $container[$field_key] = $value;
+        }
+
+        return $container;
+    }
+
+    function meza_get_context_group_slot_value(array $value, array $field, string $slot_name)
+    {
+        $normalized_slot_name = sanitize_key($slot_name);
+
+        if ($normalized_slot_name !== '' && array_key_exists($normalized_slot_name, $value)) {
+            return $value[$normalized_slot_name];
+        }
+
+        $slot_field = meza_get_event_context_nested_sub_field($field, $normalized_slot_name);
+        if (!is_array($slot_field)) {
+            return null;
+        }
+
+        $slot_field_key = (string) ($slot_field['key'] ?? '');
+        if ($slot_field_key !== '' && array_key_exists($slot_field_key, $value)) {
+            return $value[$slot_field_key];
+        }
+
+        return null;
+    }
+
     function meza_resolve_event_context_leaf_value($value, array $field, int $post_id, bool $flatten_for_frontend, array $legacy_path_segments = [])
     {
         $before_value = null;
         $after_value = null;
         $base_value = null;
         $season_after_value = null;
-        $field_type = (string) ($field['type'] ?? '');
+        $legacy_before_value = null;
+        $legacy_after_value = null;
+        $legacy_base_value = null;
+        $legacy_default_value = null;
+        $legacy_season_after_value = null;
+        $field_type = meza_get_event_context_effective_field_type($field);
         $has_event_context = meza_is_event_context_group_field($field);
         $has_season_context = meza_is_season_context_group_field($field);
         $season_uses_before_slot = $has_season_context && is_array(meza_get_event_context_nested_sub_field($field, 'before'));
 
         if (is_array($value)) {
-            $before_value = $value['before'] ?? null;
-            $after_value = $value['after'] ?? null;
-            $base_value = $value['base'] ?? null;
-            $season_after_value = $value['season_after'] ?? null;
+            $before_value = meza_get_context_group_slot_value($value, $field, 'before');
+            $after_value = meza_get_context_group_slot_value($value, $field, 'after');
+            $base_value = meza_get_context_group_slot_value($value, $field, 'base');
+            $season_after_value = meza_get_context_group_slot_value($value, $field, 'season_after');
+
+            $has_explicit_context_slots =
+                !meza_section_field_value_is_empty($before_value)
+                || !meza_section_field_value_is_empty($after_value)
+                || !meza_section_field_value_is_empty($base_value)
+                || !meza_section_field_value_is_empty($season_after_value);
+
+            if (!$has_explicit_context_slots) {
+                if ($has_season_context && !$has_event_context) {
+                    $base_value = $value;
+                } else {
+                    $before_value = $value;
+                }
+            }
         } elseif (!meza_section_field_value_is_empty($value)) {
             if ($has_season_context && !$has_event_context) {
                 $base_value = $value;
@@ -1283,35 +1599,48 @@
             }
         }
 
-        if ($has_event_context && meza_section_field_value_is_empty($before_value)) {
-            $legacy_before_value = meza_get_event_context_legacy_meta_value($post_id, $legacy_path_segments, 'before');
+        if ($post_id > 0 && $legacy_path_segments !== []) {
+            $legacy_default_value = meza_get_event_context_legacy_meta_value($post_id, $legacy_path_segments);
+            $legacy_before_value = $has_event_context
+                ? meza_get_event_context_legacy_meta_value($post_id, $legacy_path_segments, 'before')
+                : null;
+            $legacy_after_value = $has_event_context
+                ? meza_get_event_context_legacy_meta_value($post_id, $legacy_path_segments, 'after')
+                : null;
+            $legacy_base_value = $has_season_context
+                ? meza_get_event_context_legacy_meta_value($post_id, $legacy_path_segments, 'base')
+                : null;
+            $legacy_season_after_value = $has_season_context
+                ? meza_get_event_context_legacy_meta_value($post_id, $legacy_path_segments, 'season_after')
+                : null;
+        }
+
+        if ($has_event_context && !meza_event_context_slot_has_usable_value($before_value, $field_type)) {
             if ($legacy_before_value !== null) {
                 $before_value = $legacy_before_value;
             }
         }
 
-        if ($has_event_context && meza_section_field_value_is_empty($after_value)) {
-            $legacy_after_value = meza_get_event_context_legacy_meta_value($post_id, $legacy_path_segments, 'after');
+        if ($has_event_context && !meza_event_context_slot_has_usable_value($after_value, $field_type)) {
             if ($legacy_after_value !== null) {
                 $after_value = $legacy_after_value;
             }
         }
 
-        if ($has_season_context && meza_section_field_value_is_empty($base_value)) {
-            $legacy_base_value = meza_get_event_context_legacy_meta_value($post_id, $legacy_path_segments, 'before');
+        if ($has_season_context && !meza_event_context_slot_has_usable_value($base_value, $field_type)) {
+            $legacy_base_value = $legacy_before_value;
             if ($legacy_base_value === null) {
                 $legacy_base_value = meza_get_event_context_legacy_meta_value($post_id, $legacy_path_segments, 'base');
             }
             if ($legacy_base_value === null) {
-                $legacy_base_value = meza_get_event_context_legacy_meta_value($post_id, $legacy_path_segments);
+                $legacy_base_value = $legacy_default_value;
             }
             if ($legacy_base_value !== null) {
                 $base_value = $legacy_base_value;
             }
         }
 
-        if ($has_season_context && meza_section_field_value_is_empty($season_after_value)) {
-            $legacy_season_after_value = meza_get_event_context_legacy_meta_value($post_id, $legacy_path_segments, 'season_after');
+        if ($has_season_context && !meza_event_context_slot_has_usable_value($season_after_value, $field_type)) {
             if ($legacy_season_after_value !== null) {
                 $season_after_value = $legacy_season_after_value;
             }
@@ -1321,16 +1650,41 @@
             $base_value = $before_value;
         }
 
+        if (
+            $has_season_context
+            && $season_uses_before_slot
+            && meza_section_field_value_is_empty($before_value)
+            && !meza_section_field_value_is_empty($base_value)
+        ) {
+            $before_value = $base_value;
+        }
+
         if ($field_type === 'link') {
-            $before_value = meza_normalize_event_context_link_field_value($before_value);
-            $after_value = meza_normalize_event_context_link_field_value($after_value);
-            $base_value = meza_normalize_event_context_link_field_value($base_value);
-            $season_after_value = meza_normalize_event_context_link_field_value($season_after_value);
+            $before_value = meza_merge_event_context_link_field_values(
+                $before_value,
+                $legacy_before_value,
+                $legacy_base_value,
+                $legacy_default_value
+            );
+            $after_value = meza_enrich_event_context_link_field_value(
+                $after_value,
+                $legacy_after_value
+            );
+            $base_value = meza_merge_event_context_link_field_values(
+                $base_value,
+                $legacy_base_value,
+                $legacy_before_value,
+                $legacy_default_value
+            );
+            $season_after_value = meza_enrich_event_context_link_field_value(
+                $season_after_value,
+                $legacy_season_after_value
+            );
         } else {
-            $before_value = meza_normalize_event_context_scalar_field_value($before_value);
-            $after_value = meza_normalize_event_context_scalar_field_value($after_value);
-            $base_value = meza_normalize_event_context_scalar_field_value($base_value);
-            $season_after_value = meza_normalize_event_context_scalar_field_value($season_after_value);
+            $before_value = meza_normalize_event_context_field_value($before_value, $field_type);
+            $after_value = meza_normalize_event_context_field_value($after_value, $field_type);
+            $base_value = meza_normalize_event_context_field_value($base_value, $field_type);
+            $season_after_value = meza_normalize_event_context_field_value($season_after_value, $field_type);
         }
 
         if (!$flatten_for_frontend) {
@@ -1461,13 +1815,17 @@
                     continue;
                 }
 
-                $resolved_value[$sub_field_name] = meza_resolve_event_aware_field_tree_value(
-                    $resolved_value[$sub_field_name] ?? null,
+                $child_value = meza_get_field_tree_child_value($resolved_value, $sub_field);
+
+                $child_value = meza_resolve_event_aware_field_tree_value(
+                    $child_value,
                     $sub_field,
                     $post_id,
                     $flatten_for_frontend,
                     array_merge($path_segments, [$sub_field_name])
                 );
+
+                $resolved_value = meza_set_field_tree_child_value($resolved_value, $sub_field, $child_value);
             }
 
             return $resolved_value;
@@ -1493,13 +1851,17 @@
                         continue;
                     }
 
-                    $value[$row_index][$sub_field_name] = meza_resolve_event_aware_field_tree_value(
-                        $row_value[$sub_field_name] ?? null,
+                    $child_value = meza_get_field_tree_child_value($row_value, $sub_field);
+
+                    $child_value = meza_resolve_event_aware_field_tree_value(
+                        $child_value,
                         $sub_field,
                         $post_id,
                         $flatten_for_frontend,
                         array_merge($path_segments, [(string) $row_index, $sub_field_name])
                     );
+
+                    $value[$row_index] = meza_set_field_tree_child_value($value[$row_index], $sub_field, $child_value);
                 }
             }
 
@@ -1543,13 +1905,17 @@
                         continue;
                     }
 
-                    $value[$row_index][$sub_field_name] = meza_resolve_event_aware_field_tree_value(
-                        $row_value[$sub_field_name] ?? null,
+                    $child_value = meza_get_field_tree_child_value($row_value, $sub_field);
+
+                    $child_value = meza_resolve_event_aware_field_tree_value(
+                        $child_value,
                         $sub_field,
                         $post_id,
                         $flatten_for_frontend,
                         array_merge($path_segments, [(string) $row_index, $sub_field_name])
                     );
+
+                    $value[$row_index] = meza_set_field_tree_child_value($value[$row_index], $sub_field, $child_value);
                 }
             }
 
@@ -1565,10 +1931,26 @@
             return false;
         }
 
+        $now = current_time('timestamp');
+        $candidate_end_timestamp = 0;
+
         if (function_exists('\MZ\Recurring\mz_get_event_schedule')) {
             $schedule = \MZ\Recurring\mz_get_event_schedule($post_id);
             if (is_array($schedule) && array_key_exists('is_past', $schedule)) {
-                return !empty($schedule['is_past']);
+                if (!empty($schedule['is_past'])) {
+                    return true;
+                }
+
+                $end_object = $schedule['end_obj'] ?? null;
+                if ($end_object instanceof DateTimeInterface) {
+                    $candidate_end_timestamp = $end_object->getTimestamp();
+                } elseif (!empty($schedule['upcoming_until_mysql'])) {
+                    $candidate_end_timestamp = (int) strtotime((string) $schedule['upcoming_until_mysql']);
+                } elseif (!empty($schedule['end_datetime'])) {
+                    $candidate_end_timestamp = (int) strtotime((string) $schedule['end_datetime']);
+                } elseif (!empty($schedule['date_ymd'])) {
+                    $candidate_end_timestamp = (int) strtotime((string) $schedule['date_ymd'] . ' 23:59:59');
+                }
             }
         }
 
@@ -1576,16 +1958,35 @@
         if ($upcoming_until !== '') {
             $upcoming_until_timestamp = strtotime($upcoming_until);
             if ($upcoming_until_timestamp !== false) {
-                return $upcoming_until_timestamp < current_time('timestamp');
+                $candidate_end_timestamp = max($candidate_end_timestamp, (int) $upcoming_until_timestamp);
             }
         }
 
-        return false;
+        $date_end = trim((string) get_post_meta($post_id, 'date_end', true));
+        if ($date_end !== '') {
+            $date_end_timestamp = strtotime($date_end . ' 23:59:59');
+            if ($date_end_timestamp !== false) {
+                $candidate_end_timestamp = max($candidate_end_timestamp, (int) $date_end_timestamp);
+            }
+        }
+
+        $date_start = trim((string) get_post_meta($post_id, 'date_start', true));
+        if ($candidate_end_timestamp <= 0 && $date_start !== '') {
+            $date_start_timestamp = strtotime($date_start . ' 23:59:59');
+            if ($date_start_timestamp !== false) {
+                $candidate_end_timestamp = (int) $date_start_timestamp;
+            }
+        }
+
+        return $candidate_end_timestamp > 0 && $candidate_end_timestamp < $now;
     }
 
     function meza_is_event_aware_section_group_value($value, $post_id, $field): bool
     {
         $resolved_post_id = is_numeric($post_id) ? (int) $post_id : 0;
+        $field = is_array($field)
+            ? meza_get_runtime_normalized_section_group_field($field, $resolved_post_id)
+            : $field;
         $has_event_context = function_exists('meza_events_have_after_content')
             && meza_events_have_after_content()
             && is_array($field)
@@ -1603,6 +2004,9 @@
     function meza_resolve_event_aware_section_field_value($value, $post_id, $field)
     {
         $resolved_post_id = is_numeric($post_id) ? (int) $post_id : 0;
+        $field = is_array($field)
+            ? meza_get_runtime_normalized_section_group_field($field, $resolved_post_id)
+            : $field;
 
         if (!meza_is_event_aware_section_group_value($value, $resolved_post_id, $field)) {
             return $value;
@@ -1620,6 +2024,9 @@
     function meza_format_event_aware_section_field_value($value, $post_id, $field)
     {
         $resolved_post_id = is_numeric($post_id) ? (int) $post_id : 0;
+        $field = is_array($field)
+            ? meza_get_runtime_normalized_section_group_field($field, $resolved_post_id)
+            : $field;
 
         if (!meza_is_event_aware_section_group_value($value, $resolved_post_id, $field)) {
             return $value;
@@ -1792,11 +2199,11 @@
 
     function meza_build_default_section_sub_field(string $section_field_name, string $sub_field_name): array
     {
-        $is_textarea = $sub_field_name === 'description';
-        $is_link = $sub_field_name === 'link';
+        $is_textarea = in_array($sub_field_name, ['description', 'subhead'], true);
+        $is_link = in_array($sub_field_name, ['link', 'link_secondary'], true);
         $field = [
             'key' => meza_get_section_sub_field_stable_key($section_field_name, $sub_field_name),
-            'label' => ucfirst($sub_field_name),
+            'label' => meza_get_standard_section_sub_field_label($sub_field_name),
             'name' => $sub_field_name,
             'aria-label' => '',
             'type' => $is_textarea ? 'textarea' : ($is_link ? 'link' : 'text'),
@@ -1814,9 +2221,12 @@
         ];
 
         if ($is_textarea) {
-            $field['rows'] = 2;
+            $field['rows'] = $sub_field_name === 'subhead' ? 1 : 2;
             $field['placeholder'] = '';
             $field['new_lines'] = '';
+            if ($sub_field_name === 'subhead') {
+                $field['meza_textarea_role'] = 'subhead';
+            }
         } elseif ($is_link) {
             $field['return_format'] = 'array';
         } else {
@@ -1826,8 +2236,9 @@
         }
 
         if (
-            in_array($section_field_name, ['section_form', 'section_faqs', 'section_list-posts', 'section_list-resources', 'section_list-partners'], true)
-            && $sub_field_name === 'display'
+            $sub_field_name === 'display'
+            && function_exists('meza_get_standard_section_header_field_names')
+            && in_array('display', meza_get_standard_section_header_field_names($section_field_name), true)
         ) {
             $field['conditional_logic'] = [
                 [
@@ -1839,7 +2250,45 @@
             ];
         }
 
+        if ($sub_field_name === 'link_secondary') {
+            $field['conditional_logic'] = [
+                [
+                    [
+                        'field' => meza_get_section_sub_field_stable_key($section_field_name, 'link'),
+                        'operator' => '!=empty',
+                    ],
+                ],
+            ];
+        }
+
         return $field;
+    }
+
+    function meza_get_standard_section_sub_field_label(string $sub_field_name): string
+    {
+        $sub_field_name = sanitize_key($sub_field_name);
+
+        $labels = [
+            'headline' => 'Headline (H2)',
+            'display' => 'Display',
+            'subhead' => 'Subhead',
+            'description' => 'Description',
+            'link' => 'Link',
+            'link_secondary' => 'Link (Secondary)',
+            'image' => 'Image',
+            'icon' => 'Icon',
+            'video' => 'Video',
+            'video_embed' => 'Video Embed',
+            'faqs' => 'FAQs',
+            'form' => 'Form',
+            'id' => 'ID',
+        ];
+
+        if (array_key_exists($sub_field_name, $labels)) {
+            return $labels[$sub_field_name];
+        }
+
+        return ucwords(str_replace('_', ' ', $sub_field_name));
     }
 
     function meza_normalize_section_sub_fields(
@@ -1849,7 +2298,9 @@
         bool $supports_event_context = false
     ): array
     {
-        $target_names = ['headline', 'display', 'subhead', 'description', 'link'];
+        $target_names = function_exists('meza_get_standard_section_header_field_names')
+            ? meza_get_standard_section_header_field_names($section_field_name)
+            : ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'];
         $index_by_name = [];
 
         foreach ($sub_fields as $index => $sub_field) {
@@ -1882,6 +2333,10 @@
                         continue;
                     }
 
+                    if ($name === 'subhead' && (string) ($nested_sub_field['type'] ?? '') === 'textarea') {
+                        $sub_fields[$index]['sub_fields'][$nested_index]['meza_textarea_role'] = 'subhead';
+                    }
+
                     $nested_name = sanitize_key((string) ($nested_sub_field['name'] ?? ''));
                     if (in_array($nested_name, ['before', 'base'], true)) {
                         $sub_fields[$index]['sub_fields'][$nested_index]['default_value'] = '';
@@ -1892,11 +2347,39 @@
 
             $sub_fields[$index]['default_value'] = '';
 
-            if ($name === 'description') {
+            $current_label = trim((string) ($sub_fields[$index]['label'] ?? ''));
+            $default_label = meza_get_standard_section_sub_field_label($name);
+            $fallback_machine_labels = [
+                $name,
+                ucfirst($name),
+                ucwords(str_replace('_', ' ', $name)),
+                ucfirst(str_replace('_', ' ', $name)),
+            ];
+
+            if ($current_label === '' || in_array($current_label, $fallback_machine_labels, true)) {
+                $sub_fields[$index]['label'] = $default_label;
+            }
+
+            if (in_array($name, ['description', 'subhead'], true)) {
                 if (($sub_fields[$index]['type'] ?? '') !== 'textarea') {
                     $sub_fields[$index]['type'] = 'textarea';
                 }
-            } elseif ($name === 'link') {
+                if (!array_key_exists('rows', $sub_fields[$index]) || (int) ($sub_fields[$index]['rows'] ?? 0) <= 0) {
+                    $sub_fields[$index]['rows'] = $name === 'subhead' ? 1 : 2;
+                }
+                $sub_fields[$index]['placeholder'] = '';
+                if ($name === 'description') {
+                    $sub_fields[$index]['new_lines'] = 'wpautop';
+                } else {
+                    $sub_fields[$index]['meza_textarea_role'] = 'subhead';
+                    if (!array_key_exists('new_lines', $sub_fields[$index])) {
+                        $sub_fields[$index]['new_lines'] = '';
+                    }
+                }
+                if ($name !== 'description' && !array_key_exists('new_lines', $sub_fields[$index])) {
+                    $sub_fields[$index]['new_lines'] = '';
+                }
+            } elseif (in_array($name, ['link', 'link_secondary'], true)) {
                 if (($sub_fields[$index]['type'] ?? '') !== 'link') {
                     $sub_fields[$index]['type'] = 'link';
                 }
@@ -1956,13 +2439,13 @@
             }
         }
 
-        $order_prefix = ['headline', 'display', 'subhead', 'description', 'image', 'link'];
+        $order_prefix = array_values(array_unique(array_merge($target_names, ['image'])));
         if ($normalized_group_key === 'group_692cdbb4a0ff0') {
             $order_prefix = ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'icon', 'image', 'video', 'video_embed'];
         } elseif ($section_field_name === 'section_form') {
-            $order_prefix = ['headline', 'display', 'subhead', 'description', 'faqs', 'form', 'id'];
+            $order_prefix = ['headline', 'display', 'subhead', 'description', 'faqs', 'form', 'link', 'link_secondary', 'id'];
         } elseif ($section_field_name === 'section_faqs') {
-            $order_prefix = ['headline', 'display', 'subhead', 'description', 'link', 'faqs', 'image', 'id'];
+            $order_prefix = ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'faqs', 'image', 'id'];
         }
         $ordered = [];
         $used_indexes = [];
@@ -2566,3 +3049,242 @@
     add_filter('acf/format_value/type=group', 'meza_format_event_aware_section_field_value', 20, 3);
     add_filter('acf/format_value/type=repeater', 'meza_format_event_aware_section_field_value', 20, 3);
     add_filter('acf/format_value/type=flexible_content', 'meza_format_event_aware_section_field_value', 20, 3);
+
+    add_filter('acf/load_field/key=field_69028fd8fd533', static function (array $field): array {
+        $field['layout'] = 'row';
+        $field['min'] = 1;
+        $sub_fields = isset($field['sub_fields']) && is_array($field['sub_fields'])
+            ? array_values($field['sub_fields'])
+            : [];
+        $normalized_by_key = [];
+
+        $build_gallery_video_embed_sub_field = static function (array $source = []) use ($field): array {
+            return array_merge($source, [
+                'key' => 'field_6902901cfd535',
+                'label' => 'Video Embed',
+                'name' => 'video_embed',
+                '_name' => 'video_embed',
+                'type' => 'oembed',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'menu_order' => 0,
+                'width' => '',
+                'height' => '',
+                'allow_in_bindings' => 0,
+                'parent_repeater' => 'field_69028fd8fd533',
+                'parent' => $source['parent'] ?? ($field['ID'] ?? $field['id'] ?? $field['parent'] ?? ''),
+            ]);
+        };
+
+        foreach ($sub_fields as $sub_field) {
+            if (!is_array($sub_field)) {
+                continue;
+            }
+
+            $sub_key = (string) ($sub_field['key'] ?? '');
+
+            if ($sub_key === 'field_69028febfd534') {
+                $sub_field['menu_order'] = 1;
+                $sub_field['required'] = 0;
+                $sub_field['conditional_logic'] = 0;
+            }
+
+            if ($sub_key === 'field_6902901cfd535') {
+                $sub_field['menu_order'] = 0;
+                $sub_field['label'] = 'Video Embed';
+                $sub_field['name'] = 'video_embed';
+                $sub_field['_name'] = 'video_embed';
+                $sub_field['type'] = 'oembed';
+                $sub_field['required'] = 0;
+                $sub_field['conditional_logic'] = 0;
+                $sub_field['width'] = '';
+                $sub_field['height'] = '';
+                unset(
+                    $sub_field['return_format'],
+                    $sub_field['library'],
+                    $sub_field['min_size'],
+                    $sub_field['max_size'],
+                    $sub_field['mime_types']
+                );
+            }
+
+            $normalized_by_key[$sub_key] = $sub_field;
+        }
+
+        if (!isset($normalized_by_key['field_6902901cfd535'])) {
+            $image_source = $normalized_by_key['field_69028febfd534'] ?? [];
+            $normalized_by_key['field_6902901cfd535'] = $build_gallery_video_embed_sub_field(
+                is_array($image_source) ? $image_source : []
+            );
+        }
+
+        $ordered_keys = [
+            'field_6902901cfd535',
+            'field_69028febfd534',
+        ];
+        $normalized = [];
+
+        foreach ($ordered_keys as $ordered_key) {
+            if (isset($normalized_by_key[$ordered_key])) {
+                $normalized[] = $normalized_by_key[$ordered_key];
+                unset($normalized_by_key[$ordered_key]);
+            }
+        }
+
+        foreach ($normalized_by_key as $sub_field) {
+            $normalized[] = $sub_field;
+        }
+
+        $field['sub_fields'] = $normalized;
+
+        return $field;
+    }, 20);
+
+    add_filter('acf/load_field/key=field_6902901cfd535', static function (array $field): array {
+        $field['label'] = 'Video Embed';
+        $field['name'] = 'video_embed';
+        $field['_name'] = 'video_embed';
+        $field['type'] = 'oembed';
+        $field['required'] = 0;
+        $field['conditional_logic'] = 0;
+        $field['width'] = '';
+        $field['height'] = '';
+        unset(
+            $field['return_format'],
+            $field['library'],
+            $field['min_size'],
+            $field['max_size'],
+            $field['mime_types']
+        );
+
+        return $field;
+    }, 20);
+
+    add_filter('acf/prepare_field/key=field_meza_section_gallery_video_embed', static function ($field) {
+        return false;
+    }, 20);
+
+    add_action('acf/input/admin_footer', static function (): void {
+        ?>
+        <script>
+            (function () {
+                const repeaterKey = 'field_69028fd8fd533';
+                const videoKey = 'field_6902901cfd535';
+                const imageKey = 'field_69028febfd534';
+
+                const getFieldElement = (row, key) => row.querySelector('.acf-field[data-key="' + key + '"]');
+
+                const getImageValue = (fieldEl) => {
+                    if (!(fieldEl instanceof HTMLElement)) {
+                        return '';
+                    }
+
+                    const input = fieldEl.querySelector('input[type="hidden"][name*="[' + imageKey + ']"]');
+                    return input instanceof HTMLInputElement ? input.value.trim() : '';
+                };
+
+                const getVideoValue = (fieldEl) => {
+                    if (!(fieldEl instanceof HTMLElement)) {
+                        return '';
+                    }
+
+                    const input = fieldEl.querySelector('.acf-oembed .input-value');
+                    return input instanceof HTMLInputElement ? input.value.trim() : '';
+                };
+
+                const setVisible = (fieldEl, isVisible) => {
+                    if (!(fieldEl instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    fieldEl.style.display = isVisible ? '' : 'none';
+                };
+
+                const syncRow = (row) => {
+                    if (!(row instanceof HTMLElement) || row.classList.contains('acf-clone')) {
+                        return;
+                    }
+
+                    const videoField = getFieldElement(row, videoKey);
+                    const imageField = getFieldElement(row, imageKey);
+
+                    if (!(videoField instanceof HTMLElement) || !(imageField instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const hasVideo = getVideoValue(videoField) !== '';
+                    const hasImage = getImageValue(imageField) !== '';
+
+                    if (hasVideo && !hasImage) {
+                        setVisible(videoField, true);
+                        setVisible(imageField, false);
+                        return;
+                    }
+
+                    if (hasImage && !hasVideo) {
+                        setVisible(videoField, false);
+                        setVisible(imageField, true);
+                        return;
+                    }
+
+                    setVisible(videoField, true);
+                    setVisible(imageField, true);
+                };
+
+                const syncRepeater = (context) => {
+                    const root = context instanceof Element ? context : document;
+                    const repeater = root instanceof Element && root.matches('.acf-field[data-key="' + repeaterKey + '"]')
+                        ? root
+                        : root.querySelector('.acf-field[data-key="' + repeaterKey + '"]');
+
+                    if (!(repeater instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    repeater.querySelectorAll('.acf-row').forEach((row) => {
+                        syncRow(row);
+                    });
+                };
+
+                document.addEventListener('input', (event) => {
+                    const target = event.target;
+                    if (!(target instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const row = target.closest('.acf-row');
+                    if (row instanceof HTMLElement) {
+                        syncRow(row);
+                    }
+                });
+
+                document.addEventListener('change', (event) => {
+                    const target = event.target;
+                    if (!(target instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const row = target.closest('.acf-row');
+                    if (row instanceof HTMLElement) {
+                        window.setTimeout(() => syncRow(row), 0);
+                    }
+                });
+
+                const boot = () => syncRepeater(document);
+
+                if (window.acf && typeof window.acf.addAction === 'function') {
+                    window.acf.addAction('ready', boot);
+                    window.acf.addAction('append', syncRepeater);
+                    window.acf.addAction('show_field', syncRepeater);
+                } else {
+                    document.addEventListener('DOMContentLoaded', boot);
+                }
+            }());
+        </script>
+        <?php
+    }, 20);

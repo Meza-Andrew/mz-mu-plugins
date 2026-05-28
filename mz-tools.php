@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Tools
  * Description: Migration and reconciliation tools for Meza WordPress projects.
- * Version: 1.0.37
+ * Version: 1.0.39
  * Author: Meza
  */
 
@@ -16,6 +16,7 @@ $mz_tools_modules = [
     __DIR__ . '/mz-tools/event-field-migration.php',
     __DIR__ . '/mz-tools/faq-migration.php',
     __DIR__ . '/mz-tools/form-migration.php',
+    __DIR__ . '/mz-tools/cta-link-migration.php',
 ];
 
 foreach ($mz_tools_modules as $mz_tools_module) {

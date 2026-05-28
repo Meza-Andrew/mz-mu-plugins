@@ -223,7 +223,7 @@ add_action('acf/init', 'meza_sync_hero_section_field_group_locations', 21);
 if (!function_exists('meza_sync_list_reviews_section_field_group_locations')) {
     function meza_get_list_reviews_section_field_group_location_sync_version(): string
     {
-        return '2026-05-02-list-reviews-location-v1';
+        return '2026-05-21-list-reviews-location-v2';
     }
 
     function meza_get_list_reviews_section_field_group_location_sync_option_name(): string
@@ -292,7 +292,7 @@ if (!function_exists('meza_get_ecommerce_field_group_definition_by_title')) {
 if (!function_exists('meza_sync_list_products_section_field_group_locations')) {
     function meza_get_list_products_section_field_group_location_sync_version(): string
     {
-        return '2026-05-02-list-products-location-v1';
+        return '2026-05-21-list-products-location-v2';
     }
 
     function meza_get_list_products_section_field_group_location_sync_option_name(): string
@@ -337,6 +337,352 @@ if (!function_exists('meza_sync_list_products_section_field_group_locations')) {
     }
 }
 add_action('acf/init', 'meza_sync_list_products_section_field_group_locations', 22);
+
+if (!function_exists('meza_sync_list_profiles_section_field_group_fields')) {
+    function meza_get_list_profiles_section_field_group_fields_sync_version(): string
+    {
+        return '2026-05-21-list-profiles-fields-v2';
+    }
+
+    function meza_get_list_profiles_section_field_group_fields_sync_option_name(): string
+    {
+        return 'meza_list_profiles_section_field_group_fields_sync_version';
+    }
+
+    function meza_sync_list_profiles_section_field_group_fields(): void
+    {
+        if (!function_exists('meza_sync_builtin_field_group_fields') || !function_exists('meza_get_default_editable_acf_field_group_definitions')) {
+            return;
+        }
+
+        $version = meza_get_list_profiles_section_field_group_fields_sync_version();
+        if ((string) get_option(meza_get_list_profiles_section_field_group_fields_sync_option_name(), '') === $version) {
+            return;
+        }
+
+        $definition = [];
+
+        foreach ((array) meza_get_default_editable_acf_field_group_definitions() as $candidate) {
+            if (!is_array($candidate)) {
+                continue;
+            }
+
+            if ((string) ($candidate['key'] ?? '') !== 'group_meza_list_profiles_section') {
+                continue;
+            }
+
+            $definition = $candidate;
+            break;
+        }
+
+        if ($definition === []) {
+            update_option(meza_get_list_profiles_section_field_group_fields_sync_option_name(), $version, false);
+            return;
+        }
+
+        meza_sync_builtin_field_group_fields($definition);
+        update_option(meza_get_list_profiles_section_field_group_fields_sync_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_sync_list_profiles_section_field_group_fields', 24);
+
+if (!function_exists('meza_cleanup_duplicate_list_profiles_group_fields')) {
+    function meza_get_duplicate_list_profiles_group_fields_cleanup_version(): string
+    {
+        return '2026-05-22-list-profiles-duplicate-group-fields-v1';
+    }
+
+    function meza_get_duplicate_list_profiles_group_fields_cleanup_option_name(): string
+    {
+        return 'meza_duplicate_list_profiles_group_fields_cleanup_version';
+    }
+
+    function meza_delete_acf_field_tree(int $field_id): void
+    {
+        if ($field_id <= 0 || !function_exists('acf_delete_field')) {
+            return;
+        }
+
+        $child_fields = get_posts([
+            'post_type' => 'acf-field',
+            'post_status' => 'any',
+            'fields' => 'ids',
+            'posts_per_page' => -1,
+            'orderby' => 'menu_order ID',
+            'order' => 'ASC',
+            'post_parent' => $field_id,
+            'suppress_filters' => false,
+            'cache_results' => false,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+        ]);
+
+        foreach ($child_fields as $child_field_id) {
+            meza_delete_acf_field_tree((int) $child_field_id);
+        }
+
+        acf_delete_field($field_id);
+    }
+
+    function meza_cleanup_duplicate_list_profiles_group_fields(): void
+    {
+        if (!function_exists('acf_get_field_group') || !function_exists('acf_flush_field_cache')) {
+            return;
+        }
+
+        $version = meza_get_duplicate_list_profiles_group_fields_cleanup_version();
+        if ((string) get_option(meza_get_duplicate_list_profiles_group_fields_cleanup_option_name(), '') === $version) {
+            return;
+        }
+
+        $field_group = acf_get_field_group('group_meza_list_profiles_section');
+        $field_group_id = is_array($field_group) ? (int) ($field_group['ID'] ?? 0) : 0;
+        if ($field_group_id <= 0) {
+            update_option(meza_get_duplicate_list_profiles_group_fields_cleanup_option_name(), $version, false);
+            return;
+        }
+
+        $canonical_field_ids = get_posts([
+            'post_type' => 'acf-field',
+            'post_status' => 'any',
+            'fields' => 'ids',
+            'posts_per_page' => -1,
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'post_parent' => $field_group_id,
+            'name' => 'field_meza_section_list_profiles',
+            'suppress_filters' => false,
+            'cache_results' => false,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+        ]);
+
+        $canonical_field_id = !empty($canonical_field_ids) ? (int) end($canonical_field_ids) : 0;
+        if ($canonical_field_id <= 0) {
+            update_option(meza_get_duplicate_list_profiles_group_fields_cleanup_option_name(), $version, false);
+            return;
+        }
+
+        $duplicate_field_ids = get_posts([
+            'post_type' => 'acf-field',
+            'post_status' => 'any',
+            'fields' => 'ids',
+            'posts_per_page' => -1,
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'name' => 'field_meza_section_list_profiles',
+            'suppress_filters' => false,
+            'cache_results' => false,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+        ]);
+
+        foreach ($duplicate_field_ids as $duplicate_field_id) {
+            $duplicate_field_id = (int) $duplicate_field_id;
+            if ($duplicate_field_id <= 0 || $duplicate_field_id === $canonical_field_id) {
+                continue;
+            }
+
+            meza_delete_acf_field_tree($duplicate_field_id);
+        }
+
+        $canonical_field = acf_get_raw_field($canonical_field_id);
+        if (is_array($canonical_field)) {
+            acf_flush_field_cache($canonical_field);
+        }
+
+        update_option(meza_get_duplicate_list_profiles_group_fields_cleanup_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_cleanup_duplicate_list_profiles_group_fields', 23);
+
+if (!function_exists('meza_sync_list_profiles_section_secondary_link_subfield_name')) {
+    function meza_get_list_profiles_section_secondary_link_subfield_name_sync_version(): string
+    {
+        return '2026-05-22-list-profiles-secondary-link-subfield-name-v4';
+    }
+
+    function meza_get_list_profiles_section_secondary_link_subfield_name_sync_option_name(): string
+    {
+        return 'meza_list_profiles_section_secondary_link_subfield_name_sync_version';
+    }
+
+    function meza_get_list_profiles_section_group_field_definition(): array
+    {
+        if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
+            return [];
+        }
+
+        foreach ((array) meza_get_default_editable_acf_field_group_definitions() as $definition) {
+            if (!is_array($definition) || (string) ($definition['key'] ?? '') !== 'group_meza_list_profiles_section') {
+                continue;
+            }
+
+            foreach ((array) ($definition['fields'] ?? []) as $field_definition) {
+                if (!is_array($field_definition) || (string) ($field_definition['key'] ?? '') !== 'field_meza_section_list_profiles') {
+                    continue;
+                }
+
+                return $field_definition;
+            }
+        }
+
+        return [];
+    }
+
+    function meza_sync_list_profiles_section_secondary_link_subfield_name(): void
+    {
+        if (!function_exists('acf_get_field') || !function_exists('acf_update_field')) {
+            return;
+        }
+
+        $version = meza_get_list_profiles_section_secondary_link_subfield_name_sync_version();
+        if ((string) get_option(meza_get_list_profiles_section_secondary_link_subfield_name_sync_option_name(), '') === $version) {
+            return;
+        }
+
+        $group_field_definition = meza_get_list_profiles_section_group_field_definition();
+        $group_field = acf_get_field('field_meza_section_list_profiles');
+
+        if (is_array($group_field) && $group_field_definition !== []) {
+            $group_field_definition['ID'] = $group_field['ID'] ?? null;
+            $group_field_definition['parent'] = $group_field['parent'] ?? ($group_field_definition['parent'] ?? '');
+            $group_field_definition['menu_order'] = (int) ($group_field['menu_order'] ?? $group_field_definition['menu_order'] ?? 0);
+
+            acf_update_field($group_field_definition);
+        }
+
+        $sub_field = acf_get_field('field_meza_list_profiles_link_secondary');
+        if (!is_array($sub_field)) {
+            update_option(meza_get_list_profiles_section_secondary_link_subfield_name_sync_option_name(), $version, false);
+            return;
+        }
+
+        if ((string) ($sub_field['name'] ?? '') !== 'link_secondary') {
+            $sub_field['name'] = 'link_secondary';
+            acf_update_field($sub_field);
+        }
+
+        update_option(meza_get_list_profiles_section_secondary_link_subfield_name_sync_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_sync_list_profiles_section_secondary_link_subfield_name', 24);
+
+if (!function_exists('meza_get_hidden_default_section_location_titles')) {
+    function meza_get_hidden_default_section_location_titles(): array
+    {
+        return [
+            'Benefits Section',
+            'Content Section',
+            'Gallery Section',
+            'List Brands Section',
+            'List Certifications Section',
+            'List Donation Options Section',
+            'List Donor Levels Section',
+            'List Donors & Sponsors Section',
+            'List Events Section',
+            'List Locations Section',
+            'List Partners Section',
+            'List Products Section',
+            'List Profiles Section',
+            'List Sponsor Levels Section',
+            'List Sponsors Section',
+        ];
+    }
+}
+
+if (!function_exists('meza_get_hidden_default_section_location_definitions')) {
+    function meza_get_hidden_default_section_location_definitions(): array
+    {
+        $target_titles = meza_get_hidden_default_section_location_titles();
+        $definitions_by_title = [];
+
+        $sources = [];
+
+        if (function_exists('meza_get_shared_project_acf_field_groups')) {
+            $sources[] = meza_get_shared_project_acf_field_groups();
+        }
+
+        if (function_exists('meza_get_default_editable_acf_field_group_definitions')) {
+            $sources[] = meza_get_default_editable_acf_field_group_definitions();
+        }
+
+        if (function_exists('meza_get_ecommerce_editable_acf_field_group_definitions')) {
+            $sources[] = meza_get_ecommerce_editable_acf_field_group_definitions();
+        }
+
+        foreach ($sources as $definitions) {
+            foreach ((array) $definitions as $definition) {
+                if (!is_array($definition)) {
+                    continue;
+                }
+
+                $title = trim((string) ($definition['title'] ?? ''));
+                if ($title === '' || !in_array($title, $target_titles, true)) {
+                    continue;
+                }
+
+                $definitions_by_title[$title] = $definition;
+            }
+        }
+
+        return $definitions_by_title;
+    }
+}
+
+if (!function_exists('meza_sync_hidden_default_section_field_group_locations')) {
+    function meza_get_hidden_default_section_field_group_location_sync_version(): string
+    {
+        return '2026-05-21-hidden-default-section-locations-v1';
+    }
+
+    function meza_get_hidden_default_section_field_group_location_sync_option_name(): string
+    {
+        return 'meza_hidden_default_section_field_group_location_sync_version';
+    }
+
+    function meza_sync_hidden_default_section_field_group_locations(): void
+    {
+        if (!function_exists('acf_get_field_group') || !function_exists('acf_update_field_group')) {
+            return;
+        }
+
+        $version = meza_get_hidden_default_section_field_group_location_sync_version();
+        if ((string) get_option(meza_get_hidden_default_section_field_group_location_sync_option_name(), '') === $version) {
+            return;
+        }
+
+        $definitions = meza_get_hidden_default_section_location_definitions();
+
+        foreach ($definitions as $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            $field_group_id = function_exists('meza_get_existing_editable_acf_field_group_id')
+                ? meza_get_existing_editable_acf_field_group_id($definition)
+                : 0;
+
+            if ($field_group_id <= 0) {
+                continue;
+            }
+
+            $field_group = acf_get_field_group($field_group_id);
+            if (!is_array($field_group)) {
+                continue;
+            }
+
+            $field_group['location'] = $definition['location'] ?? [];
+            $field_group['menu_order'] = (int) ($definition['menu_order'] ?? 0);
+            $field_group['title'] = (string) ($definition['title'] ?? ($field_group['title'] ?? ''));
+
+            acf_update_field_group($field_group);
+        }
+
+        update_option(meza_get_hidden_default_section_field_group_location_sync_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_sync_hidden_default_section_field_group_locations', 23);
 
 if (!function_exists('meza_remove_cta_section_id_field')) {
     function meza_get_remove_cta_section_id_field_sync_version(): string
@@ -812,7 +1158,7 @@ add_action('acf/init', 'meza_register_missing_events_options_local_field', 16);
 if (!function_exists('meza_sync_section_field_group_menu_order')) {
     function meza_get_section_field_group_menu_order_sync_version(): string
     {
-        return '2026-05-02-section-field-group-menu-order-v3';
+        return '2026-05-20-section-field-group-menu-order-v4';
     }
 
     function meza_get_section_field_group_menu_order_sync_option_name(): string
@@ -827,18 +1173,26 @@ if (!function_exists('meza_sync_section_field_group_menu_order')) {
             'List Services Section' => 3,
             'List Products Section' => 4,
             'List Reviews Section' => 6,
-            'List Brands Section' => 8,
-            'Gallery Section' => 10,
-            'List Partners Section' => 11,
-            'List Profiles Section' => 9,
-            'Benefits Section' => 13,
-            'List Localities Section' => 14,
-            'Form Section' => 16,
-            'List Locations Section' => 18,
-            'CTA Section' => 20,
-            'List Resources Section' => 22,
-            'List Posts Section' => 23,
-            'List FAQs Section' => 25,
+            'Benefits Section' => 8,
+            'List Donor Levels Section' => 10,
+            'List Sponsor Levels Section' => 11,
+            'List Donation Options Section' => 12,
+            'Gallery Section' => 14,
+            'List Profiles Section' => 15,
+            'List Certifications Section' => 17,
+            'List Partners Section' => 18,
+            'List Sponsors Section' => 19,
+            'List Donors & Sponsors Section' => 20,
+            'List Brands Section' => 21,
+            'Content Section' => 23,
+            'List Events Section' => 25,
+            'List Localities Section' => 26,
+            'Form Section' => 28,
+            'CTA Section' => 29,
+            'List Locations Section' => 31,
+            'List Posts Section' => 33,
+            'List Resources Section' => 34,
+            'List FAQs Section' => 35,
         ];
     }
 
@@ -3258,6 +3612,11 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
                 ],
                 [
                     'name' => 'Sponsor',
+                    'children' => [
+                        'Business',
+                        'Organization',
+                        'Performance',
+                    ],
                 ],
                 [
                     'name' => 'Venue',
@@ -3340,6 +3699,90 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
                 }
 
                 $ensure_term($child_name, $taxonomy, $parent_id);
+            }
+        }
+    }
+
+    function meza_get_content_model_nonprofit_default_taxonomy_hierarchy_parent_ids(string $taxonomy): array
+    {
+        $taxonomy = sanitize_key($taxonomy);
+        if ($taxonomy === '' || !taxonomy_exists($taxonomy) || !is_taxonomy_hierarchical($taxonomy)) {
+            return [];
+        }
+
+        $terms = get_terms([
+            'taxonomy' => $taxonomy,
+            'hide_empty' => false,
+            'fields' => 'id=>parent',
+            'get' => 'all',
+            'orderby' => 'id',
+            'update_term_meta_cache' => false,
+            'meza_include_hidden_content_model_terms' => true,
+        ]);
+        if (is_wp_error($terms) || !is_array($terms)) {
+            return [];
+        }
+
+        $parent_ids = [];
+
+        foreach ($terms as $parent_id) {
+            $parent_id = absint($parent_id);
+            if ($parent_id <= 0) {
+                continue;
+            }
+
+            $parent_ids[$parent_id] = $parent_id;
+        }
+
+        return array_values($parent_ids);
+    }
+
+    function meza_rebuild_content_model_taxonomy_hierarchy_cache(string $taxonomy): void
+    {
+        $taxonomy = sanitize_key($taxonomy);
+        if ($taxonomy === '' || !taxonomy_exists($taxonomy) || !is_taxonomy_hierarchical($taxonomy)) {
+            return;
+        }
+
+        delete_option("{$taxonomy}_children");
+        _get_term_hierarchy($taxonomy);
+    }
+
+    function meza_repair_content_model_nonprofit_default_taxonomy_hierarchy_caches(): void
+    {
+        if (!function_exists('meza_is_nonprofit_business_type') || !meza_is_nonprofit_business_type()) {
+            return;
+        }
+
+        foreach (array_keys(meza_get_content_model_nonprofit_default_taxonomy_terms()) as $taxonomy) {
+            $taxonomy = sanitize_key((string) $taxonomy);
+            if ($taxonomy === '' || !taxonomy_exists($taxonomy) || !is_taxonomy_hierarchical($taxonomy)) {
+                continue;
+            }
+
+            meza_seed_content_model_nonprofit_default_taxonomy_terms($taxonomy);
+
+            $expected_parent_ids = meza_get_content_model_nonprofit_default_taxonomy_hierarchy_parent_ids($taxonomy);
+            if ($expected_parent_ids === []) {
+                continue;
+            }
+
+            $cached_children = get_option("{$taxonomy}_children", null);
+            $cached_parent_ids = [];
+
+            if (is_array($cached_children)) {
+                foreach ($cached_children as $parent_id => $child_ids) {
+                    $parent_id = absint($parent_id);
+                    if ($parent_id <= 0 || !is_array($child_ids) || $child_ids === []) {
+                        continue;
+                    }
+
+                    $cached_parent_ids[$parent_id] = $parent_id;
+                }
+            }
+
+            if (array_diff($expected_parent_ids, array_values($cached_parent_ids)) !== []) {
+                meza_rebuild_content_model_taxonomy_hierarchy_cache($taxonomy);
             }
         }
     }
@@ -4145,6 +4588,7 @@ add_action('acf/save_post', 'meza_sync_content_model_field_group_management_afte
 add_action('acf/save_post', 'meza_sync_content_model_object_management_after_save', 19);
 add_action('acf/save_post', 'meza_sync_content_model_taxonomy_term_management_after_save', 19);
 add_action('init', 'meza_reconcile_content_model_object_management_saved_selection', 28);
+add_action('init', 'meza_repair_content_model_nonprofit_default_taxonomy_hierarchy_caches', 29);
 
 add_filter('get_terms_args', static function (array $args, array $taxonomies): array {
     if (
@@ -4386,13 +4830,117 @@ if (!function_exists('meza_parse_event_context_grouped_payload')) {
         return [
             'before' => $value['before'] ?? null,
             'after' => $value['after'] ?? null,
+            '__matched_slots' => [
+                'before' => array_key_exists('before', $value),
+                'after' => array_key_exists('after', $value),
+            ],
+        ];
+    }
+}
+
+if (!function_exists('meza_extract_event_context_grouped_payload_from_field')) {
+    function meza_extract_event_context_grouped_payload_from_field($value, array $field): ?array
+    {
+        if (is_string($value)) {
+            $trimmed_value = trim($value);
+            if ($trimmed_value !== '' && ($trimmed_value[0] === '{' || $trimmed_value[0] === '[')) {
+                $decoded_value = json_decode($trimmed_value, true);
+                if (is_array($decoded_value)) {
+                    $value = $decoded_value;
+                }
+            } else {
+                $maybe_unserialized = maybe_unserialize($value);
+                if (is_array($maybe_unserialized)) {
+                    $value = $maybe_unserialized;
+                }
+            }
+        }
+
+        if (!is_array($value)) {
+            return null;
+        }
+
+        $grouped_payload = function_exists('meza_parse_event_context_grouped_payload')
+            ? meza_parse_event_context_grouped_payload($value)
+            : null;
+        if (is_array($grouped_payload)) {
+            return $grouped_payload;
+        }
+
+        if (!function_exists('meza_get_event_context_nested_sub_field')) {
+            return null;
+        }
+
+        $before_field = meza_get_event_context_nested_sub_field($field, 'before');
+        $after_field = meza_get_event_context_nested_sub_field($field, 'after');
+        $before_value = null;
+        $after_value = null;
+        $before_name = '';
+        $before_key = '';
+        $after_name = '';
+        $after_key = '';
+        $matched = false;
+
+        if (is_array($before_field)) {
+            $before_name = sanitize_key((string) ($before_field['name'] ?? ''));
+            $before_key = (string) ($before_field['key'] ?? '');
+
+            if ($before_name !== '' && array_key_exists($before_name, $value)) {
+                $before_value = $value[$before_name];
+                $matched = true;
+            } elseif ($before_key !== '' && array_key_exists($before_key, $value)) {
+                $before_value = $value[$before_key];
+                $matched = true;
+            }
+        }
+
+        if (is_array($after_field)) {
+            $after_name = sanitize_key((string) ($after_field['name'] ?? ''));
+            $after_key = (string) ($after_field['key'] ?? '');
+
+            if ($after_name !== '' && array_key_exists($after_name, $value)) {
+                $after_value = $value[$after_name];
+                $matched = true;
+            } elseif ($after_key !== '' && array_key_exists($after_key, $value)) {
+                $after_value = $value[$after_key];
+                $matched = true;
+            }
+        }
+
+        if (!$matched) {
+            return null;
+        }
+
+        return [
+            'before' => $before_value,
+            'after' => $after_value,
+            '__matched_slots' => [
+                'before' => is_array($before_field) && (
+                    ($before_name !== '' && array_key_exists($before_name, $value))
+                    || ($before_key !== '' && array_key_exists($before_key, $value))
+                ),
+                'after' => is_array($after_field) && (
+                    ($after_name !== '' && array_key_exists($after_name, $value))
+                    || ($after_key !== '' && array_key_exists($after_key, $value))
+                ),
+            ],
         ];
     }
 }
 
 if (!function_exists('meza_normalize_context_meta_candidate')) {
-    function meza_normalize_context_meta_candidate($value)
+    function meza_normalize_context_meta_candidate($value, string $field_type = '')
     {
+        $field_type = sanitize_key($field_type);
+
+        if ($field_type === 'link' && function_exists('meza_normalize_event_context_link_field_value')) {
+            return meza_normalize_event_context_link_field_value($value);
+        }
+
+        if ($field_type === 'relationship' && function_exists('meza_normalize_event_context_relationship_field_value')) {
+            return meza_normalize_event_context_relationship_field_value($value);
+        }
+
         if (is_string($value)) {
             $maybe_unserialized = maybe_unserialize($value);
             if (is_array($maybe_unserialized)) {
@@ -4406,12 +4954,12 @@ if (!function_exists('meza_normalize_context_meta_candidate')) {
 
         foreach (['before', 'base', 'after', 'season_after', 'url', 'value'] as $key) {
             if (array_key_exists($key, $value)) {
-                return meza_normalize_context_meta_candidate($value[$key]);
+                return meza_normalize_context_meta_candidate($value[$key], $field_type);
             }
         }
 
         foreach ($value as $nested_value) {
-            $normalized_value = meza_normalize_context_meta_candidate($nested_value);
+            $normalized_value = meza_normalize_context_meta_candidate($nested_value, $field_type);
             if (
                 !function_exists('meza_section_field_value_is_empty')
                 || !meza_section_field_value_is_empty($normalized_value)
@@ -4435,8 +4983,43 @@ if (!function_exists('meza_update_event_context_meta_reference')) {
     }
 }
 
+if (!function_exists('meza_context_meta_values_differ')) {
+    function meza_context_meta_values_differ($left, $right): bool
+    {
+        return maybe_serialize($left) !== maybe_serialize($right);
+    }
+}
+
+if (!function_exists('meza_get_context_value_field_type')) {
+    function meza_get_context_value_field_type(array $field, array $candidate_fields = []): string
+    {
+        $field_type = sanitize_key((string) ($field['type'] ?? ''));
+        if ($field_type !== 'group') {
+            return $field_type;
+        }
+
+        foreach ($candidate_fields as $candidate_field) {
+            if (!is_array($candidate_field)) {
+                continue;
+            }
+
+            $candidate_type = sanitize_key((string) ($candidate_field['type'] ?? ''));
+            if ($candidate_type !== '' && $candidate_type !== 'group') {
+                return $candidate_type;
+            }
+        }
+
+        return $field_type;
+    }
+}
+
 if (!function_exists('meza_migrate_event_after_content_field_meta')) {
-    function meza_migrate_event_after_content_field_meta(int $post_id, array $field, array $path_segments): void
+    function meza_migrate_event_after_content_field_meta(
+        int $post_id,
+        array $field,
+        array $path_segments,
+        bool $force_before_sync = false
+    ): void
     {
         if (!function_exists('meza_is_event_context_group_field')) {
             return;
@@ -4458,13 +5041,31 @@ if (!function_exists('meza_migrate_event_after_content_field_meta')) {
             $after_meta_key = $base_meta_key . '_after';
             $before_field = meza_get_event_context_nested_sub_field($field, 'before');
             $after_field = meza_get_event_context_nested_sub_field($field, 'after');
+            $field_type = meza_get_context_value_field_type($field, [$before_field, $after_field]);
             $base_value = metadata_exists('post', $post_id, $base_meta_key)
                 ? get_post_meta($post_id, $base_meta_key, true)
                 : null;
-            $grouped_payload = meza_parse_event_context_grouped_payload($base_value);
-
+            $grouped_payload = function_exists('meza_extract_event_context_grouped_payload_from_field')
+                ? meza_extract_event_context_grouped_payload_from_field($base_value, $field)
+                : meza_parse_event_context_grouped_payload($base_value);
+            $matched_slots = is_array($grouped_payload['__matched_slots'] ?? null)
+                ? $grouped_payload['__matched_slots']
+                : [];
+            $before_slot_was_posted = !empty($matched_slots['before']);
+            $after_slot_was_posted = !empty($matched_slots['after']);
             $before_candidate = $grouped_payload['before'] ?? $base_value;
             $after_candidate = $grouped_payload['after'] ?? null;
+
+            $before_slot_is_explicitly_empty = $before_slot_was_posted
+                && (
+                    (function_exists('meza_section_field_value_is_empty') && meza_section_field_value_is_empty($before_candidate))
+                    || $before_candidate === null
+                );
+            $after_slot_is_explicitly_empty = $after_slot_was_posted
+                && (
+                    (function_exists('meza_section_field_value_is_empty') && meza_section_field_value_is_empty($after_candidate))
+                    || $after_candidate === null
+                );
 
             if ($grouped_payload === null && metadata_exists('post', $post_id, $base_meta_key . '_after')) {
                 $after_candidate = get_post_meta($post_id, $base_meta_key . '_after', true);
@@ -4481,17 +5082,44 @@ if (!function_exists('meza_migrate_event_after_content_field_meta')) {
                 (function_exists('meza_section_field_value_is_empty') && meza_section_field_value_is_empty($before_candidate))
                 || $before_candidate === null
             ) {
-                $before_candidate = $stored_before_value;
+                if (!$before_slot_was_posted) {
+                    $before_candidate = $stored_before_value;
+                }
             }
-            $before_candidate = meza_normalize_context_meta_candidate($before_candidate);
+            if (
+                $field_type === 'link'
+                && function_exists('meza_merge_event_context_link_field_values')
+                && !$before_slot_is_explicitly_empty
+            ) {
+                $before_candidate = meza_merge_event_context_link_field_values(
+                    $before_candidate,
+                    $stored_before_value,
+                    $base_value
+                );
+            } else {
+                $before_candidate = meza_normalize_context_meta_candidate($before_candidate, $field_type);
+            }
 
             if (
                 (function_exists('meza_section_field_value_is_empty') && meza_section_field_value_is_empty($after_candidate))
                 || $after_candidate === null
             ) {
-                $after_candidate = $stored_after_value;
+                if (!$after_slot_was_posted) {
+                    $after_candidate = $stored_after_value;
+                }
             }
-            $after_candidate = meza_normalize_context_meta_candidate($after_candidate);
+            if (
+                $field_type === 'link'
+                && function_exists('meza_enrich_event_context_link_field_value')
+                && !$after_slot_is_explicitly_empty
+            ) {
+                $after_candidate = meza_enrich_event_context_link_field_value(
+                    $after_candidate,
+                    $stored_after_value
+                );
+            } else {
+                $after_candidate = meza_normalize_context_meta_candidate($after_candidate, $field_type);
+            }
 
             $before_is_empty = !metadata_exists('post', $post_id, $before_meta_key)
                 || (function_exists('meza_section_field_value_is_empty')
@@ -4499,7 +5127,19 @@ if (!function_exists('meza_migrate_event_after_content_field_meta')) {
 
             if (
                 is_array($before_field)
-                && $before_is_empty
+                && (
+                    $before_is_empty
+                    || (
+                        $field_type === 'link'
+                        && (!function_exists('meza_section_field_value_is_empty') || !meza_section_field_value_is_empty($before_candidate))
+                        && meza_context_meta_values_differ($stored_before_value, $before_candidate)
+                    )
+                    || (
+                        $force_before_sync
+                        && (!function_exists('meza_section_field_value_is_empty') || !meza_section_field_value_is_empty($before_candidate))
+                        && meza_context_meta_values_differ($stored_before_value, $before_candidate)
+                    )
+                )
                 && (!function_exists('meza_section_field_value_is_empty') || !meza_section_field_value_is_empty($before_candidate))
             ) {
                 update_post_meta($post_id, $before_meta_key, $before_candidate);
@@ -4508,6 +5148,13 @@ if (!function_exists('meza_migrate_event_after_content_field_meta')) {
                     $before_meta_key,
                     (string) ($before_field['key'] ?? '')
                 );
+            } elseif (
+                is_array($before_field)
+                && $before_slot_was_posted
+                && $before_slot_is_explicitly_empty
+            ) {
+                delete_post_meta($post_id, $before_meta_key);
+                delete_post_meta($post_id, '_' . $before_meta_key);
             }
 
             $after_is_empty = !metadata_exists('post', $post_id, $after_meta_key)
@@ -4516,7 +5163,14 @@ if (!function_exists('meza_migrate_event_after_content_field_meta')) {
 
             if (
                 is_array($after_field)
-                && $after_is_empty
+                && (
+                    $after_is_empty
+                    || (
+                        $field_type === 'link'
+                        && (!function_exists('meza_section_field_value_is_empty') || !meza_section_field_value_is_empty($after_candidate))
+                        && meza_context_meta_values_differ($stored_after_value, $after_candidate)
+                    )
+                )
                 && (!function_exists('meza_section_field_value_is_empty') || !meza_section_field_value_is_empty($after_candidate))
             ) {
                 update_post_meta($post_id, $after_meta_key, $after_candidate);
@@ -4525,13 +5179,28 @@ if (!function_exists('meza_migrate_event_after_content_field_meta')) {
                     $after_meta_key,
                     (string) ($after_field['key'] ?? '')
                 );
+            } elseif (
+                is_array($after_field)
+                && $after_slot_was_posted
+                && $after_slot_is_explicitly_empty
+            ) {
+                delete_post_meta($post_id, $after_meta_key);
+                delete_post_meta($post_id, '_' . $after_meta_key);
             }
 
             $base_is_empty = !metadata_exists('post', $post_id, $base_meta_key)
                 || (function_exists('meza_section_field_value_is_empty')
                     && meza_section_field_value_is_empty($base_value));
 
-            if ($grouped_payload !== null || ($base_is_empty && (!function_exists('meza_section_field_value_is_empty') || !meza_section_field_value_is_empty($before_candidate)))) {
+            if (
+                $grouped_payload !== null
+                || ($base_is_empty && (!function_exists('meza_section_field_value_is_empty') || !meza_section_field_value_is_empty($before_candidate)))
+                || (
+                    $field_type === 'link'
+                    && (!function_exists('meza_section_field_value_is_empty') || !meza_section_field_value_is_empty($before_candidate))
+                    && meza_context_meta_values_differ(meza_normalize_context_meta_candidate($base_value, $field_type), $before_candidate)
+                )
+            ) {
                 update_post_meta($post_id, $base_meta_key, $before_candidate);
             }
 
@@ -4554,7 +5223,8 @@ if (!function_exists('meza_migrate_event_after_content_field_meta')) {
                 meza_migrate_event_after_content_field_meta(
                     $post_id,
                     $sub_field,
-                    array_merge($path_segments, [$sub_field_name])
+                    array_merge($path_segments, [$sub_field_name]),
+                    $force_before_sync
                 );
             }
 
@@ -4588,7 +5258,8 @@ if (!function_exists('meza_migrate_event_after_content_field_meta')) {
                     meza_migrate_event_after_content_field_meta(
                         $post_id,
                         $sub_field,
-                        $next_segments
+                        $next_segments,
+                        $force_before_sync
                     );
                 }
             }
@@ -4597,7 +5268,7 @@ if (!function_exists('meza_migrate_event_after_content_field_meta')) {
 }
 
 if (!function_exists('meza_migrate_event_after_content_post_values')) {
-    function meza_migrate_event_after_content_post_values(int $post_id): void
+    function meza_migrate_event_after_content_post_values(int $post_id, bool $force_before_sync = false): void
     {
         if (
             $post_id <= 0
@@ -4638,14 +5309,14 @@ if (!function_exists('meza_migrate_event_after_content_post_values')) {
                     continue;
                 }
 
-                meza_migrate_event_after_content_field_meta($post_id, $field, [$field_name]);
+                meza_migrate_event_after_content_field_meta($post_id, $field, [$field_name], $force_before_sync);
             }
         }
     }
 }
 
 if (!function_exists('meza_sync_event_after_content_migration_state')) {
-    function meza_copy_builtin_event_details_before_values(int $post_id): void
+    function meza_copy_builtin_event_details_before_values(int $post_id, bool $force_before_sync = false): void
     {
         if ($post_id <= 0 || get_post_type($post_id) !== 'event') {
             return;
@@ -4665,8 +5336,17 @@ if (!function_exists('meza_sync_event_after_content_migration_state')) {
             if (
                 !$before_field_key
                 || (
-                    function_exists('meza_section_field_value_is_empty')
-                    && !meza_section_field_value_is_empty($current_before_value)
+                    !$force_before_sync
+                    && (
+                        (
+                            function_exists('meza_section_field_value_is_empty')
+                            && !meza_section_field_value_is_empty($current_before_value)
+                        )
+                        || (
+                            !function_exists('meza_section_field_value_is_empty')
+                            && $current_before_value !== null
+                        )
+                    )
                 )
             ) {
                 continue;
@@ -4681,9 +5361,21 @@ if (!function_exists('meza_sync_event_after_content_migration_state')) {
                 $legacy_value = $grouped_payload['before'] ?? null;
             }
 
+            if ($meta_key === 'link') {
+                $legacy_value = meza_normalize_context_meta_candidate($legacy_value, 'link');
+                $current_before_value = meza_normalize_context_meta_candidate($current_before_value, 'link');
+            }
+
             if (
                 function_exists('meza_section_field_value_is_empty')
                 && meza_section_field_value_is_empty($legacy_value)
+            ) {
+                continue;
+            }
+
+            if (
+                $force_before_sync
+                && !meza_context_meta_values_differ($current_before_value, $legacy_value)
             ) {
                 continue;
             }
@@ -4693,7 +5385,7 @@ if (!function_exists('meza_sync_event_after_content_migration_state')) {
         }
     }
 
-    function meza_run_event_after_content_migration(): void
+    function meza_run_event_after_content_migration(bool $force_before_sync = false): void
     {
         $event_ids = get_posts([
             'post_type' => 'event',
@@ -4714,8 +5406,8 @@ if (!function_exists('meza_sync_event_after_content_migration_state')) {
                 continue;
             }
 
-            meza_copy_builtin_event_details_before_values($event_id);
-            meza_migrate_event_after_content_post_values($event_id);
+            meza_copy_builtin_event_details_before_values($event_id, $force_before_sync);
+            meza_migrate_event_after_content_post_values($event_id, $force_before_sync);
         }
     }
 
@@ -4742,7 +5434,7 @@ if (!function_exists('meza_sync_event_after_content_migration_state')) {
         ], false);
 
         if (!$was_enabled && $is_enabled) {
-            meza_run_event_after_content_migration();
+            meza_run_event_after_content_migration(true);
         }
 
         return $value;
@@ -4774,6 +5466,7 @@ if (!function_exists('meza_migrate_season_after_content_field_meta')) {
             $season_before_field = meza_get_event_context_nested_sub_field($field, 'before')
                 ?? meza_get_event_context_nested_sub_field($field, 'base');
             $season_after_field = meza_get_event_context_nested_sub_field($field, 'season_after');
+            $field_type = meza_get_context_value_field_type($field, [$season_before_field, $season_after_field]);
             $base_value = metadata_exists('post', $post_id, $base_meta_key)
                 ? get_post_meta($post_id, $base_meta_key, true)
                 : null;
@@ -4805,8 +5498,8 @@ if (!function_exists('meza_migrate_season_after_content_field_meta')) {
             ) {
                 $season_before_candidate = $stored_season_before_value;
             }
-            $season_before_candidate = meza_normalize_context_meta_candidate($season_before_candidate);
-            $season_after_candidate = meza_normalize_context_meta_candidate($season_after_candidate);
+            $season_before_candidate = meza_normalize_context_meta_candidate($season_before_candidate, $field_type);
+            $season_after_candidate = meza_normalize_context_meta_candidate($season_after_candidate, $field_type);
 
             $season_before_is_empty = !metadata_exists('post', $post_id, $season_before_meta_key)
                 || (function_exists('meza_section_field_value_is_empty')
@@ -5166,6 +5859,26 @@ if (!function_exists('meza_sync_events_after_business_information_save')) {
     }
 }
 add_action('acf/save_post', 'meza_sync_events_after_business_information_save', 24);
+
+if (!function_exists('meza_sync_event_after_content_after_business_information_save')) {
+    function meza_sync_event_after_content_after_business_information_save($post_id): void
+    {
+        if (
+            (
+                !meza_is_business_information_acf_submission()
+                && !meza_is_content_structure_acf_submission()
+            )
+            || !in_array($post_id, ['option', 'options'], true)
+            || !function_exists('meza_events_have_after_content')
+            || !meza_events_have_after_content()
+        ) {
+            return;
+        }
+
+        meza_run_event_after_content_migration(true);
+    }
+}
+add_action('acf/save_post', 'meza_sync_event_after_content_after_business_information_save', 25);
 
 if (!function_exists('meza_sync_ecommerce_after_business_information_save')) {
     function meza_persist_business_information_ecommerce_setting(): void

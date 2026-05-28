@@ -78,6 +78,49 @@
         ];
     }
 
+    function meza_get_standard_list_section_display_field(string $key): array
+    {
+        return [
+            'key' => $key,
+            'label' => 'Display',
+            'name' => 'display',
+            'aria-label' => '',
+            'type' => 'text',
+            'instructions' => '',
+            'required' => 0,
+            'conditional_logic' => 0,
+            'wrapper' => meza_get_section_field_wrapper(),
+            'default_value' => '',
+            'maxlength' => '',
+            'allow_in_bindings' => 0,
+            'placeholder' => '',
+            'prepend' => '',
+            'append' => '',
+        ];
+    }
+
+    function meza_get_standard_list_section_subhead_field(string $key, string $default_value = ''): array
+    {
+        return [
+            'key' => $key,
+            'label' => 'Subhead',
+            'name' => 'subhead',
+            'aria-label' => '',
+            'type' => 'textarea',
+            'instructions' => '',
+            'required' => 0,
+            'conditional_logic' => 0,
+            'wrapper' => meza_get_section_field_wrapper(),
+            'default_value' => $default_value,
+            'maxlength' => '',
+            'allow_in_bindings' => 0,
+            'rows' => 1,
+            'placeholder' => '',
+            'new_lines' => '',
+            'meza_textarea_role' => 'subhead',
+        ];
+    }
+
     function meza_get_standard_list_section_link_field(string $key): array
     {
         return [
@@ -93,6 +136,106 @@
             'return_format' => 'array',
             'allow_in_bindings' => 0,
         ];
+    }
+
+    function meza_get_standard_list_section_link_secondary_field(string $key, string $primary_link_key): array
+    {
+        return [
+            'key' => $key,
+            'label' => 'Link (Secondary)',
+            'name' => 'link_secondary',
+            'aria-label' => '',
+            'type' => 'link',
+            'instructions' => '',
+            'required' => 0,
+            'conditional_logic' => [
+                [
+                    [
+                        'field' => $primary_link_key,
+                        'operator' => '!=empty',
+                    ],
+                ],
+            ],
+            'wrapper' => meza_get_section_field_wrapper(),
+            'return_format' => 'array',
+            'allow_in_bindings' => 0,
+        ];
+    }
+
+    function meza_get_standard_section_header_field_names(string $section_field_name): array
+    {
+        $contracts = [
+            'section_hero' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_form' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_content' => ['headline', 'display', 'subhead', 'description', 'link'],
+            'section_faqs' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_gallery' => ['headline', 'display', 'subhead', 'description', 'link'],
+            'section_list-reviews' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_list-posts' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_list-resources' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_list-events' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_list-services' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_list-partners' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_list-sponsors' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_list-profiles' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_list-locations' => ['headline', 'display', 'subhead', 'description', 'link'],
+            'section_benefits' => ['headline', 'display', 'subhead', 'description', 'link'],
+            'section_list-songs' => ['headline', 'display', 'subhead', 'description', 'link'],
+        ];
+
+        $section_field_name = sanitize_key($section_field_name);
+
+        return $contracts[$section_field_name] ?? ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'];
+    }
+
+    function meza_get_standard_list_section_sub_fields(array $config): array
+    {
+        $sub_fields = [
+            meza_get_standard_list_section_text_field(
+                (string) $config['headline_key'],
+                'Headline (H2)',
+                'headline',
+                (string) ($config['headline_default'] ?? ''),
+                1
+            ),
+        ];
+
+        if (!empty($config['include_display'])) {
+            $sub_fields[] = meza_get_standard_list_section_display_field((string) $config['display_key']);
+        }
+
+        $sub_fields[] = meza_get_standard_list_section_subhead_field(
+            (string) $config['subhead_key'],
+            (string) ($config['subhead_default'] ?? '')
+        );
+
+        if (!empty($config['include_description'])) {
+            $sub_fields[] = meza_get_standard_list_section_description_field(
+                (string) $config['description_key'],
+                (int) ($config['description_rows'] ?? 2)
+            );
+        }
+
+        $primary_link_key = (string) $config['link_key'];
+        $sub_fields[] = meza_get_standard_list_section_link_field($primary_link_key);
+
+        if (!empty($config['include_link_secondary'])) {
+            $sub_fields[] = meza_get_standard_list_section_link_secondary_field(
+                (string) $config['link_secondary_key'],
+                $primary_link_key
+            );
+        }
+
+        $sub_fields[] = meza_get_standard_list_section_text_field(
+            (string) $config['id_key'],
+            'ID',
+            'id',
+            (string) ($config['id_default'] ?? ''),
+            0,
+            (int) ($config['id_allow_in_bindings'] ?? 0)
+        );
+
+        return $sub_fields;
     }
 
     function meza_get_standard_list_section_group_field(
@@ -126,48 +269,7 @@
 
     function meza_get_standard_list_section_field_group_definition(array $config): array
     {
-        $sub_fields = [
-            meza_get_standard_list_section_text_field(
-                (string) $config['headline_key'],
-                'Headline (H2)',
-                'headline',
-                (string) ($config['headline_default'] ?? ''),
-                1
-            ),
-        ];
-
-        if (!empty($config['include_display'])) {
-            $sub_fields[] = meza_get_standard_list_section_text_field(
-                (string) $config['display_key'],
-                'Display',
-                'display',
-                (string) ($config['display_default'] ?? '')
-            );
-        }
-
-        $sub_fields[] = meza_get_standard_list_section_text_field(
-            (string) $config['subhead_key'],
-            'Subhead',
-            'subhead',
-            (string) ($config['subhead_default'] ?? '')
-        );
-
-        if (!empty($config['include_description'])) {
-            $sub_fields[] = meza_get_standard_list_section_description_field(
-                (string) $config['description_key'],
-                (int) ($config['description_rows'] ?? 2)
-            );
-        }
-
-        $sub_fields[] = meza_get_standard_list_section_link_field((string) $config['link_key']);
-        $sub_fields[] = meza_get_standard_list_section_text_field(
-            (string) $config['id_key'],
-            'ID',
-            'id',
-            (string) ($config['id_default'] ?? ''),
-            0,
-            (int) ($config['id_allow_in_bindings'] ?? 0)
-        );
+        $sub_fields = meza_get_standard_list_section_sub_fields($config);
 
         return [
             'key' => (string) $config['group_key'],
@@ -274,25 +376,7 @@
                         ],
                         [
                             'key' => 'field_692cdbdf70d1f',
-                            'label' => 'Subhead',
-                            'name' => 'subhead',
-                            'aria-label' => '',
-                            'type' => 'text',
-                            'instructions' => '',
-                            'required' => 0,
-                            'conditional_logic' => 0,
-                            'wrapper' => [
-                                'width' => '',
-                                'class' => '',
-                                'id' => '',
-                            ],
-                            'default_value' => '',
-                            'maxlength' => '',
-                            'allow_in_bindings' => 0,
-                            'placeholder' => '',
-                            'prepend' => '',
-                            'append' => '',
-                        ],
+                        ] + meza_get_standard_list_section_subhead_field('field_692cdbdf70d1f'),
                         [
                             'key' => 'field_692cdbeb70d20',
                             'label' => 'Description',
@@ -581,25 +665,7 @@
                         ],
                         [
                             'key' => 'field_69b03ff131afd',
-                            'label' => 'Subhead',
-                            'name' => 'subhead',
-                            'aria-label' => '',
-                            'type' => 'text',
-                            'instructions' => '',
-                            'required' => 0,
-                            'conditional_logic' => 0,
-                            'wrapper' => [
-                                'width' => '',
-                                'class' => '',
-                                'id' => '',
-                            ],
-                            'default_value' => '',
-                            'maxlength' => '',
-                            'allow_in_bindings' => 0,
-                            'placeholder' => '',
-                            'prepend' => '',
-                            'append' => '',
-                        ],
+                        ] + meza_get_standard_list_section_subhead_field('field_69b03ff131afd'),
                         [
                             'key' => 'field_69b1272a3d536',
                             'label' => 'Description',
@@ -710,7 +776,7 @@
                 ],
             ],
             'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
-            'menu_order' => 16,
+            'menu_order' => 28,
             'position' => 'normal',
             'style' => 'default',
             'label_placement' => 'top',
@@ -827,16 +893,8 @@
                     ],
                 ],
             ],
-            'location' => [
-                [
-                    [
-                        'param' => 'page',
-                        'operator' => '==',
-                        'value' => '201',
-                    ],
-                ],
-            ],
-            'menu_order' => 15,
+            'location' => meza_get_acf_location_rules_hidden_by_default(),
+            'menu_order' => 23,
             'position' => 'normal',
             'style' => 'default',
             'label_placement' => 'top',
@@ -888,7 +946,7 @@
                 $cta_field,
             ],
             'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
-            'menu_order' => 20,
+            'menu_order' => 29,
             'position' => 'normal',
             'style' => 'default',
             'label_placement' => 'top',
@@ -977,25 +1035,7 @@
                         ],
                         [
                             'key' => 'field_69b03f46673a4',
-                            'label' => 'Subhead',
-                            'name' => 'subhead',
-                            'aria-label' => '',
-                            'type' => 'text',
-                            'instructions' => '',
-                            'required' => 0,
-                            'conditional_logic' => 0,
-                            'wrapper' => [
-                                'width' => '',
-                                'class' => '',
-                                'id' => '',
-                            ],
-                            'default_value' => 'reviews',
-                            'maxlength' => '',
-                            'allow_in_bindings' => 0,
-                            'placeholder' => '',
-                            'prepend' => '',
-                            'append' => '',
-                        ],
+                        ] + meza_get_standard_list_section_subhead_field('field_69b03f46673a4', 'reviews'),
                         [
                             'key' => 'field_69b11ab5d9e51',
                             'label' => 'Description',
@@ -1117,7 +1157,7 @@
                 ],
             ],
             'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
-            'menu_order' => 25,
+            'menu_order' => 35,
             'position' => 'normal',
             'style' => 'default',
             'label_placement' => 'top',
@@ -1142,12 +1182,18 @@
             'section_key' => 'field_meza_section_list_reviews',
             'section_name' => 'section_list-reviews',
             'headline_key' => 'field_meza_list_reviews_headline',
+            'include_display' => true,
+            'display_key' => 'field_meza_list_reviews_display',
             'subhead_key' => 'field_meza_list_reviews_subhead',
             'subhead_default' => 'reviews',
+            'include_description' => true,
+            'description_key' => 'field_meza_list_reviews_description',
             'link_key' => 'field_meza_list_reviews_link',
+            'include_link_secondary' => true,
+            'link_secondary_key' => 'field_meza_list_reviews_link_secondary',
             'id_key' => 'field_meza_list_reviews_id',
             'id_default' => 'reviews',
-            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
+            'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies_excluding_posts(),
             'menu_order' => 6,
         ]);
     }
@@ -1163,12 +1209,18 @@
             'section_name' => 'section_list-posts',
             'headline_key' => 'field_meza_list_posts_headline',
             'headline_default' => 'resources',
+            'include_display' => true,
+            'display_key' => 'field_meza_list_posts_display',
             'subhead_key' => 'field_meza_list_posts_subhead',
+            'include_description' => true,
+            'description_key' => 'field_meza_list_posts_description',
             'link_key' => 'field_meza_list_posts_link',
+            'include_link_secondary' => true,
+            'link_secondary_key' => 'field_meza_list_posts_link_secondary',
             'id_key' => 'field_meza_list_posts_id',
             'id_default' => 'posts',
             'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
-            'menu_order' => 23,
+            'menu_order' => 33,
         ]);
     }
 
@@ -1182,12 +1234,18 @@
             'section_key' => 'field_meza_section_list_resources',
             'section_name' => 'section_list-resources',
             'headline_key' => 'field_meza_list_resources_headline',
+            'include_display' => true,
+            'display_key' => 'field_meza_list_resources_display',
             'subhead_key' => 'field_meza_list_resources_subhead',
+            'include_description' => true,
+            'description_key' => 'field_meza_list_resources_description',
             'link_key' => 'field_meza_list_resources_link',
+            'include_link_secondary' => true,
+            'link_secondary_key' => 'field_meza_list_resources_link_secondary',
             'id_key' => 'field_meza_list_resources_id',
             'id_default' => 'resources',
             'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
-            'menu_order' => 22,
+            'menu_order' => 34,
         ]);
     }
 
@@ -1208,25 +1266,12 @@
             'include_description' => true,
             'description_key' => 'field_meza_list_events_description',
             'link_key' => 'field_meza_list_events_link',
+            'include_link_secondary' => true,
+            'link_secondary_key' => 'field_meza_list_events_link_secondary',
             'id_key' => 'field_meza_list_events_id',
             'id_default' => 'events',
-            'location' => [
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'page',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'event',
-                    ],
-                ],
-            ],
-            'menu_order' => 24,
+            'location' => meza_get_acf_location_rules_hidden_by_default(),
+            'menu_order' => 25,
         ]);
     }
 
@@ -1242,8 +1287,14 @@
             'section_name' => 'section_list-services',
             'headline_key' => 'field_643fcf0d',
             'headline_default' => 'services',
+            'include_display' => true,
+            'display_key' => 'field_meza_list_services_display',
             'subhead_key' => 'field_9fe55eb5',
+            'include_description' => true,
+            'description_key' => 'field_meza_list_services_description',
             'link_key' => 'field_meza_list_services_link',
+            'include_link_secondary' => true,
+            'link_secondary_key' => 'field_meza_list_services_link_secondary',
             'id_key' => 'field_1086a562',
             'id_default' => 'services',
             'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies_excluding_posts(),
@@ -1268,27 +1319,12 @@
             'include_description' => true,
             'description_key' => 'field_meza_list_partners_description',
             'link_key' => 'field_meza_list_partners_link',
+            'include_link_secondary' => true,
+            'link_secondary_key' => 'field_meza_list_partners_link_secondary',
             'id_key' => 'field_688f8c275faa1',
             'id_default' => 'partners',
-            'location' => array_values(array_filter([
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'page',
-                    ],
-                ],
-                (function_exists('meza_is_event_functionality_enabled') && meza_is_event_functionality_enabled())
-                    ? [
-                        [
-                            'param' => 'post_type',
-                            'operator' => '==',
-                            'value' => 'event',
-                        ],
-                    ]
-                    : null,
-            ])),
-            'menu_order' => 11,
+            'location' => meza_get_acf_location_rules_hidden_by_default(),
+            'menu_order' => 18,
         ]);
     }
 
@@ -1308,16 +1344,10 @@
             'include_description' => true,
             'description_key' => 'field_meza_list_sponsors_description',
             'link_key' => 'field_688f8acee3dc0',
+            'include_link_secondary' => true,
+            'link_secondary_key' => 'field_meza_list_sponsors_link_secondary',
             'id_key' => 'field_688f8acee3e3c',
-            'location' => [
-                [
-                    [
-                        'param' => 'post_type',
-                        'operator' => '==',
-                        'value' => 'page',
-                    ],
-                ],
-            ],
-            'menu_order' => 12,
+            'location' => meza_get_acf_location_rules_hidden_by_default(),
+            'menu_order' => 19,
         ]);
     }

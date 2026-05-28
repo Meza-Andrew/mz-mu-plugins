@@ -596,10 +596,6 @@
             $groups[] = meza_get_certification_field_group_definition();
         }
 
-        if (function_exists('meza_is_event_functionality_enabled') && meza_is_event_functionality_enabled()) {
-            $groups[] = meza_get_list_events_section_field_group_definition();
-        }
-
         foreach ($groups as $index => $group) {
             if (!is_array($group)) {
                 continue;

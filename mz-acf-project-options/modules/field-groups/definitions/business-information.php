@@ -956,25 +956,7 @@
                     ],
                     [
                         'key' => 'field_meza_contact_locations_subhead',
-                        'label' => 'Subhead',
-                        'name' => 'subhead',
-                        'aria-label' => '',
-                        'type' => 'text',
-                        'instructions' => '',
-                        'required' => 0,
-                        'conditional_logic' => 0,
-                        'wrapper' => [
-                            'width' => '',
-                            'class' => '',
-                            'id' => '',
-                        ],
-                        'default_value' => '',
-                        'maxlength' => '',
-                        'allow_in_bindings' => 0,
-                        'placeholder' => '',
-                        'prepend' => '',
-                        'append' => '',
-                    ],
+                    ] + meza_get_standard_list_section_subhead_field('field_meza_contact_locations_subhead'),
                     [
                         'key' => 'field_meza_contact_locations_description',
                         'label' => 'Description',
@@ -1144,37 +1126,8 @@
             'key' => 'group_meza_contact_locations_section',
             'title' => 'List Locations Section',
             'fields' => meza_get_contact_locations_section_fields(),
-            'location' => [
-                [
-                    [
-                        'param' => 'page',
-                        'operator' => '==',
-                        'value' => (string) meza_get_contact_page_id_for_acf_rules(),
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'page_template',
-                        'operator' => '==',
-                        'value' => 'page-info.php',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'page_type',
-                        'operator' => '==',
-                        'value' => 'front_page',
-                    ],
-                ],
-                [
-                    [
-                        'param' => 'page_template',
-                        'operator' => '==',
-                        'value' => 'page-form.php',
-                    ],
-                ],
-            ],
-            'menu_order' => 18,
+            'location' => meza_get_acf_location_rules_hidden_by_default(),
+            'menu_order' => 31,
             'position' => 'normal',
             'style' => 'default',
             'label_placement' => 'top',

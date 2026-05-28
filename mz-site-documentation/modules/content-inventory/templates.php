@@ -456,6 +456,14 @@ if (!function_exists('meza_site_documentation_section_template_label')) {
     function meza_site_documentation_section_template_label(string $file): string
     {
         $file = basename($file, '.php');
+        $explicit_labels = [
+            'list-donors-sponsors' => 'List Donors & Sponsors',
+        ];
+
+        if (isset($explicit_labels[$file])) {
+            return $explicit_labels[$file];
+        }
+
         $label = str_replace(['list-', 'aside-', '-', '_'], ['List ', 'Aside ', ' ', ' '], $file);
         $label = trim(preg_replace('/\s+/', ' ', $label));
 
@@ -643,6 +651,8 @@ if (!function_exists('meza_site_documentation_section_template_order_map')) {
             'List Signs Section' => 'list-signs',
             'List Brands Section' => 'list-brands',
             'Benefits Section' => 'benefits',
+            'List Donors & Sponsors Section' => 'list-donors-sponsors',
+            'List Donors &amp; Sponsors Section' => 'list-donors-sponsors',
             'List Localities Section' => 'list-localities',
             'Form Section' => 'form',
             'List Locations Section' => 'list-locations',

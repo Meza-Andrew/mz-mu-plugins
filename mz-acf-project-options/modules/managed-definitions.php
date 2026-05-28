@@ -50,22 +50,61 @@ if (!function_exists('meza_seed_default_organization_type_terms')) {
             return;
         }
 
-        $terms = [
-            'partner' => 'Partner',
-        ];
-
-        if (meza_supports_sponsor_features()) {
-            $terms['sponsor'] = 'Sponsor';
-        }
-
-        foreach ($terms as $slug => $name) {
-            if (term_exists($slug, $taxonomy)) {
-                continue;
+        $ensure_term = static function (string $slug, string $name, int $parent_id = 0) use ($taxonomy): int {
+            $matching_terms = get_terms([
+                'taxonomy' => $taxonomy,
+                'hide_empty' => false,
+                'parent' => $parent_id,
+                'name' => $name,
+                'number' => 1,
+                'fields' => 'all',
+            ]);
+            if (is_array($matching_terms)) {
+                foreach ($matching_terms as $matching_term) {
+                    if ($matching_term instanceof WP_Term && strcasecmp($matching_term->name, $name) === 0) {
+                        return (int) $matching_term->term_id;
+                    }
+                }
             }
 
-            wp_insert_term($name, $taxonomy, [
+            $existing = term_exists($slug, $taxonomy, $parent_id);
+            if (is_array($existing) && !empty($existing['term_id'])) {
+                return (int) $existing['term_id'];
+            }
+
+            if (is_int($existing) && $existing > 0) {
+                return $existing;
+            }
+
+            $inserted = wp_insert_term($name, $taxonomy, array_filter([
                 'slug' => $slug,
-            ]);
+                'parent' => $parent_id > 0 ? $parent_id : null,
+            ], static fn($value) => $value !== null));
+
+            if (is_wp_error($inserted) || empty($inserted['term_id'])) {
+                return 0;
+            }
+
+            return (int) $inserted['term_id'];
+        };
+
+        $ensure_term('partner', 'Partner');
+
+        if (!meza_supports_sponsor_features()) {
+            return;
+        }
+
+        $sponsor_term_id = $ensure_term('sponsor', 'Sponsor');
+        if ($sponsor_term_id <= 0) {
+            return;
+        }
+
+        foreach ([
+            'business' => 'Business',
+            'organization' => 'Organization',
+            'performance' => 'Performance',
+        ] as $slug => $name) {
+            $ensure_term($slug, $name, $sponsor_term_id);
         }
     }
 }
@@ -631,8 +670,18 @@ if (!function_exists('meza_apply_default_editable_acf_field_group_location_rules
     {
         $location = meza_get_default_editable_acf_field_group_location_rules();
         $preserve_location_keys = [
+            'group_meza_content_section',
+            'group_meza_list_profiles_section',
+            'group_meza_list_events_section',
+            'group_69c16e4051e95',
+            'group_6901490e04b96',
             'group_68f903208a8e1',
+            'group_6913c78d0b35c',
+            'group_6913c9b535e72',
+            'group_6913cee5325cb',
+            'group_688f8acec1ae2',
             'group_688f8c2740e76',
+            'group_meza_list_sponsor_levels_section',
             'group_meza_contact_locations_section',
         ];
 
@@ -1194,6 +1243,35 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
 
     function meza_get_default_editable_acf_field_group_definitions(): array
     {
+        $list_songs_sub_fields = function_exists('meza_get_standard_list_section_sub_fields')
+            ? meza_get_standard_list_section_sub_fields([
+                'headline_key' => 'field_68f909f0b3dce',
+                'include_display' => true,
+                'display_key' => 'field_meza_list_songs_display',
+                'subhead_key' => 'field_68f909fdb3dcf',
+                'include_description' => true,
+                'description_key' => 'field_meza_list_songs_description',
+                'link_key' => 'field_68f90a03b3dd0',
+                'id_key' => 'field_68f90a31b3dd2',
+                'id_default' => 'program',
+            ])
+            : [];
+
+        if ($list_songs_sub_fields !== [] && function_exists('meza_get_standard_list_section_text_field')) {
+            array_splice(
+                $list_songs_sub_fields,
+                max(0, count($list_songs_sub_fields) - 1),
+                0,
+                [
+                    meza_get_standard_list_section_text_field(
+                        'field_68f90a12b3dd1',
+                        'Headline (H3)',
+                        'headline_h3'
+                    ),
+                ]
+            );
+        }
+
         $definitions = [
             meza_get_content_section_field_group_definition(),
             [
@@ -1289,25 +1367,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                             ],
                             [
                                 'key' => 'field_meza_list_profiles_subhead',
-                                'label' => 'Subhead',
-                                'name' => 'subhead',
-                                'aria-label' => '',
-                                'type' => 'text',
-                                'instructions' => '',
-                                'required' => 0,
-                                'conditional_logic' => 0,
-                                'wrapper' => [
-                                    'width' => '',
-                                    'class' => '',
-                                    'id' => '',
-                                ],
-                                'default_value' => '',
-                                'maxlength' => '',
-                                'allow_in_bindings' => 0,
-                                'placeholder' => '',
-                                'prepend' => '',
-                                'append' => '',
-                            ],
+                            ] + meza_get_standard_list_section_subhead_field('field_meza_list_profiles_subhead'),
                             [
                                 'key' => 'field_meza_list_profiles_description',
                                 'label' => 'Description',
@@ -1347,6 +1407,30 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                                 'allow_in_bindings' => 0,
                             ],
                             [
+                                'key' => 'field_meza_list_profiles_link_secondary',
+                                'label' => 'Link (Secondary)',
+                                'name' => 'link_secondary',
+                                'aria-label' => '',
+                                'type' => 'link',
+                                'instructions' => '',
+                                'required' => 0,
+                                'conditional_logic' => [
+                                    [
+                                        [
+                                            'field' => 'field_meza_list_profiles_link',
+                                            'operator' => '!=empty',
+                                        ],
+                                    ],
+                                ],
+                                'wrapper' => [
+                                    'width' => '',
+                                    'class' => '',
+                                    'id' => '',
+                                ],
+                                'return_format' => 'array',
+                                'allow_in_bindings' => 0,
+                            ],
+                            [
                                 'key' => 'field_meza_list_profiles_id',
                                 'label' => 'ID',
                                 'name' => 'id',
@@ -1370,16 +1454,37 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                         ],
                     ],
                 ],
-                'location' => [
-                    [
-                        [
-                            'param' => 'post_type',
-                            'operator' => '==',
-                            'value' => 'page',
-                        ],
-                    ],
+                'location' => meza_get_acf_location_rules_hidden_by_default(),
+                'menu_order' => 15,
+                'position' => 'normal',
+                'style' => 'default',
+                'label_placement' => 'top',
+                'instruction_placement' => 'label',
+                'hide_on_screen' => '',
+                'active' => true,
+                'description' => '',
+                'show_in_rest' => 0,
+                'display_title' => '',
+                'allow_ai_access' => false,
+                'ai_description' => '',
+            ],
+            [
+                'key' => 'group_68f909d29e99c',
+                'title' => 'List Songs Section',
+                'fields' => [
+                    meza_get_standard_list_section_visibility_field(
+                        'field_68f90a82ecac1',
+                        'show_list-songs'
+                    ),
+                    meza_get_standard_list_section_group_field(
+                        'field_68f909d3b3dcd',
+                        'section_list-songs',
+                        'field_68f90a82ecac1',
+                        $list_songs_sub_fields
+                    ),
                 ],
-                'menu_order' => 9,
+                'location' => meza_get_acf_location_rules_hidden_by_default(),
+                'menu_order' => 16,
                 'position' => 'normal',
                 'style' => 'default',
                 'label_placement' => 'top',
@@ -1482,24 +1587,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                             ],
                             [
                                 'key' => 'field_06661b49',
-                                'label' => 'Subhead',
-                                'name' => 'subhead',
-                                'aria-label' => '',
-                                'type' => 'text',
-                                'instructions' => '',
-                                'required' => 0,
-                                'conditional_logic' => 0,
-                                'wrapper' => [
-                                    'width' => '',
-                                    'class' => '',
-                                    'id' => '',
-                                ],
-                                'default_value' => '',
-                                'maxlength' => '',
-                                'placeholder' => '',
-                                'prepend' => '',
-                                'append' => '',
-                            ],
+                            ] + meza_get_standard_list_section_subhead_field('field_06661b49'),
                             [
                                 'key' => 'field_meza_list_localities_description',
                                 'label' => 'Description',
@@ -1561,7 +1649,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                     ],
                 ],
                 'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies(),
-                'menu_order' => 14,
+                'menu_order' => 26,
                 'position' => 'normal',
                 'style' => 'default',
                 'label_placement' => 'top',
@@ -1667,25 +1755,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                             ],
                             [
                                 'key' => 'field_69c16e4052291',
-                                'label' => 'Subhead',
-                                'name' => 'subhead',
-                                'aria-label' => '',
-                                'type' => 'text',
-                                'instructions' => '',
-                                'required' => 0,
-                                'conditional_logic' => 0,
-                                'wrapper' => [
-                                    'width' => '',
-                                    'class' => '',
-                                    'id' => '',
-                                ],
-                                'default_value' => '',
-                                'maxlength' => '',
-                                'allow_in_bindings' => 0,
-                                'placeholder' => '',
-                                'prepend' => '',
-                                'append' => '',
-                            ],
+                            ] + meza_get_standard_list_section_subhead_field('field_69c16e4052291'),
                             [
                                 'key' => 'field_69c16e4052292',
                                 'label' => 'Description',
@@ -1764,7 +1834,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                                     'class' => '',
                                     'id' => '',
                                 ],
-                                'layout' => 'table',
+                                'layout' => 'row',
                                 'pagination' => 0,
                                 'min' => 0,
                                 'max' => 0,
@@ -1864,16 +1934,8 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                         ],
                     ],
                 ],
-                'location' => [
-                    [
-                        [
-                            'param' => 'page',
-                            'operator' => '==',
-                            'value' => '201',
-                        ],
-                    ],
-                ],
-                'menu_order' => 13,
+                'location' => meza_get_acf_location_rules_hidden_by_default(),
+                'menu_order' => 8,
                 'position' => 'normal',
                 'style' => 'default',
                 'label_placement' => 'top',
@@ -1886,6 +1948,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                 'allow_ai_access' => false,
                 'ai_description' => '',
             ],
+            meza_get_list_events_section_field_group_definition(),
             meza_get_list_partners_section_field_group_definition(),
             [
                 'key' => 'group_6901490e04b96',
@@ -1980,25 +2043,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                             ],
                             [
                                 'key' => 'field_6901493a64a13',
-                                'label' => 'Subhead',
-                                'name' => 'subhead',
-                                'aria-label' => '',
-                                'type' => 'text',
-                                'instructions' => '',
-                                'required' => 0,
-                                'conditional_logic' => 0,
-                                'wrapper' => [
-                                    'width' => '',
-                                    'class' => '',
-                                    'id' => '',
-                                ],
-                                'default_value' => '',
-                                'maxlength' => '',
-                                'allow_in_bindings' => 0,
-                                'placeholder' => '',
-                                'prepend' => '',
-                                'append' => '',
-                            ],
+                            ] + meza_get_standard_list_section_subhead_field('field_6901493a64a13'),
                             [
                                 'key' => 'field_meza_gallery_description',
                                 'label' => 'Description',
@@ -2053,12 +2098,32 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                                 ],
                                 'layout' => 'table',
                                 'pagination' => 0,
-                                'min' => 6,
+                                'min' => 1,
                                 'max' => 0,
                                 'collapsed' => '',
                                 'button_label' => 'Add Media',
                                 'rows_per_page' => 20,
                                 'sub_fields' => [
+                                    [
+                                        'key' => 'field_6902901cfd535',
+                                        'label' => 'Video Embed',
+                                        'name' => 'video_embed',
+                                        'aria-label' => '',
+                                        'type' => 'oembed',
+                                        'instructions' => '',
+                                        'required' => 0,
+                                        'conditional_logic' => 0,
+                                        'wrapper' => [
+                                            'width' => '',
+                                            'class' => '',
+                                            'id' => '',
+                                        ],
+                                        'menu_order' => 0,
+                                        'width' => '',
+                                        'height' => '',
+                                        'allow_in_bindings' => 0,
+                                        'parent_repeater' => 'field_69028fd8fd533',
+                                    ],
                                     [
                                         'key' => 'field_69028febfd534',
                                         'label' => 'Image',
@@ -2066,13 +2131,14 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                                         'aria-label' => '',
                                         'type' => 'image',
                                         'instructions' => '',
-                                        'required' => 1,
+                                        'required' => 0,
                                         'conditional_logic' => 0,
                                         'wrapper' => [
                                             'width' => '',
                                             'class' => '',
                                             'id' => '',
                                         ],
+                                        'menu_order' => 1,
                                         'return_format' => 'id',
                                         'library' => 'all',
                                         'min_width' => '',
@@ -2084,35 +2150,6 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                                         'mime_types' => '',
                                         'allow_in_bindings' => 0,
                                         'preview_size' => 'medium',
-                                        'parent_repeater' => 'field_69028fd8fd533',
-                                    ],
-                                    [
-                                        'key' => 'field_6902901cfd535',
-                                        'label' => 'Video',
-                                        'name' => 'video',
-                                        'aria-label' => '',
-                                        'type' => 'file',
-                                        'instructions' => '',
-                                        'required' => 0,
-                                        'conditional_logic' => [
-                                            [
-                                                [
-                                                    'field' => 'field_69028febfd534',
-                                                    'operator' => '!=empty',
-                                                ],
-                                            ],
-                                        ],
-                                        'wrapper' => [
-                                            'width' => '',
-                                            'class' => '',
-                                            'id' => '',
-                                        ],
-                                        'return_format' => 'id',
-                                        'library' => 'all',
-                                        'min_size' => '',
-                                        'max_size' => '',
-                                        'mime_types' => '.webm',
-                                        'allow_in_bindings' => 0,
                                         'parent_repeater' => 'field_69028fd8fd533',
                                     ],
                                 ],
@@ -2141,16 +2178,8 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                         ],
                     ],
                 ],
-                'location' => [
-                    [
-                        [
-                            'param' => 'post_type',
-                            'operator' => '==',
-                            'value' => 'page',
-                        ],
-                    ],
-                ],
-                'menu_order' => 10,
+                'location' => meza_get_acf_location_rules_hidden_by_default(),
+                'menu_order' => 14,
                 'position' => 'normal',
                 'style' => 'default',
                 'label_placement' => 'top',
@@ -2181,16 +2210,8 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                 'description_key' => 'field_meza_list_donor_levels_description',
                 'link_key' => 'field_6913d07aef493',
                 'id_key' => 'field_6913c7de0ea9c',
-                'location' => [
-                    [
-                        [
-                            'param' => 'page',
-                            'operator' => '==',
-                            'value' => '192',
-                        ],
-                    ],
-                ],
-                'menu_order' => 5,
+                'location' => meza_get_acf_location_rules_hidden_by_default(),
+                'menu_order' => 10,
             ]);
 
             $definitions[] = meza_get_standard_list_section_field_group_definition([
@@ -2208,16 +2229,8 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                 'description_key' => 'field_6913c9b53faf7',
                 'link_key' => 'field_meza_list_certifications_link',
                 'id_key' => 'field_6913c9b53fb37',
-                'location' => [
-                    [
-                        [
-                            'param' => 'post_type',
-                            'operator' => '==',
-                            'value' => 'page',
-                        ],
-                    ],
-                ],
-                'menu_order' => 7,
+                'location' => meza_get_acf_location_rules_hidden_by_default(),
+                'menu_order' => 17,
             ]);
 
             $definitions[] = [
@@ -2347,16 +2360,8 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                         ]
                     ),
                 ],
-                'location' => [
-                    [
-                        [
-                            'param' => 'page',
-                            'operator' => '==',
-                            'value' => '192',
-                        ],
-                    ],
-                ],
-                'menu_order' => 8,
+                'location' => meza_get_acf_location_rules_hidden_by_default(),
+                'menu_order' => 12,
                 'position' => 'normal',
                 'style' => 'default',
                 'label_placement' => 'top',
@@ -2386,30 +2391,8 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                 'description_key' => 'field_meza_list_donors_sponsors_description',
                 'link_key' => 'field_68f903209bb57',
                 'id_key' => 'field_68f903209bb99',
-                'location' => [
-                    [
-                        [
-                            'param' => 'page_type',
-                            'operator' => '==',
-                            'value' => 'front_page',
-                        ],
-                    ],
-                    [
-                        [
-                            'param' => 'page',
-                            'operator' => '==',
-                            'value' => '190',
-                        ],
-                    ],
-                    [
-                        [
-                            'param' => 'page',
-                            'operator' => '==',
-                            'value' => '192',
-                        ],
-                    ],
-                ],
-                'menu_order' => 9,
+                'location' => meza_get_acf_location_rules_hidden_by_default(),
+                'menu_order' => 20,
             ]);
         }
 
@@ -2430,16 +2413,8 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                 'description_key' => 'field_meza_list_sponsor_levels_description',
                 'link_key' => 'field_meza_list_sponsor_levels_link',
                 'id_key' => 'field_meza_list_sponsor_levels_id',
-                'location' => [
-                    [
-                        [
-                            'param' => 'post_type',
-                            'operator' => '==',
-                            'value' => 'page',
-                        ],
-                    ],
-                ],
-                'menu_order' => 14,
+                'location' => meza_get_acf_location_rules_hidden_by_default(),
+                'menu_order' => 11,
             ]);
         }
 
@@ -3759,7 +3734,7 @@ add_filter('acf/load_field_groups', function (array $field_groups, string $post_
             continue;
         }
 
-        $field_group['location'] = meza_get_acf_location_rules_for_permalink_post_types();
+        $field_group['location'] = meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies_excluding_posts();
     }
     unset($field_group);
 
@@ -3801,7 +3776,7 @@ add_filter('acf/load_field_groups', function (array $field_groups, string $post_
 }, 25, 2);
 
 add_filter('acf/load_field_group/key=group_meza_list_reviews_section', function (array $field_group): array {
-    $field_group['location'] = meza_get_acf_location_rules_for_permalink_post_types();
+    $field_group['location'] = meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies_excluding_posts();
 
     return $field_group;
 });

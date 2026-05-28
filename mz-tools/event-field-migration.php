@@ -209,27 +209,6 @@ if (!function_exists('mz_etm_build_dates_payload')) {
     }
 }
 
-if (!function_exists('mz_etm_collect_video_updates')) {
-    function mz_etm_collect_video_updates(int $post_id): array
-    {
-        $updates = [];
-
-        $video_file = (int) get_post_meta($post_id, 'video_file', true);
-        $legacy_video = (int) get_post_meta($post_id, 'video', true);
-        if ($video_file <= 0 && $legacy_video > 0) {
-            $updates['video_file'] = $legacy_video;
-        }
-
-        $video_embed = trim((string) get_post_meta($post_id, 'video_embed', true));
-        $legacy_embed = trim((string) get_post_meta($post_id, 'embed', true));
-        if ($video_embed === '' && $legacy_embed !== '') {
-            $updates['video_embed'] = $legacy_embed;
-        }
-
-        return $updates;
-    }
-}
-
 if (!function_exists('mz_etm_get_existing_summary_value')) {
     function mz_etm_get_existing_summary_value(int $post_id): array
     {
@@ -456,11 +435,10 @@ if (!function_exists('mz_etm_run_migration')) {
 
             $existing_dates = mz_etm_post_has_meaningful_dates((int) $post->ID);
             $dates_payload = mz_etm_build_dates_payload((int) $post->ID);
-            $video_updates = mz_etm_collect_video_updates((int) $post->ID);
             $summary_updates = mz_etm_collect_summary_updates($post, $force);
 
             if ($existing_dates && !$force) {
-                if ($video_updates === [] && $summary_updates === []) {
+                if ($summary_updates === []) {
                     $result['skipped_existing_dates']++;
                     $result['messages'][] = 'Skipped ' . $label . ' because dates already exist.';
                     continue;
@@ -469,7 +447,7 @@ if (!function_exists('mz_etm_run_migration')) {
                 $dates_payload = [];
             }
 
-            if ($dates_payload === [] && $video_updates === [] && $summary_updates === []) {
+            if ($dates_payload === [] && $summary_updates === []) {
                 $result['skipped_no_legacy_data']++;
                 $result['messages'][] = 'Skipped ' . $label . ' because no legacy event field data was found.';
                 continue;
@@ -481,12 +459,6 @@ if (!function_exists('mz_etm_run_migration')) {
                 $preview_parts = [];
                 if ($dates_payload !== []) {
                     $preview_parts[] = sprintf('dates rows=%d', count($dates_payload));
-                }
-                if (isset($video_updates['video_file'])) {
-                    $preview_parts[] = sprintf('video_file=%d', (int) $video_updates['video_file']);
-                }
-                if (isset($video_updates['video_embed'])) {
-                    $preview_parts[] = 'video_embed';
                 }
                 if (isset($summary_updates['before'])) {
                     $preview_parts[] = 'summary.before';
@@ -508,10 +480,6 @@ if (!function_exists('mz_etm_run_migration')) {
                     $result['failures'][] = 'Failed to update dates for ' . $label . '.';
                     continue;
                 }
-            }
-
-            foreach ($video_updates as $meta_key => $meta_value) {
-                update_post_meta((int) $post->ID, $meta_key, $meta_value);
             }
 
             if ($summary_updates !== []) {

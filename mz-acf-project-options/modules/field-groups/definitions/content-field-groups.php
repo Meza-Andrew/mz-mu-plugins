@@ -66,7 +66,7 @@
     function meza_get_cta_field_group_definition(): array
     {
         return [
-            'key' => 'group_697ff4f7482e6',
+            'key' => 'group_685d8cc3cda2a',
             'title' => 'CTA',
             'fields' => [
                 [
@@ -91,7 +91,7 @@
                     'new_lines' => '',
                 ],
                 [
-                    'key' => 'field_697ff4f7c4120',
+                    'key' => 'field_685d8cc4534bf',
                     'label' => 'Link',
                     'name' => 'link',
                     'aria-label' => '',
@@ -118,7 +118,7 @@
                     'conditional_logic' => [
                         [
                             [
-                                'field' => 'field_697ff4f7c4120',
+                                'field' => 'field_685d8cc4534bf',
                                 'operator' => '!=empty',
                             ],
                         ],
@@ -198,6 +198,17 @@ JSON, true);
             $fields[$field_index]['sub_fields'] = $sub_fields;
             break;
         }
+
+        $removed_field_keys = [
+            'field_6a08de2b44e3e',
+            'field_6a08de3644e3f',
+            'field_6a08de6944e40',
+            'field_6a08deb244e41',
+        ];
+
+        $fields = array_values(array_filter($fields, static function ($field) use ($removed_field_keys): bool {
+            return !is_array($field) || !in_array($field['key'] ?? '', $removed_field_keys, true);
+        }));
 
         $recurrence_fields = [
             [
@@ -342,7 +353,7 @@ JSON, true);
 
         $details_insert_at = count($fields);
         foreach ($fields as $index => $field) {
-            if (($field['key'] ?? '') === 'field_6a08de2b44e3e') {
+            if (($field['key'] ?? '') === 'field_6a08e030237c4') {
                 $details_insert_at = $index;
                 break;
             }
@@ -608,7 +619,6 @@ JSON, true);
             'field_6a08cebae142d',
             'field_6a08dc0674992',
             'field_6a08e030237c4',
-            'field_6a08de2b44e3e',
         ];
 
         $tab_positions = [];

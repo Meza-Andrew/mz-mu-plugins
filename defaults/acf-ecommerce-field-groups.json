@@ -174,23 +174,14 @@
         "location": [
             [
                 {
-                    "param": "page_type",
+                    "param": "post_type",
                     "operator": "==",
-                    "value": "front_page"
-                }
-            ],
-            [
+                    "value": "page"
+                },
                 {
                     "param": "post_type",
                     "operator": "==",
-                    "value": "product"
-                }
-            ],
-            [
-                {
-                    "param": "post_type",
-                    "operator": "==",
-                    "value": "service"
+                    "value": "post"
                 }
             ]
         ],
@@ -360,25 +351,16 @@
                 {
                     "param": "post_type",
                     "operator": "==",
-                    "value": "service"
-                }
-            ],
-            [
+                    "value": "page"
+                },
                 {
                     "param": "post_type",
                     "operator": "==",
-                    "value": "product"
-                }
-            ],
-            [
-                {
-                    "param": "page_type",
-                    "operator": "==",
-                    "value": "front_page"
+                    "value": "post"
                 }
             ]
         ],
-        "menu_order": 8,
+        "menu_order": 21,
         "position": "normal",
         "style": "default",
         "label_placement": "top",

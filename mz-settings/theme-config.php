@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Theme Config
  * Description: Loads client child theme config and maps it into Meza Starter filters.
- * Version: 1.0.3
+ * Version: 1.0.4
  */
 
 if (!defined('ABSPATH')) {
@@ -31,6 +31,25 @@ function mz_theme_config_value(array $config, string $key, $default = null)
     return array_key_exists($key, $config) ? $config[$key] : $default;
 }
 
+function mz_theme_font_config(array $config): array
+{
+    $font_config = mz_theme_config_value($config, 'font_config', []);
+
+    if (!is_array($font_config)) {
+        $font_config = [];
+    }
+
+    if (empty($font_config['google_fonts_url'])) {
+        $legacy_gfonts_url = mz_theme_config_value($config, 'gfonts_url', '');
+
+        if (is_string($legacy_gfonts_url) && $legacy_gfonts_url !== '') {
+            $font_config['google_fonts_url'] = $legacy_gfonts_url;
+        }
+    }
+
+    return $font_config;
+}
+
 $mz_theme_config = mz_load_active_theme_config();
 
 add_filter('production_url', fn($default) => defined('MZ_PROD_URL') ? MZ_PROD_URL : mz_theme_config_value($mz_theme_config, 'prod_url', $default));
@@ -41,6 +60,7 @@ add_filter('theme_use_placeholder_images', fn($default) => defined('MZ_USE_PLACE
 add_filter('theme_lock_frontend_navigation', fn($default) => defined('MZ_LOCK_FRONTEND_NAVIGATION') ? MZ_LOCK_FRONTEND_NAVIGATION : mz_theme_config_value($mz_theme_config, 'lock_frontend_navigation', $default));
 add_filter('theme_ga_id', fn() => defined('MZ_GA_ID') ? MZ_GA_ID : mz_theme_config_value($mz_theme_config, 'ga_id', ''));
 add_filter('theme_gfonts_url', fn() => defined('MZ_GFONTS_URL') ? MZ_GFONTS_URL : mz_theme_config_value($mz_theme_config, 'gfonts_url', ''));
+add_filter('theme_font_config', fn($default = []) => array_merge(is_array($default) ? $default : [], mz_theme_font_config($mz_theme_config)));
 add_filter('theme_fontawesome_icons', fn($default) => defined('MZ_FONTAWESOME_ICONS') ? MZ_FONTAWESOME_ICONS : mz_theme_config_value($mz_theme_config, 'fontawesome_icons', $default));
 add_filter('theme_gcloud_key', fn() => defined('MZ_GCLOUD_KEY') ? MZ_GCLOUD_KEY : mz_theme_config_value($mz_theme_config, 'gcloud_key', ''));
 add_filter('theme_grecaptcha_key', fn() => defined('MZ_GRECAPTCHA_SITE_KEY') ? MZ_GRECAPTCHA_SITE_KEY : mz_theme_config_value($mz_theme_config, 'grecaptcha_key', ''));

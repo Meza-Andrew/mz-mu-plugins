@@ -180,6 +180,26 @@ if (!function_exists('meza_get_acf_location_rules_for_permalink_post_types')) {
     }
 }
 
+if (!function_exists('meza_get_acf_location_rules_hidden_by_default')) {
+    function meza_get_acf_location_rules_hidden_by_default(): array
+    {
+        return [
+            [
+                [
+                    'param' => 'post_type',
+                    'operator' => '==',
+                    'value' => 'page',
+                ],
+                [
+                    'param' => 'post_type',
+                    'operator' => '==',
+                    'value' => 'post',
+                ],
+            ],
+        ];
+    }
+}
+
 if (!function_exists('meza_get_permalink_enabled_taxonomy_slugs')) {
     function meza_get_permalink_enabled_taxonomy_slugs(): array
     {
@@ -449,4 +469,3 @@ if (!function_exists('meza_theme_thumbnail_attachment_is_supported')) {
         ], true);
     }
 }
-

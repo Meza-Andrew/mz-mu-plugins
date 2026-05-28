@@ -6,6 +6,9 @@ if (!function_exists('ds_build_user_email')) {
         $page_id  = isset($form_data['PageId']) ? (int) $form_data['PageId'] : 0;
         $form_cfg = (function_exists('get_field') && $page_id) ? get_field('section_form', $page_id) : null;
         $form_cfg = is_array($form_cfg) ? $form_cfg : [];
+        $form_cfg = function_exists('mzf_normalize_temporal_config')
+            ? mzf_normalize_temporal_config($form_cfg, $page_id)
+            : $form_cfg;
         $site_domain = (string) wp_parse_url(home_url('/'), PHP_URL_HOST);
         $email_data = $form_data;
         if ($site_domain !== '') {
@@ -275,6 +278,39 @@ if (!function_exists('mzf_get_path')) {
     }
 }
 
+if (!function_exists('mzf_normalize_temporal_config')) {
+    function mzf_normalize_temporal_config($value, int $context_id = 0)
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $temporal_keys = ['before', 'base', 'after', 'season_after'];
+        $has_temporal_shape = false;
+
+        foreach ($temporal_keys as $key) {
+            if (array_key_exists($key, $value)) {
+                $has_temporal_shape = true;
+                break;
+            }
+        }
+
+        if ($has_temporal_shape && function_exists('meza_resolve_section_field_value')) {
+            $value = meza_resolve_section_field_value($value, $context_id);
+        }
+
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        foreach ($value as $key => $child) {
+            $value[$key] = mzf_normalize_temporal_config($child, $context_id);
+        }
+
+        return $value;
+    }
+}
+
 if (!function_exists('mzf_section_form_content')) {
     function mzf_section_form_content($section_form): array
     {
@@ -311,7 +347,9 @@ if (!function_exists('mzf_section_form_content')) {
                 return [];
             }
 
-            return (array) get_fields($post_id);
+            $fields = (array) get_fields($post_id);
+
+            return mzf_normalize_temporal_config($fields, $post_id);
         };
 
         $form_ref = $section_form['form'] ?? null;
