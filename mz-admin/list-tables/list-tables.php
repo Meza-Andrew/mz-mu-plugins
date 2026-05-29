@@ -7786,6 +7786,7 @@ add_action('current_screen', function ($screen) {
 }, 1000);
 
 add_action('admin_init', 'meza_suppress_non_meza_plugin_admin_notice_callbacks', 0);
+add_action('current_screen', 'meza_suppress_non_meza_plugin_admin_notice_callbacks', PHP_INT_MAX);
 
 add_filter('woocommerce_products_admin_list_table_filters', function ($filters) {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
