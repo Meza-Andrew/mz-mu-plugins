@@ -5462,9 +5462,11 @@ if (!function_exists('meza_migrate_season_after_content_field_meta')) {
 
             $base_meta_key = implode('_', $normalized_segments);
             $season_before_meta_key = $base_meta_key . '_before';
+            $event_after_meta_key = $base_meta_key . '_after';
             $season_after_meta_key = $base_meta_key . '_season_after';
             $season_before_field = meza_get_event_context_nested_sub_field($field, 'before')
                 ?? meza_get_event_context_nested_sub_field($field, 'base');
+            $event_after_field = meza_get_event_context_nested_sub_field($field, 'after');
             $season_after_field = meza_get_event_context_nested_sub_field($field, 'season_after');
             $field_type = meza_get_context_value_field_type($field, [$season_before_field, $season_after_field]);
             $base_value = metadata_exists('post', $post_id, $base_meta_key)
@@ -5472,6 +5474,9 @@ if (!function_exists('meza_migrate_season_after_content_field_meta')) {
                 : null;
 
             $season_before_candidate = $base_value;
+            $event_after_candidate = metadata_exists('post', $post_id, $event_after_meta_key)
+                ? get_post_meta($post_id, $event_after_meta_key, true)
+                : null;
             $season_after_candidate = metadata_exists('post', $post_id, $season_after_meta_key)
                 ? get_post_meta($post_id, $season_after_meta_key, true)
                 : null;
@@ -5486,10 +5491,17 @@ if (!function_exists('meza_migrate_season_after_content_field_meta')) {
                 if (array_key_exists('season_after', $base_value)) {
                     $season_after_candidate = $base_value['season_after'];
                 }
+
+                if (array_key_exists('after', $base_value)) {
+                    $event_after_candidate = $base_value['after'];
+                }
             }
 
             $stored_season_before_value = metadata_exists('post', $post_id, $season_before_meta_key)
                 ? get_post_meta($post_id, $season_before_meta_key, true)
+                : null;
+            $stored_event_after_value = metadata_exists('post', $post_id, $event_after_meta_key)
+                ? get_post_meta($post_id, $event_after_meta_key, true)
                 : null;
 
             if (
@@ -5498,7 +5510,14 @@ if (!function_exists('meza_migrate_season_after_content_field_meta')) {
             ) {
                 $season_before_candidate = $stored_season_before_value;
             }
+            if (
+                (function_exists('meza_section_field_value_is_empty') && meza_section_field_value_is_empty($event_after_candidate))
+                || $event_after_candidate === null
+            ) {
+                $event_after_candidate = $stored_event_after_value;
+            }
             $season_before_candidate = meza_normalize_context_meta_candidate($season_before_candidate, $field_type);
+            $event_after_candidate = meza_normalize_context_meta_candidate($event_after_candidate, $field_type);
             $season_after_candidate = meza_normalize_context_meta_candidate($season_after_candidate, $field_type);
 
             $season_before_is_empty = !metadata_exists('post', $post_id, $season_before_meta_key)
@@ -5507,7 +5526,13 @@ if (!function_exists('meza_migrate_season_after_content_field_meta')) {
 
             if (
                 is_array($season_before_field)
-                && $season_before_is_empty
+                && (
+                    $season_before_is_empty
+                    || (
+                        !function_exists('meza_section_field_value_is_empty')
+                        || !meza_section_field_value_is_empty($season_before_candidate)
+                    ) && meza_context_meta_values_differ($stored_season_before_value, $season_before_candidate)
+                )
                 && (!function_exists('meza_section_field_value_is_empty') || !meza_section_field_value_is_empty($season_before_candidate))
             ) {
                 update_post_meta($post_id, $season_before_meta_key, $season_before_candidate);
@@ -5518,6 +5543,29 @@ if (!function_exists('meza_migrate_season_after_content_field_meta')) {
                 );
             }
 
+            $event_after_is_empty = !metadata_exists('post', $post_id, $event_after_meta_key)
+                || (function_exists('meza_section_field_value_is_empty')
+                    && meza_section_field_value_is_empty(get_post_meta($post_id, $event_after_meta_key, true)));
+
+            if (
+                is_array($event_after_field)
+                && (
+                    $event_after_is_empty
+                    || (
+                        !function_exists('meza_section_field_value_is_empty')
+                        || !meza_section_field_value_is_empty($event_after_candidate)
+                    ) && meza_context_meta_values_differ($stored_event_after_value, $event_after_candidate)
+                )
+                && (!function_exists('meza_section_field_value_is_empty') || !meza_section_field_value_is_empty($event_after_candidate))
+            ) {
+                update_post_meta($post_id, $event_after_meta_key, $event_after_candidate);
+                meza_update_event_context_meta_reference(
+                    $post_id,
+                    $event_after_meta_key,
+                    (string) ($event_after_field['key'] ?? '')
+                );
+            }
+
             if (
                 is_array($season_after_field)
                 && (
@@ -5525,6 +5573,12 @@ if (!function_exists('meza_migrate_season_after_content_field_meta')) {
                     || (
                         function_exists('meza_section_field_value_is_empty')
                         && meza_section_field_value_is_empty(get_post_meta($post_id, $season_after_meta_key, true))
+                    )
+                    || meza_context_meta_values_differ(
+                        metadata_exists('post', $post_id, $season_after_meta_key)
+                            ? get_post_meta($post_id, $season_after_meta_key, true)
+                            : null,
+                        $season_after_candidate
                     )
                 )
                 && (!function_exists('meza_section_field_value_is_empty') || !meza_section_field_value_is_empty($season_after_candidate))
@@ -5705,6 +5759,9 @@ if (!function_exists('meza_run_season_after_content_migration')) {
         update_option('_options_season_after', 'field_meza_enable_season_after_content', false);
 
         if (!$was_enabled && $is_enabled) {
+            if (function_exists('meza_run_event_after_content_migration')) {
+                meza_run_event_after_content_migration(true);
+            }
             meza_run_season_after_content_migration();
         }
 
@@ -5757,6 +5814,9 @@ if (!function_exists('meza_sync_season_after_content_after_business_information_
             return;
         }
 
+        if (function_exists('meza_run_event_after_content_migration')) {
+            meza_run_event_after_content_migration(true);
+        }
         meza_run_season_after_content_migration();
     }
 }
