@@ -434,7 +434,7 @@ if (!function_exists('meza_site_documentation_get_row_action_links')) {
 
                 $map = [
                     'acf_content_analysis' => admin_url('plugins.php'),
-                    'admin_columns' => admin_url('options-general.php?page=codepress-admin-columns'),
+                    'admin_columns' => admin_url('admin.php?page=codepress-admin-columns'),
                     'admin_menu_editor' => admin_url('options-general.php?page=menu_editor'),
                     'advanced_custom_fields_pro' => admin_url('edit.php?post_type=acf-field-group'),
                     'aios' => admin_url('admin.php?page=aiowpsec'),
