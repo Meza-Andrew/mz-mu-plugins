@@ -2750,6 +2750,7 @@ add_action('admin_menu', function () {
     remove_submenu_page('edit.php', 'edit-tags.php?taxonomy=post_tag');
     remove_submenu_page('edit.php', 'edit-tags.php?taxonomy=category');
     remove_submenu_page('options-general.php', 'options-discussion.php');
+    remove_submenu_page('options-general.php', 'options-connectors.php');
 
     remove_submenu_page('themes.php', 'customize.php');
     remove_submenu_page('themes.php', 'custom-background');
