@@ -966,6 +966,12 @@ function meza_filter_invalid_taxonomy_admin_columns(array $columns, string $post
         }
     }
 
+    if ($post_type === 'post' && !meza_should_show_posts_tags_column()) {
+        foreach (['tags', 'taxonomy-post_tag', 'post_tag'] as $column_key) {
+            unset($columns[$column_key]);
+        }
+    }
+
     $taxonomies = meza_get_cached_object_taxonomies($post_type, 'objects');
     if (!is_array($taxonomies)) {
         $taxonomies = [];
@@ -1027,6 +1033,16 @@ function meza_filter_invalid_taxonomies_for_admin_columns($taxonomies, string $p
     foreach ($taxonomies as $taxonomy_name) {
         $taxonomy_name = sanitize_key((string) $taxonomy_name);
         if ($taxonomy_name === '' || !isset($valid_taxonomies[$taxonomy_name])) {
+            continue;
+        }
+
+        if (
+            $post_type === 'post'
+            && (
+                ($taxonomy_name === 'category' && !meza_should_show_posts_categories_column())
+                || ($taxonomy_name === 'post_tag' && !meza_should_show_posts_tags_column())
+            )
+        ) {
             continue;
         }
 

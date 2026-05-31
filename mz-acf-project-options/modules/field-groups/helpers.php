@@ -835,7 +835,7 @@ if (!function_exists('meza_register_acf_export_tool_local_definitions')) {
         }
     }
 
-    function meza_prepare_acf_local_field_for_export(array $field): array
+    function meza_ensure_acf_field_tree_has_internal_names(array $field): array
     {
         if (!array_key_exists('_name', $field)) {
             $field['_name'] = isset($field['name']) ? (string) $field['name'] : '';
@@ -843,7 +843,7 @@ if (!function_exists('meza_register_acf_export_tool_local_definitions')) {
 
         if (isset($field['sub_fields']) && is_array($field['sub_fields'])) {
             $field['sub_fields'] = array_values(array_map(
-                static fn(array $sub_field): array => meza_prepare_acf_local_field_for_export($sub_field),
+                static fn(array $sub_field): array => meza_ensure_acf_field_tree_has_internal_names($sub_field),
                 array_values(array_filter($field['sub_fields'], 'is_array'))
             ));
         }
@@ -858,7 +858,7 @@ if (!function_exists('meza_register_acf_export_tool_local_definitions')) {
 
                 if (isset($layout['sub_fields']) && is_array($layout['sub_fields'])) {
                     $layout['sub_fields'] = array_values(array_map(
-                        static fn(array $sub_field): array => meza_prepare_acf_local_field_for_export($sub_field),
+                        static fn(array $sub_field): array => meza_ensure_acf_field_tree_has_internal_names($sub_field),
                         array_values(array_filter($layout['sub_fields'], 'is_array'))
                     ));
                 }
@@ -870,6 +870,11 @@ if (!function_exists('meza_register_acf_export_tool_local_definitions')) {
         }
 
         return $field;
+    }
+
+    function meza_prepare_acf_local_field_for_export(array $field): array
+    {
+        return meza_ensure_acf_field_tree_has_internal_names($field);
     }
 
     function meza_prepare_acf_local_field_group_for_export(array $group): array

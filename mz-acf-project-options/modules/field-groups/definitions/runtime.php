@@ -2846,6 +2846,10 @@
                 continue;
             }
 
+            if (function_exists('meza_ensure_acf_field_tree_has_internal_names')) {
+                $field = meza_ensure_acf_field_tree_has_internal_names($field);
+            }
+
             $fields[$index] = meza_apply_textarea_rows_to_field_tree($field);
         }
 
@@ -3297,6 +3301,13 @@
 
         return meza_normalize_group_value_for_acf_update($value, $field);
     }, 5, 3);
+    add_filter('acf/load_field', static function ($field) {
+        if (!is_array($field) || !function_exists('meza_ensure_acf_field_tree_has_internal_names')) {
+            return $field;
+        }
+
+        return meza_ensure_acf_field_tree_has_internal_names($field);
+    }, 5);
     add_filter('acf/load_field', static function (array $field): array {
         $field_name = sanitize_key((string) ($field['name'] ?? ''));
 
