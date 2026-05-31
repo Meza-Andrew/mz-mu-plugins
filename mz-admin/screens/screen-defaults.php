@@ -2755,6 +2755,8 @@ add_action('admin_menu', function () {
     remove_submenu_page('themes.php', 'custom-background');
     remove_submenu_page('themes.php', 'widgets.php');
     remove_submenu_page('themes.php', 'theme-editor.php');
+    remove_submenu_page('themes.php', 'font-library.php');
+    remove_submenu_page('themes.php', 'admin.php?page=font-library-wp-admin');
     remove_submenu_page('themes.php', 'site-editor.php');
     remove_submenu_page('themes.php', 'site-editor.php?path=/patterns');
     remove_submenu_page('themes.php', 'edit.php?post_type=wp_block');
