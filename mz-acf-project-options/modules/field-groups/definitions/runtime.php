@@ -771,7 +771,9 @@
             $field_name
         );
 
-        $field['sub_fields'] = meza_apply_section_display_dependency($sub_fields);
+        $field['sub_fields'] = meza_apply_section_secondary_link_dependency(
+            meza_apply_section_display_dependency($sub_fields)
+        );
 
         return $field;
     }
@@ -1309,6 +1311,66 @@
         $after_key = is_array($after_field) ? (string) ($after_field['key'] ?? '') : '';
 
         foreach ([$source_key, $before_key, $after_key] as $candidate_key) {
+            if ($candidate_key !== '' && $candidate_key !== $collapsed_key) {
+                $key_map[$candidate_key] = $collapsed_key;
+            }
+        }
+
+        return $key_map;
+    }
+
+    function meza_get_season_context_field_key_map(array $source_field, array $normalized_field, bool $supports_season_context): array
+    {
+        $key_map = [];
+
+        if ($supports_season_context) {
+            if (!meza_is_season_context_group_field($normalized_field)) {
+                return $key_map;
+            }
+
+            $before_field = meza_get_event_context_nested_sub_field($normalized_field, 'before')
+                ?? meza_get_event_context_nested_sub_field($normalized_field, 'base');
+            $season_after_field = meza_get_event_context_nested_sub_field($normalized_field, 'season_after');
+            $event_after_field = meza_get_event_context_nested_sub_field($normalized_field, 'after');
+            $before_key = is_array($before_field) ? (string) ($before_field['key'] ?? '') : '';
+
+            if ($before_key === '') {
+                return $key_map;
+            }
+
+            $source_key = (string) ($source_field['key'] ?? '');
+            $normalized_key = (string) ($normalized_field['key'] ?? '');
+            $season_after_key = is_array($season_after_field) ? (string) ($season_after_field['key'] ?? '') : '';
+            $event_after_key = is_array($event_after_field) ? (string) ($event_after_field['key'] ?? '') : '';
+
+            foreach ([$source_key, $normalized_key, $season_after_key, $event_after_key] as $candidate_key) {
+                if ($candidate_key !== '' && $candidate_key !== $before_key) {
+                    $key_map[$candidate_key] = $before_key;
+                }
+            }
+
+            return $key_map;
+        }
+
+        if (!meza_is_season_context_group_field($source_field)) {
+            return $key_map;
+        }
+
+        $collapsed_key = (string) ($normalized_field['key'] ?? '');
+        if ($collapsed_key === '') {
+            return $key_map;
+        }
+
+        $before_field = meza_get_event_context_nested_sub_field($source_field, 'before')
+            ?? meza_get_event_context_nested_sub_field($source_field, 'base');
+        $season_after_field = meza_get_event_context_nested_sub_field($source_field, 'season_after');
+        $event_after_field = meza_get_event_context_nested_sub_field($source_field, 'after');
+        $source_key = (string) ($source_field['key'] ?? '');
+        $before_key = is_array($before_field) ? (string) ($before_field['key'] ?? '') : '';
+        $season_after_key = is_array($season_after_field) ? (string) ($season_after_field['key'] ?? '') : '';
+        $event_after_key = is_array($event_after_field) ? (string) ($event_after_field['key'] ?? '') : '';
+
+        foreach ([$source_key, $before_key, $season_after_key, $event_after_key] as $candidate_key) {
             if ($candidate_key !== '' && $candidate_key !== $collapsed_key) {
                 $key_map[$candidate_key] = $collapsed_key;
             }
@@ -2760,6 +2822,68 @@
         return $sub_fields;
     }
 
+    function meza_apply_section_secondary_link_dependency(array $sub_fields): array
+    {
+        $primary_link_index = null;
+        $secondary_link_index = null;
+
+        foreach ($sub_fields as $index => $sub_field) {
+            if (!is_array($sub_field)) {
+                continue;
+            }
+
+            $name = sanitize_key((string) ($sub_field['name'] ?? ''));
+            if ($name === 'link') {
+                $primary_link_index = $index;
+            } elseif ($name === 'link_secondary') {
+                $secondary_link_index = $index;
+            }
+        }
+
+        if ($primary_link_index === null || $secondary_link_index === null) {
+            return $sub_fields;
+        }
+
+        $primary_link_field = $sub_fields[$primary_link_index];
+        $secondary_link_field = $sub_fields[$secondary_link_index];
+        if (!is_array($primary_link_field) || !is_array($secondary_link_field)) {
+            return $sub_fields;
+        }
+
+        $primary_link_key = '';
+        if (meza_is_event_context_group_field($primary_link_field)) {
+            $before_field = meza_get_event_context_nested_sub_field($primary_link_field, 'before');
+            $primary_link_key = is_array($before_field) ? (string) ($before_field['key'] ?? '') : '';
+        }
+
+        if ($primary_link_key === '' && meza_is_season_context_group_field($primary_link_field)) {
+            $before_field = meza_get_event_context_nested_sub_field($primary_link_field, 'before');
+            $base_field = meza_get_event_context_nested_sub_field($primary_link_field, 'base');
+            $primary_link_key = is_array($before_field)
+                ? (string) ($before_field['key'] ?? '')
+                : (is_array($base_field) ? (string) ($base_field['key'] ?? '') : '');
+        }
+
+        if ($primary_link_key === '') {
+            $primary_link_key = (string) ($primary_link_field['key'] ?? '');
+        }
+
+        if ($primary_link_key === '') {
+            return $sub_fields;
+        }
+
+        $sub_fields[$secondary_link_index]['conditional_logic'] = [
+            [
+                [
+                    'field' => $primary_link_key,
+                    'operator' => '!=empty',
+                ],
+            ],
+        ];
+
+        return $sub_fields;
+    }
+
     function meza_should_normalize_field_for_event_context(array $field, string $group_key = ''): bool
     {
         if (!meza_field_supports_event_context($field)) {
@@ -3065,6 +3189,7 @@
     {
         $normalized = [];
         $used_indexes = [];
+        $conditional_key_map = [];
         $field_count = count($fields);
 
         for ($index = 0; $index < $field_count; $index++) {
@@ -3112,7 +3237,12 @@
 
             if (!$supports_season_context) {
                 if (meza_is_season_context_group_field($field)) {
-                    $normalized[] = meza_collapse_season_context_field($field);
+                    $collapsed_field = meza_collapse_season_context_field($field);
+                    $conditional_key_map = array_merge(
+                        $conditional_key_map,
+                        meza_get_season_context_field_key_map($field, $collapsed_field, false)
+                    );
+                    $normalized[] = $collapsed_field;
                     $used_indexes[$index] = true;
                     continue;
                 }
@@ -3160,10 +3290,28 @@
                 }
             }
 
-            $normalized[] = meza_is_event_context_group_field($field)
+            $normalized_field = meza_is_event_context_group_field($field)
                 ? meza_build_combined_context_field($field, null, $existing_season_after_field)
                 : meza_build_season_context_field($field, $existing_season_after_field);
+            $conditional_key_map = array_merge(
+                $conditional_key_map,
+                meza_get_season_context_field_key_map($field, $normalized_field, true)
+            );
+            $normalized[] = $normalized_field;
             $used_indexes[$index] = true;
+        }
+
+        if ($conditional_key_map !== []) {
+            foreach ($normalized as $index => $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+
+                $normalized[$index] = meza_remap_event_context_conditional_logic_in_field_tree(
+                    $field,
+                    $conditional_key_map
+                );
+            }
         }
 
         return array_values($normalized);
@@ -3225,7 +3373,9 @@
             }
 
             $sub_fields = isset($field['sub_fields']) && is_array($field['sub_fields']) ? $field['sub_fields'] : [];
-            $group['fields'][$field_index]['sub_fields'] = meza_apply_section_display_dependency($sub_fields);
+            $group['fields'][$field_index]['sub_fields'] = meza_apply_section_secondary_link_dependency(
+                meza_apply_section_display_dependency($sub_fields)
+            );
         }
 
         return $group;
