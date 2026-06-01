@@ -2,8 +2,22 @@
 
     function meza_get_shared_project_acf_field_groups(): array
     {
-        $groups = [
-            [
+        static $groups = null;
+        static $is_building = false;
+
+        if (is_array($groups)) {
+            return $groups;
+        }
+
+        if ($is_building) {
+            return [];
+        }
+
+        $is_building = true;
+
+        try {
+            $groups = [
+                [
                 'key' => 'group_meza_business_information_general',
                 'title' => 'Information',
                 'fields' => meza_get_business_information_general_fields(),
@@ -605,6 +619,10 @@
         }
 
         $groups = apply_filters('meza_shared_project_acf_field_groups', $groups);
+        $groups = is_array($groups) ? array_values($groups) : [];
 
-        return is_array($groups) ? array_values($groups) : [];
+        return $groups;
+        } finally {
+            $is_building = false;
+        }
     }

@@ -222,8 +222,42 @@
         ];
     }
 
+    function meza_should_build_content_model_taxonomy_term_management_fields(): bool
+    {
+        if (!is_admin()) {
+            return false;
+        }
+
+        if (function_exists('meza_is_content_structure_options_screen') && meza_is_content_structure_options_screen()) {
+            return true;
+        }
+
+        return function_exists('meza_is_acf_export_tools_screen') && meza_is_acf_export_tools_screen();
+    }
+
+    function meza_get_content_model_taxonomy_term_management_placeholder_fields(): array
+    {
+        return [
+            [
+                'key' => 'field_meza_content_model_taxonomy_terms_unavailable',
+                'label' => 'Taxonomy Terms',
+                'name' => 'content_model_taxonomy_terms_unavailable',
+                'aria-label' => '',
+                'type' => 'message',
+                'message' => 'Taxonomy term controls load on the Content Model screen only.',
+                'new_lines' => 'wpautop',
+                'esc_html' => 0,
+                'wrapper' => meza_get_content_model_management_field_wrapper(),
+            ],
+        ];
+    }
+
     function meza_get_content_model_taxonomy_term_management_fields(): array
     {
+        if (!meza_should_build_content_model_taxonomy_term_management_fields()) {
+            return meza_get_content_model_taxonomy_term_management_placeholder_fields();
+        }
+
         $fields = [];
         $taxonomy_definitions = function_exists('meza_get_content_model_taxonomy_term_management_taxonomy_definitions')
             ? meza_get_content_model_taxonomy_term_management_taxonomy_definitions()
