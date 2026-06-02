@@ -1611,27 +1611,6 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
             return [];
         }
 
-        $managed_definitions = array_merge(
-            array_values(meza_get_content_model_field_group_management_definition_map('built_in')),
-            array_values(meza_get_content_model_field_group_management_definition_map('defaults'))
-        );
-        $managed_definition_keys = array_fill_keys(
-            array_merge(
-                array_keys(meza_get_content_model_field_group_management_definition_map('built_in')),
-                array_keys(meza_get_content_model_field_group_management_definition_map('defaults'))
-            ),
-            true
-        );
-        $managed_definition_titles = [];
-
-        foreach ($managed_definitions as $definition) {
-            $managed_title = meza_normalize_content_model_field_group_management_title((string) ($definition['title'] ?? ''));
-            $managed_title_key = meza_get_content_model_field_group_management_title_match_key($managed_title);
-            if ($managed_title_key !== '') {
-                $managed_definition_titles[$managed_title_key] = true;
-            }
-        }
-
         $posts = get_posts([
             'posts_per_page' => -1,
             'post_type' => 'acf-field-group',
@@ -1658,13 +1637,10 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
 
             $key = sanitize_key((string) ($field_group['key'] ?? ''));
             $title = meza_normalize_content_model_field_group_management_title((string) ($field_group['title'] ?? ''));
-            $title_match_key = meza_get_content_model_field_group_management_title_match_key($title);
             if (
                 $key === ''
                 || $title === ''
                 || !meza_is_content_model_field_group_definition_available($field_group)
-                || isset($managed_definition_keys[$key])
-                || ($title_match_key !== '' && isset($managed_definition_titles[$title_match_key]))
             ) {
                 continue;
             }
@@ -1674,13 +1650,6 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
                 : $field_group;
             if (is_array($matched_field_group) && function_exists('meza_get_full_acf_field_group_for_matching')) {
                 $matched_field_group = meza_get_full_acf_field_group_for_matching($matched_field_group);
-            }
-
-            if (
-                is_array($matched_field_group)
-                && meza_is_content_model_custom_field_group_duplicate_of_managed_definition($matched_field_group, $managed_definitions)
-            ) {
-                continue;
             }
 
             if (function_exists('meza_get_acf_admin_definition_status_for_post')) {
@@ -1825,17 +1794,28 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
         }
 
         if ($bucket === 'built_in') {
-            return array_values(array_intersect(
-                array_keys(meza_get_content_model_field_group_management_definition_map('built_in')),
-                array_keys($choices)
-            ));
+            $selected = [];
+
+            foreach (meza_get_content_model_field_group_management_definition_map('built_in') as $key => $definition) {
+                if (!array_key_exists($key, $choices)) {
+                    continue;
+                }
+
+                if (meza_is_content_model_built_in_field_group_enabled($definition)) {
+                    $selected[$key] = $key;
+                }
+            }
+
+            return array_values($selected);
         }
 
-        $option_name = meza_get_content_model_field_group_management_option_name($bucket);
-        if ($option_name !== '') {
-            $saved_selection = meza_get_content_model_saved_option_value($option_name, $has_saved_selection);
-            if ($has_saved_selection) {
-                return meza_normalize_content_model_field_group_management_selection($saved_selection, $choices);
+        if (!in_array($bucket, ['custom', 'defaults'], true)) {
+            $option_name = meza_get_content_model_field_group_management_option_name($bucket);
+            if ($option_name !== '') {
+                $saved_selection = meza_get_content_model_saved_option_value($option_name, $has_saved_selection);
+                if ($has_saved_selection) {
+                    return meza_normalize_content_model_field_group_management_selection($saved_selection, $choices);
+                }
             }
         }
 
@@ -1853,15 +1833,6 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
             }
 
             return array_values($selected);
-        }
-
-        if (
-            $bucket === 'defaults'
-            && function_exists('meza_get_content_model_saved_option_value')
-            && function_exists('meza_is_nonprofit_business_type')
-            && meza_is_nonprofit_business_type()
-        ) {
-            return [];
         }
 
         foreach (meza_get_content_model_field_group_management_definition_map($bucket) as $key => $definition) {
@@ -1889,13 +1860,6 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
             if ($status === 'acf-disabled' || $status === 'trash') {
                 continue;
             }
-
-            $is_selected = !function_exists('meza_is_managed_acf_definition_manually_deleted')
-                || !meza_is_managed_acf_definition_manually_deleted('field_groups', $definition);
-
-            if ($is_selected) {
-                $selected[$key] = $key;
-            }
         }
 
         return array_values($selected);
@@ -1910,7 +1874,7 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
             return;
         }
 
-        if ($bucket === 'built_in') {
+        if (in_array($bucket, ['built_in', 'defaults', 'custom'], true)) {
             delete_option($option_name);
             delete_option('_' . $option_name);
             return;
@@ -1926,6 +1890,38 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
         if ($field_key !== '') {
             update_option('_' . $option_name, $field_key, false);
         }
+    }
+
+    function meza_get_content_model_field_group_selection_cleanup_version(): string
+    {
+        return '2026-06-02-content-model-field-group-selections-v1';
+    }
+
+    function meza_get_content_model_field_group_selection_cleanup_option_name(): string
+    {
+        return 'meza_content_model_field_group_selection_cleanup_version';
+    }
+
+    function meza_cleanup_legacy_content_model_field_group_selection_options(): void
+    {
+        $version = meza_get_content_model_field_group_selection_cleanup_version();
+        $option_name = meza_get_content_model_field_group_selection_cleanup_option_name();
+
+        if ((string) get_option($option_name, '') === $version) {
+            return;
+        }
+
+        foreach (['custom', 'defaults', 'built_in'] as $bucket) {
+            $legacy_option_name = meza_get_content_model_field_group_management_option_name($bucket);
+            if ($legacy_option_name === '') {
+                continue;
+            }
+
+            delete_option($legacy_option_name);
+            delete_option('_' . $legacy_option_name);
+        }
+
+        update_option($option_name, $version, false);
     }
 
     function meza_is_content_model_built_in_field_group_enabled(array $definition): bool
@@ -1961,8 +1957,8 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
 
     function meza_sync_content_model_built_in_field_group_selection(array $selected_keys): void
     {
-        // Built-in field groups are controlled directly from the saved
-        // Content Model option value via meza_is_content_model_built_in_field_group_enabled().
+        // Built-in field groups are controlled directly from runtime
+        // availability and local definitions.
         unset($selected_keys);
     }
 
@@ -2076,6 +2072,8 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
         );
     }
 }
+
+add_action('acf/init', 'meza_cleanup_legacy_content_model_field_group_selection_options', 24);
 
 add_filter('acf/load_field/key=field_meza_content_model_custom_field_groups', static function ($field) {
     return is_array($field)
