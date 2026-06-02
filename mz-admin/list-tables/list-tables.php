@@ -2093,6 +2093,15 @@ function meza_merge_seeded_taxonomy_admin_columns(array $defaults, string $post_
 function meza_get_seeded_acp_default_admin_columns(): array
 {
     $defaults = [
+        '_ac_columns_default_acf-field-group' => [
+            'mz_menu_order' => ['label' => '#'],
+            'title' => ['label' => 'Title'],
+            'meza-acf-definition-status' => ['label' => 'Config'],
+            'acf-location' => ['label' => 'Location'],
+            'acf-count' => ['label' => 'Fields'],
+            'mz_modified' => ['label' => 'Modified'],
+            'mz_published' => ['label' => 'Published'],
+        ],
         '_ac_columns_default_acf-post-type' => [
             'title' => ['label' => 'Title'],
             'acf-taxonomies' => ['label' => 'Taxonomies'],
@@ -7932,7 +7941,10 @@ if (!function_exists('meza_seed_edit_screen_default_sort_request')) {
         $orderby = 'modified';
         $order = 'desc';
 
-        if (meza_post_type_menu_order_admin_column_is_visible($post_type)) {
+        if (
+            meza_post_type_menu_order_admin_column_is_visible($post_type)
+            || $post_type === 'acf-field-group'
+        ) {
             $orderby = 'menu_order';
             $order = 'asc';
         }
@@ -7977,6 +7989,7 @@ add_action('pre_get_posts', function (WP_Query $q) {
     $post_type = (string) $q->get('post_type');
     if (
         meza_post_type_menu_order_admin_column_is_visible($post_type)
+        || $post_type === 'acf-field-group'
     ) {
         if (isset($_GET['orderby']) && $_GET['orderby'] !== '') return;
 

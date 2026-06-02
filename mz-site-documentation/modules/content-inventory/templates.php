@@ -653,6 +653,7 @@ if (!function_exists('meza_site_documentation_section_template_order_map')) {
             'Benefits Section' => 'benefits',
             'List Donors & Sponsors Section' => 'list-donors-sponsors',
             'List Donors &amp; Sponsors Section' => 'list-donors-sponsors',
+            'List Donors and Sponsors Section' => 'list-donors-sponsors',
             'List Localities Section' => 'list-localities',
             'Form Section' => 'form',
             'List Locations Section' => 'list-locations',

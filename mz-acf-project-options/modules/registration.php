@@ -82,12 +82,17 @@ add_action('acf/init', function (): void {
             continue;
         }
 
+        if (function_exists('meza_apply_db_acf_field_group_overrides_to_local_group')) {
+            $group = meza_apply_db_acf_field_group_overrides_to_local_group($group);
+        }
+
         acf_add_local_field_group($group);
     }
 }, 15);
 
 add_action('acf/init', 'meza_seed_default_editable_acf_taxonomies', 18);
 add_action('acf/init', 'meza_sync_default_editable_acf_field_group_order_and_names', 19);
+add_action('acf/init', 'meza_repair_empty_default_editable_acf_field_groups', 19);
 add_action('acf/init', 'meza_seed_default_editable_acf_field_groups', 20);
 
 if (!function_exists('meza_remove_legacy_business_information_toggle_field_groups')) {
@@ -586,6 +591,7 @@ if (!function_exists('meza_get_hidden_default_section_location_titles')) {
             'List Donation Options Section',
             'List Donor Levels Section',
             'List Donors & Sponsors Section',
+            'List Donors and Sponsors Section',
             'List Events Section',
             'List Locations Section',
             'List Partners Section',
@@ -1204,6 +1210,7 @@ if (!function_exists('meza_sync_section_field_group_menu_order')) {
             'List Partners Section' => 18,
             'List Sponsors Section' => 19,
             'List Donors & Sponsors Section' => 20,
+            'List Donors and Sponsors Section' => 20,
             'List Brands Section' => 21,
             'Content Section' => 23,
             'List Events Section' => 25,

@@ -2,7 +2,7 @@
 
 /**
  * Shared ACF option pages and field groups we want available on every project.
- * Version: 1.8.179
+ * Version: 1.8.188
  */
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) {

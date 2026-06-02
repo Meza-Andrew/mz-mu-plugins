@@ -18,6 +18,7 @@ function meza_get_acf_admin_definition_status_labels(): array
 {
     return [
         'default' => 'Default',
+        'built_in' => 'Built-In',
         'custom' => 'Custom',
     ];
 }
@@ -25,6 +26,10 @@ function meza_get_acf_admin_definition_status_labels(): array
 function meza_normalize_acf_admin_definition_status(string $status): string
 {
     $status = sanitize_key($status);
+
+    if (in_array($status, ['built_in', 'builtin'], true)) {
+        return 'built_in';
+    }
 
     if ($status === 'custom') {
         return 'custom';
@@ -206,6 +211,69 @@ function meza_insert_acf_definition_status_column(array $columns): array
     return $updated;
 }
 
+function meza_insert_acf_menu_order_column(array $columns): array
+{
+    if (!is_array($columns)) {
+        return $columns;
+    }
+
+    $updated = [];
+    $inserted = false;
+
+    foreach ($columns as $key => $label) {
+        $updated[$key] = $label;
+
+        if ($key === 'cb') {
+            $updated['mz_menu_order'] = __('#');
+            $inserted = true;
+        }
+    }
+
+    if (!$inserted) {
+        $updated = ['mz_menu_order' => __('#')] + $updated;
+    }
+
+    return $updated;
+}
+
+function meza_force_acf_field_group_menu_order_before_title(array $columns): array
+{
+    if (!is_array($columns)) {
+        return $columns;
+    }
+
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen) || (string) ($screen->post_type ?? '') !== 'acf-field-group') {
+        return $columns;
+    }
+
+    if (!array_key_exists('mz_menu_order', $columns) || !array_key_exists('title', $columns)) {
+        return $columns;
+    }
+
+    $ordered = [];
+    $used = [];
+
+    $append = static function (string $key) use (&$ordered, &$columns, &$used): void {
+        if ($key === '' || isset($used[$key]) || !array_key_exists($key, $columns)) {
+            return;
+        }
+
+        $ordered[$key] = $columns[$key];
+        $used[$key] = true;
+    };
+
+    $append('cb');
+    $append('mz_menu_order');
+    $append('title');
+
+    foreach (array_keys($columns) as $key) {
+        $append((string) $key);
+    }
+
+    return $ordered;
+}
+
 function meza_render_acf_definition_status_column(string $column_name, int $post_id): void
 {
     if ($column_name !== 'meza-acf-definition-status') {
@@ -228,6 +296,105 @@ function meza_render_acf_definition_status_column(string $column_name, int $post
     $label = $labels[$status] ?? ucfirst($status);
 
     echo '<a href="' . esc_url(meza_get_acf_admin_definition_status_filter_url($post_type, $status)) . '">' . esc_html($label) . '</a>';
+}
+
+function meza_render_acf_menu_order_column(string $column_name, int $post_id): void
+{
+    if ($column_name !== 'mz_menu_order') {
+        return;
+    }
+
+    static $rendered = [];
+
+    $render_key = implode(':', [$column_name, (string) $post_id]);
+
+    if (isset($rendered[$render_key])) {
+        return;
+    }
+
+    $rendered[$render_key] = true;
+
+    $post = get_post($post_id);
+    if (!($post instanceof WP_Post)) {
+        echo '<span class="acf-emdash" aria-hidden="true">—</span>';
+        return;
+    }
+
+    echo (int) ($post->menu_order ?? 0);
+}
+
+function meza_register_acf_menu_order_sortable_column(array $columns): array
+{
+    if (!is_array($columns)) {
+        $columns = [];
+    }
+
+    $columns['mz_menu_order'] = ['menu_order', false, '', '', 'asc'];
+
+    return $columns;
+}
+
+function meza_reorder_acf_admin_columns_list_screen($list_screen, $table_screen): void
+{
+    if (
+        !class_exists('AC\\ColumnCollection')
+        || !is_object($list_screen)
+        || !method_exists($list_screen, 'get_columns')
+        || !method_exists($list_screen, 'set_columns')
+        || !is_object($table_screen)
+        || !method_exists($table_screen, 'get_id')
+        || (string) $table_screen->get_id() !== 'acf-field-group'
+    ) {
+        return;
+    }
+
+    $columns = iterator_to_array($list_screen->get_columns());
+    if ($columns === []) {
+        return;
+    }
+
+    $menu_order_column = null;
+    $remaining_columns = [];
+
+    foreach ($columns as $column) {
+        if (!is_object($column) || !method_exists($column, 'get_id')) {
+            continue;
+        }
+
+        $column_id = (string) $column->get_id();
+        if ($column_id === 'mz_menu_order') {
+            $menu_order_column = $column;
+            continue;
+        }
+
+        $remaining_columns[] = $column;
+    }
+
+    if ($menu_order_column === null) {
+        return;
+    }
+
+    $ordered_columns = [];
+    $inserted = false;
+
+    foreach ($remaining_columns as $column) {
+        if (!is_object($column) || !method_exists($column, 'get_id')) {
+            continue;
+        }
+
+        if ((string) $column->get_id() === 'title' && !$inserted) {
+            $ordered_columns[] = $menu_order_column;
+            $inserted = true;
+        }
+
+        $ordered_columns[] = $column;
+    }
+
+    if (!$inserted) {
+        array_unshift($ordered_columns, $menu_order_column);
+    }
+
+    $list_screen->set_columns(new \AC\ColumnCollection($ordered_columns));
 }
 
 function meza_get_acf_admin_definition_status_counts(string $post_type): array
@@ -392,6 +559,7 @@ function meza_strip_acf_key_description_columns(array $columns): array
     $append('cb');
 
     $order = [
+        ['mz_menu_order', '#', 'menu_order', 'menu order', 'presentation order'],
         ['title'],
         ['meza-acf-definition-status', 'meza_acf_definition_status', 'definition status', 'type'],
         ['location'],
@@ -432,8 +600,16 @@ add_action('current_screen', function ($screen) {
         add_filter("views_edit-{$post_type}", 'meza_add_acf_definition_status_views', 1000);
     }
 
+    if ($post_type === 'acf-field-group' && !meza_is_acf_admin_definition_status_special_view($current_view)) {
+        add_filter("manage_{$post_type}_posts_columns", 'meza_insert_acf_menu_order_column', 9997);
+        add_filter("manage_edit-{$post_type}_sortable_columns", 'meza_register_acf_menu_order_sortable_column', 1000);
+        add_filter("manage_{$post_type}_posts_columns", 'meza_force_acf_field_group_menu_order_before_title', 100001);
+    }
+
     add_filter("manage_{$post_type}_posts_columns", 'meza_strip_acf_key_description_columns', 9999);
 });
+
+add_action('ac/table/list_screen', 'meza_reorder_acf_admin_columns_list_screen', 1, 2);
 
 add_action('pre_get_posts', function (WP_Query $query): void {
     if (
@@ -447,6 +623,30 @@ add_action('pre_get_posts', function (WP_Query $query): void {
     $post_type = sanitize_key((string) $query->get('post_type'));
     if (!meza_is_acf_admin_definition_status_supported_post_type($post_type)) {
         return;
+    }
+
+    if ($post_type === 'acf-field-group') {
+        $orderby = (string) $query->get('orderby');
+        if (in_array($orderby, ['menu_order', 'mz_menu_order'], true)) {
+            $order = strtoupper((string) $query->get('order'));
+            $order = in_array($order, ['ASC', 'DESC'], true) ? $order : 'ASC';
+
+            $query->set('orderby', [
+                'menu_order' => $order,
+                'title' => 'ASC',
+            ]);
+            $query->set('order', $order);
+        } elseif (!isset($_GET['orderby']) || $_GET['orderby'] === '') {
+            $query->set('orderby', [
+                'menu_order' => 'ASC',
+                'title' => 'ASC',
+            ]);
+            $query->set('order', 'ASC');
+            $_GET['orderby'] = 'menu_order';
+            $_REQUEST['orderby'] = 'menu_order';
+            $_GET['order'] = 'asc';
+            $_REQUEST['order'] = 'asc';
+        }
     }
 
     $current_view = isset($_GET['post_status']) ? sanitize_key((string) wp_unslash($_GET['post_status'])) : '';
@@ -559,7 +759,7 @@ add_action('admin_head-edit.php', function () {
     )));
     $column_width_css = $is_acp_layout
         ? '.wp-list-table .column-mz_id{width:65px;min-width:65px;max-width:65px;}' .
-            '.wp-list-table .column-mz_menu_order{width:65px;min-width:65px;max-width:65px;}' .
+            '.wp-list-table .column-mz_menu_order{width:80px;min-width:80px;max-width:80px;}' .
             '.wp-list-table .column-mz_cta_link{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-mz_cta_secondary_link{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-website{width:200px;min-width:200px;max-width:200px;}' .
@@ -575,6 +775,7 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-mz_review_quote{width:325px;min-width:325px;max-width:325px;}' .
             '.wp-list-table .column-mz_review_citer{width:175px;min-width:175px;max-width:175px;}' .
             '.wp-list-table .column-mz_review_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-acf-location,.wp-list-table .column-location{width:225px;min-width:225px;max-width:225px;}' .
             '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;min-width:225px;max-width:225px;}' .
             '.wp-list-table .column-acf-count{width:125px;min-width:125px;max-width:125px;}' .
             '.wp-list-table .column-meza-acf-definition-status{width:125px;min-width:125px;max-width:125px;}' .
@@ -604,7 +805,7 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table th.column-mz_page_cta,.wp-list-table td.column-mz_page_cta{width:175px;min-width:175px;max-width:175px;}' .
             '.wp-list-table th.column-mz_page_form,.wp-list-table td.column-mz_page_form{width:175px;min-width:175px;max-width:175px;}'
         : '.wp-list-table .column-mz_id{width:65px;min-width:65px;max-width:65px;}' .
-            '.wp-list-table .column-mz_menu_order{width:65px;min-width:65px;max-width:65px;}' .
+            '.wp-list-table .column-mz_menu_order{width:80px;min-width:80px;max-width:80px;}' .
             '.wp-list-table .column-mz_cta_link{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-mz_cta_secondary_link{width:200px;min-width:200px;max-width:200px;}' .
             '.wp-list-table .column-website{width:200px;min-width:200px;max-width:200px;}' .
@@ -620,6 +821,7 @@ add_action('admin_head-edit.php', function () {
             '.wp-list-table .column-mz_review_quote{width:325px;min-width:325px;max-width:325px;}' .
             '.wp-list-table .column-mz_review_citer{width:175px;min-width:175px;max-width:175px;}' .
             '.wp-list-table .column-mz_review_link{width:200px;min-width:200px;max-width:200px;}' .
+            '.wp-list-table .column-acf-location,.wp-list-table .column-location{width:225px;min-width:225px;max-width:225px;}' .
             '.wp-list-table .column-acf-taxonomies,.wp-list-table .column-acf-post-types,.wp-list-table .column-acf-field-groups{width:225px;min-width:225px;max-width:225px;}' .
             '.wp-list-table .column-acf-count{width:125px;min-width:125px;max-width:125px;}' .
             '.wp-list-table .column-meza-acf-definition-status{width:125px;min-width:125px;max-width:125px;}' .
@@ -653,11 +855,15 @@ add_action('admin_head-edit.php', function () {
 
     echo '<style id="meza-admin-list-column-widths">' .
         '.wp-list-table thead th.sorted,.wp-list-table tfoot th.sorted{background:#eef4ff;color:#0a4b78;box-shadow:inset 0 -1px 0 #b8d3ea;}' .
+        '.wp-list-table th.sortable a,.wp-list-table th.sorted a{padding:0;}' .
         '.wp-list-table th.sorted a,.wp-list-table th.sorted a:focus,.wp-list-table th.sorted a:visited{color:#0a4b78;}' .
         '.wp-list-table th.sorted .sorting-indicators{opacity:1;}' .
         '.wp-list-table th.sorted.asc .sorting-indicator.asc,.wp-list-table th.sorted.desc .sorting-indicator.desc{color:#0a4b78;opacity:1;}' .
         '.wp-list-table .column-mz_id{width:65px;max-width:65px;}' .
-        '.wp-list-table .column-mz_menu_order{width:65px;max-width:65px;}' .
+        '.wp-list-table .column-mz_menu_order{width:80px;max-width:80px;}' .
+        '.wp-list-table .column-acf-location,.wp-list-table .column-location{width:225px;max-width:225px;}' .
+        '.wp-list-table th.column-mz_menu_order a,.wp-list-table td.column-mz_menu_order a{overflow:visible;text-overflow:clip;}' .
+        '.wp-list-table th.column-mz_menu_order .sorting-indicators{margin-left:2px;}' .
         '.wp-list-table .column-mz_cta_link{width:200px;max-width:200px;}' .
         '.wp-list-table .column-mz_cta_secondary_link{width:200px;max-width:200px;}' .
         '.wp-list-table .column-website{width:200px;max-width:200px;}' .
