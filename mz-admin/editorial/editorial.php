@@ -737,6 +737,11 @@ function meza_render_yoast_panel_state_script(): void
             const moveYoastToBottom = () => {
                 moveBlockEditorFeaturedImageUnderPublish();
                 moveBlockEditorTaxonomiesAndAttributes();
+
+                if (postType === 'event') {
+                    return;
+                }
+
                 moveClassicYoastToBottom();
                 moveBlockEditorYoastToBottom();
             };

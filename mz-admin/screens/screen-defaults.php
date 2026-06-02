@@ -1581,6 +1581,71 @@ function meza_post_metabox_order_with_excerpt_in_context($order_value, string $p
     return $pairs;
 }
 
+function meza_event_metabox_order_with_section_priority($order_value): array
+{
+    $contexts = meza_normalize_metabox_order_contexts($order_value);
+
+    $ordered_ids = [
+        'acf-group_6a08b62b10548',
+        'acf-group_692cdbb4a0ff0',
+        'acf-group_68f909d29e99c',
+        'acf-group_meza_list_reviews_section',
+        'acf-group_6901490e04b96',
+        'acf-group_meza_list_events_section',
+        'acf-group_697ffe3780c87',
+        'acf-group_meza_list_posts_section',
+        'acf-group_697feb01ec35f',
+        'acf-group_f7b16b48',
+        'wpseo_meta',
+    ];
+    $target_context = 'normal';
+
+    foreach ($contexts as $context_key => $boxes) {
+        $box_ids = array_map('sanitize_key', explode(',', (string) $boxes));
+        $box_ids = array_values(array_filter($box_ids, static function ($id) {
+            return $id !== '';
+        }));
+
+        if ([] !== array_intersect($ordered_ids, $box_ids)) {
+            $target_context = sanitize_key((string) $context_key) ?: 'normal';
+            break;
+        }
+    }
+
+    foreach ($contexts as $context_key => $boxes) {
+        $box_ids = array_map('sanitize_key', explode(',', (string) $boxes));
+        $box_ids = array_values(array_filter($box_ids, static function ($id) use ($ordered_ids) {
+            return $id !== '' && !in_array($id, $ordered_ids, true);
+        }));
+
+        $contexts[$context_key] = implode(',', $box_ids);
+    }
+
+    $target_items = [];
+    if (isset($contexts[$target_context]) && $contexts[$target_context] !== '') {
+        $target_items = array_map('sanitize_key', explode(',', (string) $contexts[$target_context]));
+        $target_items = array_values(array_filter($target_items, static function ($id) {
+            return $id !== '';
+        }));
+    }
+
+    array_splice($target_items, 0, 0, $ordered_ids);
+    $contexts[$target_context] = implode(',', array_values(array_unique($target_items)));
+
+    $pairs = [];
+    foreach ($contexts as $context_key => $boxes) {
+        $box_ids = array_map('sanitize_key', explode(',', (string) $boxes));
+        $box_ids = array_values(array_unique(array_filter($box_ids, static function ($id) {
+            return $id !== '';
+        })));
+        if (empty($box_ids)) continue;
+
+        $pairs[sanitize_key((string) $context_key)] = implode(',', $box_ids);
+    }
+
+    return $pairs;
+}
+
 // Post edit screens: set the initial Excerpt placement once per user, then let users move it freely.
 add_action('current_screen', function ($screen): void {
     if (!($screen instanceof WP_Screen)) return;
@@ -1631,6 +1696,39 @@ add_action('current_screen', function ($screen): void {
 
     update_user_meta($user_id, $migration_key, 1);
 }, 200);
+
+// Event edit screen: keep the Event panel and section stack in the expected setup order.
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen)) return;
+    if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) return;
+    if (sanitize_key((string) ($screen->post_type ?? '')) !== 'event') return;
+
+    $user_id = get_current_user_id();
+    if ($user_id <= 0) return;
+
+    $screen_id = sanitize_key((string) ($screen->id ?? ''));
+    if ($screen_id !== 'event') return;
+
+    $migration_key = 'meza_event_section_panel_order_initialized_v1_' . $screen_id;
+    $should_bootstrap = !get_user_meta($user_id, $migration_key, true);
+
+    add_filter('default_user_option_meta-box-order_' . $screen_id, function ($default_order) {
+        return meza_event_metabox_order_with_section_priority($default_order);
+    }, 20, 1);
+
+    add_filter('get_user_option_meta-box-order_' . $screen_id, function ($saved_order) {
+        return meza_event_metabox_order_with_section_priority($saved_order);
+    }, 20, 1);
+
+    if (!$should_bootstrap) return;
+
+    $order_key = 'meta-box-order_' . $screen_id;
+    $saved_order = get_user_option($order_key, $user_id);
+    $updated_order = meza_event_metabox_order_with_section_priority($saved_order);
+    update_user_option($user_id, $order_key, $updated_order, false);
+
+    update_user_meta($user_id, $migration_key, 1);
+}, 210);
 
 add_action('edit_form_after_editor', function ($post): void {
     if (!($post instanceof WP_Post)) return;
@@ -1691,6 +1789,174 @@ function meza_form_metabox_order_with_slug_first($order_value): array
     return $pairs;
 }
 
+function meza_get_post_edit_standard_metabox_ids(string $post_type): array
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '') {
+        return [];
+    }
+
+    $ids = [
+        'submitdiv',
+        'slugdiv',
+        'postexcerpt',
+        'postimagediv',
+        'pageparentdiv',
+        'revisionsdiv',
+        'authordiv',
+        'commentstatusdiv',
+        'commentsdiv',
+        'trackbacksdiv',
+        'formatdiv',
+        'postcustom',
+    ];
+
+    foreach (get_object_taxonomies($post_type, 'objects') as $taxonomy) {
+        if (!($taxonomy instanceof WP_Taxonomy) || empty($taxonomy->show_ui)) {
+            continue;
+        }
+
+        $taxonomy_name = sanitize_key((string) ($taxonomy->name ?? ''));
+        if ($taxonomy_name === '') {
+            continue;
+        }
+
+        $ids[] = !empty($taxonomy->hierarchical)
+            ? $taxonomy_name . 'div'
+            : 'tagsdiv-' . $taxonomy_name;
+    }
+
+    return array_values(array_unique(array_filter(array_map('sanitize_key', $ids))));
+}
+
+function meza_get_registered_post_edit_metaboxes(WP_Screen $screen): array
+{
+    global $wp_meta_boxes;
+
+    $screen_id = sanitize_key((string) ($screen->id ?? ''));
+    $post_type = sanitize_key((string) ($screen->post_type ?? ''));
+
+    if ($screen_id === '' && $post_type === '') {
+        return [];
+    }
+
+    $registry_keys = array_values(array_unique(array_filter([$screen_id, $post_type], 'strlen')));
+    $metaboxes = [];
+
+    foreach ($registry_keys as $registry_key) {
+        if (!isset($wp_meta_boxes[$registry_key]) || !is_array($wp_meta_boxes[$registry_key])) {
+            continue;
+        }
+
+        foreach ($wp_meta_boxes[$registry_key] as $context => $priorities) {
+            if (!is_array($priorities)) {
+                continue;
+            }
+
+            foreach ($priorities as $priority => $boxes) {
+                if (!is_array($boxes)) {
+                    continue;
+                }
+
+                foreach ($boxes as $box_id => $box) {
+                    $normalized_box_id = sanitize_key((string) $box_id);
+                    if ($normalized_box_id === '' || $box === false || !is_array($box)) {
+                        continue;
+                    }
+
+                    $box['id'] = $normalized_box_id;
+                    $box['context'] = sanitize_key((string) $context);
+                    $box['priority'] = sanitize_key((string) $priority);
+                    $metaboxes[$normalized_box_id] = $box;
+                }
+            }
+        }
+    }
+
+    return $metaboxes;
+}
+
+function meza_get_post_edit_default_closed_metabox_ids(WP_Screen $screen): array
+{
+    if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) {
+        return [];
+    }
+
+    $post_type = sanitize_key((string) ($screen->post_type ?? ''));
+    if ($post_type === '') {
+        return [];
+    }
+
+    $standard_lookup = array_fill_keys(meza_get_post_edit_standard_metabox_ids($post_type), true);
+    $collapsed = [];
+
+    foreach (meza_get_registered_post_edit_metaboxes($screen) as $box_id => $box) {
+        if ($box_id === '' || isset($standard_lookup[$box_id])) {
+            continue;
+        }
+
+        $field_group = $box['args']['field_group'] ?? null;
+        $field_group_menu_order = is_array($field_group)
+            ? (int) ($field_group['menu_order'] ?? 0)
+            : null;
+
+        if ($field_group_menu_order !== null && $field_group_menu_order > 0) {
+            continue;
+        }
+
+        $collapsed[] = $box_id;
+    }
+
+    return array_values(array_unique(array_filter(array_map('sanitize_key', $collapsed))));
+}
+
+function meza_merge_closed_postbox_ids($existing, array $defaults): array
+{
+    $existing_ids = is_array($existing)
+        ? array_values(array_filter(array_map('sanitize_key', $existing)))
+        : [];
+    $default_ids = array_values(array_filter(array_map('sanitize_key', $defaults)));
+
+    return array_values(array_unique(array_merge($existing_ids, $default_ids)));
+}
+
+function meza_apply_post_edit_default_closed_postboxes_for_current_user(): void
+{
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!($screen instanceof WP_Screen)) {
+        return;
+    }
+
+    if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) {
+        return;
+    }
+
+    $screen_id = sanitize_key((string) ($screen->id ?? ''));
+    $user_id = get_current_user_id();
+    if ($screen_id === '' || $user_id <= 0) {
+        return;
+    }
+
+    $migration_key = 'meza_post_edit_closed_postboxes_initialized_v1_' . $screen_id;
+    if (get_user_meta($user_id, $migration_key, true)) {
+        return;
+    }
+
+    $meta_key = 'closedpostboxes_' . $screen_id;
+    $saved_closed = get_user_option($meta_key, $user_id);
+    $current_closed = is_array($saved_closed)
+        ? array_values(array_filter(array_map('sanitize_key', $saved_closed)))
+        : [];
+    $default_closed = meza_get_post_edit_default_closed_metabox_ids($screen);
+    $updated_closed = meza_merge_closed_postbox_ids($current_closed, $default_closed);
+
+    if ($updated_closed !== $current_closed) {
+        update_user_option($user_id, $meta_key, $updated_closed, false);
+    }
+
+    update_user_meta($user_id, $migration_key, 1);
+}
+
 // Form edit screen defaults: place Slug directly under Title (before ACF field groups).
 add_filter('default_user_option_meta-box-order_form', function ($default_order) {
     return meza_form_metabox_order_with_slug_first($default_order);
@@ -1700,6 +1966,49 @@ add_filter('default_user_option_meta-box-order_form', function ($default_order) 
 add_filter('get_user_option_meta-box-order_form', function ($saved_order) {
     return meza_form_metabox_order_with_slug_first($saved_order);
 }, 10, 1);
+
+add_action('current_screen', function ($screen): void {
+    if (!($screen instanceof WP_Screen)) {
+        return;
+    }
+
+    if (!in_array((string) ($screen->base ?? ''), ['post', 'post-new'], true)) {
+        return;
+    }
+
+    $screen_id = sanitize_key((string) ($screen->id ?? ''));
+    if ($screen_id === '') {
+        return;
+    }
+
+    add_filter('default_user_option_closedpostboxes_' . $screen_id, function ($value) use ($screen) {
+        return meza_merge_closed_postbox_ids($value, meza_get_post_edit_default_closed_metabox_ids($screen));
+    }, 20, 1);
+
+    add_filter('get_user_option_closedpostboxes_' . $screen_id, function ($value) use ($screen, $screen_id) {
+        $user_id = get_current_user_id();
+        if ($user_id <= 0) {
+            return $value;
+        }
+
+        $migration_key = 'meza_post_edit_closed_postboxes_initialized_v1_' . $screen_id;
+        if (get_user_meta($user_id, $migration_key, true)) {
+            return $value;
+        }
+
+        $raw_closed = meza_get_raw_user_option('closedpostboxes_' . $screen_id, $user_id, $has_raw_value);
+        unset($raw_closed);
+
+        if ($has_raw_value) {
+            return $value;
+        }
+
+        return meza_merge_closed_postbox_ids($value, meza_get_post_edit_default_closed_metabox_ids($screen));
+    }, 20, 1);
+}, 220);
+
+add_action('admin_head-post.php', 'meza_apply_post_edit_default_closed_postboxes_for_current_user', 25);
+add_action('admin_head-post-new.php', 'meza_apply_post_edit_default_closed_postboxes_for_current_user', 25);
 
 // Remove the Dashboard welcome panel for all users.
 add_action('admin_init', function () {
