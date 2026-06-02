@@ -548,6 +548,12 @@ if (!function_exists('meza_sync_list_profiles_section_secondary_link_subfield_na
             $group_field_definition['ID'] = $group_field['ID'] ?? null;
             $group_field_definition['parent'] = $group_field['parent'] ?? ($group_field_definition['parent'] ?? '');
             $group_field_definition['menu_order'] = (int) ($group_field['menu_order'] ?? $group_field_definition['menu_order'] ?? 0);
+            if (function_exists('meza_preserve_acf_field_tree_identifiers')) {
+                $group_field_definition = meza_preserve_acf_field_tree_identifiers(
+                    $group_field_definition,
+                    $group_field
+                );
+            }
 
             acf_update_field($group_field_definition);
         }
@@ -899,6 +905,13 @@ if (!function_exists('meza_sync_section_group_sub_fields')) {
                 $normalized_field['menu_order'] = $menu_order;
                 $normalized_keys[$normalized_key] = true;
                 $existing_field = $existing_fields_by_key[$normalized_key] ?? null;
+                if (function_exists('meza_preserve_acf_field_tree_identifiers')) {
+                    $normalized_field = meza_preserve_acf_field_tree_identifiers(
+                        $normalized_field,
+                        $existing_field,
+                        (string) ($field_group['key'] ?? $field_group_id)
+                    );
+                }
 
                 if (is_array($existing_field) && $existing_field === $normalized_field) {
                     continue;
@@ -1061,6 +1074,14 @@ if (!function_exists('meza_sync_builtin_field_group_fields')) {
             $expected_keys[$expected_key] = true;
 
             $existing_field = $existing_fields_by_key[$expected_key] ?? null;
+            if (function_exists('meza_preserve_acf_field_tree_identifiers')) {
+                $expected_field = meza_preserve_acf_field_tree_identifiers(
+                    $expected_field,
+                    $existing_field,
+                    (string) ($field_group['key'] ?? $definition['key'] ?? '')
+                );
+            }
+
             if (is_array($existing_field) && $existing_field === $expected_field) {
                 continue;
             }

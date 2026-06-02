@@ -8,6 +8,149 @@ if (!function_exists('meza_shared_project_acf_options_are_available')) {
     }
 }
 
+if (!function_exists('meza_index_acf_fields_by_key')) {
+    function meza_index_acf_fields_by_key(array $fields): array
+    {
+        $indexed = [];
+
+        foreach ($fields as $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+
+            $field_key = (string) ($field['key'] ?? '');
+            if ($field_key === '') {
+                continue;
+            }
+
+            $indexed[$field_key] = $field;
+        }
+
+        return $indexed;
+    }
+}
+
+if (!function_exists('meza_preserve_acf_field_tree_identifiers')) {
+    function meza_preserve_acf_field_tree_identifiers(array $field, ?array $existing_field = null, string $fallback_parent = ''): array
+    {
+        if (function_exists('meza_ensure_acf_field_tree_has_internal_names')) {
+            $field = meza_ensure_acf_field_tree_has_internal_names($field);
+        }
+
+        if (is_array($existing_field)) {
+            foreach (['ID', 'id', 'parent', 'menu_order'] as $property) {
+                if (
+                    !array_key_exists($property, $field)
+                    && array_key_exists($property, $existing_field)
+                ) {
+                    $field[$property] = $existing_field[$property];
+                }
+            }
+
+            if (
+                (!isset($field['_name']) || $field['_name'] === '')
+                && isset($existing_field['_name'])
+            ) {
+                $field['_name'] = (string) $existing_field['_name'];
+            }
+        }
+
+        if (
+            (!isset($field['parent']) || $field['parent'] === '')
+            && $fallback_parent !== ''
+        ) {
+            $field['parent'] = $fallback_parent;
+        }
+
+        if (isset($field['sub_fields']) && is_array($field['sub_fields'])) {
+            $existing_sub_fields = is_array($existing_field['sub_fields'] ?? null)
+                ? meza_index_acf_fields_by_key($existing_field['sub_fields'])
+                : [];
+            $sub_field_parent = (string) ($field['key'] ?? ($field['ID'] ?? $field['id'] ?? $fallback_parent));
+
+            foreach ($field['sub_fields'] as $sub_field_index => $sub_field) {
+                if (!is_array($sub_field)) {
+                    continue;
+                }
+
+                $sub_field_key = (string) ($sub_field['key'] ?? '');
+                $field['sub_fields'][$sub_field_index] = meza_preserve_acf_field_tree_identifiers(
+                    $sub_field,
+                    $sub_field_key !== '' ? ($existing_sub_fields[$sub_field_key] ?? null) : null,
+                    $sub_field_parent
+                );
+            }
+        }
+
+        if (isset($field['layouts']) && is_array($field['layouts'])) {
+            $existing_layouts = [];
+            if (is_array($existing_field['layouts'] ?? null)) {
+                foreach ($existing_field['layouts'] as $layout) {
+                    if (!is_array($layout)) {
+                        continue;
+                    }
+
+                    $layout_key = (string) ($layout['key'] ?? '');
+                    if ($layout_key !== '') {
+                        $existing_layouts[$layout_key] = $layout;
+                    }
+                }
+            }
+
+            foreach ($field['layouts'] as $layout_index => $layout) {
+                if (!is_array($layout)) {
+                    continue;
+                }
+
+                $layout_key = (string) ($layout['key'] ?? '');
+                $existing_layout = $layout_key !== '' ? ($existing_layouts[$layout_key] ?? null) : null;
+
+                if (is_array($existing_layout)) {
+                    foreach (['ID', 'id', 'parent', 'menu_order'] as $property) {
+                        if (
+                            !array_key_exists($property, $layout)
+                            && array_key_exists($property, $existing_layout)
+                        ) {
+                            $layout[$property] = $existing_layout[$property];
+                        }
+                    }
+                }
+
+                $layout_parent = (string) ($field['key'] ?? ($field['ID'] ?? $field['id'] ?? $fallback_parent));
+                if (
+                    (!isset($layout['parent']) || $layout['parent'] === '')
+                    && $layout_parent !== ''
+                ) {
+                    $layout['parent'] = $layout_parent;
+                }
+
+                if (isset($layout['sub_fields']) && is_array($layout['sub_fields'])) {
+                    $existing_layout_sub_fields = is_array($existing_layout['sub_fields'] ?? null)
+                        ? meza_index_acf_fields_by_key($existing_layout['sub_fields'])
+                        : [];
+
+                    foreach ($layout['sub_fields'] as $sub_field_index => $sub_field) {
+                        if (!is_array($sub_field)) {
+                            continue;
+                        }
+
+                        $sub_field_key = (string) ($sub_field['key'] ?? '');
+                        $layout['sub_fields'][$sub_field_index] = meza_preserve_acf_field_tree_identifiers(
+                            $sub_field,
+                            $sub_field_key !== '' ? ($existing_layout_sub_fields[$sub_field_key] ?? null) : null,
+                            (string) ($layout['key'] ?? $layout_parent)
+                        );
+                    }
+                }
+
+                $field['layouts'][$layout_index] = $layout;
+            }
+        }
+
+        return $field;
+    }
+}
+
 if (!function_exists('meza_normalize_acf_field_group_location')) {
     function meza_normalize_acf_field_group_location(array $location): array
     {
