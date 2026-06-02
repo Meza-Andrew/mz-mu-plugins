@@ -1043,6 +1043,13 @@ if (!function_exists('meza_get_acf_export_tool_grouped_choice_maps')) {
             $groups[$group][$key] = $title;
         }
 
+        foreach ($groups as &$choices) {
+            uasort($choices, static function ($left, $right): int {
+                return strnatcasecmp((string) $left, (string) $right);
+            });
+        }
+        unset($choices);
+
         return $groups;
     }
 }

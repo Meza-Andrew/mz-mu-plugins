@@ -6653,30 +6653,28 @@ add_action('admin_head', function (): void {
             color: #135e96;
         }
 
+        #acf-admin-tools .meza-acf-export-section-action {
+            border: 0;
+            background: transparent;
+            color: #2271b1;
+            cursor: pointer;
+            font: inherit;
+            padding: 0;
+            text-decoration: underline;
+        }
+
+        #acf-admin-tools .meza-acf-export-section-action:hover,
+        #acf-admin-tools .meza-acf-export-section-action:focus {
+            color: #135e96;
+        }
+
         #acf-admin-tools .meza-acf-export-bucket.is-collapsed > .acf-input {
             display: none;
         }
     </style>
     <script>
         (() => {
-            const bucketStorageKeyPrefix = 'mezaAcfExportBucketState:v3:';
-            const sectionStorageKeyPrefix = 'mezaAcfExportSectionState:v1:';
             const defaultCollapsedGroupKeys = new Set(['defaults', 'built_in']);
-
-            const getStorageItem = (key) => {
-                try {
-                    return window.localStorage.getItem(key) || '';
-                } catch (error) {
-                    return '';
-                }
-            };
-
-            const setStorageItem = (key, value) => {
-                try {
-                    window.localStorage.setItem(key, value);
-                } catch (error) {
-                }
-            };
 
             const getSectionLabel = (sectionField) => {
                 if (!(sectionField instanceof HTMLElement)) {
@@ -6684,14 +6682,6 @@ add_action('admin_head', function (): void {
                 }
 
                 return ((sectionField.querySelector(':scope > .acf-label > label')?.textContent) || '').trim();
-            };
-
-            const getSectionPostType = (sectionField) => {
-                if (!(sectionField instanceof HTMLElement)) {
-                    return '';
-                }
-
-                return sectionField.dataset.exportPostType || '';
             };
 
             const getBucketGroupKey = (bucket) => {
@@ -6702,36 +6692,6 @@ add_action('admin_head', function (): void {
                 return bucket.dataset.groupKey || '';
             };
 
-            const getSectionMode = (sectionField) => {
-                return getStorageItem(getSectionStorageKey(sectionField)) === 'expanded' ? 'expanded' : 'default';
-            };
-
-            const getBucketStorageKey = (bucket, mode = '') => {
-                const sectionField = bucket.closest('.meza-acf-export-section');
-                const resolvedMode = mode || getSectionMode(sectionField);
-                return bucketStorageKeyPrefix + getSectionLabel(sectionField) + ':' + getBucketGroupKey(bucket) + ':' + resolvedMode;
-            };
-
-            const getSectionStorageKey = (sectionField) => {
-                return sectionStorageKeyPrefix + getSectionLabel(sectionField);
-            };
-
-            const getBucketSavedState = (bucket, mode = '') => {
-                if (!(bucket instanceof HTMLElement)) {
-                    return '';
-                }
-
-                return getStorageItem(getBucketStorageKey(bucket, mode));
-            };
-
-            const setBucketSavedState = (bucket, state, mode = '') => {
-                if (!(bucket instanceof HTMLElement)) {
-                    return;
-                }
-
-                setStorageItem(getBucketStorageKey(bucket, mode), state);
-            };
-
             const isBucketDefaultCollapsed = (bucket) => defaultCollapsedGroupKeys.has(getBucketGroupKey(bucket));
 
             const isBucketEffectivelyCollapsed = (bucket) => {
@@ -6739,21 +6699,11 @@ add_action('admin_head', function (): void {
                     return false;
                 }
 
-                const savedState = getBucketSavedState(bucket);
-                if (savedState === 'collapsed') {
-                    return true;
-                }
-
-                if (savedState === 'expanded') {
-                    return false;
-                }
-
-                if (!isBucketDefaultCollapsed(bucket)) {
-                    return false;
-                }
-
-                const sectionField = bucket.closest('.meza-acf-export-section');
-                return getStorageItem(getSectionStorageKey(sectionField)) !== 'expanded';
+                return bucket.dataset.mezaCollapsed === '1'
+                    ? true
+                    : bucket.dataset.mezaCollapsed === '0'
+                        ? false
+                        : isBucketDefaultCollapsed(bucket);
             };
 
             const applyBucketState = (bucket) => {
@@ -6768,13 +6718,13 @@ add_action('admin_head', function (): void {
                 }
             };
 
-            const getSectionOptionalBuckets = (sectionField) => {
+            const getSectionManagedBuckets = (sectionField) => {
                 if (!(sectionField instanceof HTMLElement)) {
                     return [];
                 }
 
                 return Array.from(sectionField.querySelectorAll(':scope > .acf-input > .meza-acf-export-bucket'))
-                    .filter((bucket) => bucket instanceof HTMLElement && isBucketDefaultCollapsed(bucket));
+                    .filter((bucket) => bucket instanceof HTMLElement);
             };
 
             const syncSectionToggle = (sectionField) => {
@@ -6783,14 +6733,6 @@ add_action('admin_head', function (): void {
                 }
 
                 sectionField.mezaSectionToggleSync();
-            };
-
-            const applySectionState = (sectionField, options = {}) => {
-                const { skipToggleSync = false } = options;
-                getSectionOptionalBuckets(sectionField).forEach(applyBucketState);
-                if (!skipToggleSync) {
-                    syncSectionToggle(sectionField);
-                }
             };
 
             const setBucketCheckboxesChecked = (bucket, checked) => {
@@ -6862,17 +6804,9 @@ add_action('admin_head', function (): void {
                     };
 
                     button.addEventListener('click', () => {
-                        const nextState = bucket.classList.contains('is-collapsed') ? 'expanded' : 'collapsed';
+                        const nextState = bucket.classList.contains('is-collapsed') ? '0' : '1';
                         const sectionField = bucket.closest('.meza-acf-export-section');
-                        const sectionMode = getSectionMode(sectionField);
-
-                        setBucketSavedState(bucket, nextState, sectionMode);
-
-                        // If the user changes a bucket while "Select all" is active, carry
-                        // that preference forward into normal mode as well.
-                        if (sectionMode === 'expanded') {
-                            setBucketSavedState(bucket, nextState, 'default');
-                        }
+                        bucket.dataset.mezaCollapsed = nextState;
 
                         applyBucketState(bucket);
                         syncSectionToggle(sectionField);
@@ -6892,8 +6826,8 @@ add_action('admin_head', function (): void {
                         return;
                     }
 
-                    const optionalBuckets = getSectionOptionalBuckets(sectionField);
-                    if (!optionalBuckets.length) {
+                    const buckets = getSectionManagedBuckets(sectionField);
+                    if (buckets.length <= 1) {
                         return;
                     }
 
@@ -6905,54 +6839,41 @@ add_action('admin_head', function (): void {
                     const controlsWrap = document.createElement('span');
                     controlsWrap.className = 'meza-acf-export-section-controls';
 
-                    const selectToggleLabel = document.createElement('label');
-                    selectToggleLabel.className = 'meza-acf-export-section-toggle';
-
-                    const selectToggleInput = document.createElement('input');
-                    selectToggleInput.type = 'checkbox';
-                    selectToggleInput.setAttribute(
+                    const selectToggleButton = document.createElement('button');
+                    selectToggleButton.type = 'button';
+                    selectToggleButton.className = 'meza-acf-export-section-action';
+                    selectToggleButton.setAttribute(
                         'aria-label',
                         'Toggle all export choices for ' + (getSectionLabel(sectionField) || 'this section')
                     );
 
-                    const selectToggleText = document.createElement('span');
-                    selectToggleText.textContent = 'Select All';
-
-                    selectToggleLabel.append(selectToggleInput, selectToggleText);
-
-                    const expandToggleLabel = document.createElement('label');
-                    expandToggleLabel.className = 'meza-acf-export-section-toggle';
-
-                    const expandToggleInput = document.createElement('input');
-                    expandToggleInput.type = 'checkbox';
-                    expandToggleInput.setAttribute(
+                    const expandToggleButton = document.createElement('button');
+                    expandToggleButton.type = 'button';
+                    expandToggleButton.className = 'meza-acf-export-section-action';
+                    expandToggleButton.setAttribute(
                         'aria-label',
-                        'Expand all export groups for ' + (getSectionLabel(sectionField) || 'this section')
+                        'Expand or collapse all export groups for ' + (getSectionLabel(sectionField) || 'this section')
                     );
 
-                    const expandToggleText = document.createElement('span');
-                    expandToggleText.textContent = 'Expand All';
-
-                    expandToggleLabel.append(expandToggleInput, expandToggleText);
-                    controlsWrap.append(selectToggleLabel, expandToggleLabel);
+                    controlsWrap.append(selectToggleButton, expandToggleButton);
 
                     sectionField.mezaSectionToggleSync = () => {
                         const inputs = getSectionSelectableInputs(sectionField);
                         const checkedCount = inputs.filter((input) => input.checked).length;
-                        const buckets = getSectionOptionalBuckets(sectionField);
                         const expandedCount = buckets.filter((bucket) => !bucket.classList.contains('is-collapsed')).length;
+                        const allExpanded = buckets.length > 0 && expandedCount === buckets.length;
+                        const allSelected = inputs.length > 0 && checkedCount === inputs.length;
 
-                        selectToggleInput.indeterminate = checkedCount > 0 && checkedCount < inputs.length;
-                        selectToggleInput.checked = inputs.length > 0 && checkedCount === inputs.length;
-                        selectToggleText.textContent = selectToggleInput.checked ? 'Deselect All' : 'Select All';
-
-                        expandToggleInput.indeterminate = expandedCount > 0 && expandedCount < buckets.length;
-                        expandToggleInput.checked = buckets.length > 0 && expandedCount === buckets.length;
-                        expandToggleText.textContent = expandToggleInput.checked ? 'Collapse All' : 'Expand All';
+                        selectToggleButton.textContent = allSelected ? 'Deselect All' : 'Select All';
+                        expandToggleButton.textContent = allExpanded ? 'Collapse All' : 'Expand All';
                     };
 
-                    selectToggleInput.addEventListener('change', () => {
-                        const shouldCheck = selectToggleInput.checked;
+                    selectToggleButton.addEventListener('click', () => {
+                        const inputs = getSectionSelectableInputs(sectionField);
+                        const shouldCheck = !(
+                            inputs.length > 0
+                            && inputs.every((input) => input.checked)
+                        );
                         sectionField.dataset.mezaBulkToggleActive = '1';
 
                         try {
@@ -6964,18 +6885,23 @@ add_action('admin_head', function (): void {
                         syncSectionToggle(sectionField);
                     });
 
-                    expandToggleInput.addEventListener('change', () => {
-                        setStorageItem(getSectionStorageKey(sectionField), expandToggleInput.checked ? 'expanded' : 'default');
-                        applySectionState(sectionField);
+                    expandToggleButton.addEventListener('click', () => {
+                        const shouldExpand = buckets.some((bucket) => bucket.classList.contains('is-collapsed'));
+
+                        buckets.forEach((bucket) => {
+                            bucket.dataset.mezaCollapsed = shouldExpand ? '0' : '1';
+                            bucket.classList.toggle('is-collapsed', !shouldExpand);
+                            if (typeof bucket.mezaSyncButtonLabel === 'function') {
+                                bucket.mezaSyncButtonLabel();
+                            }
+                        });
+
+                        syncSectionToggle(sectionField);
                     });
 
                     sectionField.addEventListener('change', (event) => {
                         const target = event.target;
                         if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox') {
-                            return;
-                        }
-
-                        if (target.closest('.meza-acf-export-section-toggle')) {
                             return;
                         }
 
