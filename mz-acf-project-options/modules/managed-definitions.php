@@ -3929,6 +3929,14 @@ add_filter('acf/load_fields/key=group_meza_site_events', function (array $fields
             $field = array_merge($existing_fields_by_key[$field_key], $expected_field);
         }
 
+        if (function_exists('meza_preserve_acf_field_tree_identifiers')) {
+            $field = meza_preserve_acf_field_tree_identifiers(
+                $field,
+                $existing_fields_by_key[$field_key] ?? null,
+                $parent_key
+            );
+        }
+
         $field['parent'] = $parent_key;
         $field['menu_order'] = $menu_order;
         $normalized_fields[] = $field;
@@ -3943,6 +3951,10 @@ add_filter('acf/load_fields/key=group_meza_site_events', function (array $fields
         $field_name = sanitize_key((string) ($field['name'] ?? ''));
         if (in_array($field_name, ['events', 'events_indexable', 'events_speakers', 'events_after'], true)) {
             continue;
+        }
+
+        if (function_exists('meza_preserve_acf_field_tree_identifiers')) {
+            $field = meza_preserve_acf_field_tree_identifiers($field, $field, $parent_key);
         }
 
         $field['parent'] = $parent_key;
@@ -3989,6 +4001,14 @@ add_filter('acf/load_fields/key=group_meza_site_season', function (array $fields
             $field = array_merge($existing_fields_by_key[$field_key], $expected_field);
         }
 
+        if (function_exists('meza_preserve_acf_field_tree_identifiers')) {
+            $field = meza_preserve_acf_field_tree_identifiers(
+                $field,
+                $existing_fields_by_key[$field_key] ?? null,
+                $parent_key
+            );
+        }
+
         $field['parent'] = $parent_key;
         $field['menu_order'] = $menu_order;
         $normalized_fields[] = $field;
@@ -4003,6 +4023,10 @@ add_filter('acf/load_fields/key=group_meza_site_season', function (array $fields
         $field_name = sanitize_key((string) ($field['name'] ?? ''));
         if ($field_name === 'season_after') {
             continue;
+        }
+
+        if (function_exists('meza_preserve_acf_field_tree_identifiers')) {
+            $field = meza_preserve_acf_field_tree_identifiers($field, $field, $parent_key);
         }
 
         $field['parent'] = $parent_key;
@@ -4183,6 +4207,14 @@ add_filter('acf/load_fields', function (array $fields, $parent): array {
                 continue;
             }
 
+            if (function_exists('meza_preserve_acf_field_tree_identifiers')) {
+                $field = meza_preserve_acf_field_tree_identifiers(
+                    $field,
+                    $field,
+                    (string) ($parent['key'] ?? $field['parent'] ?? '')
+                );
+            }
+
             $field['parent'] = (string) ($parent['key'] ?? $field['parent'] ?? '');
             $field['menu_order'] = $next_menu_order;
             $appended_custom_fields[] = $field;
@@ -4232,6 +4264,15 @@ add_filter('acf/load_fields', function (array $fields, $parent): array {
                 continue;
             }
 
+            if (function_exists('meza_preserve_acf_field_tree_identifiers')) {
+                $field = meza_preserve_acf_field_tree_identifiers(
+                    $field,
+                    $field,
+                    (string) ($parent['key'] ?? $field['parent'] ?? '')
+                );
+            }
+
+            $fields[$index] = $field;
             $fields[$index]['menu_order'] = $index;
             $fields[$index]['parent'] = (string) ($parent['key'] ?? $field['parent'] ?? '');
         }

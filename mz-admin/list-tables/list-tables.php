@@ -7844,7 +7844,12 @@ add_action('pre_get_posts', function (WP_Query $q) {
     $post_type = sanitize_key((string) $q->get('post_type'));
     if ($post_type === '' || meza_is_event_post_type($post_type)) return;
 
-    $orderby = (string) $q->get('orderby');
+    $orderby = $q->get('orderby');
+    if (is_array($orderby)) {
+        $orderby = (string) array_key_first($orderby);
+    } else {
+        $orderby = (string) $orderby;
+    }
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
     if (!($screen instanceof WP_Screen)) return;
 
@@ -8565,13 +8570,6 @@ function meza_get_woocommerce_refund_returns_policy_page_id(): int
         $page_id = meza_find_page_id_by_exact_title_candidates($title_candidates, 'page');
         if ($page_id > 0) {
             return $page_id;
-        }
-    } else {
-        foreach ($title_candidates as $title) {
-            $page = get_page_by_title($title, OBJECT, 'page');
-            if ($page instanceof WP_Post) {
-                return (int) $page->ID;
-            }
         }
     }
 
