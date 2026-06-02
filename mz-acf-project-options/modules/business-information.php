@@ -2704,6 +2704,7 @@ add_action('admin_head', function (): void {
                     }
 
                     var itemMap = {};
+                    var itemDataMap = {};
                     var sourceInputMap = {};
                     sourceList.querySelectorAll(':scope > li').forEach(function (item) {
                         var input = item.querySelector('input[type="checkbox"]');
@@ -2718,10 +2719,12 @@ add_action('admin_head', function (): void {
                     var columns = [];
                     var cloneInputsByValue = {};
                     var directChildrenMap = {};
+                    var rootGroupIds = [];
                     var parentMap = {};
 
                     groups.forEach(function (group) {
                         var parentKey = String(group.id || '');
+                        var items = Array.isArray(group.items) ? group.items : [];
                         if (!parentKey) {
                             return;
                         }
@@ -2729,54 +2732,91 @@ add_action('admin_head', function (): void {
                         directChildrenMap[parentKey] = Array.isArray(group.children)
                             ? group.children.map(function (childId) { return String(childId || ''); }).filter(Boolean)
                             : [];
+                        items.forEach(function (item) {
+                            var itemKey = String(item.id || '');
+                            if (!itemKey) {
+                                return;
+                            }
+
+                            itemDataMap[itemKey] = item;
+
+                            if (item.parent_id) {
+                                parentMap[itemKey] = String(item.parent_id);
+                            }
+                        });
                     });
 
                     groups.forEach(function (group) {
+                        var parentKey = String(group.id || '');
                         var items = Array.isArray(group.items) ? group.items : [];
-                        if (!items.length) {
+                        if (!parentKey || !items.length) {
                             return;
                         }
 
+                        if (!items[0].parent_id) {
+                            rootGroupIds.push(parentKey);
+                        }
+                    });
+
+                    function getItemLabel(item, depth) {
+                        var label = String((item && item.label) || '');
+                        label = label.replace(/^(?:—\s*)+/, '');
+
+                        return (depth > 0 ? '— '.repeat(depth) : '') + label;
+                    }
+
+                    function appendBranch(termKey, columnList, depth) {
+                        termKey = String(termKey || '');
+                        if (!termKey) {
+                            return;
+                        }
+
+                        var item = itemDataMap[termKey] || null;
+                        var sourceItem = itemMap[termKey] || null;
+                        var sourceInput = sourceInputMap[termKey] || null;
+                        if (!(sourceItem instanceof HTMLElement) || !(sourceInput instanceof HTMLInputElement)) {
+                            return;
+                        }
+
+                        var clonedItem = sourceItem.cloneNode(true);
+                        var clonedInput = clonedItem.querySelector('input[type="checkbox"]');
+                        var clonedLabel = clonedItem.querySelector('label');
+                        if (!(clonedInput instanceof HTMLInputElement) || !(clonedLabel instanceof HTMLElement)) {
+                            return;
+                        }
+
+                        if (
+                            depth > 0
+                            && (directChildrenMap[termKey] || []).length
+                            && columnList.children.length > 0
+                        ) {
+                            clonedItem.classList.add('meza-content-model-taxonomy-term-parent-break');
+                        }
+
+                        clonedInput.removeAttribute('name');
+                        clonedInput.dataset.mezaTermValue = termKey;
+                        clonedInput.checked = sourceInput.checked;
+                        clonedInput.disabled = sourceInput.disabled;
+                        clonedInput.setAttribute('aria-disabled', sourceInput.disabled ? 'true' : 'false');
+                        clonedInput.dataset.mezaParentId = String((item && item.parent_id) || '');
+
+                        setCheckboxLabelText(clonedLabel, clonedInput, getItemLabel(item, depth));
+
+                        cloneInputsByValue[termKey] = cloneInputsByValue[termKey] || [];
+                        cloneInputsByValue[termKey].push(clonedInput);
+
+                        columnList.appendChild(clonedItem);
+
+                        (directChildrenMap[termKey] || []).forEach(function (childKey) {
+                            appendBranch(childKey, columnList, depth + 1);
+                        });
+                    }
+
+                    rootGroupIds.forEach(function (rootGroupId) {
                         var columnList = document.createElement('ul');
                         columnList.className = sourceList.className;
 
-                        items.forEach(function (item) {
-                            var itemKey = String(item.id || '');
-                            var sourceItem = itemMap[itemKey] || null;
-                            var sourceInput = sourceInputMap[itemKey] || null;
-                            if (!(sourceItem instanceof HTMLElement) || !(sourceInput instanceof HTMLInputElement)) {
-                                return;
-                            }
-
-                            var clonedItem = sourceItem.cloneNode(true);
-                            var clonedInput = clonedItem.querySelector('input[type="checkbox"]');
-                            var clonedLabel = clonedItem.querySelector('label');
-                            if (!(clonedInput instanceof HTMLInputElement) || !(clonedLabel instanceof HTMLElement)) {
-                                return;
-                            }
-
-                            if (Number(item.depth || 0) === 0 && columnList.children.length > 0) {
-                                clonedItem.classList.add('meza-content-model-taxonomy-term-parent-break');
-                            }
-
-                            clonedInput.removeAttribute('name');
-                            clonedInput.dataset.mezaTermValue = itemKey;
-                            clonedInput.checked = sourceInput.checked;
-                            clonedInput.disabled = sourceInput.disabled;
-                            clonedInput.setAttribute('aria-disabled', sourceInput.disabled ? 'true' : 'false');
-                            clonedInput.dataset.mezaParentId = String(item.parent_id || '');
-
-                            if (clonedInput.dataset.mezaParentId) {
-                                parentMap[itemKey] = clonedInput.dataset.mezaParentId;
-                            }
-
-                            setCheckboxLabelText(clonedLabel, clonedInput, String(item.label || ''));
-
-                            cloneInputsByValue[itemKey] = cloneInputsByValue[itemKey] || [];
-                            cloneInputsByValue[itemKey].push(clonedInput);
-
-                            columnList.appendChild(clonedItem);
-                        });
+                        appendBranch(rootGroupId, columnList, 0);
 
                         if (!columnList.children.length) {
                             return;

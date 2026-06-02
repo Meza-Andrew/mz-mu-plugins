@@ -4280,6 +4280,114 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
         return $field;
     }
 
+    function meza_prepare_content_model_taxonomy_term_management_field(array $field): array
+    {
+        $taxonomy = sanitize_key((string) ($field['meza_taxonomy'] ?? ''));
+        if ($taxonomy === '') {
+            return $field;
+        }
+
+        $field['choices'] = meza_get_content_model_taxonomy_term_management_term_choices($taxonomy);
+
+        return $field;
+    }
+
+    function meza_get_taxonomy_term_ancestor_ids(int $term_id, string $taxonomy): array
+    {
+        $ancestor_ids = [];
+        $parent_id = (int) wp_get_term_taxonomy_parent_id($term_id, $taxonomy);
+
+        while ($parent_id > 0) {
+            $ancestor_ids[] = $parent_id;
+
+            $parent_term = get_term($parent_id, $taxonomy);
+            if (!$parent_term || is_wp_error($parent_term)) {
+                break;
+            }
+
+            $parent_id = (int) $parent_term->parent;
+        }
+
+        return array_values(array_unique(array_filter($ancestor_ids)));
+    }
+
+    function meza_sync_profile_type_term_ancestors_for_post(int $post_id): array
+    {
+        if ($post_id <= 0 || get_post_type($post_id) !== 'profile' || !taxonomy_exists('profile-type')) {
+            return [];
+        }
+
+        $term_ids = wp_get_object_terms($post_id, 'profile-type', ['fields' => 'ids']);
+        if (is_wp_error($term_ids) || $term_ids === []) {
+            return [];
+        }
+
+        $term_ids = array_values(array_unique(array_map('intval', $term_ids)));
+        $missing_ancestor_ids = [];
+
+        foreach ($term_ids as $term_id) {
+            foreach (meza_get_taxonomy_term_ancestor_ids($term_id, 'profile-type') as $ancestor_id) {
+                if (!in_array($ancestor_id, $term_ids, true)) {
+                    $missing_ancestor_ids[] = $ancestor_id;
+                }
+            }
+        }
+
+        $missing_ancestor_ids = array_values(array_unique(array_map('intval', $missing_ancestor_ids)));
+        if ($missing_ancestor_ids === []) {
+            return [];
+        }
+
+        $updated_term_ids = array_values(array_unique(array_merge($term_ids, $missing_ancestor_ids)));
+        $result = wp_set_object_terms($post_id, $updated_term_ids, 'profile-type', false);
+
+        return is_wp_error($result) ? [] : $missing_ancestor_ids;
+    }
+
+    function meza_backfill_profile_type_term_ancestors(array $post_ids = []): array
+    {
+        if ($post_ids === []) {
+            $post_ids = get_posts([
+                'fields'         => 'ids',
+                'numberposts'    => -1,
+                'post_status'    => 'any',
+                'post_type'      => 'profile',
+                'suppress_filters' => false,
+            ]);
+        }
+
+        $updated_posts = [];
+
+        foreach ($post_ids as $post_id) {
+            $added_term_ids = meza_sync_profile_type_term_ancestors_for_post((int) $post_id);
+            if ($added_term_ids !== []) {
+                $updated_posts[(int) $post_id] = $added_term_ids;
+            }
+        }
+
+        return $updated_posts;
+    }
+
+    function meza_sync_profile_type_term_ancestors_after_terms_set($object_id, $terms, $tt_ids, $taxonomy, $append, $old_tt_ids): void
+    {
+        unset($terms, $tt_ids, $append, $old_tt_ids);
+
+        if ($taxonomy !== 'profile-type' || get_post_type((int) $object_id) !== 'profile') {
+            return;
+        }
+
+        static $syncing_post_ids = [];
+        $object_id = (int) $object_id;
+
+        if (isset($syncing_post_ids[$object_id])) {
+            return;
+        }
+
+        $syncing_post_ids[$object_id] = true;
+        meza_sync_profile_type_term_ancestors_for_post($object_id);
+        unset($syncing_post_ids[$object_id]);
+    }
+
     function meza_load_content_model_object_management_value($value, $post_id, array $field, string $kind, string $bucket)
     {
         unset($value, $post_id);
@@ -4599,6 +4707,17 @@ foreach (meza_get_content_model_object_management_field_key_map() as $field_key 
     }, 10, 3);
 }
 
+add_filter('acf/load_field', static function ($field) {
+    if (
+        !is_array($field)
+        || !str_starts_with((string) ($field['key'] ?? ''), meza_get_content_model_taxonomy_term_management_field_key_prefix())
+    ) {
+        return $field;
+    }
+
+    return meza_prepare_content_model_taxonomy_term_management_field($field);
+});
+
 add_filter('acf/load_value', static function ($value, $post_id, $field) {
     if (
         !is_array($field)
@@ -4613,6 +4732,7 @@ add_filter('acf/load_value', static function ($value, $post_id, $field) {
 add_action('acf/save_post', 'meza_sync_content_model_field_group_management_after_save', 19);
 add_action('acf/save_post', 'meza_sync_content_model_object_management_after_save', 19);
 add_action('acf/save_post', 'meza_sync_content_model_taxonomy_term_management_after_save', 19);
+add_action('set_object_terms', 'meza_sync_profile_type_term_ancestors_after_terms_set', 20, 6);
 add_action('init', 'meza_reconcile_content_model_object_management_saved_selection', 28);
 add_action('init', 'meza_repair_content_model_nonprofit_default_taxonomy_hierarchy_caches', 29);
 
