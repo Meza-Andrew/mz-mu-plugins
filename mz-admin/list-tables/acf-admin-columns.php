@@ -972,6 +972,9 @@ add_action('admin_head-edit.php', function () {
     // ACF list tables often use generic id/key/description column slugs.
     echo '<style id="meza-acf-admin-column-normalization">' .
         'table.wp-list-table.fixed{table-layout:fixed!important;}' .
+        'table.wp-list-table.fixed col.column-cb{width:32px!important;min-width:32px!important;max-width:32px!important;}' .
+        '.wp-list-table th.check-column,.wp-list-table td.check-column,.wp-list-table th.column-cb,.wp-list-table td.column-cb{width:32px!important;min-width:32px!important;max-width:32px!important;padding-left:0!important;padding-right:0!important;text-align:center!important;text-overflow:clip!important;}' .
+        '.wp-list-table th.check-column input[type="checkbox"],.wp-list-table td.check-column input[type="checkbox"],.wp-list-table th.column-cb input[type="checkbox"],.wp-list-table td.column-cb input[type="checkbox"]{float:none!important;margin:0 auto!important;}' .
         'table.wp-list-table.fixed col.column-id,table.wp-list-table.fixed col.column-ID{display:none!important;}' .
         '.wp-list-table th.column-id,.wp-list-table td.column-id,.wp-list-table th.column-ID,.wp-list-table td.column-ID{display:none!important;}' .
         '.wp-list-table th.column-key,.wp-list-table td.column-key,.wp-list-table th.column-description,.wp-list-table td.column-description{display:none!important;}' .
