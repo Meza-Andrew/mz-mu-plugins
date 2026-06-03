@@ -78,12 +78,21 @@ function meza_update_admin_action_link(string $html, $post = null, string $label
         }
 
         $text_plain = strtolower(trim(wp_strip_all_tags($text)));
+        $is_delete_or_trash = (
+            str_contains($href, 'action=trash')
+            || str_contains($href, 'action=untrash')
+            || str_contains($href, 'action=delete')
+            || str_contains($text_plain, 'delete')
+            || str_contains($text_plain, 'trash')
+        );
         $is_edit_or_view = (
-            str_contains($href, 'post.php?')
-            || str_contains($href, 'action=edit')
+            !$is_delete_or_trash
+            && (
+                str_contains($href, 'action=edit')
             || str_contains($text_plain, 'edit')
             || str_contains($text_plain, 'view')
             || str_contains($text_plain, 'preview')
+            )
         );
 
         if ($is_edit_or_view) {
@@ -231,6 +240,25 @@ add_filter('user_row_actions', function (array $actions, WP_User $user): array {
     return $actions;
 }, 1000, 2);
 
+add_filter('term_row_actions', function (array $actions, WP_Term $term): array {
+    if (meza_can_delete_taxonomy_terms(wp_get_current_user())) {
+        return $actions;
+    }
+
+    unset($actions['delete']);
+
+    foreach ($actions as $key => $action) {
+        $normalized_key = strtolower(trim((string) $key));
+        $normalized_action = strtolower(trim(wp_strip_all_tags((string) $action)));
+
+        if ($normalized_key === 'delete' || $normalized_action === 'delete') {
+            unset($actions[$key]);
+        }
+    }
+
+    return $actions;
+}, 1000, 2);
+
 add_action('current_screen', function ($screen): void {
     if (!($screen instanceof WP_Screen) || $screen->base !== 'edit') {
         return;
@@ -287,6 +315,40 @@ add_action('current_screen', function ($screen): void {
             }
 
             $actions[$key] = ($updated !== '') ? $updated : __('Duplicate');
+        }
+
+        return $actions;
+    }, 1000);
+}, 1000);
+
+add_action('current_screen', function ($screen): void {
+    if (
+        !($screen instanceof WP_Screen)
+        || $screen->base !== 'edit-tags'
+        || meza_can_delete_taxonomy_terms(wp_get_current_user())
+    ) {
+        return;
+    }
+
+    $screen_id = (string) ($screen->id ?? '');
+    if ($screen_id === '') {
+        return;
+    }
+
+    add_filter("bulk_actions-{$screen_id}", function ($actions) {
+        if (!is_array($actions)) {
+            return $actions;
+        }
+
+        unset($actions['delete']);
+
+        foreach ($actions as $key => $label) {
+            $normalized_key = strtolower(trim((string) $key));
+            $normalized_label = strtolower(trim(wp_strip_all_tags((string) $label)));
+
+            if ($normalized_key === 'delete' || $normalized_label === 'delete') {
+                unset($actions[$key]);
+            }
         }
 
         return $actions;

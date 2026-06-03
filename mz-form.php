@@ -2,9 +2,9 @@
 
 /**
  * Plugin Name: MZ Form (MU)
- * Description: AJAX form intake + admin/user emailer with DS-compatible defaults.
+ * Description: AJAX form intake + admin/user emailer with MZ-compatible defaults.
  * Author: Meza
- * Version: 1.1.6
+ * Version: 1.1.14
  */
 
 if (!defined('ABSPATH')) {
@@ -25,14 +25,14 @@ $mzf_require = static function (string $path, bool $required = true): bool {
 
 $mzf_core_ok = true;
 $mzf_core_ok = $mzf_require($mzf_base . '/slug-registry.php', true) && $mzf_core_ok;
+$mzf_core_ok = $mzf_require($mzf_base . '/acf-local.php', true) && $mzf_core_ok;
 $mzf_core_ok = $mzf_require($mzf_base . '/config.php', true) && $mzf_core_ok;
 $mzf_core_ok = $mzf_require($mzf_base . '/helpers.php', true) && $mzf_core_ok;
 $mzf_core_ok = $mzf_require($mzf_base . '/submissions-log.php', true) && $mzf_core_ok;
 $mzf_core_ok = $mzf_require($mzf_base . '/handlers/ajax.php', true) && $mzf_core_ok;
 $mzf_core_ok = $mzf_require($mzf_base . '/hooks.php', true) && $mzf_core_ok;
 $mzf_core_ok = $mzf_require($mzf_base . '/admin-ui.php', true) && $mzf_core_ok;
-$mzf_core_ok = $mzf_require(__DIR__ . '/mz-form-migration-tools.php', true) && $mzf_core_ok;
-$mzf_core_ok = $mzf_require(__DIR__ . '/mz-form-client-overrides.php', true) && $mzf_core_ok;
+$mzf_core_ok = $mzf_require($mzf_base . '/overrides/client.php', true) && $mzf_core_ok;
 
 if (!$mzf_core_ok) {
     error_log('MZF initialization aborted due to missing required files.');

@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Plugin Name: DS Security
+ * Plugin Name: MZ Security
  * Description: Site-wide security restrictions and content access policies.
- * Version: 1.1.0
+ * Version: 1.1.2
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -57,3 +57,27 @@ add_filter('comments_open', function () {
 add_filter('pings_open', function () {
     return false;
 }, 10, 2);
+add_filter('comments_array', function () {
+    return [];
+}, 20, 2);
+
+function meza_disable_comments_for_post_type(string $post_type): void
+{
+    $post_type = sanitize_key($post_type);
+    if ($post_type === '' || !post_type_exists($post_type)) {
+        return;
+    }
+
+    remove_post_type_support($post_type, 'comments');
+    remove_post_type_support($post_type, 'trackbacks');
+}
+
+add_action('registered_post_type', function ($post_type): void {
+    meza_disable_comments_for_post_type((string) $post_type);
+}, 1000, 1);
+
+add_action('init', function (): void {
+    foreach (get_post_types([], 'names') as $post_type) {
+        meza_disable_comments_for_post_type((string) $post_type);
+    }
+}, 1000);

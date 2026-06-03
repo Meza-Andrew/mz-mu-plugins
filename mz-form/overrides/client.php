@@ -76,7 +76,9 @@ add_filter('mzf_recipients', static function (array $to, array $data, $env): arr
 
     $form_slug = sanitize_key((string) ($data['FormSlug'] ?? ''));
     if ($form_slug === 'contact') {
-        $option_email = function_exists('get_field') ? sanitize_email((string) get_field('email', 'option')) : '';
+        $option_email = function_exists('meza_get_business_information_email')
+            ? sanitize_email(meza_get_business_information_email())
+            : (function_exists('get_field') ? sanitize_email((string) get_field('email', 'option')) : '');
         $interest_map = [
             'volunteer' => [$option_email],
             'sponsor' => [$option_email],

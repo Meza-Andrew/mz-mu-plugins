@@ -90,31 +90,43 @@ if (!function_exists('mzf_sync_marketing_contact')) {
 
         if ($provider === 'mailchimp') {
             if (function_exists('mz_mc_is_configured') && !mz_mc_is_configured()) {
-                return [
+                $result = [
                     'ok' => false,
                     'provider' => 'mailchimp',
                     'label' => 'Mailchimp',
                     'skipped' => true,
                     'error' => 'Mailchimp authentication is missing.',
                 ];
+                if (function_exists('meza_activity_log_record_integration_failure')) {
+                    meza_activity_log_record_integration_failure('mailchimp', (string) $result['error'], $data);
+                }
+                return $result;
             }
             if (!function_exists('mz_mc_upsert_contact')) {
-                return [
+                $result = [
                     'ok' => false,
                     'provider' => 'mailchimp',
                     'label' => 'Mailchimp',
                     'error' => 'Mailchimp provider is unavailable.',
                 ];
+                if (function_exists('meza_activity_log_record_integration_failure')) {
+                    meza_activity_log_record_integration_failure('mailchimp', (string) $result['error'], $data);
+                }
+                return $result;
             }
             $result = mz_mc_upsert_contact($data);
             if (is_wp_error($result)) {
                 error_log('Mailchimp sync failed: ' . $result->get_error_message());
-                return [
+                $failure = [
                     'ok' => false,
                     'provider' => 'mailchimp',
                     'label' => 'Mailchimp',
                     'error' => $result->get_error_message(),
                 ];
+                if (function_exists('meza_activity_log_record_integration_failure')) {
+                    meza_activity_log_record_integration_failure('mailchimp', (string) $failure['error'], $data);
+                }
+                return $failure;
             }
             return is_array($result)
                 ? $result
@@ -123,21 +135,29 @@ if (!function_exists('mzf_sync_marketing_contact')) {
 
         if ($provider === 'constant_contact') {
             if (function_exists('cc_is_configured') && !cc_is_configured()) {
-                return [
+                $result = [
                     'ok' => false,
                     'provider' => 'constant_contact',
                     'label' => 'Constant Contact',
                     'skipped' => true,
                     'error' => 'Constant Contact authentication is missing.',
                 ];
+                if (function_exists('meza_activity_log_record_integration_failure')) {
+                    meza_activity_log_record_integration_failure('constant_contact', (string) $result['error'], $data);
+                }
+                return $result;
             }
             if (!function_exists('mz_cc_add_contact')) {
-                return [
+                $result = [
                     'ok' => false,
                     'provider' => 'constant_contact',
                     'label' => 'Constant Contact',
                     'error' => 'Constant Contact provider is unavailable.',
                 ];
+                if (function_exists('meza_activity_log_record_integration_failure')) {
+                    meza_activity_log_record_integration_failure('constant_contact', (string) $result['error'], $data);
+                }
+                return $result;
             }
             $phone_value = '';
             foreach (['Phone', 'WorkPhone', 'Work phone', 'work_phone', 'phone', 'phone_number', 'PhoneNumber', 'phoneNumber', 'Work Phone', 'workPhone'] as $phone_key) {
@@ -166,12 +186,16 @@ if (!function_exists('mzf_sync_marketing_contact')) {
             ]);
             if (is_wp_error($result)) {
                 error_log('Constant Contact sync failed: ' . $result->get_error_message());
-                return [
+                $failure = [
                     'ok' => false,
                     'provider' => 'constant_contact',
                     'label' => 'Constant Contact',
                     'error' => $result->get_error_message(),
                 ];
+                if (function_exists('meza_activity_log_record_integration_failure')) {
+                    meza_activity_log_record_integration_failure('constant_contact', (string) $failure['error'], $data);
+                }
+                return $failure;
             }
             return is_array($result)
                 ? $result

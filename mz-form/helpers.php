@@ -6,6 +6,9 @@ if (!function_exists('ds_build_user_email')) {
         $page_id  = isset($form_data['PageId']) ? (int) $form_data['PageId'] : 0;
         $form_cfg = (function_exists('get_field') && $page_id) ? get_field('section_form', $page_id) : null;
         $form_cfg = is_array($form_cfg) ? $form_cfg : [];
+        $form_cfg = function_exists('mzf_normalize_temporal_config')
+            ? mzf_normalize_temporal_config($form_cfg, $page_id)
+            : $form_cfg;
         $site_domain = (string) wp_parse_url(home_url('/'), PHP_URL_HOST);
         $email_data = $form_data;
         if ($site_domain !== '') {
@@ -13,7 +16,7 @@ if (!function_exists('ds_build_user_email')) {
             $email_data['site_domain'] = $site_domain;
         }
 
-        $sig_name = trim((string) ($form_cfg['email_signature'] ?? 'The Distinct Sign Solutions Team'));
+        $sig_name = trim((string) ($form_cfg['email_signature'] ?? 'The Meza Team'));
         $subject  = ds_replace_tokens((string) ($form_cfg['email_subject'] ?? 'Thank you'), $email_data);
 
         $content  = ds_replace_tokens((string) ($form_cfg['email_content'] ?? ''), $email_data);
@@ -275,6 +278,39 @@ if (!function_exists('mzf_get_path')) {
     }
 }
 
+if (!function_exists('mzf_normalize_temporal_config')) {
+    function mzf_normalize_temporal_config($value, int $context_id = 0)
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $temporal_keys = ['before', 'base', 'after', 'season_after'];
+        $has_temporal_shape = false;
+
+        foreach ($temporal_keys as $key) {
+            if (array_key_exists($key, $value)) {
+                $has_temporal_shape = true;
+                break;
+            }
+        }
+
+        if ($has_temporal_shape && function_exists('meza_resolve_section_field_value')) {
+            $value = meza_resolve_section_field_value($value, $context_id);
+        }
+
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        foreach ($value as $key => $child) {
+            $value[$key] = mzf_normalize_temporal_config($child, $context_id);
+        }
+
+        return $value;
+    }
+}
+
 if (!function_exists('mzf_section_form_content')) {
     function mzf_section_form_content($section_form): array
     {
@@ -311,7 +347,9 @@ if (!function_exists('mzf_section_form_content')) {
                 return [];
             }
 
-            return (array) get_fields($post_id);
+            $fields = (array) get_fields($post_id);
+
+            return mzf_normalize_temporal_config($fields, $post_id);
         };
 
         $form_ref = $section_form['form'] ?? null;
@@ -465,7 +503,10 @@ if (!function_exists('mzf_build_footer_html')) {
         $domain = trim((string) $domain);
         $domain_href = $domain !== '' ? ('https://' . $domain) : '';
         $site_href = mzf_ensure_absolute_url($site_url);
-        $option_addr_text = function_exists('get_field') ? trim((string) get_field('address_text', 'option')) : '';
+        $business_address = function_exists('meza_get_business_information_address')
+            ? meza_get_business_information_address()
+            : ['raw' => null, 'text' => function_exists('get_field') ? trim((string) get_field('address_text', 'option')) : ''];
+        $option_addr_text = trim((string) ($business_address['text'] ?? ''));
         $address_uses_maps = ($maps_url !== '');
         $using_address_text_fallback = false;
         if ($site_href === '') {
@@ -475,7 +516,7 @@ if (!function_exists('mzf_build_footer_html')) {
         if ($site_name === '') {
             $site_name = $site_href !== '' ? preg_replace('#^https?://#i', '', $site_href) : 'Website';
         }
-        $option_addr_raw = function_exists('get_field') ? get_field('address', 'option') : null;
+        $option_addr_raw = $business_address['raw'] ?? null;
         if (is_array($option_addr_raw)) {
             $street = trim((string) (($option_addr_raw['street_number'] ?? '') . ' ' . ($option_addr_raw['street_name'] ?? '')));
             $suite = trim((string) (
@@ -1673,7 +1714,9 @@ if (!function_exists('ds_resolve_office_email')) {
 
         // 3) Fallbacks
         // If no Store value (or none matched), default to option email
-        $opt_email = sanitize_email((string) get_field('email', 'option'));
+        $opt_email = function_exists('meza_get_business_information_email')
+            ? sanitize_email(meza_get_business_information_email())
+            : sanitize_email((string) get_field('email', 'option'));
         if (is_email($opt_email)) return $opt_email;
 
         return ''; // last resort
