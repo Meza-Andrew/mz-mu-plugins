@@ -3313,6 +3313,14 @@ if (!function_exists('meza_get_shared_project_acf_options_page_parent_slug')) {
             return 'meza-site-settings';
         }
 
+        if ($menu_slug === 'conference') {
+            return 'conference';
+        }
+
+        if ($menu_slug === 'conference-schedule') {
+            return 'conference';
+        }
+
         return 'options-general.php';
     }
 }
@@ -3364,6 +3372,10 @@ if (!function_exists('meza_get_shared_project_acf_options_page_submenu_slug')) {
 
         if (in_array(meza_get_shared_project_acf_options_page_parent_slug($menu_slug), ['meza-business-settings', 'meza-site-settings', 'meza-integrations-settings'], true)) {
             return $menu_slug;
+        }
+
+        if ($menu_slug === 'conference') {
+            return 'conference';
         }
 
         return meza_get_shared_project_acf_options_page_menu_slug($menu_slug);
