@@ -2238,6 +2238,8 @@ add_action('admin_head', function (): void {
                 'field_meza_content_model_built_in_options_pages': [
                     'business-information',
                     'branding',
+                    'conference',
+                    'conference-schedule',
                     'content-model',
                     'crm',
                     'ecommerce'

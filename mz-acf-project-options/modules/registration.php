@@ -2126,6 +2126,8 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
                 'protected_built_in_identifiers' => [
                     'business-information',
                     'branding',
+                    'conference',
+                    'conference-schedule',
                     'content-model',
                     'crm',
                     'ecommerce',
