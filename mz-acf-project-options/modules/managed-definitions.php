@@ -90,22 +90,6 @@ if (!function_exists('meza_seed_default_organization_type_terms')) {
 
         $ensure_term('partner', 'Partner');
 
-        if (!meza_supports_sponsor_features()) {
-            return;
-        }
-
-        $sponsor_term_id = $ensure_term('sponsor', 'Sponsor');
-        if ($sponsor_term_id <= 0) {
-            return;
-        }
-
-        foreach ([
-            'business' => 'Business',
-            'organization' => 'Organization',
-            'performance' => 'Performance',
-        ] as $slug => $name) {
-            $ensure_term($slug, $name, $sponsor_term_id);
-        }
     }
 }
 add_action('init', 'meza_seed_default_organization_type_terms', 2);

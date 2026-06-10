@@ -3637,14 +3637,6 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
                     'name' => 'Partner',
                 ],
                 [
-                    'name' => 'Sponsor',
-                    'children' => [
-                        'Business',
-                        'Organization',
-                        'Performance',
-                    ],
-                ],
-                [
                     'name' => 'Venue',
                 ],
             ],
@@ -4512,11 +4504,62 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
         }
     }
 
+    function meza_auto_enable_list_events_default_field_group_for_event_selection(array $previous_enabled_post_types): void
+    {
+        if (
+            !function_exists('meza_get_content_model_object_management_current_enabled_identifiers')
+            || !function_exists('meza_get_content_model_field_group_management_definition_map')
+            || !function_exists('meza_clear_managed_acf_definition_deleted')
+            || !function_exists('meza_get_existing_editable_acf_field_group_id')
+            || !function_exists('meza_get_disabled_editable_acf_field_group_id')
+            || !function_exists('meza_enable_editable_acf_field_group_definition')
+            || !function_exists('meza_is_editable_acf_field_group_auto_disabled')
+            || !function_exists('meza_clear_editable_acf_field_group_auto_disabled')
+        ) {
+            return;
+        }
+
+        $previous_enabled_post_types = array_values(array_unique(array_map('sanitize_key', $previous_enabled_post_types)));
+        $current_enabled_post_types = array_values(array_unique(array_map(
+            'sanitize_key',
+            meza_get_content_model_object_management_current_enabled_identifiers('post_types')
+        )));
+
+        if (
+            in_array('event', $previous_enabled_post_types, true)
+            || !in_array('event', $current_enabled_post_types, true)
+        ) {
+            return;
+        }
+
+        $definition = meza_get_content_model_field_group_management_definition_map('defaults')['group_meza_list_events_section'] ?? [];
+        if (!is_array($definition) || $definition === []) {
+            return;
+        }
+
+        meza_clear_managed_acf_definition_deleted('field_groups', $definition);
+
+        if (!meza_is_editable_acf_field_group_auto_disabled($definition)) {
+            return;
+        }
+
+        if (meza_get_disabled_editable_acf_field_group_id($definition) > 0) {
+            meza_enable_editable_acf_field_group_definition($definition);
+            return;
+        }
+
+        if (meza_get_existing_editable_acf_field_group_id($definition) > 0) {
+            meza_clear_editable_acf_field_group_auto_disabled($definition);
+        }
+    }
+
     function meza_sync_content_model_object_management_after_save($post_id): void
     {
         if (!meza_is_content_structure_acf_submission() || !in_array($post_id, ['option', 'options'], true)) {
             return;
         }
+
+        $previous_enabled_post_types = meza_get_content_model_object_management_current_enabled_identifiers('post_types');
 
         foreach (meza_get_content_model_object_management_configs() as $kind => $config) {
             foreach ((array) ($config['buckets'] ?? []) as $bucket => $field_key) {
@@ -4548,6 +4591,7 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
         }
 
         meza_sync_content_model_object_management_dependent_taxonomy_selection();
+        meza_auto_enable_list_events_default_field_group_for_event_selection($previous_enabled_post_types);
     }
 
     function meza_reconcile_content_model_object_management_saved_selection(): void
