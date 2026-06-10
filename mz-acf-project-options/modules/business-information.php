@@ -2245,6 +2245,11 @@ add_action('admin_head', function (): void {
                     'ecommerce'
                 ]
             };
+            var hideWhenEmptyCustomFieldKeys = [
+                'field_meza_content_model_custom_field_groups',
+                'field_meza_content_model_custom_post_types',
+                'field_meza_content_model_custom_options_pages'
+            ];
             var taxonomyTermGroupMap = <?php echo wp_json_encode($taxonomy_term_group_map); ?>;
 
             function getField(fieldKey) {
@@ -2350,6 +2355,7 @@ add_action('admin_head', function (): void {
                     }
                 });
 
+                syncEmptyCustomRowVisibility();
                 syncIndexableSwitches();
                 mergeBuiltInBuckets();
                 layoutTieredTaxonomyTermFields();
@@ -2357,6 +2363,17 @@ add_action('admin_head', function (): void {
 
             function getCheckboxInputs(field) {
                 return field ? field.querySelectorAll('.acf-checkbox-list input[type="checkbox"][name^="acf["]') : [];
+            }
+
+            function syncEmptyCustomRowVisibility() {
+                hideWhenEmptyCustomFieldKeys.forEach(function (fieldKey) {
+                    var field = getField(fieldKey);
+                    if (!field) {
+                        return;
+                    }
+
+                    field.hidden = getCheckboxInputs(field).length === 0;
+                });
             }
 
             function getStoreInputMap(fieldKey) {
