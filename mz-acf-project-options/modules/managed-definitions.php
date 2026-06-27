@@ -4155,6 +4155,36 @@ add_filter('acf/load_fields', function (array $fields, $parent): array {
     }
 
     $mergeable_groups = meza_get_mergeable_db_acf_field_groups_for_local_group($parent);
+    $override_group = function_exists('meza_get_db_acf_field_group_override_for_local_group')
+        ? meza_get_db_acf_field_group_override_for_local_group($parent)
+        : null;
+
+    if (is_array($override_group)) {
+        $has_override_group = false;
+
+        foreach ($mergeable_groups as $mergeable_group) {
+            if (!is_array($mergeable_group)) {
+                continue;
+            }
+
+            if (
+                (int) ($mergeable_group['ID'] ?? 0) === (int) ($override_group['ID'] ?? 0)
+                || (
+                    !empty($mergeable_group['key'])
+                    && !empty($override_group['key'])
+                    && (string) $mergeable_group['key'] === (string) $override_group['key']
+                )
+            ) {
+                $has_override_group = true;
+                break;
+            }
+        }
+
+        if (!$has_override_group) {
+            $mergeable_groups[] = $override_group;
+        }
+    }
+
     if (empty($mergeable_groups) || !function_exists('acf_get_raw_fields') || !function_exists('acf_get_field')) {
         return $fields;
     }
@@ -4163,6 +4193,30 @@ add_filter('acf/load_fields', function (array $fields, $parent): array {
     foreach ($fields as $field) {
         if (is_array($field) && !empty($field['key'])) {
             $existing_keys[(string) $field['key']] = true;
+        }
+    }
+
+    if (function_exists('meza_merge_safe_acf_field_overrides')) {
+        foreach ($mergeable_groups as $mergeable_group) {
+            $mergeable_fields = isset($mergeable_group['fields']) && is_array($mergeable_group['fields'])
+                ? meza_index_acf_fields_by_key($mergeable_group['fields'])
+                : [];
+
+            foreach ($fields as $field_index => $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+
+                $field_key = (string) ($field['key'] ?? '');
+                if ($field_key === '' || !isset($mergeable_fields[$field_key])) {
+                    continue;
+                }
+
+                $fields[$field_index] = meza_merge_safe_acf_field_overrides(
+                    $field,
+                    $mergeable_fields[$field_key]
+                );
+            }
         }
     }
 

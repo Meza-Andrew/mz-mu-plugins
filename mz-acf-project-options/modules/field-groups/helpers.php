@@ -30,6 +30,237 @@ if (!function_exists('meza_index_acf_fields_by_key')) {
     }
 }
 
+if (!function_exists('meza_get_safe_acf_field_overrideable_properties')) {
+    function meza_get_safe_acf_field_overrideable_properties(): array
+    {
+        return [
+            'label',
+            'instructions',
+            'required',
+            'conditional_logic',
+            'wrapper',
+            'default_value',
+            'placeholder',
+            'maxlength',
+            'rows',
+            'ui',
+            'ui_on_text',
+            'ui_off_text',
+            'message',
+            'prepend',
+            'append',
+            'allow_null',
+            'multiple',
+            'min',
+            'max',
+            'step',
+            'readonly',
+            'disabled',
+            'layout',
+            'button_label',
+            'collapsed',
+            'filters',
+            'elements',
+            'allow_in_bindings',
+            'new_lines',
+            'toolbar',
+            'media_upload',
+            'delay',
+            'return_format',
+            'preview_size',
+            'library',
+            'mime_types',
+            'bidirectional',
+            'bidirectional_target',
+            'taxonomy',
+            'post_type',
+            'post_status',
+            'create_options',
+            'save_options',
+            'ajax',
+            'choices',
+            'first_day',
+            'display_format',
+            'instructions_placement',
+            'center_lat',
+            'center_lng',
+            'zoom',
+            'height',
+        ];
+    }
+}
+
+if (!function_exists('meza_get_safe_acf_layout_overrideable_properties')) {
+    function meza_get_safe_acf_layout_overrideable_properties(): array
+    {
+        return [
+            'label',
+            'display',
+            'min',
+            'max',
+        ];
+    }
+}
+
+if (!function_exists('meza_get_safe_acf_field_group_overrideable_properties')) {
+    function meza_get_safe_acf_field_group_overrideable_properties(): array
+    {
+        return [
+            'menu_order',
+            'position',
+            'style',
+            'label_placement',
+            'instruction_placement',
+            'hide_on_screen',
+            'description',
+            'active',
+            'show_in_rest',
+        ];
+    }
+}
+
+if (!function_exists('meza_apply_safe_acf_override_properties')) {
+    function meza_apply_safe_acf_override_properties(array $base, array $override, array $allowed_properties): array
+    {
+        foreach ($allowed_properties as $property) {
+            if (array_key_exists($property, $override)) {
+                $base[$property] = $override[$property];
+            }
+        }
+
+        return $base;
+    }
+}
+
+if (!function_exists('meza_merge_safe_acf_field_overrides')) {
+    function meza_merge_safe_acf_field_overrides(array $base_field, array $override_field): array
+    {
+        $base_field = meza_apply_safe_acf_override_properties(
+            $base_field,
+            $override_field,
+            meza_get_safe_acf_field_overrideable_properties()
+        );
+
+        if (isset($base_field['sub_fields']) && is_array($base_field['sub_fields'])) {
+            $override_sub_fields = isset($override_field['sub_fields']) && is_array($override_field['sub_fields'])
+                ? meza_index_acf_fields_by_key($override_field['sub_fields'])
+                : [];
+
+            foreach ($base_field['sub_fields'] as $sub_field_index => $sub_field) {
+                if (!is_array($sub_field)) {
+                    continue;
+                }
+
+                $sub_field_key = (string) ($sub_field['key'] ?? '');
+                if ($sub_field_key === '' || !isset($override_sub_fields[$sub_field_key])) {
+                    continue;
+                }
+
+                $base_field['sub_fields'][$sub_field_index] = meza_merge_safe_acf_field_overrides(
+                    $sub_field,
+                    $override_sub_fields[$sub_field_key]
+                );
+            }
+        }
+
+        if (isset($base_field['layouts']) && is_array($base_field['layouts'])) {
+            $override_layouts = [];
+            if (isset($override_field['layouts']) && is_array($override_field['layouts'])) {
+                foreach ($override_field['layouts'] as $override_layout) {
+                    if (!is_array($override_layout)) {
+                        continue;
+                    }
+
+                    $layout_key = (string) ($override_layout['key'] ?? '');
+                    if ($layout_key !== '') {
+                        $override_layouts[$layout_key] = $override_layout;
+                    }
+                }
+            }
+
+            foreach ($base_field['layouts'] as $layout_index => $layout) {
+                if (!is_array($layout)) {
+                    continue;
+                }
+
+                $layout_key = (string) ($layout['key'] ?? '');
+                if ($layout_key === '' || !isset($override_layouts[$layout_key])) {
+                    continue;
+                }
+
+                $merged_layout = meza_apply_safe_acf_override_properties(
+                    $layout,
+                    $override_layouts[$layout_key],
+                    meza_get_safe_acf_layout_overrideable_properties()
+                );
+
+                if (isset($merged_layout['sub_fields']) && is_array($merged_layout['sub_fields'])) {
+                    $override_layout_sub_fields = isset($override_layouts[$layout_key]['sub_fields']) && is_array($override_layouts[$layout_key]['sub_fields'])
+                        ? meza_index_acf_fields_by_key($override_layouts[$layout_key]['sub_fields'])
+                        : [];
+
+                    foreach ($merged_layout['sub_fields'] as $sub_field_index => $sub_field) {
+                        if (!is_array($sub_field)) {
+                            continue;
+                        }
+
+                        $sub_field_key = (string) ($sub_field['key'] ?? '');
+                        if ($sub_field_key === '' || !isset($override_layout_sub_fields[$sub_field_key])) {
+                            continue;
+                        }
+
+                        $merged_layout['sub_fields'][$sub_field_index] = meza_merge_safe_acf_field_overrides(
+                            $sub_field,
+                            $override_layout_sub_fields[$sub_field_key]
+                        );
+                    }
+                }
+
+                $base_field['layouts'][$layout_index] = $merged_layout;
+            }
+        }
+
+        return $base_field;
+    }
+}
+
+if (!function_exists('meza_merge_safe_acf_field_group_overrides')) {
+    function meza_merge_safe_acf_field_group_overrides(array $base_group, array $override_group): array
+    {
+        $base_group = meza_apply_safe_acf_override_properties(
+            $base_group,
+            $override_group,
+            meza_get_safe_acf_field_group_overrideable_properties()
+        );
+
+        if (!(isset($base_group['fields']) && is_array($base_group['fields']))) {
+            return $base_group;
+        }
+
+        $override_fields = isset($override_group['fields']) && is_array($override_group['fields'])
+            ? meza_index_acf_fields_by_key($override_group['fields'])
+            : [];
+
+        foreach ($base_group['fields'] as $field_index => $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+
+            $field_key = (string) ($field['key'] ?? '');
+            if ($field_key === '' || !isset($override_fields[$field_key])) {
+                continue;
+            }
+
+            $base_group['fields'][$field_index] = meza_merge_safe_acf_field_overrides(
+                $field,
+                $override_fields[$field_key]
+            );
+        }
+
+        return $base_group;
+    }
+}
+
 if (!function_exists('meza_preserve_acf_field_tree_identifiers')) {
     function meza_preserve_acf_field_tree_identifiers(array $field, ?array $existing_field = null, string $fallback_parent = ''): array
     {
@@ -1267,7 +1498,15 @@ if (!function_exists('meza_get_db_acf_field_group_override_for_local_group')) {
                 return ((int) ($b['ID'] ?? 0)) <=> ((int) ($a['ID'] ?? 0));
             });
 
-            return $matches[0] ?? null;
+            $match = $matches[0] ?? null;
+
+            if (!is_array($match)) {
+                return null;
+            }
+
+            return function_exists('meza_get_full_acf_field_group_for_matching')
+                ? meza_get_full_acf_field_group_for_matching($match)
+                : $match;
         }
 
         $matches = meza_get_mergeable_db_acf_field_groups_for_local_group($local_group);
@@ -1283,7 +1522,15 @@ if (!function_exists('meza_get_db_acf_field_group_override_for_local_group')) {
             return ((int) ($b['ID'] ?? 0)) <=> ((int) ($a['ID'] ?? 0));
         });
 
-        return $matches[0] ?? null;
+        $match = $matches[0] ?? null;
+
+        if (!is_array($match)) {
+            return null;
+        }
+
+        return function_exists('meza_get_full_acf_field_group_for_matching')
+            ? meza_get_full_acf_field_group_for_matching($match)
+            : $match;
     }
 }
 
@@ -1295,7 +1542,9 @@ if (!function_exists('meza_apply_db_acf_field_group_overrides_to_local_group')) 
             return $local_group;
         }
 
-        if (array_key_exists('menu_order', $override_group)) {
+        if (function_exists('meza_merge_safe_acf_field_group_overrides')) {
+            $local_group = meza_merge_safe_acf_field_group_overrides($local_group, $override_group);
+        } elseif (array_key_exists('menu_order', $override_group)) {
             $local_group['menu_order'] = (int) $override_group['menu_order'];
         }
 
