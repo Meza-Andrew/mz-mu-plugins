@@ -162,6 +162,35 @@
         ];
     }
 
+    function meza_get_standard_list_section_header_layout_field(string $key): array
+    {
+        return [
+            'key' => $key,
+            'label' => 'Header Layout',
+            'name' => 'header_layout',
+            'aria-label' => '',
+            'type' => 'select',
+            'instructions' => '',
+            'required' => 0,
+            'conditional_logic' => 0,
+            'wrapper' => meza_get_section_field_wrapper(),
+            'choices' => [
+                'stacked' => 'Stacked',
+                'split' => 'Split',
+            ],
+            'default_value' => 'stacked',
+            'return_format' => 'value',
+            'multiple' => 0,
+            'allow_null' => 0,
+            'allow_in_bindings' => 0,
+            'ui' => 0,
+            'ajax' => 0,
+            'placeholder' => '',
+            'create_options' => 0,
+            'save_options' => 0,
+        ];
+    }
+
     function meza_get_standard_section_header_field_names(string $section_field_name): array
     {
         $contracts = [
@@ -170,14 +199,14 @@
             'section_content' => ['headline', 'display', 'subhead', 'description', 'link'],
             'section_faqs' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
             'section_gallery' => ['headline', 'display', 'subhead', 'description', 'link'],
-            'section_list-reviews' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
-            'section_list-posts' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
-            'section_list-resources' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
-            'section_list-events' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
-            'section_list-services' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
-            'section_list-partners' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
-            'section_list-sponsors' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
-            'section_list-profiles' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_list-reviews' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
+            'section_list-posts' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
+            'section_list-resources' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
+            'section_list-events' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
+            'section_list-services' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
+            'section_list-partners' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
+            'section_list-sponsors' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
+            'section_list-profiles' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
             'section_list-locations' => ['headline', 'display', 'subhead', 'description', 'link'],
             'section_benefits' => ['headline', 'display', 'subhead', 'description', 'link'],
             'section_list-songs' => ['headline', 'display', 'subhead', 'description', 'link'],
@@ -225,6 +254,10 @@
                 $primary_link_key
             );
         }
+
+        $sub_fields[] = meza_get_standard_list_section_header_layout_field(
+            (string) ($config['header_layout_key'] ?? sprintf('%s_header_layout', (string) $config['section_key']))
+        );
 
         $sub_fields[] = meza_get_standard_list_section_text_field(
             (string) $config['id_key'],
