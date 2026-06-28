@@ -277,51 +277,6 @@
         ];
     }
 
-    function meza_get_list_section_headline_defaults_by_group_key(): array
-    {
-        $defaults = [];
-
-        foreach (meza_get_header_section_group_section_field_names() as $group_key => $_section_name) {
-            $group_key = sanitize_key((string) $group_key);
-            if ($group_key === '') {
-                continue;
-            }
-
-            $group_title = '';
-            switch ($group_key) {
-                case 'group_b2f9d7e8':
-                    $group_title = 'List Services Section';
-                    break;
-                case 'group_meza_list_reviews_section':
-                    $group_title = 'List Reviews Section';
-                    break;
-                case 'group_meza_list_events_section':
-                    $group_title = 'List Events Section';
-                    break;
-                case 'group_meza_list_posts_section':
-                    $group_title = 'List Posts Section';
-                    break;
-                case 'group_meza_list_resources_section':
-                    $group_title = 'List Resources Section';
-                    break;
-                case 'group_697feb01ec35f':
-                    $group_title = 'List FAQs Section';
-                    break;
-                case 'group_meza_contact_locations_section':
-                    $group_title = 'List Locations Section';
-                    break;
-            }
-
-            if ($group_title === '') {
-                continue;
-            }
-
-            $defaults[$group_key] = trim(preg_replace('/\s+Section$/', '', $group_title));
-        }
-
-        return $defaults;
-    }
-
     function meza_get_section_sub_field_stable_key(string $section_field_name, string $sub_field_name): string
     {
         return 'field_meza_' . str_replace('-', '_', sanitize_key($section_field_name)) . '_' . sanitize_key($sub_field_name);
@@ -749,8 +704,10 @@
         }
 
         $supports_event_context = meza_runtime_post_supports_event_context($post_id);
+        $supports_global_season_context = !is_admin()
+            && meza_section_field_name_supports_global_season_context($field_name);
         $supports_season_context = meza_runtime_post_supports_season_context($post_id)
-            || meza_section_field_name_supports_global_season_context($field_name);
+            || $supports_global_season_context;
         $sub_fields = isset($field['sub_fields']) && is_array($field['sub_fields']) ? $field['sub_fields'] : [];
 
         $sub_fields = meza_normalize_section_sub_fields(
@@ -2700,28 +2657,7 @@
             }
         }
 
-        $headline_defaults = meza_get_list_section_headline_defaults_by_group_key();
         $normalized_group_key = sanitize_key($group_key);
-        if ($normalized_group_key !== '' && array_key_exists($normalized_group_key, $headline_defaults) && array_key_exists('headline', $index_by_name)) {
-            $headline_index = (int) $index_by_name['headline'];
-            if (isset($sub_fields[$headline_index]) && is_array($sub_fields[$headline_index])) {
-                if (meza_is_event_context_group_field($sub_fields[$headline_index]) || meza_is_season_context_group_field($sub_fields[$headline_index])) {
-                    foreach ((array) ($sub_fields[$headline_index]['sub_fields'] ?? []) as $nested_index => $nested_sub_field) {
-                        if (!is_array($nested_sub_field)) {
-                            continue;
-                        }
-
-                        $nested_name = sanitize_key((string) ($nested_sub_field['name'] ?? ''));
-                        if (in_array($nested_name, ['before', 'base'], true)) {
-                            $sub_fields[$headline_index]['sub_fields'][$nested_index]['default_value'] = (string) $headline_defaults[$normalized_group_key];
-                        }
-                    }
-                } else {
-                    $sub_fields[$headline_index]['default_value'] = (string) $headline_defaults[$normalized_group_key];
-                }
-            }
-        }
-
         $order_prefix = array_values(array_unique(array_merge($target_names, ['image'])));
         if ($normalized_group_key === 'group_692cdbb4a0ff0') {
             $order_prefix = ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'icon', 'image', 'video', 'video_embed'];
@@ -2965,6 +2901,17 @@
 
     function meza_normalize_loaded_event_context_fields(array $fields, $parent): array
     {
+        $ensure_internal_names = static function (array $normalized_fields): array {
+            if (!function_exists('meza_ensure_acf_field_tree_has_internal_names')) {
+                return $normalized_fields;
+            }
+
+            return array_values(array_map(
+                static fn(array $field): array => meza_ensure_acf_field_tree_has_internal_names($field),
+                array_values(array_filter($normalized_fields, 'is_array'))
+            ));
+        };
+
         foreach ($fields as $index => $field) {
             if (!is_array($field)) {
                 continue;
@@ -3004,14 +2951,15 @@
             && !$has_season_context
             && !$is_builtin_event_group
         ) {
-            return $fields;
+            return $ensure_internal_names($fields);
         }
 
         if ($has_section_fields) {
             $normalized_group = meza_normalize_header_section_group($group);
-            return isset($normalized_group['fields']) && is_array($normalized_group['fields'])
+            $normalized_fields = isset($normalized_group['fields']) && is_array($normalized_group['fields'])
                 ? array_values($normalized_group['fields'])
                 : $fields;
+            return $ensure_internal_names($normalized_fields);
         }
 
         if ($is_builtin_event_group || $has_event_context || $supports_season_context || $has_season_context) {
@@ -3021,14 +2969,14 @@
                 $group_key
             );
 
-            return meza_normalize_season_context_child_fields(
+            return $ensure_internal_names(meza_normalize_season_context_child_fields(
                 $fields,
                 $supports_season_context,
                 $group_key
-            );
+            ));
         }
 
-        return $fields;
+        return $ensure_internal_names($fields);
     }
 
     function meza_normalize_event_context_child_fields(array $fields, bool $supports_event_context, string $group_key = ''): array
@@ -3385,22 +3333,40 @@
     {
         global $wpdb;
 
-        $version = '2026-05-16-section-text-default-reset-v2';
+        $version = '2026-06-28-section-text-default-reset-v3';
         $option_name = 'meza_section_text_default_reset_version';
         if ((string) get_option($option_name, '') === $version) {
             return;
         }
 
+        $request_method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if ($request_method !== 'GET') {
+            return;
+        }
+
         $legacy_defaults = [
             'section_hero_headline' => ['services'],
-            'section_list-services_headline' => ['services'],
+            'section_list-reviews_headline' => ['List Reviews'],
+            'section_list-reviews_id' => ['reviews'],
+            'section_list-services_headline' => ['services', 'List Services'],
+            'section_list-services_id' => ['services'],
             'section_list-reviews_subhead' => ['reviews'],
-            'section_list-locations_headline' => ['localities'],
-            'section_list-events_headline' => ['events'],
-            'section_list-posts_headline' => ['resources'],
-            'section_faqs_headline' => ['faqs'],
+            'section_list-locations_headline' => ['localities', 'List Locations'],
+            'section_list-locations_id' => ['localities'],
+            'section_list-events_headline' => ['events', 'List Events'],
+            'section_list-events_id' => ['events'],
+            'section_list-posts_headline' => ['resources', 'List Posts'],
+            'section_list-posts_id' => ['posts'],
+            'section_list-resources_headline' => ['List Resources'],
+            'section_list-resources_id' => ['resources'],
+            'section_list-partners_headline' => ['List Partners'],
+            'section_list-partners_id' => ['partners'],
+            'section_list-sponsors_headline' => ['List Sponsors'],
+            'section_list-sponsors_id' => ['sponsors'],
+            'section_faqs_headline' => ['faqs', 'List FAQs'],
             'section_faqs_subhead' => ['reviews'],
             'section_faqs_description' => ['posts'],
+            'section_faqs_id' => ['faqs'],
         ];
 
         foreach ($legacy_defaults as $meta_key => $values) {
@@ -3465,10 +3431,14 @@
             return $field;
         }
 
-        return meza_get_runtime_normalized_section_group_field(
+        $field = meza_get_runtime_normalized_section_group_field(
             $field,
             meza_get_event_context_request_post_id()
         );
+
+        return function_exists('meza_ensure_acf_field_tree_has_internal_names')
+            ? meza_ensure_acf_field_tree_has_internal_names($field)
+            : $field;
     }, 25);
     add_filter('acf/load_fields', 'meza_normalize_loaded_event_context_fields', 40, 2);
     add_filter('acf/format_value/type=group', 'meza_format_event_aware_section_field_value', 20, 3);

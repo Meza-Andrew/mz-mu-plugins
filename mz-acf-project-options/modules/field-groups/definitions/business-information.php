@@ -960,7 +960,7 @@
                             'class' => '',
                             'id' => '',
                         ],
-                        'default_value' => 'localities',
+                        'default_value' => 'List Locations',
                         'maxlength' => '',
                         'allow_in_bindings' => 0,
                         'placeholder' => '',
