@@ -766,6 +766,10 @@ if (!function_exists('meza_should_merge_acf_field_groups_for_current_screen')) {
             return false;
         }
 
+        if (function_exists('meza_is_acf_export_tools_screen') && meza_is_acf_export_tools_screen()) {
+            return false;
+        }
+
         $screen = get_current_screen();
         if (!$screen) {
             return false;
@@ -1432,6 +1436,10 @@ if (!function_exists('meza_register_acf_export_tool_local_definitions')) {
 if (!function_exists('meza_get_mergeable_db_acf_field_groups_for_local_group')) {
     function meza_get_mergeable_db_acf_field_groups_for_local_group(array $local_group): array
     {
+        if (function_exists('meza_is_acf_export_tools_screen') && meza_is_acf_export_tools_screen()) {
+            return [];
+        }
+
         static $groups_by_signature = null;
 
         $signature = meza_get_acf_field_group_merge_signature($local_group);
@@ -1469,6 +1477,10 @@ if (!function_exists('meza_get_mergeable_db_acf_field_groups_for_local_group')) 
 if (!function_exists('meza_get_db_acf_field_group_override_for_local_group')) {
     function meza_get_db_acf_field_group_override_for_local_group(array $local_group): ?array
     {
+        if (function_exists('meza_is_acf_export_tools_screen') && meza_is_acf_export_tools_screen()) {
+            return null;
+        }
+
         static $raw_groups = null;
         static $override_groups_by_source_key = null;
 
