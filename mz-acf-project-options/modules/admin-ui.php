@@ -562,6 +562,79 @@ add_action('admin_enqueue_scripts', static function (): void {
     }
 }, 20);
 
+add_action('admin_enqueue_scripts', static function (): void {
+    if (
+        !is_admin()
+        || !function_exists('get_current_screen')
+        || !function_exists('meza_is_segment_admin_screen')
+        || !meza_is_segment_admin_screen()
+    ) {
+        return;
+    }
+
+    $screen = get_current_screen();
+    if (!($screen instanceof WP_Screen) || !in_array((string) $screen->base, ['post', 'post-new'], true)) {
+        return;
+    }
+
+    $script = <<<'JS'
+(function(){
+    var ready = function(callback){
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', callback, { once: true });
+            return;
+        }
+        callback();
+    };
+
+    ready(function(){
+        var iconField = document.querySelector('.acf-field[data-name="icon"]');
+        var iconInput = iconField ? iconField.querySelector('input[type="text"]') : null;
+        var featuredImageBox = document.getElementById('postimagediv');
+        if (!iconField || !iconInput || !featuredImageBox) {
+            return;
+        }
+
+        var getThumbnailId = function(){
+            var input = featuredImageBox.querySelector('input#_thumbnail_id');
+            if (input && typeof input.value === 'string' && input.value !== '' && input.value !== '0') {
+                return input.value;
+            }
+
+            var deleteLink = featuredImageBox.querySelector('#remove-post-thumbnail, .remove-post-thumbnail');
+            if (deleteLink) {
+                return '1';
+            }
+
+            return '';
+        };
+
+        var updateVisibility = function(){
+            var hasIcon = iconInput.value.trim() !== '';
+            featuredImageBox.style.display = hasIcon ? 'none' : '';
+        };
+
+        iconInput.addEventListener('input', updateVisibility);
+        iconInput.addEventListener('change', updateVisibility);
+
+        var observer = new MutationObserver(updateVisibility);
+        observer.observe(featuredImageBox, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['value', 'href', 'src', 'style', 'class'],
+        });
+
+        updateVisibility();
+    });
+})();
+JS;
+
+    wp_register_script('meza-segment-icon-toggle', '', [], null, true);
+    wp_enqueue_script('meza-segment-icon-toggle');
+    wp_add_inline_script('meza-segment-icon-toggle', $script, 'after');
+}, 30);
+
 if (!function_exists('meza_is_business_information_options_screen')) {
     function meza_is_business_information_options_screen(): bool
     {

@@ -1984,6 +1984,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
                 'ai_description' => '',
             ],
             meza_get_list_events_section_field_group_definition(),
+            meza_get_list_segments_section_field_group_definition(),
             meza_get_list_partners_section_field_group_definition(),
             [
                 'key' => 'group_6901490e04b96',

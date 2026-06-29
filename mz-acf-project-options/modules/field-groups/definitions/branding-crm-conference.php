@@ -538,6 +538,82 @@
     {
         return [
             [
+                'key' => 'field_685e4be46b95a',
+                'label' => 'Featured',
+                'name' => 'featured',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => 'Enable this to include the segment in homepage segment lists.',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'message' => '',
+                'default_value' => 0,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
+                'ui' => 1,
+                'allow_in_bindings' => 0,
+            ],
+            [
+                'key' => 'field_685e4c216b95b',
+                'label' => 'Icon',
+                'name' => 'icon',
+                'aria-label' => '',
+                'type' => 'text',
+                'instructions' => 'Enter a Font Awesome class string like "fa-solid fa-handshake" or "fa-regular fa-lightbulb". Leave this empty to use the segment featured image as the custom icon instead.',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'default_value' => '',
+                'maxlength' => '',
+                'allow_in_bindings' => 0,
+                'placeholder' => 'fa-solid fa-handshake',
+                'prepend' => '',
+                'append' => '',
+            ],
+            [
+                'key' => 'field_685e4c626b95c',
+                'label' => 'Presented By',
+                'name' => 'presented_by',
+                'aria-label' => '',
+                'type' => 'relationship',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'post_type' => [
+                    'profile',
+                ],
+                'post_status' => [
+                    'publish',
+                ],
+                'taxonomy' => '',
+                'filters' => [
+                    'search',
+                ],
+                'return_format' => 'id',
+                'min' => '',
+                'max' => '',
+                'allow_in_bindings' => 0,
+                'elements' => [
+                    'featured_image',
+                ],
+                'bidirectional' => 0,
+                'bidirectional_target' => [],
+            ],
+            [
                 'key' => 'field_69f04ade6d1e4',
                 'label' => 'Speakers',
                 'name' => 'speakers',
@@ -611,4 +687,3 @@
             ],
         ];
     }
-

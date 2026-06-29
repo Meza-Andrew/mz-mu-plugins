@@ -191,6 +191,35 @@
         ];
     }
 
+    function meza_get_standard_list_section_link_placement_field(string $key): array
+    {
+        return [
+            'key' => $key,
+            'label' => 'Primary Link Placement',
+            'name' => 'link_placement',
+            'aria-label' => '',
+            'type' => 'select',
+            'instructions' => '',
+            'required' => 0,
+            'conditional_logic' => 0,
+            'wrapper' => meza_get_section_field_wrapper(),
+            'choices' => [
+                'header' => 'In Header',
+                'below_list' => 'Below List',
+            ],
+            'default_value' => 'header',
+            'return_format' => 'value',
+            'multiple' => 0,
+            'allow_null' => 0,
+            'allow_in_bindings' => 0,
+            'ui' => 0,
+            'ajax' => 0,
+            'placeholder' => '',
+            'create_options' => 0,
+            'save_options' => 0,
+        ];
+    }
+
     function meza_get_standard_section_header_field_names(string $section_field_name): array
     {
         $contracts = [
@@ -199,14 +228,15 @@
             'section_content' => ['headline', 'display', 'subhead', 'description', 'link'],
             'section_faqs' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
             'section_gallery' => ['headline', 'display', 'subhead', 'description', 'link'],
-            'section_list-reviews' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
-            'section_list-posts' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
-            'section_list-resources' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
-            'section_list-events' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
-            'section_list-services' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
-            'section_list-partners' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
-            'section_list-sponsors' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
-            'section_list-profiles' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout'],
+            'section_list-reviews' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],
+            'section_list-posts' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],
+            'section_list-resources' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],
+            'section_list-events' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],
+            'section_list-services' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],
+            'section_list-partners' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],
+            'section_list-sponsors' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],
+            'section_list-profiles' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],
+            'section_list-segments' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],
             'section_list-locations' => ['headline', 'display', 'subhead', 'description', 'link'],
             'section_benefits' => ['headline', 'display', 'subhead', 'description', 'link'],
             'section_list-songs' => ['headline', 'display', 'subhead', 'description', 'link'],
@@ -257,6 +287,10 @@
 
         $sub_fields[] = meza_get_standard_list_section_header_layout_field(
             (string) ($config['header_layout_key'] ?? sprintf('%s_header_layout', (string) $config['section_key']))
+        );
+
+        $sub_fields[] = meza_get_standard_list_section_link_placement_field(
+            (string) ($config['link_placement_key'] ?? sprintf('%s_link_placement', (string) $config['section_key']))
         );
 
         $sub_fields[] = meza_get_standard_list_section_text_field(
@@ -1306,6 +1340,32 @@
             'id_default' => 'events',
             'location' => meza_get_acf_location_rules_hidden_by_default(),
             'menu_order' => 25,
+        ]);
+    }
+
+    function meza_get_list_segments_section_field_group_definition(): array
+    {
+        return meza_get_standard_list_section_field_group_definition([
+            'group_key' => 'group_meza_list_segments_section',
+            'title' => 'List Segments Section',
+            'visibility_key' => 'field_meza_show_list_segments',
+            'visibility_name' => 'show_list-segments',
+            'section_key' => 'field_meza_section_list_segments',
+            'section_name' => 'section_list-segments',
+            'headline_key' => 'field_meza_list_segments_headline',
+            'headline_default' => 'List Segments',
+            'include_display' => true,
+            'display_key' => 'field_meza_list_segments_display',
+            'subhead_key' => 'field_meza_list_segments_subhead',
+            'include_description' => true,
+            'description_key' => 'field_meza_list_segments_description',
+            'link_key' => 'field_meza_list_segments_link',
+            'include_link_secondary' => true,
+            'link_secondary_key' => 'field_meza_list_segments_link_secondary',
+            'id_key' => 'field_meza_list_segments_id',
+            'id_default' => 'segments',
+            'location' => meza_get_acf_location_rules_hidden_by_default(),
+            'menu_order' => 5,
         ]);
     }
 

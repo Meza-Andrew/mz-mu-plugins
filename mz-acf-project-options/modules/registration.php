@@ -963,7 +963,7 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
             $mode = 'event';
         }
 
-        return '2026-05-17-shared-project-field-group-fields-v2-' . $mode;
+        return '2026-06-29-shared-project-field-group-fields-v4-' . $mode;
     }
 
     function meza_get_shared_project_field_group_fields_sync_option_name(): string
@@ -1185,7 +1185,7 @@ add_action('acf/init', 'meza_register_missing_events_options_local_field', 16);
 if (!function_exists('meza_sync_section_field_group_menu_order')) {
     function meza_get_section_field_group_menu_order_sync_version(): string
     {
-        return '2026-05-20-section-field-group-menu-order-v4';
+        return '2026-06-29-section-field-group-menu-order-v5';
     }
 
     function meza_get_section_field_group_menu_order_sync_option_name(): string
@@ -1199,6 +1199,7 @@ if (!function_exists('meza_sync_section_field_group_menu_order')) {
             'Hero Section' => 1,
             'List Services Section' => 3,
             'List Products Section' => 4,
+            'List Segments Section' => 5,
             'List Reviews Section' => 6,
             'Benefits Section' => 8,
             'List Donor Levels Section' => 10,
@@ -1310,6 +1311,7 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
     {
         return [
             'group_meza_content_model_field_groups',
+            'group_69f04ade6c91c',
         ];
     }
 
@@ -1500,6 +1502,7 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
             'list-donor-levels-section' => ['profile'],
             'list-donors-sponsors-section' => ['organization', 'profile'],
             'list-events-section' => ['event'],
+            'list-segments-section' => ['segment'],
             'list-partners-section' => ['organization'],
             'list-products-section' => ['product'],
             'list-profiles-section' => ['profile'],
