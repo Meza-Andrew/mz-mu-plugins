@@ -3,7 +3,7 @@
 /**
  * Plugin Name: MZ Admin
  * Description: Admin behavior, editorial workflow, and dashboard customization.
- * Version: 1.1.800
+ * Version: 1.1.802
  * Author: Meza LLC
  * Author URI: https://meza.design
  */
@@ -1437,34 +1437,34 @@ if (!function_exists('meza_get_segment_post_type_labels')) {
     function meza_get_segment_post_type_labels(): array
     {
         return [
-            'name' => __('Segments'),
-            'singular_name' => __('Segment'),
-            'menu_name' => __('Segments'),
-            'all_items' => __('All Segments'),
-            'edit_item' => __('Edit Segment'),
-            'view_item' => __('View Segment'),
-            'view_items' => __('View Segments'),
-            'add_new_item' => __('Add New Segment'),
-            'add_new' => __('Add New Segment'),
-            'new_item' => __('New Segment'),
-            'search_items' => __('Search Segments'),
-            'not_found' => __('No segments found'),
-            'not_found_in_trash' => __('No segments found in Trash'),
-            'archives' => __('Segment Archives'),
-            'attributes' => __('Segment Attributes'),
-            'insert_into_item' => __('Insert into segment'),
-            'uploaded_to_this_item' => __('Uploaded to this segment'),
-            'filter_items_list' => __('Filter segments list'),
-            'filter_by_date' => __('Filter segments by date'),
-            'items_list_navigation' => __('Segments list navigation'),
-            'items_list' => __('Segments list'),
-            'item_published' => __('Segment published.'),
-            'item_published_privately' => __('Segment published privately.'),
-            'item_reverted_to_draft' => __('Segment reverted to draft.'),
-            'item_scheduled' => __('Segment scheduled.'),
-            'item_updated' => __('Segment updated.'),
-            'item_link' => __('Segment Link'),
-            'item_link_description' => __('A link to a segment.'),
+            'name' => __('Conference Segments'),
+            'singular_name' => __('Conference Segment'),
+            'menu_name' => __('Conference Segments'),
+            'all_items' => __('All Conference Segments'),
+            'edit_item' => __('Edit Conference Segment'),
+            'view_item' => __('View Conference Segment'),
+            'view_items' => __('View Conference Segments'),
+            'add_new_item' => __('Add New Conference Segment'),
+            'add_new' => __('Add New Conference Segment'),
+            'new_item' => __('New Conference Segment'),
+            'search_items' => __('Search Conference Segments'),
+            'not_found' => __('No conference segments found'),
+            'not_found_in_trash' => __('No conference segments found in Trash'),
+            'archives' => __('Conference Segment Archives'),
+            'attributes' => __('Conference Segment Attributes'),
+            'insert_into_item' => __('Insert into conference segment'),
+            'uploaded_to_this_item' => __('Uploaded to this conference segment'),
+            'filter_items_list' => __('Filter conference segments list'),
+            'filter_by_date' => __('Filter conference segments by date'),
+            'items_list_navigation' => __('Conference segments list navigation'),
+            'items_list' => __('Conference segments list'),
+            'item_published' => __('Conference segment published.'),
+            'item_published_privately' => __('Conference segment published privately.'),
+            'item_reverted_to_draft' => __('Conference segment reverted to draft.'),
+            'item_scheduled' => __('Conference segment scheduled.'),
+            'item_updated' => __('Conference segment updated.'),
+            'item_link' => __('Conference Segment Link'),
+            'item_link_description' => __('A link to a conference segment.'),
         ];
     }
 }
@@ -1487,7 +1487,7 @@ if (!function_exists('meza_get_segment_post_type_args')) {
             'exclude_from_search' => true,
             'hierarchical' => false,
             'can_export' => true,
-            'menu_icon' => 'dashicons-admin-post',
+            'menu_icon' => 'dashicons-clock',
             'supports' => ['title', 'thumbnail', 'custom-fields', 'excerpt', 'page-attributes'],
             'rewrite' => false,
             'has_archive' => false,
