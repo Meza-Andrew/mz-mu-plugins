@@ -57,6 +57,54 @@ add_filter('acf/prepare_field', static function ($field) {
     return false;
 }, 20);
 
+if (!function_exists('meza_normalize_shared_acf_options_page_parent_slug')) {
+    function meza_normalize_shared_acf_options_page_parent_slug(string $parent_slug): string
+    {
+        $parent_slug = trim($parent_slug);
+        if ($parent_slug === '') {
+            return '';
+        }
+
+        $normalized_parent_slug = sanitize_key($parent_slug);
+
+        $shared_option_page_slugs = function_exists('meza_get_shared_project_acf_options_page_slugs')
+            ? meza_get_shared_project_acf_options_page_slugs()
+            : [];
+
+        if (
+            $shared_option_page_slugs !== []
+            && in_array($normalized_parent_slug, $shared_option_page_slugs, true)
+            && function_exists('meza_get_shared_project_acf_options_page_parent_slug')
+        ) {
+            return meza_get_shared_project_acf_options_page_parent_slug($normalized_parent_slug);
+        }
+
+        return $parent_slug;
+    }
+}
+
+if (!function_exists('meza_filter_settings_submenu_items')) {
+    function meza_filter_settings_submenu_items(array $items, array $reserved_slugs): array
+    {
+        $filtered = [];
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = (string) ($item[2] ?? '');
+            if ($slug === '' || in_array($slug, $reserved_slugs, true)) {
+                continue;
+            }
+
+            $filtered[$slug] = $item;
+        }
+
+        return array_values($filtered);
+    }
+}
+
 if (!function_exists('meza_get_business_information_branding_field_map')) {
     function meza_get_business_information_branding_field_map(): array
     {
@@ -762,6 +810,7 @@ if (!function_exists('meza_is_integrations_read_only_for_current_user')) {
 
 add_filter('acf/ui_options_page/registration_args', function (array $args, array $post): array {
     $menu_slug = (string) ($args['menu_slug'] ?? '');
+    $parent_slug = (string) ($args['parent_slug'] ?? '');
 
     if ($menu_slug === 'branding') {
         $args['page_title'] = meza_get_branding_page_title();
@@ -828,6 +877,10 @@ add_filter('acf/ui_options_page/registration_args', function (array $args, array
         return $args;
     }
 
+    if ($parent_slug !== '') {
+        $args['parent_slug'] = meza_normalize_shared_acf_options_page_parent_slug($parent_slug);
+    }
+
     return $args;
 }, 20, 2);
 
@@ -891,6 +944,8 @@ add_filter('acf/get_options_page', function ($page, $slug) {
         $page['menu_slug'] = 'conference-schedule';
         $page['capability'] = 'manage_options';
         $page['parent_slug'] = 'conference';
+    } elseif (!empty($page['parent_slug'])) {
+        $page['parent_slug'] = meza_normalize_shared_acf_options_page_parent_slug((string) $page['parent_slug']);
     }
 
     return $page;
@@ -921,6 +976,14 @@ add_filter('acf/get_options_pages', function ($pages) {
         $page['capability'] = meza_get_shared_project_acf_options_page_capability($current_slug);
         $pages[$current_slug] = $page;
         unset($pages[$legacy_slug]);
+    }
+
+    foreach ($pages as $slug => $page) {
+        if (!is_array($page) || empty($page['parent_slug'])) {
+            continue;
+        }
+
+        $pages[$slug]['parent_slug'] = meza_normalize_shared_acf_options_page_parent_slug((string) $page['parent_slug']);
     }
 
     return $pages;
@@ -1128,6 +1191,12 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             'ecommerce',
             'admin.php?page=ecommerce',
             'options-general.php?page=ecommerce',
+            'meza-business-settings',
+            'admin.php?page=meza-business-settings',
+            'meza-site-settings',
+            'admin.php?page=meza-site-settings',
+            'meza-integrations-settings',
+            'admin.php?page=meza-integrations-settings',
             'update-core.php',
             'site-health.php',
         ];
@@ -1155,6 +1224,15 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             ));
         }
 
+        $business_settings_custom_items = meza_filter_settings_submenu_items(
+            (array) ($submenu['meza-business-settings'] ?? []),
+            $matching_slugs
+        );
+        $site_settings_custom_items = meza_filter_settings_submenu_items(
+            (array) ($submenu['meza-site-settings'] ?? []),
+            $matching_slugs
+        );
+
         if (!$acf_options_available) {
             return;
         }
@@ -1163,6 +1241,7 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
             $submenu['meza-business-settings'] = array_values(array_filter([
                 $business_information_item,
                 $branding_item,
+                ...$business_settings_custom_items,
             ], 'is_array'));
         } else {
             unset($submenu['meza-business-settings']);
@@ -1173,6 +1252,7 @@ if (!function_exists('meza_normalize_branding_settings_submenu_item')) {
                 ...$site_management_items,
                 $content_structure_item,
                 $crm_item,
+                ...$site_settings_custom_items,
             ], 'is_array'));
         } else {
             unset($submenu['meza-site-settings']);
