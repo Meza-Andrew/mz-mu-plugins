@@ -334,6 +334,46 @@
         ];
     }
 
+    function meza_get_content_model_conference_feature_fields(): array
+    {
+        return [
+            [
+                'key' => 'field_meza_content_model_countdown_to_conference',
+                'label' => 'Show the final countdown to the conference?',
+                'name' => 'countdown_to_conference',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => meza_get_content_model_management_field_wrapper(),
+                'message' => '',
+                'default_value' => 1,
+                'allow_in_bindings' => 0,
+                'ui' => 1,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
+            ],
+            [
+                'key' => 'field_meza_content_model_countdown_to_promos',
+                'label' => 'Show the countdown sequence for promotional pricing?',
+                'name' => 'countdown_to_promos',
+                'aria-label' => '',
+                'type' => 'true_false',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => 0,
+                'wrapper' => meza_get_content_model_management_field_wrapper(),
+                'message' => '',
+                'default_value' => 0,
+                'allow_in_bindings' => 0,
+                'ui' => 1,
+                'ui_on_text' => '',
+                'ui_off_text' => '',
+            ],
+        ];
+    }
+
     function meza_get_events_fields(): array
     {
         return [

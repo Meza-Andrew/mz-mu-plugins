@@ -227,7 +227,7 @@
             'section_form' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
             'section_content' => ['headline', 'display', 'subhead', 'description', 'link'],
             'section_faqs' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
-            'section_gallery' => ['headline', 'display', 'subhead', 'description', 'link'],
+            'section_gallery' => ['headline', 'display', 'movement', 'subhead', 'description', 'link'],
             'section_list-reviews' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],
             'section_list-posts' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],
             'section_list-resources' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary', 'header_layout', 'link_placement'],

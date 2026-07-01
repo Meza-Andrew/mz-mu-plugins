@@ -415,6 +415,41 @@ add_filter('acf/prepare_field/key=field_meza_business_location_primary', static 
     return !empty($field['value']) ? $field : false;
 }, 20);
 
+foreach ([
+    'field_meza_content_model_countdown_to_conference',
+    'field_meza_content_model_countdown_to_promos',
+] as $field_key) {
+    add_filter('acf/prepare_field/key=' . $field_key, static function ($field) {
+        if (!is_admin()) {
+            return $field;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        if ($page !== 'content-model') {
+            return $field;
+        }
+
+        return function_exists('meza_is_conference_business_type') && meza_is_conference_business_type()
+            ? $field
+            : false;
+    }, 20);
+}
+
+add_filter('acf/prepare_field/key=field_meza_conference_countdown_promos', static function ($field) {
+    if (!is_admin()) {
+        return $field;
+    }
+
+    $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+    if ($page !== 'conference') {
+        return $field;
+    }
+
+    return function_exists('meza_is_conference_promo_countdown_enabled') && meza_is_conference_promo_countdown_enabled()
+        ? $field
+        : false;
+}, 20);
+
 foreach (meza_get_business_information_branding_field_map() as $field_name => $callbacks) {
     if (isset($callbacks['load']) && is_callable($callbacks['load'])) {
         add_filter("acf/load_value/name={$field_name}", static function ($value, $post_id, $field) use ($callbacks) {

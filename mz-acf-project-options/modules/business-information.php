@@ -3,7 +3,7 @@
 
 /**
  * Shared ACF option pages and field groups we want available on every project.
- * Version: 1.8.85
+ * Version: 1.8.87
  */
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) {
@@ -120,6 +120,53 @@ if (!function_exists('meza_get_business_information_toggle_value')) {
         }
 
         return meza_business_information_acf_truthy($default);
+    }
+}
+
+if (!function_exists('meza_get_content_model_feature_toggle_value')) {
+    function meza_get_content_model_feature_toggle_value(string $field_key, string $field_name, bool $default = false): bool
+    {
+        if (
+            is_admin()
+            && isset($_POST['acf'])
+            && is_array($_POST['acf'])
+            && array_key_exists($field_key, $_POST['acf'])
+        ) {
+            return meza_business_information_acf_truthy(wp_unslash($_POST['acf'][$field_key]));
+        }
+
+        if (function_exists('get_field') && $field_name !== '') {
+            foreach (['content-model', 'options_content-model'] as $post_id) {
+                $value = get_field($field_name, $post_id);
+                if ($value !== null) {
+                    return meza_business_information_acf_truthy($value);
+                }
+            }
+        }
+
+        return meza_business_information_acf_truthy(get_option('options_' . $field_name, $default ? '1' : '0'));
+    }
+}
+
+if (!function_exists('meza_is_conference_countdown_enabled')) {
+    function meza_is_conference_countdown_enabled(): bool
+    {
+        return meza_get_content_model_feature_toggle_value(
+            'field_meza_content_model_countdown_to_conference',
+            'countdown_to_conference',
+            true
+        );
+    }
+}
+
+if (!function_exists('meza_is_conference_promo_countdown_enabled')) {
+    function meza_is_conference_promo_countdown_enabled(): bool
+    {
+        return meza_get_content_model_feature_toggle_value(
+            'field_meza_content_model_countdown_to_promos',
+            'countdown_to_promos',
+            false
+        );
     }
 }
 
