@@ -1,5 +1,62 @@
 <?php
 
+if (!function_exists('meza_is_code_controlled_section_setting_field')) {
+    function meza_is_code_controlled_section_setting_field(array $field): bool
+    {
+        $target_names = [
+            'header_layout',
+            'link_placement',
+            'movement',
+        ];
+
+        $field_name = sanitize_key((string) ($field['name'] ?? ''));
+        if (!in_array($field_name, $target_names, true)) {
+            return false;
+        }
+
+        if (!function_exists('acf_get_field')) {
+            return false;
+        }
+
+        $ancestor = $field;
+        $visited = [];
+
+        for ($depth = 0; $depth < 8; $depth++) {
+            $parent = $ancestor['parent'] ?? '';
+            $parent = is_scalar($parent) ? (string) $parent : '';
+
+            if ($parent === '' || isset($visited[$parent])) {
+                break;
+            }
+
+            $visited[$parent] = true;
+            $ancestor = acf_get_field(ctype_digit($parent) ? (int) $parent : $parent);
+
+            if (!is_array($ancestor)) {
+                break;
+            }
+
+            $ancestor_name = sanitize_key((string) ($ancestor['name'] ?? ''));
+            if (
+                (string) ($ancestor['type'] ?? '') === 'group'
+                && str_starts_with($ancestor_name, 'section_')
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+add_filter('acf/prepare_field', static function ($field) {
+    if (!is_array($field) || !meza_is_code_controlled_section_setting_field($field)) {
+        return $field;
+    }
+
+    return false;
+}, 20);
+
 if (!function_exists('meza_get_business_information_branding_field_map')) {
     function meza_get_business_information_branding_field_map(): array
     {

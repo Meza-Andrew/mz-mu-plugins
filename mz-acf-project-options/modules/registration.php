@@ -821,7 +821,7 @@ if (!function_exists('meza_sync_section_group_sub_fields')) {
             $mode = 'event';
         }
 
-        return '2026-05-17-section-group-sub-fields-v8-' . $mode;
+        return '2026-07-01-section-group-sub-fields-v9-' . $mode;
     }
 
     function meza_get_section_group_sub_fields_sync_option_name(): string
@@ -963,7 +963,7 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
             $mode = 'event';
         }
 
-        return '2026-06-29-shared-project-field-group-fields-v4-' . $mode;
+        return '2026-07-01-shared-project-field-group-fields-v5-' . $mode;
     }
 
     function meza_get_shared_project_field_group_fields_sync_option_name(): string
