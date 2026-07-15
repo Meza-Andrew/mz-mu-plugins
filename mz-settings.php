@@ -5,7 +5,7 @@
  * Description: Core site settings, defaults, and bootstrap configuration.
  * Author: Meza LLC
  * Author URI: https://meza.design
- * Version: 1.8.46
+ * Version: 1.8.47
  */
 
 /** ================================
@@ -360,6 +360,10 @@ function meza_get_seeded_page_definition_identifier(array $definition): string
 /** Check whether a seeded page slug has been manually trashed or deleted. */
 function meza_is_seeded_page_manually_deleted(array $slugs): bool
 {
+    if (meza_should_rerun()) {
+        return false;
+    }
+
     $deleted_slugs = meza_normalize_deleted_seeded_pages(
         get_option(meza_get_deleted_seeded_pages_option_name(), [])
     );

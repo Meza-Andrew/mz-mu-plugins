@@ -1685,12 +1685,12 @@ add_action('admin_post_mzf_export_submissions_csv', function () {
         $entry = get_post($id);
         if (!($entry instanceof WP_Post)) continue;
 
-        $first_name = (string) get_post_meta($id, '_mzf_first_name', true);
-        $last_name = (string) get_post_meta($id, '_mzf_last_name', true);
-        $email = (string) get_post_meta($id, '_mzf_email', true);
-        $phone = (string) get_post_meta($id, '_mzf_phone', true);
+        $first_name = mzf_submission_text_value($id, ['FirstName', 'ContactFirstName'], '_mzf_first_name');
+        $last_name = mzf_submission_text_value($id, ['LastName', 'ContactLastName'], '_mzf_last_name');
+        $email = mzf_submission_text_value($id, ['Email', 'ContactEmail'], '_mzf_email');
+        $phone = mzf_submission_text_value($id, ['Phone', 'ContactPhone'], '_mzf_phone');
         $zip_code = mzf_submission_zip_code($id);
-        $page_id = (int) get_post_meta($id, '_mzf_page_id', true);
+        $page_id = mzf_submission_int_value($id, ['PageId'], '_mzf_page_id');
         $page_url = ($page_id > 0) ? (string) get_permalink($page_id) : '';
         $form_identifiers = mzf_submission_form_identifiers($id);
         $form_post_id = (int) ($form_identifiers['form_post_id'] ?? 0);
