@@ -9704,8 +9704,13 @@ add_action('added_post_meta', function (int $meta_id, int $post_id, string $meta
     meza_flush_search_visibility_count_cache_for_post($post_id);
 }, 20, 3);
 
-add_action('deleted_post_meta', function (array $meta_ids, int $post_id, string $meta_key): void {
-    if (!in_array($meta_key, ['_yoast_wpseo_meta-robots-noindex', '_yoast_wpseo_meta-robots-nofollow'], true)) {
+add_action('deleted_post_meta', function ($meta_ids, $post_id, $meta_key): void {
+    if (!is_string($meta_key) || !in_array($meta_key, ['_yoast_wpseo_meta-robots-noindex', '_yoast_wpseo_meta-robots-nofollow'], true)) {
+        return;
+    }
+
+    $post_id = is_numeric($post_id) ? (int) $post_id : 0;
+    if ($post_id <= 0) {
         return;
     }
 
