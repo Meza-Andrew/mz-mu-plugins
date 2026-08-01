@@ -915,6 +915,30 @@ if (!function_exists('meza_is_database_backed_acf_ui_object')) {
     }
 }
 
+if (!function_exists('meza_get_database_backed_built_in_acf_field_group_definition')) {
+    function meza_get_database_backed_built_in_acf_field_group_definition(array $field_group): ?array
+    {
+        if (
+            !function_exists('meza_get_builtin_acf_field_group_definition_for_candidate')
+            || !function_exists('meza_is_acf_field_group_override_record')
+        ) {
+            return null;
+        }
+
+        if (meza_is_acf_field_group_override_record($field_group)) {
+            return null;
+        }
+
+        if (!meza_is_database_backed_acf_ui_object($field_group)) {
+            return null;
+        }
+
+        $definition = meza_get_builtin_acf_field_group_definition_for_candidate($field_group);
+
+        return is_array($definition) ? $definition : null;
+    }
+}
+
 if (!function_exists('meza_get_database_acf_post_type_definition_by_slug')) {
     function meza_get_database_acf_post_type_definition_by_slug(string $post_type_slug, array $exclude_definition = []): ?array
     {
@@ -1053,6 +1077,17 @@ if (!function_exists('meza_track_managed_acf_definition_event')) {
             return;
         }
 
+        if (
+            $kind === 'field_groups'
+            && function_exists('meza_get_database_backed_built_in_acf_field_group_definition')
+        ) {
+            $built_in_definition = meza_get_database_backed_built_in_acf_field_group_definition($candidate);
+            if (is_array($built_in_definition)) {
+                meza_clear_managed_acf_definition_deleted('field_groups', $built_in_definition);
+                return;
+            }
+        }
+
         $definition = meza_get_managed_acf_definition_match($kind, $candidate);
         if (!is_array($definition)) {
             return;
@@ -1131,6 +1166,20 @@ if (!function_exists('meza_get_managed_acf_post_deletion_match')) {
             return null;
         }
 
+        if (
+            $kind === 'field_groups'
+            && function_exists('meza_get_database_backed_built_in_acf_field_group_definition')
+        ) {
+            $built_in_definition = meza_get_database_backed_built_in_acf_field_group_definition($candidate);
+            if (is_array($built_in_definition)) {
+                return [
+                    'kind' => 'field_groups',
+                    'definition' => $built_in_definition,
+                    'ignore_delete' => true,
+                ];
+            }
+        }
+
         $definition = meza_get_managed_acf_definition_match($kind, $candidate);
         if (!is_array($definition)) {
             return null;
@@ -1151,6 +1200,11 @@ if (!function_exists('meza_track_managed_acf_post_deletion')) {
             return;
         }
 
+        if (!empty($match['ignore_delete'])) {
+            meza_clear_managed_acf_definition_deleted((string) $match['kind'], $match['definition']);
+            return;
+        }
+
         meza_mark_managed_acf_definition_deleted((string) $match['kind'], $match['definition']);
     }
 }
@@ -1168,6 +1222,43 @@ if (!function_exists('meza_track_managed_acf_post_restoration')) {
 }
 
 if (!function_exists('meza_sync_acf_field_group_override_record')) {
+    function meza_resolve_acf_field_group_sync_target_id(array $field_group): int
+    {
+        $field_group_id = (int) ($field_group['ID'] ?? $field_group['id'] ?? 0);
+        if ($field_group_id > 0) {
+            return $field_group_id;
+        }
+
+        if (!function_exists('acf_get_raw_field_groups')) {
+            return 0;
+        }
+
+        $target_key = sanitize_key((string) ($field_group['key'] ?? ''));
+        $target_title = trim((string) ($field_group['title'] ?? ''));
+
+        $matches = array_values(array_filter((array) acf_get_raw_field_groups(), static function ($raw_group) use ($target_key, $target_title): bool {
+            if (!is_array($raw_group)) {
+                return false;
+            }
+
+            if ($target_key !== '' && sanitize_key((string) ($raw_group['key'] ?? '')) === $target_key) {
+                return true;
+            }
+
+            return $target_title !== '' && trim((string) ($raw_group['title'] ?? '')) === $target_title;
+        }));
+
+        if ($matches === []) {
+            return 0;
+        }
+
+        usort($matches, static function (array $left, array $right): int {
+            return ((int) ($right['ID'] ?? 0)) <=> ((int) ($left['ID'] ?? 0));
+        });
+
+        return (int) ($matches[0]['ID'] ?? 0);
+    }
+
     function meza_sync_acf_field_group_override_record(int $post_id): void
     {
         if (
@@ -1241,7 +1332,9 @@ add_action('before_delete_post', 'meza_track_managed_acf_post_deletion', 5);
 add_action('untrashed_post', 'meza_track_managed_acf_post_restoration', 5);
 add_action('save_post_acf-field-group', 'meza_maybe_sync_acf_field_group_override_record', 20, 3);
 add_action('acf/update_field_group', static function (array $field_group): void {
-    $field_group_id = (int) ($field_group['ID'] ?? 0);
+    $field_group_id = function_exists('meza_resolve_acf_field_group_sync_target_id')
+        ? meza_resolve_acf_field_group_sync_target_id($field_group)
+        : (int) ($field_group['ID'] ?? 0);
     if ($field_group_id <= 0 || !function_exists('meza_sync_acf_field_group_override_record')) {
         return;
     }
@@ -1249,7 +1342,9 @@ add_action('acf/update_field_group', static function (array $field_group): void 
     meza_sync_acf_field_group_override_record($field_group_id);
 }, 20);
 add_action('acf/import_field_group', static function (array $field_group): void {
-    $field_group_id = (int) ($field_group['ID'] ?? 0);
+    $field_group_id = function_exists('meza_resolve_acf_field_group_sync_target_id')
+        ? meza_resolve_acf_field_group_sync_target_id($field_group)
+        : (int) ($field_group['ID'] ?? 0);
     if ($field_group_id <= 0 || !function_exists('meza_sync_acf_field_group_override_record')) {
         return;
     }
