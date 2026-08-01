@@ -2078,6 +2078,14 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
 
 add_action('acf/init', 'meza_cleanup_legacy_content_model_field_group_selection_options', 24);
 
+add_action('init', static function (): void {
+    if (!post_type_exists('profile')) {
+        return;
+    }
+
+    add_post_type_support('profile', 'editor');
+}, 20);
+
 add_filter('acf/load_field/key=field_meza_content_model_custom_field_groups', static function ($field) {
     return is_array($field)
         ? meza_prepare_content_model_field_group_management_field($field, 'custom')
