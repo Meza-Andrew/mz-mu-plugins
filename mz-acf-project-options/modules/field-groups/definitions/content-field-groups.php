@@ -849,6 +849,7 @@ JSON, true);
                         'website' => 'Website',
                         'social' => 'Social Media',
                         'other' => 'Other',
+                        'no_link' => 'I don\'t have a link',
                     ],
                     'default_value' => false,
                     'return_format' => 'value',
@@ -870,7 +871,15 @@ JSON, true);
                     'type' => 'url',
                     'instructions' => '',
                     'required' => 1,
-                    'conditional_logic' => 0,
+                    'conditional_logic' => [
+                        [
+                            [
+                                'field' => 'field_6a6e2e2df1a86',
+                                'operator' => '!=',
+                                'value' => 'no_link',
+                            ],
+                        ],
+                    ],
                     'wrapper' => [
                         'width' => '',
                         'class' => '',
@@ -958,6 +967,7 @@ JSON, true);
                                 'website' => 'Website',
                                 'social' => 'Social Media',
                                 'other' => 'Other',
+                                'no_link' => 'I don\'t have a link',
                             ],
                             'default_value' => false,
                             'return_format' => '',
@@ -979,7 +989,15 @@ JSON, true);
                             'type' => 'url',
                             'instructions' => '',
                             'required' => 1,
-                            'conditional_logic' => 0,
+                            'conditional_logic' => [
+                                [
+                                    [
+                                        'field' => 'field_6a6e2da8f1a83',
+                                        'operator' => '!=',
+                                        'value' => 'no_link',
+                                    ],
+                                ],
+                            ],
                             'wrapper' => [
                                 'width' => '',
                                 'class' => '',
