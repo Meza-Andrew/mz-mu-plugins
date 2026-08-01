@@ -2760,6 +2760,32 @@ function meza_get_profile_primary_link_url(int $post_id): string
     return '';
 }
 
+function meza_get_links_repeater_primary_url(int $post_id): string
+{
+    if ($post_id <= 0) return '';
+
+    if (function_exists('get_field')) {
+        $links = get_field('links', $post_id);
+        if (is_array($links)) {
+            foreach ($links as $link_row) {
+                if (!is_array($link_row)) continue;
+
+                $url = trim((string) ($link_row['url'] ?? ''));
+                if ($url !== '') {
+                    return $url;
+                }
+            }
+        }
+    }
+
+    $url = trim((string) get_post_meta($post_id, 'links_0_url', true));
+    if ($url !== '') {
+        return $url;
+    }
+
+    return '';
+}
+
 function meza_get_post_link_field_url(int $post_id, array $field_keys): string
 {
     if ($post_id <= 0) return '';
@@ -7167,6 +7193,9 @@ function meza_render_posts_list_column(string $column, int $post_id): void
     }
     if ($column === 'mz_organization_url') {
         $url = meza_get_post_link_field_url((int) $post_id, ['link', 'url']);
+        if ($url === '') {
+            $url = meza_get_links_repeater_primary_url((int) $post_id);
+        }
 
         if ($url === '') {
             echo '&mdash;';

@@ -2084,6 +2084,14 @@ add_filter('acf/load_field/key=field_meza_content_model_custom_field_groups', st
         : $field;
 });
 
+add_action('init', static function (): void {
+    if (!post_type_exists('profile')) {
+        return;
+    }
+
+    add_post_type_support('profile', 'editor');
+}, 20);
+
 add_filter('acf/load_field/key=field_meza_content_model_default_field_groups', static function ($field) {
     return is_array($field)
         ? meza_prepare_content_model_field_group_management_field($field, 'defaults')
