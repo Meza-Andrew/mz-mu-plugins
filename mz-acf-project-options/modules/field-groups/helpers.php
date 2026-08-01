@@ -621,6 +621,33 @@ if (!function_exists('meza_get_acf_field_group_merge_signature')) {
         return meza_get_acf_field_group_fields_signature($candidate);
     }
 
+    function meza_normalize_acf_field_group_for_export_comparison(array $field_group): array
+    {
+        if (function_exists('meza_prepare_acf_local_field_group_for_export')) {
+            $field_group = meza_prepare_acf_local_field_group_for_export($field_group);
+        }
+
+        if (function_exists('acf_prepare_field_group_for_export')) {
+            $field_group = acf_prepare_field_group_for_export($field_group);
+        }
+
+        foreach (['modified', 'modified_gmt', 'local_file', 'private', 'supports', 'labels'] as $property) {
+            if (array_key_exists($property, $field_group)) {
+                unset($field_group[$property]);
+            }
+        }
+
+        return meza_sort_acf_signature_value($field_group);
+    }
+
+    function meza_acf_field_group_matches_export_definition(array $candidate, array $definition): bool
+    {
+        $normalized_candidate = meza_normalize_acf_field_group_for_export_comparison($candidate);
+        $normalized_definition = meza_normalize_acf_field_group_for_export_comparison($definition);
+
+        return wp_json_encode($normalized_candidate) === wp_json_encode($normalized_definition);
+    }
+
     function meza_get_acf_field_group_merge_signature(array $field_group): string
     {
         $title = trim((string) ($field_group['title'] ?? ''));
@@ -1006,6 +1033,136 @@ if (!function_exists('meza_get_acf_export_tool_choice_map')) {
 }
 
 if (!function_exists('meza_get_acf_export_tool_grouped_choice_maps')) {
+    function meza_get_raw_db_acf_field_group_override_for_source_key(string $source_key): ?array
+    {
+        $source_key = sanitize_key($source_key);
+        if ($source_key === '' || !function_exists('acf_get_raw_field_groups')) {
+            return null;
+        }
+
+        static $override_groups_by_source_key = null;
+
+        if ($override_groups_by_source_key === null) {
+            $override_groups_by_source_key = [];
+
+            foreach ((array) acf_get_raw_field_groups() as $raw_group) {
+                if (!is_array($raw_group)) {
+                    continue;
+                }
+
+                $raw_group_id = (int) ($raw_group['ID'] ?? 0);
+                $raw_group_source_key = $raw_group_id > 0
+                    ? meza_get_acf_field_group_override_source_key($raw_group)
+                    : '';
+
+                if ($raw_group_source_key === '') {
+                    continue;
+                }
+
+                $override_groups_by_source_key[$raw_group_source_key][] = $raw_group;
+            }
+
+            foreach ($override_groups_by_source_key as &$matches) {
+                usort($matches, static function (array $left, array $right): int {
+                    return ((int) ($right['ID'] ?? 0)) <=> ((int) ($left['ID'] ?? 0));
+                });
+            }
+            unset($matches);
+        }
+
+        return $override_groups_by_source_key[$source_key][0] ?? null;
+    }
+
+    function meza_get_raw_db_acf_field_group_for_export(int $post_id): ?array
+    {
+        if (
+            $post_id <= 0
+            || !function_exists('acf_get_raw_field_group')
+            || !function_exists('acf_validate_field_group')
+        ) {
+            return null;
+        }
+
+        if (!function_exists('meza_with_acf_export_local_disabled')) {
+            $field_group = acf_get_raw_field_group($post_id);
+            if (!is_array($field_group)) {
+                return null;
+            }
+
+            return acf_validate_field_group($field_group);
+        }
+
+        return meza_with_acf_export_local_disabled(static function () use ($post_id): ?array {
+            if (function_exists('meza_reset_acf_export_runtime_stores')) {
+                meza_reset_acf_export_runtime_stores();
+            }
+
+            $field_group = acf_get_raw_field_group($post_id);
+            if (!is_array($field_group)) {
+                if (function_exists('meza_reset_acf_export_runtime_stores')) {
+                    meza_reset_acf_export_runtime_stores();
+                }
+
+                return null;
+            }
+
+            $field_group = acf_validate_field_group($field_group);
+
+            if (function_exists('acf_get_fields')) {
+                $fields = acf_get_fields($field_group);
+                if (is_array($fields)) {
+                    $field_group['fields'] = $fields;
+                }
+            }
+
+            if (function_exists('meza_reset_acf_export_runtime_stores')) {
+                meza_reset_acf_export_runtime_stores();
+            }
+
+            return $field_group;
+        });
+    }
+
+    function meza_get_acf_export_tool_field_group_candidate(array $field_group): array
+    {
+        $post_id = (int) ($field_group['ID'] ?? 0);
+        if ($post_id > 0) {
+            $db_field_group = meza_get_raw_db_acf_field_group_for_export($post_id);
+            if (is_array($db_field_group)) {
+                return $db_field_group;
+            }
+        }
+
+        $field_group_key = sanitize_key((string) ($field_group['key'] ?? ''));
+        if ($field_group_key !== '') {
+            $override_group = meza_get_raw_db_acf_field_group_override_for_source_key($field_group_key);
+            $override_group_id = (int) ($override_group['ID'] ?? 0);
+
+            if ($override_group_id > 0) {
+                $db_field_group = meza_get_raw_db_acf_field_group_for_export($override_group_id);
+                if (is_array($db_field_group)) {
+                    return $db_field_group;
+                }
+            }
+        }
+
+        return meza_get_full_acf_field_group_for_matching($field_group);
+    }
+
+    function meza_get_acf_export_tool_field_group_for_key(string $key): array
+    {
+        if ($key === '' || !function_exists('acf_get_internal_post_type')) {
+            return [];
+        }
+
+        $field_group = acf_get_internal_post_type($key, 'acf-field-group');
+        if (!is_array($field_group)) {
+            return [];
+        }
+
+        return meza_get_acf_export_tool_field_group_candidate($field_group);
+    }
+
     function meza_get_acf_export_default_editable_acf_field_group_definitions(): array
     {
         $definitions = meza_get_default_editable_acf_field_group_definitions();
@@ -1072,14 +1229,16 @@ if (!function_exists('meza_get_acf_export_tool_grouped_choice_maps')) {
                 $post = meza_get_full_acf_field_group_for_matching($post);
                 if (meza_is_acf_field_group_override_record($post)) {
                     $override_source_key = meza_get_acf_field_group_override_source_key($post);
-                    if (
-                        $override_source_key !== ''
-                        && is_array(meza_get_acf_field_group_definition_by_key(
+                    if ($override_source_key !== '') {
+                        $built_in_definition = meza_get_acf_field_group_definition_by_key(
                             meza_get_builtin_acf_field_group_definitions(),
                             $override_source_key
-                        ))
-                    ) {
-                        return 'built_in';
+                        );
+                        if (is_array($built_in_definition)) {
+                            return meza_acf_field_group_matches_export_definition($post, $built_in_definition)
+                                ? 'built_in'
+                                : 'custom';
+                        }
                     }
 
                     if (
@@ -1106,17 +1265,7 @@ if (!function_exists('meza_get_acf_export_tool_grouped_choice_maps')) {
                         return 'built_in';
                     }
 
-                    $definition_title = trim((string) ($built_in_definition['title'] ?? ''));
-                    $definition_fields_signature = meza_get_acf_field_group_fields_signature($built_in_definition);
-
-                    if (
-                        $post_title !== ''
-                        && $definition_title !== ''
-                        && $post_title === $definition_title
-                        && $post_fields_signature !== ''
-                        && $definition_fields_signature !== ''
-                        && $post_fields_signature === $definition_fields_signature
-                    ) {
+                    if (meza_acf_field_group_matches_export_definition($post, $built_in_definition)) {
                         return 'built_in';
                     }
                 }
@@ -1270,6 +1419,14 @@ if (!function_exists('meza_get_acf_export_tool_grouped_choice_maps')) {
                 continue;
             }
 
+            if ($post_type === 'acf-field-group') {
+                $post = meza_get_acf_export_tool_field_group_candidate($post);
+                $title = trim((string) ($post['title'] ?? ''));
+                if ($title === '') {
+                    continue;
+                }
+            }
+
             $group = meza_get_acf_export_tool_group_for_post($post_type, $post);
             if (!isset($groups[$group])) {
                 $group = 'custom';
@@ -1305,6 +1462,35 @@ if (!function_exists('meza_register_acf_export_tool_local_definitions')) {
         } finally {
             if (!$local_was_enabled && function_exists('acf_disable_local')) {
                 acf_disable_local();
+            }
+        }
+    }
+
+    function meza_with_acf_export_local_disabled(callable $callback)
+    {
+        $local_was_enabled = function_exists('acf_is_filter_enabled')
+            ? (bool) acf_is_filter_enabled('local')
+            : true;
+
+        if ($local_was_enabled && function_exists('acf_disable_local')) {
+            acf_disable_local();
+        }
+
+        try {
+            return $callback();
+        } finally {
+            if ($local_was_enabled && function_exists('acf_enable_local')) {
+                acf_enable_local();
+            }
+        }
+    }
+
+    function meza_reset_acf_export_runtime_stores(): void
+    {
+        foreach (['fields', 'field-groups'] as $store_name) {
+            $store = function_exists('acf_get_store') ? acf_get_store($store_name) : null;
+            if ($store) {
+                $store->reset();
             }
         }
     }

@@ -6652,7 +6652,44 @@ add_action('acf/include_admin_tools', function (): void {
 
                 return meza_with_acf_export_local_enabled(function () {
                     meza_register_acf_export_tool_local_definitions();
-                    return parent::get_selected();
+
+                    $selected = $this->get_selected_keys();
+                    $json = [];
+
+                    if (!$selected) {
+                        return false;
+                    }
+
+                    foreach ($selected as $key) {
+                        $post_type = acf_determine_internal_post_type($key);
+                        if (!$post_type) {
+                            continue;
+                        }
+
+                        if (
+                            $post_type === 'acf-field-group'
+                            && function_exists('meza_get_acf_export_tool_field_group_for_key')
+                        ) {
+                            $post = meza_get_acf_export_tool_field_group_for_key((string) $key);
+                        } else {
+                            $post = acf_get_internal_post_type($key, $post_type);
+                        }
+
+                        if (!is_array($post) || $post === []) {
+                            continue;
+                        }
+
+                        if (
+                            $post_type === 'acf-field-group'
+                            && (!isset($post['fields']) || !is_array($post['fields']))
+                        ) {
+                            $post['fields'] = acf_get_fields($post);
+                        }
+
+                        $json[] = acf_prepare_internal_post_type_for_export($post, $post_type);
+                    }
+
+                    return $json !== [] ? $json : false;
                 });
             }
 
