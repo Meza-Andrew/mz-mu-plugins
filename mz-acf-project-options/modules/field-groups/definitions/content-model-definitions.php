@@ -140,7 +140,7 @@
                 'item_link' => 'Review Link',
                 'item_link_description' => 'A link to a review.',
             ],
-            'description' => 'Manage testimonial and review content used across the website to support trust, proof, and related marketing sections.',
+            'description' => 'Manage review content used across the website to support trust, proof, and related marketing sections.',
             'public' => true,
             'hierarchical' => false,
             'exclude_from_search' => true,
