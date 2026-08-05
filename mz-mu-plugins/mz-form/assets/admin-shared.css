@@ -1,0 +1,299 @@
+/* Shared admin UI styles for MZ MU plugins */
+
+/* Submissions layout helpers */
+.mzf-submissions-tabs {
+    margin-bottom: 10px;
+}
+
+.mzf-table-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 6px 0 8px;
+    padding: 0;
+}
+
+.mzf-table-toolbar .actions {
+    float: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mzf-table-toolbar .mzf-actions-right {
+    justify-content: flex-end;
+    margin-left: auto;
+}
+
+.mzf-table-toolbar .mzf-actions-right .mzf-tablenav-pages {
+    margin: 0;
+}
+
+.mzf-tablenav-pages {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mzf-tablenav-pages .pagination-links {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mzf-tablenav-pages .paging-input {
+    margin: 0 8px;
+}
+
+.mzf-tablenav-pages .paging-separator {
+    margin: 0 4px;
+}
+
+.mzf-submissions-table {
+    margin-top: 0;
+}
+
+/* Match mz-admin's hard-width admin column treatment on the submissions log. */
+.mzf-submissions-table-wrap {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100vh - 200px);
+    min-width: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
+}
+
+.mzf-submissions-table {
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+
+.mzf-submissions-table th,
+.mzf-submissions-table td {
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* Keep submission table content readable even if another admin stylesheet
+   overrides generic wp-list-table colors for a specific user color scheme. */
+.mzf-submissions-table-wrap .mzf-submissions-table,
+.mzf-submissions-table-wrap .mzf-submissions-table th,
+.mzf-submissions-table-wrap .mzf-submissions-table td {
+    color: #1d2327 !important;
+    text-shadow: none;
+}
+
+.mzf-submissions-table-wrap .mzf-submissions-table th,
+.mzf-submissions-table-wrap .mzf-submissions-table td {
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.mzf-submissions-table-wrap .mzf-submissions-table a {
+    color: #2271b1 !important;
+}
+
+.mzf-submissions-table-wrap .mzf-submissions-table a:hover,
+.mzf-submissions-table-wrap .mzf-submissions-table a:focus {
+    color: #135e96 !important;
+}
+
+.mzf-submissions-table-wrap .mzf-submissions-table .dashicons {
+    color: inherit;
+}
+
+.mzf-submissions-table-wrap .mzf-submissions-table input[type="checkbox"] {
+    appearance: auto;
+    -webkit-appearance: checkbox;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.mzf-submissions-table th.column-cb {
+    width: 32px;
+    min-width: 32px;
+    max-width: 32px;
+}
+
+.mzf-submissions-table th.column-cb,
+.mzf-submissions-table td.column-cb {
+    padding-left: 0;
+    padding-right: 0;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.mzf-submissions-table th.column-cb input[type="checkbox"],
+.mzf-submissions-table td.column-cb input[type="checkbox"] {
+    display: block;
+    margin: 0 auto;
+}
+
+.mzf-submissions-table th.column-mzf_lock {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    text-align: center;
+}
+
+.mzf-submissions-table td.column-mzf_lock {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    text-align: center;
+}
+
+.mzf-submissions-table th.column-mzf_date {
+    width: 130px;
+    min-width: 130px;
+    max-width: 130px;
+}
+
+.mzf-submissions-table th.column-mzf_name,
+.mzf-submissions-table td.column-mzf_name {
+    width: 160px;
+    min-width: 160px;
+    max-width: 160px;
+}
+
+.mzf-submissions-table th.column-mzf_email,
+.mzf-submissions-table td.column-mzf_email {
+    width: 190px;
+    min-width: 190px;
+    max-width: 190px;
+}
+
+.mzf-submissions-table th.column-mzf_admin,
+.mzf-submissions-table td.column-mzf_admin {
+    width: 190px;
+    min-width: 190px;
+    max-width: 190px;
+}
+
+.mzf-submissions-table th.column-mzf_phone,
+.mzf-submissions-table td.column-mzf_phone,
+.mzf-submissions-table th.column-mzf_zip,
+.mzf-submissions-table td.column-mzf_zip,
+.mzf-submissions-table th.column-mzf_page,
+.mzf-submissions-table td.column-mzf_page,
+.mzf-submissions-table th.column-mzf_form,
+.mzf-submissions-table td.column-mzf_form,
+.mzf-submissions-table th.column-mzf_crm,
+.mzf-submissions-table td.column-mzf_crm {
+    width: 115px;
+    min-width: 115px;
+    max-width: 115px;
+}
+
+.mzf-submissions-table th.column-mzf_status,
+.mzf-submissions-table td.column-mzf_status {
+    width: 110px;
+    min-width: 110px;
+    max-width: 110px;
+}
+
+.mzf-status-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+}
+
+.mzf-status-link .dashicons {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    line-height: 16px;
+}
+
+.mzf-status-link-success .dashicons {
+    color: #00a32a;
+}
+
+.mzf-status-link-spam_detected .dashicons {
+    color: #dba617;
+}
+
+.mzf-status-link-failure_validation .dashicons,
+.mzf-status-link-failure_form_issue .dashicons {
+    color: #d63638;
+}
+
+.mzf-submissions-table .column-mzf_name {
+    position: relative;
+}
+
+.mzf-submissions-table .column-mzf_name .row-actions {
+    position: static;
+    left: auto;
+    margin-top: 4px;
+    visibility: hidden;
+    opacity: 0;
+}
+
+.mzf-submissions-table tr:hover .column-mzf_name .row-actions,
+.mzf-submissions-table .column-mzf_name:focus-within .row-actions {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Reusable admin filter chip UI */
+.mzf-table-toolbar .mzf-filter-wrap,
+.mz-admin-filter-wrap {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-right: 6px;
+}
+
+.mzf-table-toolbar .mzf-filter-label,
+.mz-admin-filter-label {
+    color: #50575e;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.mzf-table-toolbar .mzf-filter-chip,
+.mz-admin-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid #c3c4c7;
+    border-radius: 999px;
+    background: #f6f7f7;
+    color: #1d2327;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.mzf-table-toolbar .mzf-filter-chip strong,
+.mz-admin-filter-chip strong {
+    font-weight: 600;
+}
+
+.mzf-table-toolbar .mzf-filter-chip-remove,
+.mz-admin-filter-chip-remove {
+    color: #50575e;
+    text-decoration: none;
+    line-height: 1;
+}
+
+.mzf-table-toolbar .mzf-filter-chip-remove:hover,
+.mz-admin-filter-chip-remove:hover {
+    color: #d63638;
+}
+
+.mzf-table-toolbar .mzf-filter-reset,
+.mz-admin-filter-reset {
+    margin-left: 2px;
+    font-size: 12px;
+}
