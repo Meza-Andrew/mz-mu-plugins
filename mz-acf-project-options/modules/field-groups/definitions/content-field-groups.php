@@ -871,11 +871,11 @@ JSON, true);
             'title' => 'Organization',
             'fields' => [
                 [
-                    'key' => 'field_69b07c31cf5f1',
-                    'label' => 'URL',
-                    'name' => 'url',
+                    'key' => 'field_6a6e2d8ef1a82',
+                    'label' => 'Links',
+                    'name' => 'links',
                     'aria-label' => '',
-                    'type' => 'url',
+                    'type' => 'repeater',
                     'instructions' => '',
                     'required' => 1,
                     'conditional_logic' => 0,
@@ -884,9 +884,74 @@ JSON, true);
                         'class' => '',
                         'id' => '',
                     ],
-                    'default_value' => '',
-                    'allow_in_bindings' => 1,
-                    'placeholder' => '',
+                    'layout' => 'table',
+                    'pagination' => 0,
+                    'min' => 1,
+                    'max' => 0,
+                    'collapsed' => '',
+                    'button_label' => 'Add Link',
+                    'rows_per_page' => 20,
+                    'sub_fields' => [
+                        [
+                            'key' => 'field_6a6e2da8f1a83',
+                            'label' => 'Type',
+                            'name' => 'type',
+                            'aria-label' => '',
+                            'type' => 'select',
+                            'instructions' => '',
+                            'required' => 1,
+                            'conditional_logic' => 0,
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'choices' => [
+                                'website' => 'Website',
+                                'social' => 'Social Media',
+                                'other' => 'Other',
+                                'no_link' => 'I don\'t have a link',
+                            ],
+                            'default_value' => false,
+                            'return_format' => '',
+                            'multiple' => 0,
+                            'allow_null' => 0,
+                            'allow_in_bindings' => 0,
+                            'ui' => 0,
+                            'ajax' => 0,
+                            'placeholder' => '',
+                            'create_options' => 0,
+                            'save_options' => 0,
+                            'parent_repeater' => 'field_6a6e2d8ef1a82',
+                        ],
+                        [
+                            'key' => 'field_6a6e2e16f1a84',
+                            'label' => 'URL',
+                            'name' => 'url',
+                            'aria-label' => '',
+                            'type' => 'url',
+                            'instructions' => '',
+                            'required' => 1,
+                            'conditional_logic' => [
+                                [
+                                    [
+                                        'field' => 'field_6a6e2da8f1a83',
+                                        'operator' => '!=',
+                                        'value' => 'no_link',
+                                    ],
+                                ],
+                            ],
+                            'wrapper' => [
+                                'width' => '',
+                                'class' => '',
+                                'id' => '',
+                            ],
+                            'default_value' => '',
+                            'allow_in_bindings' => 0,
+                            'placeholder' => '',
+                            'parent_repeater' => 'field_6a6e2d8ef1a82',
+                        ],
+                    ],
                 ],
             ],
             'location' => [
@@ -1328,6 +1393,84 @@ JSON, true);
             'active' => true,
             'description' => '',
             'show_in_rest' => 1,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_taxonomy_featured_image_field_group_definition(): array
+    {
+        $location = [];
+        $seen_taxonomies = [];
+
+        if (function_exists('meza_get_local_acf_taxonomy_definitions')) {
+            foreach ((array) meza_get_local_acf_taxonomy_definitions() as $definition) {
+                if (!is_array($definition) || empty($definition['show_ui'])) {
+                    continue;
+                }
+
+                $taxonomy = sanitize_key((string) ($definition['taxonomy'] ?? ''));
+                if ($taxonomy === '' || isset($seen_taxonomies[$taxonomy])) {
+                    continue;
+                }
+
+                $seen_taxonomies[$taxonomy] = true;
+                $location[] = [
+                    [
+                        'param' => 'taxonomy',
+                        'operator' => '==',
+                        'value' => $taxonomy,
+                    ],
+                ];
+            }
+        }
+
+        if ($location === []) {
+            return [];
+        }
+
+        return [
+            'key' => 'group_meza_taxonomy_featured_image',
+            'title' => 'Featured Image',
+            'fields' => [
+                [
+                    'key' => 'field_meza_taxonomy_featured_image',
+                    'label' => 'Featured Image',
+                    'name' => 'featured_image',
+                    'aria-label' => '',
+                    'type' => 'image',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'return_format' => 'id',
+                    'library' => 'all',
+                    'min_width' => '',
+                    'min_height' => '',
+                    'min_size' => '',
+                    'max_width' => '',
+                    'max_height' => '',
+                    'max_size' => '',
+                    'mime_types' => '',
+                    'allow_in_bindings' => 0,
+                    'preview_size' => 'medium',
+                ],
+            ],
+            'location' => $location,
+            'menu_order' => 0,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
             'display_title' => '',
             'allow_ai_access' => false,
             'ai_description' => '',

@@ -391,6 +391,382 @@ if (!function_exists('meza_sync_list_profiles_section_field_group_fields')) {
 }
 add_action('acf/init', 'meza_sync_list_profiles_section_field_group_fields', 24);
 
+if (!function_exists('meza_sync_profile_post_type_editor_support')) {
+    function meza_get_profile_post_type_editor_support_sync_version(): string
+    {
+        return '2026-08-06-profile-post-type-editor-support-v1';
+    }
+
+    function meza_get_profile_post_type_editor_support_sync_option_name(): string
+    {
+        return 'meza_profile_post_type_editor_support_sync_version';
+    }
+
+    function meza_normalize_acf_post_type_supports_list($supports): array
+    {
+        if (!is_array($supports)) {
+            $supports = (array) $supports;
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn($support): string => sanitize_key((string) $support),
+            $supports
+        ))));
+    }
+
+    function meza_add_editor_support_to_acf_post_type_supports(array $supports): array
+    {
+        if (in_array('editor', $supports, true)) {
+            return $supports;
+        }
+
+        $updated_supports = [];
+        $did_insert = false;
+
+        foreach ($supports as $support) {
+            $updated_supports[] = $support;
+
+            if ($support === 'title') {
+                $updated_supports[] = 'editor';
+                $did_insert = true;
+            }
+        }
+
+        if (!$did_insert) {
+            $updated_supports[] = 'editor';
+        }
+
+        return array_values(array_unique($updated_supports));
+    }
+
+    function meza_sync_profile_post_type_editor_support(): void
+    {
+        if (
+            !function_exists('acf_get_internal_post_type_posts')
+            || !function_exists('acf_update_post_type')
+        ) {
+            return;
+        }
+
+        $version = meza_get_profile_post_type_editor_support_sync_version();
+        if ((string) get_option(meza_get_profile_post_type_editor_support_sync_option_name(), '') === $version) {
+            return;
+        }
+
+        $profile_post_type = null;
+
+        foreach ((array) acf_get_internal_post_type_posts('acf-post-type') as $candidate) {
+            if (!is_array($candidate)) {
+                continue;
+            }
+
+            $candidate_key = (string) ($candidate['key'] ?? '');
+            $candidate_slug = sanitize_key((string) ($candidate['post_type'] ?? ''));
+
+            if ($candidate_key !== 'post_type_meza_profile' && $candidate_slug !== 'profile') {
+                continue;
+            }
+
+            $profile_post_type = $candidate;
+            break;
+        }
+
+        if (!is_array($profile_post_type) || empty($profile_post_type['post_type'])) {
+            update_option(meza_get_profile_post_type_editor_support_sync_option_name(), $version, false);
+            return;
+        }
+
+        $expected_supports = function_exists('meza_get_profile_post_type_definition')
+            ? meza_normalize_acf_post_type_supports_list(
+                (array) (meza_get_profile_post_type_definition()['supports'] ?? [])
+            )
+            : [];
+
+        $expected_supports = meza_add_editor_support_to_acf_post_type_supports($expected_supports);
+        $current_supports = meza_normalize_acf_post_type_supports_list($profile_post_type['supports'] ?? []);
+
+        if ($current_supports !== $expected_supports) {
+            $profile_post_type['supports'] = $expected_supports;
+            acf_update_post_type($profile_post_type);
+        }
+
+        update_option(meza_get_profile_post_type_editor_support_sync_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_sync_profile_post_type_editor_support', 24);
+
+if (!function_exists('meza_sync_list_segments_section_field_group_fields')) {
+    function meza_get_list_segments_section_field_group_fields_sync_version(): string
+    {
+        return '2026-08-06-list-segments-fields-v2';
+    }
+
+    function meza_get_list_segments_section_field_group_fields_sync_option_name(): string
+    {
+        return 'meza_list_segments_section_field_group_fields_sync_version';
+    }
+
+    function meza_sync_list_segments_section_field_group_fields(): void
+    {
+        if (!function_exists('meza_sync_builtin_field_group_fields') || !function_exists('meza_get_default_editable_acf_field_group_definitions')) {
+            return;
+        }
+
+        $version = meza_get_list_segments_section_field_group_fields_sync_version();
+        if ((string) get_option(meza_get_list_segments_section_field_group_fields_sync_option_name(), '') === $version) {
+            return;
+        }
+
+        $definition = [];
+
+        foreach ((array) meza_get_default_editable_acf_field_group_definitions() as $candidate) {
+            if (!is_array($candidate)) {
+                continue;
+            }
+
+            if ((string) ($candidate['key'] ?? '') !== 'group_meza_list_segments_section') {
+                continue;
+            }
+
+            $definition = $candidate;
+            break;
+        }
+
+        if ($definition === []) {
+            update_option(meza_get_list_segments_section_field_group_fields_sync_option_name(), $version, false);
+            return;
+        }
+
+        meza_sync_builtin_field_group_fields($definition);
+        update_option(meza_get_list_segments_section_field_group_fields_sync_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_sync_list_segments_section_field_group_fields', 24);
+
+if (!function_exists('meza_repair_list_segments_section_field_group')) {
+    function meza_get_list_segments_section_field_group_repair_version(): string
+    {
+        return '2026-08-07-list-segments-group-repair-v2';
+    }
+
+    function meza_get_list_segments_section_field_group_repair_option_name(): string
+    {
+        return 'meza_list_segments_section_field_group_repair_version';
+    }
+
+    function meza_repair_list_segments_section_field_group(): void
+    {
+        if (
+            !function_exists('meza_get_list_segments_section_field_group_definition')
+            || !function_exists('acf_import_field_group')
+            || !function_exists('acf_get_raw_internal_post_type')
+            || !function_exists('acf_get_raw_fields')
+            || !function_exists('acf_delete_field_group')
+            || !function_exists('meza_with_managed_acf_definition_tracking_suppressed')
+        ) {
+            return;
+        }
+
+        $version = meza_get_list_segments_section_field_group_repair_version();
+        if ((string) get_option(meza_get_list_segments_section_field_group_repair_option_name(), '') === $version) {
+            return;
+        }
+
+        $definition = meza_get_list_segments_section_field_group_definition();
+        $expected_key = (string) ($definition['key'] ?? '');
+        $expected_title = trim((string) ($definition['title'] ?? ''));
+
+        if ($expected_key === '' || $expected_title === '') {
+            update_option(meza_get_list_segments_section_field_group_repair_option_name(), $version, false);
+            return;
+        }
+
+        $load_candidates = static function () use ($expected_title): array {
+            $candidates = [];
+
+            foreach (get_posts([
+                'posts_per_page' => -1,
+                'post_type' => 'acf-field-group',
+                'post_status' => ['publish', 'acf-disabled', 'trash'],
+                'orderby' => 'ID',
+                'order' => 'ASC',
+                'suppress_filters' => false,
+                'cache_results' => true,
+                'update_post_meta_cache' => false,
+                'update_post_term_cache' => false,
+            ]) as $post) {
+                if (!($post instanceof WP_Post) || trim((string) $post->post_title) !== $expected_title) {
+                    continue;
+                }
+
+                $field_group_id = (int) $post->ID;
+                if ($field_group_id <= 0) {
+                    continue;
+                }
+
+                $raw_field_group = acf_get_raw_internal_post_type($field_group_id, 'acf-field-group');
+                if (!is_array($raw_field_group)) {
+                    continue;
+                }
+
+                $raw_fields = array_values(array_filter((array) acf_get_raw_fields($field_group_id), 'is_array'));
+
+                $candidates[] = [
+                    'id' => $field_group_id,
+                    'key' => (string) ($raw_field_group['key'] ?? ''),
+                    'raw_field_count' => count($raw_fields),
+                ];
+            }
+
+            return $candidates;
+        };
+
+        $select_canonical_id = static function (array $candidates) use ($expected_key): int {
+            foreach ($candidates as $candidate) {
+                if (
+                    !is_array($candidate)
+                    || (string) ($candidate['key'] ?? '') !== $expected_key
+                    || (int) ($candidate['raw_field_count'] ?? 0) <= 0
+                ) {
+                    continue;
+                }
+
+                return (int) ($candidate['id'] ?? 0);
+            }
+
+            return 0;
+        };
+
+        $candidates = $load_candidates();
+        $canonical_group_id = $select_canonical_id($candidates);
+
+        if ($canonical_group_id <= 0) {
+            acf_import_field_group($definition);
+            $candidates = $load_candidates();
+            $canonical_group_id = $select_canonical_id($candidates);
+        }
+
+        if ($canonical_group_id > 0 && function_exists('meza_sync_builtin_field_group_fields')) {
+            meza_sync_builtin_field_group_fields($definition);
+            $candidates = $load_candidates();
+        }
+
+        foreach ($candidates as $candidate) {
+            if (!is_array($candidate)) {
+                continue;
+            }
+
+            $candidate_id = (int) ($candidate['id'] ?? 0);
+            if ($candidate_id <= 0 || $candidate_id === $canonical_group_id) {
+                continue;
+            }
+
+            meza_with_managed_acf_definition_tracking_suppressed(static function () use ($candidate_id): void {
+                acf_delete_field_group($candidate_id);
+            });
+        }
+
+        update_option(meza_get_list_segments_section_field_group_repair_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_repair_list_segments_section_field_group', 18);
+
+if (!function_exists('meza_cleanup_duplicate_list_segments_section_field_groups')) {
+    function meza_cleanup_duplicate_list_segments_section_field_groups(): void
+    {
+        if (
+            !function_exists('meza_get_list_segments_section_field_group_definition')
+            || !function_exists('acf_get_raw_internal_post_type')
+            || !function_exists('acf_get_raw_fields')
+            || !function_exists('acf_delete_field_group')
+            || !function_exists('meza_with_managed_acf_definition_tracking_suppressed')
+        ) {
+            return;
+        }
+
+        $definition = meza_get_list_segments_section_field_group_definition();
+        $expected_key = (string) ($definition['key'] ?? '');
+        $expected_title = trim((string) ($definition['title'] ?? ''));
+
+        if ($expected_key === '' || $expected_title === '') {
+            return;
+        }
+
+        $candidates = [];
+
+        foreach (get_posts([
+            'posts_per_page' => -1,
+            'post_type' => 'acf-field-group',
+            'post_status' => ['publish', 'acf-disabled', 'trash'],
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'suppress_filters' => false,
+            'cache_results' => true,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+        ]) as $post) {
+            if (!($post instanceof WP_Post) || trim((string) $post->post_title) !== $expected_title) {
+                continue;
+            }
+
+            $field_group_id = (int) $post->ID;
+            if ($field_group_id <= 0) {
+                continue;
+            }
+
+            $raw_field_group = acf_get_raw_internal_post_type($field_group_id, 'acf-field-group');
+            if (!is_array($raw_field_group)) {
+                continue;
+            }
+
+            $candidates[] = [
+                'id' => $field_group_id,
+                'key' => (string) ($raw_field_group['key'] ?? ''),
+                'raw_field_count' => count(array_values(array_filter((array) acf_get_raw_fields($field_group_id), 'is_array'))),
+            ];
+        }
+
+        if (count($candidates) <= 1) {
+            return;
+        }
+
+        $canonical_group_id = 0;
+
+        foreach ($candidates as $candidate) {
+            if (
+                !is_array($candidate)
+                || (string) ($candidate['key'] ?? '') !== $expected_key
+                || (int) ($candidate['raw_field_count'] ?? 0) <= 0
+            ) {
+                continue;
+            }
+
+            $canonical_group_id = (int) ($candidate['id'] ?? 0);
+            break;
+        }
+
+        if ($canonical_group_id <= 0) {
+            return;
+        }
+
+        foreach ($candidates as $candidate) {
+            if (!is_array($candidate)) {
+                continue;
+            }
+
+            $candidate_id = (int) ($candidate['id'] ?? 0);
+            if ($candidate_id <= 0 || $candidate_id === $canonical_group_id) {
+                continue;
+            }
+
+            meza_with_managed_acf_definition_tracking_suppressed(static function () use ($candidate_id): void {
+                acf_delete_field_group($candidate_id);
+            });
+        }
+    }
+}
+add_action('acf/init', 'meza_cleanup_duplicate_list_segments_section_field_groups', 999);
+
 if (!function_exists('meza_cleanup_duplicate_list_profiles_group_fields')) {
     function meza_get_duplicate_list_profiles_group_fields_cleanup_version(): string
     {
@@ -963,7 +1339,7 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
             $mode = 'event';
         }
 
-        return '2026-07-01-shared-project-field-group-fields-v5-' . $mode;
+        return '2026-08-07-shared-project-field-group-fields-v6-' . $mode;
     }
 
     function meza_get_shared_project_field_group_fields_sync_option_name(): string
@@ -1000,6 +1376,93 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
     }
 }
 add_action('acf/init', 'meza_sync_shared_project_field_group_fields', 24);
+
+if (!function_exists('meza_get_organization_links_field_migration_version')) {
+    function meza_get_organization_links_field_migration_version(): string
+    {
+        return '2026-08-07-organization-links-v1';
+    }
+
+    function meza_get_organization_links_field_migration_option_name(): string
+    {
+        return 'meza_organization_links_field_migration_version';
+    }
+
+    function meza_migrate_organization_url_field_to_links_repeater(): void
+    {
+        $version = meza_get_organization_links_field_migration_version();
+        if ((string) get_option(meza_get_organization_links_field_migration_option_name(), '') === $version) {
+            return;
+        }
+
+        $organization_ids = get_posts([
+            'post_type' => 'organization',
+            'post_status' => 'any',
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'no_found_rows' => true,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+        ]);
+
+        $did_update = false;
+
+        foreach ((array) $organization_ids as $organization_id) {
+            $organization_id = (int) $organization_id;
+            if ($organization_id <= 0) {
+                continue;
+            }
+
+            $legacy_url = trim((string) get_post_meta($organization_id, 'url', true));
+            $existing_url = trim((string) get_post_meta($organization_id, 'links_0_url', true));
+            $existing_type = trim((string) get_post_meta($organization_id, 'links_0_type', true));
+            $links_count = trim((string) get_post_meta($organization_id, 'links', true));
+
+            if ($existing_url === '' && $legacy_url === '') {
+                continue;
+            }
+
+            $target_url = $existing_url !== '' ? $existing_url : $legacy_url;
+
+            if ($links_count !== '1') {
+                update_post_meta($organization_id, 'links', '1');
+                $did_update = true;
+            }
+
+            if ((string) get_post_meta($organization_id, '_links', true) !== 'field_6a6e2d8ef1a82') {
+                update_post_meta($organization_id, '_links', 'field_6a6e2d8ef1a82');
+                $did_update = true;
+            }
+
+            if ($existing_type === '') {
+                update_post_meta($organization_id, 'links_0_type', 'website');
+                $did_update = true;
+            }
+
+            if ((string) get_post_meta($organization_id, '_links_0_type', true) !== 'field_6a6e2da8f1a83') {
+                update_post_meta($organization_id, '_links_0_type', 'field_6a6e2da8f1a83');
+                $did_update = true;
+            }
+
+            if ($existing_url !== $target_url) {
+                update_post_meta($organization_id, 'links_0_url', $target_url);
+                $did_update = true;
+            }
+
+            if ((string) get_post_meta($organization_id, '_links_0_url', true) !== 'field_6a6e2e16f1a84') {
+                update_post_meta($organization_id, '_links_0_url', 'field_6a6e2e16f1a84');
+                $did_update = true;
+            }
+        }
+
+        if ($did_update || (string) get_option(meza_get_organization_links_field_migration_option_name(), '') !== $version) {
+            update_option(meza_get_organization_links_field_migration_option_name(), $version, false);
+        }
+    }
+}
+add_action('acf/init', 'meza_migrate_organization_url_field_to_links_repeater', 25);
 
 if (!function_exists('meza_get_shared_project_acf_field_group_definition_by_key')) {
     function meza_get_shared_project_acf_field_group_definition_by_key(string $group_key): array
@@ -2077,6 +2540,14 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
 }
 
 add_action('acf/init', 'meza_cleanup_legacy_content_model_field_group_selection_options', 24);
+
+add_action('init', static function (): void {
+    if (!post_type_exists('profile')) {
+        return;
+    }
+
+    add_post_type_support('profile', 'editor');
+}, 20);
 
 add_filter('acf/load_field/key=field_meza_content_model_custom_field_groups', static function ($field) {
     return is_array($field)

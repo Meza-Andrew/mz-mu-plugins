@@ -273,6 +273,7 @@
             'group_meza_list_reviews_section' => 'section_list-reviews',
             'group_meza_list_posts_section' => 'section_list-posts',
             'group_meza_list_resources_section' => 'section_list-resources',
+            'group_meza_list_segments_section' => 'section_list-segments',
             'group_b2f9d7e8' => 'section_list-services',
         ];
     }

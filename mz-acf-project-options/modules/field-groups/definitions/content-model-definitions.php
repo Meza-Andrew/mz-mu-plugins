@@ -437,6 +437,7 @@
             'plural_capability_name' => 'posts',
             'supports' => [
                 'title',
+                'editor',
                 'excerpt',
                 'page-attributes',
                 'thumbnail',

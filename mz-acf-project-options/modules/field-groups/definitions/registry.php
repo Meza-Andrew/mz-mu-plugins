@@ -649,6 +649,7 @@
         $groups[] = meza_get_organization_field_group_definition();
         $groups[] = meza_get_faq_field_group_definition();
         $groups[] = meza_get_review_field_group_definition();
+        $groups[] = meza_get_taxonomy_featured_image_field_group_definition();
 
         if (function_exists('meza_supports_profile_features') && meza_supports_profile_features()) {
             $groups[] = meza_get_post_field_group_definition();

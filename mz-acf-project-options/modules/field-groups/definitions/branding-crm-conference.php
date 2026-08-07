@@ -428,6 +428,73 @@
                 'height' => '',
                 'allow_in_bindings' => 0,
             ],
+            [
+                'key' => 'field_6a6ebbca078b1',
+                'label' => 'Countdown',
+                'name' => 'countdown',
+                'aria-label' => '',
+                'type' => 'group',
+                'instructions' => '',
+                'required' => 0,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_688f802239c77',
+                            'operator' => '!=empty',
+                        ],
+                        [
+                            'field' => 'field_688f809439c78',
+                            'operator' => '!=empty',
+                        ],
+                    ],
+                ],
+                'wrapper' => [
+                    'width' => '',
+                    'class' => '',
+                    'id' => '',
+                ],
+                'layout' => 'block',
+                'sub_fields' => [
+                    [
+                        'key' => 'field_6a6ebbe5078b2',
+                        'label' => 'Headline',
+                        'name' => 'headline',
+                        'aria-label' => '',
+                        'type' => 'text',
+                        'instructions' => '',
+                        'required' => 1,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'default_value' => 'Countdown to Conference',
+                        'maxlength' => '',
+                        'allow_in_bindings' => 0,
+                        'placeholder' => '',
+                        'prepend' => '',
+                        'append' => '',
+                    ],
+                    [
+                        'key' => 'field_6a6ebbfa078b3',
+                        'label' => 'Link',
+                        'name' => 'link',
+                        'aria-label' => '',
+                        'type' => 'link',
+                        'instructions' => '',
+                        'required' => 0,
+                        'conditional_logic' => 0,
+                        'wrapper' => [
+                            'width' => '',
+                            'class' => '',
+                            'id' => '',
+                        ],
+                        'return_format' => 'array',
+                        'allow_in_bindings' => 0,
+                    ],
+                ],
+            ],
         ];
     }
 
