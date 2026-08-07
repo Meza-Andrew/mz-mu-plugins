@@ -2763,30 +2763,8 @@ function meza_get_profile_primary_link_url(int $post_id): string
 function meza_get_post_link_field_url(int $post_id, array $field_keys): string
 {
     if ($post_id <= 0) return '';
-
-    if (function_exists('get_field')) {
-        foreach ($field_keys as $field_key) {
-            $value = get_field((string) $field_key, $post_id);
-            if (is_array($value) && is_string($value['url'] ?? null) && trim((string) $value['url']) !== '') {
-                return trim((string) $value['url']);
-            }
-            if (is_string($value) && trim($value) !== '') {
-                return trim($value);
-            }
-        }
-    }
-
-    foreach ($field_keys as $field_key) {
-        $value = get_post_meta($post_id, (string) $field_key, true);
-        if (is_array($value) && is_string($value['url'] ?? null) && trim((string) $value['url']) !== '') {
-            return trim((string) $value['url']);
-        }
-        if (is_string($value) && trim($value) !== '') {
-            return trim($value);
-        }
-    }
-
-    return '';
+    $link_parts = meza_get_post_link_field_parts($post_id, $field_keys);
+    return trim((string) ($link_parts['url'] ?? ''));
 }
 
 function meza_get_post_link_field_parts(int $post_id, array $field_keys): array
@@ -3527,6 +3505,15 @@ function meza_get_admin_link_column_parts($value): array
             $nested_parts = meza_get_admin_link_column_parts($value[$context_key]);
             if ($nested_parts !== []) {
                 return $nested_parts;
+            }
+        }
+
+        if (array_is_list($value)) {
+            foreach ($value as $nested_value) {
+                $nested_parts = meza_get_admin_link_column_parts($nested_value);
+                if ($nested_parts !== []) {
+                    return $nested_parts;
+                }
             }
         }
 
@@ -7166,14 +7153,20 @@ function meza_render_posts_list_column(string $column, int $post_id): void
         return;
     }
     if ($column === 'mz_organization_url') {
-        $url = meza_get_post_link_field_url((int) $post_id, ['link', 'url']);
+        $link_parts = meza_get_post_link_field_parts((int) $post_id, ['links', 'link', 'url']);
+        $url = trim((string) ($link_parts['url'] ?? ''));
+        $label = trim((string) ($link_parts['title'] ?? ''));
 
         if ($url === '') {
             echo '&mdash;';
             return;
         }
 
-        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html(meza_get_admin_link_column_display_text($url)) . '</a>';
+        if ($label === '') {
+            $label = meza_get_admin_link_column_display_text($url);
+        }
+
+        echo '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($label) . '</a>';
         return;
     }
     if ($column === 'mz_certification_link') {

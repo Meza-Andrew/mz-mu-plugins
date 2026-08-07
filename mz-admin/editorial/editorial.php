@@ -19,9 +19,14 @@ add_filter('upload_mimes', 'meza_allow_svg_uploads');
 function meza_extend_acf_init(): void
 {
     $gcloud_key = (string) apply_filters('theme_gcloud_key', '');
-    if ($gcloud_key === '') return;
+    $gmaps_key = (string) apply_filters('theme_gmaps_key', '');
+    $google_maps_api_key = $gcloud_key !== '' ? $gcloud_key : $gmaps_key;
 
-    acf_update_setting('google_api_key', $gcloud_key);
+    if ($google_maps_api_key === '') {
+        return;
+    }
+
+    acf_update_setting('google_api_key', $google_maps_api_key);
 }
 add_action('acf/init', 'meza_extend_acf_init');
 
