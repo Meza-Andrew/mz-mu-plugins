@@ -1526,3 +1526,5 @@ add_action('after_switch_theme', function () {
     if (!meza_should_rerun()) return;
     meza_ensure_menus_exist_and_assigned();
 });
+
+require_once __DIR__ . '/mz-settings/headless-build-dispatch.php';
