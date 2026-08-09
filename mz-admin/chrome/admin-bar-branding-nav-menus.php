@@ -11,6 +11,33 @@ if (!function_exists('meza_get_clear_cache_admin_bar_title')) {
     }
 }
 
+if (!function_exists('meza_get_sync_content_admin_bar_node_id')) {
+    function meza_get_sync_content_admin_bar_node_id(): string
+    {
+        return 'meza-sync-content';
+    }
+}
+
+if (!function_exists('meza_get_sync_content_admin_bar_title')) {
+    function meza_get_sync_content_admin_bar_title(string $label = 'Sync Content', string $icon_class = 'dashicons-update'): string
+    {
+        return sprintf(
+            '<span class="ab-icon dashicons %1$s" aria-hidden="true"></span><span class="ab-label">%2$s</span>',
+            esc_attr($icon_class),
+            esc_html($label)
+        );
+    }
+}
+
+if (!function_exists('meza_get_public_visit_site_admin_bar_url')) {
+    function meza_get_public_visit_site_admin_bar_url(): string
+    {
+        return function_exists('meza_get_public_facing_url')
+            ? meza_get_public_facing_url(home_url('/'))
+            : home_url('/');
+    }
+}
+
 if (!function_exists('meza_is_clear_cache_request')) {
     function meza_is_clear_cache_request(): bool
     {
@@ -77,6 +104,10 @@ function meza_is_admin_bar_clear_cache_node($node): bool
     $href = strtolower((string) ($node->href ?? ''));
 
     if ($node_id === 'meza-flush-server-cache') {
+        return true;
+    }
+
+    if ($node_id === meza_get_sync_content_admin_bar_node_id()) {
         return true;
     }
 
@@ -226,6 +257,8 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         ? strtolower((string) WP_ENV)
         : (function_exists('wp_get_environment_type') ? strtolower((string) wp_get_environment_type()) : 'production');
     $is_production_like_environment = in_array($environment, ['qa', 'production'], true);
+    $can_dispatch_headless_build = function_exists('meza_headless_build_manual_dispatch_available')
+        && meza_headless_build_manual_dispatch_available();
     $wp_super_cache_plugin_file = trailingslashit((string) WP_PLUGIN_DIR) . 'wp-super-cache/wp-cache.php';
     $has_wp_super_cache_installed = file_exists($wp_super_cache_plugin_file);
     $nodes = $wp_admin_bar->get_nodes();
@@ -404,6 +437,21 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         ]);
     };
 
+    $add_sync_content = static function () use ($wp_admin_bar, $toolbar_parent): void {
+        $wp_admin_bar->remove_node(meza_get_sync_content_admin_bar_node_id());
+        $wp_admin_bar->add_node([
+            'id' => meza_get_sync_content_admin_bar_node_id(),
+            'parent' => $toolbar_parent,
+            'title' => meza_get_sync_content_admin_bar_title(),
+            'href' => '#',
+            'group' => false,
+            'meta' => [
+                'title' => 'Sync Content',
+                'class' => 'meza-admin-bar-toolbar-action meza-admin-bar-sync-content-action',
+            ],
+        ]);
+    };
+
     if ($query_monitor_node instanceof stdClass) {
         $query_monitor_id = (string) ($query_monitor_node->id ?? '');
         if ($query_monitor_id !== '') $wp_admin_bar->remove_node($query_monitor_id);
@@ -420,11 +468,17 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
     // - server cache only on qa/production when WP Super Cache is not installed
     if ($should_show_page_cache) {
         $add_clone($delete_cache_node, meza_get_clear_cache_admin_bar_title(), $toolbar_parent, 'Clear Page and Object Cache');
+        if ($can_dispatch_headless_build) {
+            $add_sync_content();
+        }
         return;
     }
 
     if ($should_show_server_cache) {
         $add_flush();
+        if ($can_dispatch_headless_build) {
+            $add_sync_content();
+        }
         return;
     }
 }
@@ -814,7 +868,7 @@ if (!function_exists('meza_rebuild_site_name_admin_bar_children')) {
 
         $wp_admin_bar->remove_node($reference_group_id);
 
-        $add_clone = static function ($node, bool $open_in_new_tab = false) use ($wp_admin_bar): void {
+        $add_clone = static function ($node, bool $open_in_new_tab = false, ?string $href_override = null) use ($wp_admin_bar): void {
             if (!($node instanceof stdClass)) {
                 return;
             }
@@ -829,14 +883,14 @@ if (!function_exists('meza_rebuild_site_name_admin_bar_children')) {
                 'id' => (string) ($node->id ?? ''),
                 'parent' => 'site-name',
                 'title' => $node->title ?? '',
-                'href' => $node->href ?? false,
+                'href' => $href_override ?? ($node->href ?? false),
                 'group' => !empty($node->group),
                 'meta' => $meta,
             ]);
         };
 
         if ($view_site_child instanceof stdClass) {
-            $add_clone($view_site_child, true);
+            $add_clone($view_site_child, true, meza_get_public_visit_site_admin_bar_url());
         }
 
         if ($dashboard_child instanceof stdClass) {
@@ -1160,7 +1214,388 @@ add_action('admin_head', function () {
         '#wpadminbar .updraftplus_admin_node{' .
         'display:none!important;' .
         '}' .
+        '#wpadminbar .meza-admin-bar-sync-content-action .ab-icon{' .
+        'transition:transform .2s ease;' .
+        '}' .
+        '#wpadminbar .meza-admin-bar-sync-content-action.is-syncing .ab-icon{' .
+        'animation:meza-admin-bar-spin 1s linear infinite;' .
+        '}' .
+        '@keyframes meza-admin-bar-spin{' .
+        'from{transform:rotate(0deg);}' .
+        'to{transform:rotate(360deg);}' .
+        '}' .
         '</style>';
+}, 99999);
+
+add_action('admin_footer', function (): void {
+    if (!is_admin_bar_showing() || !function_exists('meza_can_access_clear_cache') || !meza_can_access_clear_cache()) {
+        return;
+    }
+
+    if (!function_exists('meza_headless_build_manual_dispatch_available') || !meza_headless_build_manual_dispatch_available()) {
+        return;
+    }
+
+    $config = [
+        'ajaxUrl' => admin_url('admin-ajax.php'),
+        'nonce' => wp_create_nonce(defined('MEZA_HEADLESS_BUILD_MANUAL_NONCE_ACTION') ? MEZA_HEADLESS_BUILD_MANUAL_NONCE_ACTION : 'meza_headless_build_manual_dispatch'),
+        'action' => 'meza_headless_build_dispatch_now',
+        'statusAction' => defined('MEZA_HEADLESS_BUILD_STATUS_POLL_ACTION')
+            ? MEZA_HEADLESS_BUILD_STATUS_POLL_ACTION
+            : 'meza_headless_build_get_status',
+        'nodeId' => meza_get_sync_content_admin_bar_node_id(),
+        'idleLabel' => 'Sync Content',
+        'dispatchingLabel' => 'Dispatching...',
+        'queuedLabel' => 'Queued',
+        'syncingLabel' => 'Syncing...',
+        'successLabel' => 'Synced in',
+        'errorLabel' => 'Sync failed',
+        'pollIntervalMs' => 2000,
+        'completedResetDelayMs' => 2000,
+        'initialStatus' => meza_headless_build_read_status(),
+    ];
+
+    ?>
+    <script id="meza-sync-content-admin-bar">
+    window.mezaSyncContentAdminBar = <?php echo wp_json_encode($config); ?>;
+    jQuery(function ($) {
+        const config = window.mezaSyncContentAdminBar;
+        if (!config || !config.nodeId) {
+            return;
+        }
+
+        const toolbarNodeSelector = '#wp-admin-bar-' + config.nodeId;
+        let currentStatus = config.initialStatus || { phase: 'idle' };
+        let resetTimer = null;
+        let pollTimer = null;
+        let durationTimer = null;
+        let busy = false;
+
+        function getNode() {
+            return $(toolbarNodeSelector);
+        }
+
+        function getLink() {
+            return $(toolbarNodeSelector + ' > .ab-item');
+        }
+
+        function getIconHtml(iconName) {
+            return '<span class="ab-icon dashicons dashicons-' + iconName + '" aria-hidden="true"></span>';
+        }
+
+        function parseTimestamp(value) {
+            if (!value || typeof value !== 'string') {
+                return null;
+            }
+
+            const timestamp = Date.parse(value);
+            return Number.isNaN(timestamp) ? null : timestamp;
+        }
+
+        function formatElapsed(totalSeconds) {
+            const seconds = Math.max(0, Number(totalSeconds || 0));
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainder = seconds % 60;
+
+            if (hours > 0) {
+                return hours + ':' + String(minutes).padStart(2, '0') + ':' + String(remainder).padStart(2, '0');
+            }
+
+            return minutes + ':' + String(remainder).padStart(2, '0');
+        }
+
+        function truncateLabel(label) {
+            if (typeof label !== 'string') {
+                return config.errorLabel;
+            }
+
+            const trimmed = label.trim();
+            if (trimmed === '') {
+                return config.errorLabel;
+            }
+
+            return trimmed.length > 48 ? trimmed.slice(0, 45) + '...' : trimmed;
+        }
+
+        function getElapsedSeconds(status) {
+            if (!status || typeof status !== 'object') {
+                return null;
+            }
+
+            if (typeof status.elapsedSeconds === 'number' && Number.isFinite(status.elapsedSeconds)) {
+                return Math.max(0, Math.round(status.elapsedSeconds));
+            }
+
+            const startTimestamp = parseTimestamp(status.dispatchedAt || status.startedAt || status.queuedAt);
+            if (startTimestamp === null) {
+                return null;
+            }
+
+            const endTimestamp = parseTimestamp(status.completedAt) || Date.now();
+            return Math.max(0, Math.round((endTimestamp - startTimestamp) / 1000));
+        }
+
+        function getPresentation(status) {
+            if (!status || typeof status !== 'object') {
+                return {
+                    phase: 'idle',
+                    label: config.idleLabel,
+                    icon: 'update'
+                };
+            }
+
+            if (status.phase === 'queued') {
+                return {
+                    phase: 'queued',
+                    label: config.queuedLabel + ' ' + formatElapsed(getElapsedSeconds(status) || 0),
+                    icon: 'clock'
+                };
+            }
+
+            if (status.phase === 'in_progress') {
+                return {
+                    phase: 'syncing',
+                    label: config.syncingLabel + ' ' + formatElapsed(getElapsedSeconds(status) || 0),
+                    icon: 'update'
+                };
+            }
+
+            if (status.phase === 'completed') {
+                const succeeded = status.conclusion === 'success' || status.ok === true;
+                const elapsed = getElapsedSeconds(status);
+                const baseLabel = succeeded ? config.successLabel : truncateLabel(status.message || config.errorLabel);
+
+                return {
+                    phase: succeeded ? 'success' : 'error',
+                    label: elapsed === null ? baseLabel + '!' : baseLabel + ' ' + formatElapsed(elapsed) + '!',
+                    icon: succeeded ? 'yes-alt' : 'warning'
+                };
+            }
+
+            if (status.phase === 'dispatch_failed') {
+                return {
+                    phase: 'error',
+                    label: truncateLabel(status.message || config.errorLabel),
+                    icon: 'warning'
+                };
+            }
+
+            return {
+                phase: 'idle',
+                label: config.idleLabel,
+                icon: 'update'
+            };
+        }
+
+        function isActivePhase(status) {
+            return !!(
+                status
+                && typeof status === 'object'
+                && (status.phase === 'queued' || status.phase === 'in_progress')
+            );
+        }
+
+        function renderPresentation(presentation) {
+            const $node = getNode();
+            const $link = getLink();
+
+            if (!$node.length || !$link.length) {
+                return;
+            }
+
+            $node.removeClass('is-syncing is-success is-error');
+
+            if (presentation.phase === 'syncing') {
+                $node.addClass('is-syncing');
+            } else if (presentation.phase === 'success') {
+                $node.addClass('is-success');
+            } else if (presentation.phase === 'error') {
+                $node.addClass('is-error');
+            }
+
+            $link.html(getIconHtml(presentation.icon) + '<span class="ab-label">' + presentation.label + '</span>');
+            $link.attr(
+                'aria-disabled',
+                (presentation.phase === 'queued' || presentation.phase === 'syncing') ? 'true' : 'false'
+            );
+        }
+
+        function stopPolling() {
+            if (pollTimer !== null) {
+                window.clearInterval(pollTimer);
+                pollTimer = null;
+            }
+        }
+
+        function stopDurationTicker() {
+            if (durationTimer !== null) {
+                window.clearInterval(durationTimer);
+                durationTimer = null;
+            }
+        }
+
+        function resetToIdle() {
+            busy = false;
+            currentStatus = { phase: 'idle' };
+            stopPolling();
+            stopDurationTicker();
+            renderPresentation(getPresentation(currentStatus));
+        }
+
+        function scheduleResetIfTerminal() {
+            window.clearTimeout(resetTimer);
+
+            if (!currentStatus || (currentStatus.phase !== 'completed' && currentStatus.phase !== 'dispatch_failed')) {
+                return;
+            }
+
+            resetTimer = window.setTimeout(resetToIdle, Number(config.completedResetDelayMs || 10000));
+        }
+
+        function startDurationTicker() {
+            stopDurationTicker();
+
+            if (!currentStatus || (currentStatus.phase !== 'queued' && currentStatus.phase !== 'in_progress')) {
+                return;
+            }
+
+            durationTimer = window.setInterval(function () {
+                renderPresentation(getPresentation(currentStatus));
+            }, 1000);
+        }
+
+        function updateStatusFromResponse(response) {
+            if (!(response && response.data && response.data.status)) {
+                return false;
+            }
+
+            currentStatus = response.data.status;
+            applyCurrentStatus();
+            return true;
+        }
+
+        function requestStatus() {
+            return $.post(config.ajaxUrl, {
+                action: config.statusAction
+            }).done(function (response) {
+                updateStatusFromResponse(response);
+            }).fail(function (jqXHR) {
+                if (window.console && typeof window.console.error === 'function') {
+                    window.console.error('Sync Content status poll failed', jqXHR);
+                }
+            });
+        }
+
+        function startPolling() {
+            if (pollTimer !== null) {
+                return;
+            }
+
+            requestStatus();
+            pollTimer = window.setInterval(requestStatus, Number(config.pollIntervalMs || 5000));
+        }
+
+        function applyCurrentStatus() {
+            busy = isActivePhase(currentStatus);
+            renderPresentation(getPresentation(currentStatus));
+
+            if (isActivePhase(currentStatus)) {
+                startDurationTicker();
+                startPolling();
+                return;
+            }
+
+            stopDurationTicker();
+            stopPolling();
+            scheduleResetIfTerminal();
+        }
+
+        applyCurrentStatus();
+
+        $(document).on('click.mezaSyncContent', toolbarNodeSelector + ' > .ab-item', function (event) {
+            event.preventDefault();
+
+            if (busy) {
+                return;
+            }
+
+            busy = true;
+            stopPolling();
+            stopDurationTicker();
+            window.clearTimeout(resetTimer);
+            renderPresentation({
+                phase: 'syncing',
+                label: config.dispatchingLabel,
+                icon: 'update'
+            });
+
+            $.post(config.ajaxUrl, {
+                action: config.action,
+                nonce: config.nonce
+            }).done(function (response) {
+                if (response && response.success && updateStatusFromResponse(response)) {
+                    return;
+                }
+
+                if (!updateStatusFromResponse(response)) {
+                    currentStatus = {
+                        phase: 'dispatch_failed',
+                        message: response && response.data && typeof response.data.message === 'string'
+                            ? response.data.message
+                            : config.errorLabel
+                    };
+                    busy = false;
+                    renderPresentation({
+                        phase: 'error',
+                        label: truncateLabel(
+                            response && response.data && typeof response.data.message === 'string'
+                                ? response.data.message
+                                : config.errorLabel
+                        ),
+                        icon: 'warning'
+                    });
+                    scheduleResetIfTerminal();
+                    if (window.console && typeof window.console.error === 'function') {
+                        window.console.error('Sync Content failed', response);
+                    }
+                }
+            }).fail(function (jqXHR) {
+                const response = jqXHR && jqXHR.responseJSON ? jqXHR.responseJSON : null;
+                const fallbackMessage = jqXHR && jqXHR.status === 403
+                    ? 'Your sync session expired. Refresh wp-admin and try again.'
+                    : config.errorLabel;
+                if (!updateStatusFromResponse(response)) {
+                    currentStatus = {
+                        phase: 'dispatch_failed',
+                        message: response && response.data && typeof response.data.message === 'string'
+                            ? response.data.message
+                            : fallbackMessage
+                    };
+                    busy = false;
+                    renderPresentation({
+                        phase: 'error',
+                        label: truncateLabel(
+                            response && response.data && typeof response.data.message === 'string'
+                                ? response.data.message
+                                : fallbackMessage
+                        ),
+                        icon: 'warning'
+                    });
+                }
+                scheduleResetIfTerminal();
+                if (window.console && typeof window.console.error === 'function') {
+                    window.console.error('Sync Content AJAX request failed', {
+                        status: jqXHR ? jqXHR.status : null,
+                        responseJSON: jqXHR ? jqXHR.responseJSON : null,
+                        responseText: jqXHR ? jqXHR.responseText : null
+                    });
+                }
+            });
+        });
+    });
+    </script>
+    <?php
 }, 99999);
 
 if (!function_exists('meza_output_admin_bar_toolbar_alignment_css')) {

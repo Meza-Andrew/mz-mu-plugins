@@ -31,6 +31,18 @@ function meza_get_preview_post_label($post): string
     return sprintf(__('Preview %s'), meza_get_post_type_singular_label($post));
 }
 
+function meza_get_public_admin_url(string $url): string
+{
+    $url = trim($url);
+    if ($url === '') {
+        return '';
+    }
+
+    return function_exists('meza_get_public_facing_url')
+        ? meza_get_public_facing_url($url)
+        : $url;
+}
+
 function meza_strip_post_type_from_action_label(string $label, $post = null): string
 {
     $normalized = trim(wp_strip_all_tags($label));
@@ -77,6 +89,18 @@ function meza_update_admin_action_link(string $html, $post = null, string $label
             $href = html_entity_decode((string) ($href_matches[2] ?? ''), ENT_QUOTES, 'UTF-8');
         }
 
+        $public_href = meza_get_public_admin_url($href);
+        if ($href !== '' && $public_href !== '' && $public_href !== $href) {
+            $quoted_public_href = esc_url($public_href);
+            $attrs = preg_replace(
+                '/(\bhref\s*=\s*)([\'"]).*?\2/i',
+                '$1$2' . $quoted_public_href . '$2',
+                $attrs,
+                1
+            ) ?? $attrs;
+            $href = $public_href;
+        }
+
         $text_plain = strtolower(trim(wp_strip_all_tags($text)));
         $is_delete_or_trash = (
             str_contains($href, 'action=trash')
@@ -117,7 +141,7 @@ function meza_get_title_permalink_display_text(WP_Post $post): string
 {
     if (!meza_post_has_permalink((int) $post->ID)) return '';
 
-    $url = (string) get_permalink((int) $post->ID);
+    $url = meza_get_public_admin_url((string) get_permalink((int) $post->ID));
     if ($url === '') return '';
 
     return meza_get_admin_link_column_display_text($url);
@@ -127,7 +151,7 @@ function meza_get_copy_url_action_link(WP_Post $post): string
 {
     if (!meza_post_has_permalink((int) $post->ID)) return '';
 
-    $url = (string) get_permalink((int) $post->ID);
+    $url = meza_get_public_admin_url((string) get_permalink((int) $post->ID));
     if ($url === '') return '';
 
     $display = meza_get_title_permalink_display_text($post);
@@ -414,7 +438,7 @@ add_action('admin_bar_menu', function ($wp_admin_bar) {
         'id' => (string) $view_node->id,
         'parent' => $view_node->parent ?? false,
         'title' => esc_html(meza_get_view_post_label($post)),
-        'href' => $view_node->href ?? false,
+        'href' => meza_get_public_admin_url((string) ($view_node->href ?? '')),
         'group' => !empty($view_node->group),
         'meta' => $meta,
     ]);
@@ -433,3 +457,23 @@ add_action('admin_bar_menu', function ($wp_admin_bar) {
 
     $wp_admin_bar->remove_node('view');
 }, 100002);
+
+add_filter('get_sample_permalink_html', function ($html): string {
+    $html = is_string($html) ? $html : '';
+    if ($html === '') {
+        return $html;
+    }
+
+    $cms_home_url = home_url('/');
+    $public_home_url = meza_get_public_admin_url($cms_home_url);
+
+    if ($cms_home_url === '' || $public_home_url === '' || $cms_home_url === $public_home_url) {
+        return $html;
+    }
+
+    return str_replace(
+        [$cms_home_url, esc_url($cms_home_url), esc_html($cms_home_url)],
+        [$public_home_url, esc_url($public_home_url), esc_html($public_home_url)],
+        $html
+    );
+}, 1000);

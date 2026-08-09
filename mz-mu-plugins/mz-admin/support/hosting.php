@@ -85,3 +85,41 @@ if (!function_exists('meza_is_godaddy_hosting')) {
         return (bool) apply_filters('meza_is_godaddy_hosting', $cached);
     }
 }
+
+if (!function_exists('meza_get_public_facing_url')) {
+    function meza_get_public_facing_url(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return '';
+        }
+
+        $parsed_url = wp_parse_url($url);
+        if (!is_array($parsed_url)) {
+            return $url;
+        }
+
+        $host = strtolower((string) ($parsed_url['host'] ?? ''));
+        if ($host === '' || !str_starts_with($host, 'cms.')) {
+            return $url;
+        }
+
+        $public_host = substr($host, 4);
+        if ($public_host === '') {
+            return $url;
+        }
+
+        $scheme = (string) ($parsed_url['scheme'] ?? 'https');
+        $port = isset($parsed_url['port']) ? ':' . (int) $parsed_url['port'] : '';
+        $path = isset($parsed_url['path']) ? (string) $parsed_url['path'] : '/';
+        $path = $path === '' ? '/' : $path;
+        $query = isset($parsed_url['query']) && $parsed_url['query'] !== ''
+            ? '?' . (string) $parsed_url['query']
+            : '';
+        $fragment = isset($parsed_url['fragment']) && $parsed_url['fragment'] !== ''
+            ? '#' . (string) $parsed_url['fragment']
+            : '';
+
+        return $scheme . '://' . $public_host . $port . $path . $query . $fragment;
+    }
+}

@@ -46,6 +46,47 @@ add_filter('login_errors', function () {
     return null;
 });
 
+if (!function_exists('meza_should_redirect_cms_shell_homepage')) {
+    function meza_should_redirect_cms_shell_homepage(): bool
+    {
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if (!in_array($method, ['GET', 'HEAD'], true)) {
+            return false;
+        }
+
+        $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
+        $host = preg_replace('/:\d+$/', '', $host);
+
+        if ($host !== 'cms.investupfxbg.com') {
+            return false;
+        }
+
+        $request_uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+        $path = (string) wp_parse_url($request_uri, PHP_URL_PATH);
+        $query = (string) wp_parse_url($request_uri, PHP_URL_QUERY);
+        $query_string = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+
+        if ($path !== '' && $path !== '/') {
+            return false;
+        }
+
+        if ($query !== '' || $query_string !== '') {
+            return false;
+        }
+
+        return true;
+    }
+}
+
+add_action('template_redirect', function (): void {
+    if (!meza_should_redirect_cms_shell_homepage()) {
+        return;
+    }
+
+    wp_safe_redirect('https://investupfxbg.com/', 302, 'Meza Headless Shell');
+    exit;
+}, 0);
+
 /** ================================
  *  CONTENT POLICY
  *  ================================ */
