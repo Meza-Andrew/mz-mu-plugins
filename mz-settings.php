@@ -150,6 +150,26 @@ function meza_resolve_target($const, $fallback_cb)
     return is_callable($fallback_cb) ? (string) $fallback_cb() : (string) $fallback_cb;
 }
 
+/** Allow per-environment overrides from wp-config or server env before falling back to plugin constants. */
+function meza_resolve_target_override(string $override_constant, string $override_env, $fallback_const, $fallback_cb): string
+{
+    if (defined($override_constant)) {
+        $override_value = constant($override_constant);
+
+        if (is_string($override_value) && trim($override_value) !== '') {
+            return trim($override_value);
+        }
+    }
+
+    $env_value = getenv($override_env);
+
+    if (is_string($env_value) && trim($env_value) !== '') {
+        return trim($env_value);
+    }
+
+    return meza_resolve_target($fallback_const, $fallback_cb);
+}
+
 /** Resolve the desired GMT offset; when timezone string is set, use the current DST-aware offset for that zone. */
 function meza_resolve_gmt_offset()
 {
@@ -718,10 +738,10 @@ add_action('muplugins_loaded', function () {
     $target_blogname = meza_resolve_target(MEZA_SITE_TITLE, function () {
         return get_option('blogname');
     });
-    $target_home     = meza_resolve_target(MEZA_HOME_URL, function () {
+    $target_home     = meza_resolve_target_override('MZ_HOME_URL', 'MZ_HOME_URL', MEZA_HOME_URL, function () {
         return get_option('home');
     });
-    $target_siteurl  = meza_resolve_target(MEZA_SITE_URL, function () {
+    $target_siteurl  = meza_resolve_target_override('MZ_SITE_URL', 'MZ_SITE_URL', MEZA_SITE_URL, function () {
         return get_option('siteurl');
     });
     $target_lang     = meza_resolve_target(MEZA_WP_LANG, function () {
@@ -963,10 +983,10 @@ add_action('admin_init', function () {
     $target_blogname = meza_resolve_target(MEZA_SITE_TITLE, function () {
         return get_option('blogname');
     });
-    $target_home     = meza_resolve_target(MEZA_HOME_URL, function () {
+    $target_home     = meza_resolve_target_override('MZ_HOME_URL', 'MZ_HOME_URL', MEZA_HOME_URL, function () {
         return get_option('home');
     });
-    $target_siteurl  = meza_resolve_target(MEZA_SITE_URL, function () {
+    $target_siteurl  = meza_resolve_target_override('MZ_SITE_URL', 'MZ_SITE_URL', MEZA_SITE_URL, function () {
         return get_option('siteurl');
     });
     $target_lang     = meza_resolve_target(MEZA_WP_LANG, function () {
