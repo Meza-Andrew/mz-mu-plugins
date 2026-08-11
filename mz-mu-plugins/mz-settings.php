@@ -73,6 +73,28 @@ const MEZA_UPLOADS_YM_FOLDERS  = 1;
 const MEZA_PERMALINK_STRUCTURE = '/%postname%/';
 const MEZA_ADMIN_ITEMS_PER_PAGE = 20;
 
+/**
+ * Resolve whether uploads should continue using year/month folders.
+ *
+ * Keep behavior unchanged unless the placeholder image mode is on and the
+ * wp-config switch explicitly disables year/month folders.
+ */
+function meza_uploads_use_yearmonth_folders(): int
+{
+    $uploads_use_yearmonth_folders = MEZA_UPLOADS_YM_FOLDERS;
+
+    if (
+        defined('MZ_USE_PLACEHOLDER_IMAGES')
+        && MZ_USE_PLACEHOLDER_IMAGES
+        && defined('MZ_PLACEHOLDER_FLATTEN_UPLOADS')
+        && MZ_PLACEHOLDER_FLATTEN_UPLOADS
+    ) {
+        return 0;
+    }
+
+    return (int) $uploads_use_yearmonth_folders;
+}
+
 /** Editor defaults */
 const MEZA_DEFAULT_EDITOR      = 'classic';
 const MEZA_ALLOW_EDITOR_SWITCH = 0;
@@ -771,7 +793,7 @@ add_action('muplugins_loaded', function () {
     meza_force_option_read('medium_size_h',    MEZA_MED_H);
     meza_force_option_read('large_size_w',     MEZA_LG_W);
     meza_force_option_read('large_size_h',     MEZA_LG_H);
-    meza_force_option_read('uploads_use_yearmonth_folders', MEZA_UPLOADS_YM_FOLDERS);
+    meza_force_option_read('uploads_use_yearmonth_folders', meza_uploads_use_yearmonth_folders());
 
     meza_force_option_read('mailserver_url',         MEZA_MAILSERVER_URL);
     meza_force_option_read('mailserver_port',        MEZA_MAILSERVER_PORT);
@@ -803,7 +825,7 @@ add_action('muplugins_loaded', function () {
             'medium_size_h'      => MEZA_MED_H,
             'large_size_w'       => MEZA_LG_W,
             'large_size_h'       => MEZA_LG_H,
-            'uploads_use_yearmonth_folders' => MEZA_UPLOADS_YM_FOLDERS,
+            'uploads_use_yearmonth_folders' => meza_uploads_use_yearmonth_folders(),
             'mailserver_url'     => MEZA_MAILSERVER_URL,
             'mailserver_port'    => MEZA_MAILSERVER_PORT,
             'mailserver_login'   => MEZA_MAILSERVER_LOGIN,
@@ -1007,7 +1029,7 @@ add_action('admin_init', function () {
     update_option('medium_size_h',    MEZA_MED_H);
     update_option('large_size_w',     MEZA_LG_W);
     update_option('large_size_h',     MEZA_LG_H);
-    update_option('uploads_use_yearmonth_folders', MEZA_UPLOADS_YM_FOLDERS);
+    update_option('uploads_use_yearmonth_folders', meza_uploads_use_yearmonth_folders());
 
     $flush_rewrite_needed = false;
 
