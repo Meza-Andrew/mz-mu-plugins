@@ -1251,7 +1251,7 @@ add_action('admin_footer', function (): void {
         'successLabel' => 'Synced in',
         'errorLabel' => 'Sync failed',
         'pollIntervalMs' => 2000,
-        'completedResetDelayMs' => 2000,
+        'completedResetDelayMs' => 10000,
         'initialStatus' => meza_headless_build_read_status(),
     ];
 
@@ -1265,7 +1265,6 @@ add_action('admin_footer', function (): void {
         }
 
         const toolbarNodeSelector = '#wp-admin-bar-' + config.nodeId;
-        let currentStatus = config.initialStatus || { phase: 'idle' };
         let resetTimer = null;
         let pollTimer = null;
         let durationTimer = null;
@@ -1318,17 +1317,35 @@ add_action('admin_footer', function (): void {
             return trimmed.length > 48 ? trimmed.slice(0, 45) + '...' : trimmed;
         }
 
+        function createClientStartedAt() {
+            return new Date().toISOString();
+        }
+
+        function getClientStartedAt(status) {
+            return status && typeof status.clientStartedAt === 'string'
+                ? status.clientStartedAt
+                : '';
+        }
+
+        function getDispatchId(status) {
+            return status && typeof status.dispatchId === 'string'
+                ? status.dispatchId.trim()
+                : '';
+        }
+
         function getElapsedSeconds(status) {
             if (!status || typeof status !== 'object') {
                 return null;
             }
 
-            if (typeof status.elapsedSeconds === 'number' && Number.isFinite(status.elapsedSeconds)) {
-                return Math.max(0, Math.round(status.elapsedSeconds));
-            }
-
-            const startTimestamp = parseTimestamp(status.dispatchedAt || status.startedAt || status.queuedAt);
+            const startTimestamp = parseTimestamp(
+                getClientStartedAt(status) || status.queuedAt || status.dispatchedAt || status.startedAt
+            );
             if (startTimestamp === null) {
+                if (typeof status.elapsedSeconds === 'number' && Number.isFinite(status.elapsedSeconds)) {
+                    return Math.max(0, Math.round(status.elapsedSeconds));
+                }
+
                 return null;
             }
 
@@ -1347,9 +1364,9 @@ add_action('admin_footer', function (): void {
 
             if (status.phase === 'queued') {
                 return {
-                    phase: 'queued',
-                    label: config.queuedLabel + ' ' + formatElapsed(getElapsedSeconds(status) || 0),
-                    icon: 'clock'
+                    phase: 'syncing',
+                    label: config.dispatchingLabel + ' ' + formatElapsed(getElapsedSeconds(status) || 0),
+                    icon: 'update'
                 };
             }
 
@@ -1395,6 +1412,16 @@ add_action('admin_footer', function (): void {
                 && (status.phase === 'queued' || status.phase === 'in_progress')
             );
         }
+
+        function getInitialStatus(status) {
+            if (isActivePhase(status)) {
+                return status;
+            }
+
+            return { phase: 'idle' };
+        }
+
+        let currentStatus = getInitialStatus(config.initialStatus || { phase: 'idle' });
 
         function renderPresentation(presentation) {
             const $node = getNode();
@@ -1470,7 +1497,40 @@ add_action('admin_footer', function (): void {
                 return false;
             }
 
-            currentStatus = response.data.status;
+            const nextStatus = response.data.status;
+            const currentDispatchId = getDispatchId(currentStatus);
+            const nextDispatchId = getDispatchId(nextStatus);
+            const currentIsActive = isActivePhase(currentStatus);
+
+            if (currentIsActive) {
+                if (nextStatus.phase === 'idle') {
+                    return false;
+                }
+
+                if (
+                    currentDispatchId !== ''
+                    && nextDispatchId !== ''
+                    && currentDispatchId !== nextDispatchId
+                ) {
+                    return false;
+                }
+
+                if (
+                    currentDispatchId !== ''
+                    && nextDispatchId === ''
+                    && nextStatus.phase !== 'queued'
+                    && nextStatus.phase !== 'in_progress'
+                ) {
+                    return false;
+                }
+            }
+
+            const clientStartedAt = getClientStartedAt(currentStatus);
+            if (clientStartedAt && (!nextStatus.clientStartedAt || typeof nextStatus.clientStartedAt !== 'string')) {
+                nextStatus.clientStartedAt = clientStartedAt;
+            }
+
+            currentStatus = nextStatus;
             applyCurrentStatus();
             return true;
         }
@@ -1524,11 +1584,14 @@ add_action('admin_footer', function (): void {
             stopPolling();
             stopDurationTicker();
             window.clearTimeout(resetTimer);
-            renderPresentation({
-                phase: 'syncing',
-                label: config.dispatchingLabel,
-                icon: 'update'
-            });
+            currentStatus = {
+                phase: 'queued',
+                clientStartedAt: createClientStartedAt(),
+                queuedAt: new Date().toISOString(),
+                dispatchedAt: new Date().toISOString()
+            };
+            renderPresentation(getPresentation(currentStatus));
+            startDurationTicker();
 
             $.post(config.ajaxUrl, {
                 action: config.action,

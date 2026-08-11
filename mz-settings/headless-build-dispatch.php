@@ -6,7 +6,11 @@ if (!defined('ABSPATH')) {
 
 const MEZA_HEADLESS_BUILD_QUEUE_OPTION = 'meza_headless_build_dispatch_queue';
 const MEZA_HEADLESS_BUILD_LAST_RESULT_OPTION = 'meza_headless_build_dispatch_last_result';
+const MEZA_HEADLESS_BUILD_STATUS_OPTION = 'meza_headless_build_status';
 const MEZA_HEADLESS_BUILD_CRON_HOOK = 'meza_headless_build_dispatch_event';
+const MEZA_HEADLESS_BUILD_MANUAL_NONCE_ACTION = 'meza_headless_build_manual_dispatch';
+const MEZA_HEADLESS_BUILD_STATUS_CALLBACK_ACTION = 'meza_headless_build_update_status';
+const MEZA_HEADLESS_BUILD_STATUS_POLL_ACTION = 'meza_headless_build_get_status';
 
 function meza_headless_build_dispatch_env(string $name, string $default = ''): string
 {
@@ -23,6 +27,28 @@ function meza_headless_build_dispatch_enabled(): bool
 
     return meza_headless_build_dispatch_token() !== ''
         && meza_current_environment_label() === 'production';
+}
+
+function meza_headless_build_status_secret(): string
+{
+    if (defined('MZ_HEADLESS_BUILD_STATUS_SECRET') && MZ_HEADLESS_BUILD_STATUS_SECRET !== '') {
+        return (string) MZ_HEADLESS_BUILD_STATUS_SECRET;
+    }
+
+    return meza_headless_build_dispatch_env('MZ_HEADLESS_BUILD_STATUS_SECRET');
+}
+
+function meza_headless_build_status_callback_available(): bool
+{
+    return meza_headless_build_status_secret() !== '';
+}
+
+function meza_headless_build_manual_dispatch_available(): bool
+{
+    $token = meza_headless_build_dispatch_token();
+    $url = meza_headless_build_dispatch_url();
+
+    return $token !== '' && $url !== '';
 }
 
 function meza_headless_build_dispatch_owner(): string
@@ -98,6 +124,20 @@ function meza_headless_build_dispatch_url(): string
     );
 }
 
+function meza_headless_build_status_callback_url(): string
+{
+    return admin_url('admin-ajax.php');
+}
+
+function meza_headless_build_create_dispatch_id(): string
+{
+    if (function_exists('wp_generate_uuid4')) {
+        return wp_generate_uuid4();
+    }
+
+    return uniqid('meza-headless-build-', true);
+}
+
 function meza_headless_build_normalize_path(string $path): string
 {
     $trimmed = trim($path);
@@ -166,6 +206,311 @@ function meza_headless_build_write_queue(array $queue): void
 function meza_headless_build_store_result(array $result): void
 {
     update_option(MEZA_HEADLESS_BUILD_LAST_RESULT_OPTION, $result, false);
+}
+
+function meza_headless_build_read_result(): array
+{
+    $result = get_option(MEZA_HEADLESS_BUILD_LAST_RESULT_OPTION, []);
+
+    return is_array($result) ? $result : [];
+}
+
+function meza_headless_build_status_timeout_seconds(string $phase): int
+{
+    $default = match ($phase) {
+        'queued' => 120,
+        'in_progress' => 1800,
+        default => 0,
+    };
+
+    $configured = match ($phase) {
+        'queued' => defined('MZ_HEADLESS_BUILD_QUEUED_TIMEOUT_SECONDS')
+            ? (int) MZ_HEADLESS_BUILD_QUEUED_TIMEOUT_SECONDS
+            : (int) meza_headless_build_dispatch_env('MZ_HEADLESS_BUILD_QUEUED_TIMEOUT_SECONDS', (string) $default),
+        'in_progress' => defined('MZ_HEADLESS_BUILD_RUNNING_TIMEOUT_SECONDS')
+            ? (int) MZ_HEADLESS_BUILD_RUNNING_TIMEOUT_SECONDS
+            : (int) meza_headless_build_dispatch_env('MZ_HEADLESS_BUILD_RUNNING_TIMEOUT_SECONDS', (string) $default),
+        default => $default,
+    };
+
+    return max(0, $configured);
+}
+
+function meza_headless_build_status_reference_timestamp(array $status): string
+{
+    $phase = (string) ($status['phase'] ?? '');
+
+    if ($phase === 'queued') {
+        return (string) ($status['updatedAt'] ?: $status['dispatchedAt'] ?: $status['queuedAt'] ?: '');
+    }
+
+    if ($phase === 'in_progress') {
+        return (string) ($status['updatedAt'] ?: $status['startedAt'] ?: $status['dispatchedAt'] ?: '');
+    }
+
+    return '';
+}
+
+function meza_headless_build_status_is_stale(array $status): bool
+{
+    $phase = (string) ($status['phase'] ?? '');
+    if (!in_array($phase, ['queued', 'in_progress'], true)) {
+        return false;
+    }
+
+    $timeout = meza_headless_build_status_timeout_seconds($phase);
+    if ($timeout <= 0) {
+        return false;
+    }
+
+    $reference_timestamp = meza_headless_build_status_reference_timestamp($status);
+    if ($reference_timestamp === '') {
+        return false;
+    }
+
+    $age = meza_headless_build_diff_seconds($reference_timestamp, gmdate('c'));
+
+    return $age !== null && $age >= $timeout;
+}
+
+function meza_headless_build_mark_stale_status(array $status): array
+{
+    $phase = (string) ($status['phase'] ?? '');
+    $now = gmdate('c');
+    $message = $phase === 'queued'
+        ? 'Static sync stayed queued too long. Refresh complete and ready to retry.'
+        : 'Static sync status timed out waiting for completion. Refresh complete and ready to retry.';
+
+    $status['phase'] = 'dispatch_failed';
+    $status['ok'] = false;
+    $status['conclusion'] = 'failure';
+    $status['message'] = $message;
+    $status['updatedAt'] = $now;
+
+    if ((string) ($status['completedAt'] ?? '') === '') {
+        $status['completedAt'] = $now;
+    }
+
+    if (!is_numeric($status['elapsedSeconds'] ?? null)) {
+        $elapsed = meza_headless_build_diff_seconds(
+            (string) ($status['dispatchedAt'] ?: $status['queuedAt'] ?: ''),
+            $now
+        );
+        $status['elapsedSeconds'] = $elapsed;
+    }
+
+    return meza_headless_build_store_status($status);
+}
+
+function meza_headless_build_default_status(): array
+{
+    return [
+        'dispatchId' => '',
+        'phase' => 'idle',
+        'message' => '',
+        'ok' => null,
+        'conclusion' => '',
+        'queuedAt' => '',
+        'dispatchedAt' => '',
+        'startedAt' => '',
+        'completedAt' => '',
+        'updatedAt' => '',
+        'elapsedSeconds' => null,
+        'runId' => '',
+        'runUrl' => '',
+        'sourceSite' => '',
+        'sourceLabel' => '',
+    ];
+}
+
+function meza_headless_build_normalize_status(array $status): array
+{
+    $defaults = meza_headless_build_default_status();
+    $normalized = array_merge($defaults, $status);
+    $string_keys = [
+        'dispatchId',
+        'phase',
+        'message',
+        'conclusion',
+        'queuedAt',
+        'dispatchedAt',
+        'startedAt',
+        'completedAt',
+        'updatedAt',
+        'runId',
+        'runUrl',
+        'sourceSite',
+        'sourceLabel',
+    ];
+
+    foreach ($string_keys as $key) {
+        $normalized[$key] = trim((string) ($normalized[$key] ?? ''));
+    }
+
+    if ($normalized['ok'] === null) {
+        // Leave null intact so the UI can distinguish "in progress" from failure.
+    } else {
+        $normalized['ok'] = in_array($normalized['ok'], [true, 1, '1', 'true'], true);
+    }
+
+    $elapsed = $normalized['elapsedSeconds'];
+    $normalized['elapsedSeconds'] = is_numeric($elapsed) ? max(0, (int) $elapsed) : null;
+
+    return $normalized;
+}
+
+function meza_headless_build_read_status(): array
+{
+    $status = get_option(MEZA_HEADLESS_BUILD_STATUS_OPTION, []);
+    $normalized = is_array($status)
+        ? meza_headless_build_normalize_status($status)
+        : meza_headless_build_default_status();
+
+    if (meza_headless_build_status_is_stale($normalized)) {
+        return meza_headless_build_mark_stale_status($normalized);
+    }
+
+    return $normalized;
+}
+
+function meza_headless_build_store_status(array $status): array
+{
+    $normalized = meza_headless_build_normalize_status($status);
+    update_option(MEZA_HEADLESS_BUILD_STATUS_OPTION, $normalized, false);
+
+    return $normalized;
+}
+
+function meza_headless_build_diff_seconds(string $from, string $to): ?int
+{
+    if ($from === '' || $to === '') {
+        return null;
+    }
+
+    try {
+        $from_time = new DateTimeImmutable($from);
+        $to_time = new DateTimeImmutable($to);
+    } catch (Exception $exception) {
+        return null;
+    }
+
+    return max(0, $to_time->getTimestamp() - $from_time->getTimestamp());
+}
+
+function meza_headless_build_status_message(string $phase, string $conclusion = ''): string
+{
+    if ($phase === 'queued') {
+        return 'Queued for static sync.';
+    }
+
+    if ($phase === 'in_progress') {
+        return 'Static sync is running.';
+    }
+
+    if ($phase === 'completed') {
+        if ($conclusion === 'success') {
+            return 'Static sync finished successfully.';
+        }
+
+        if ($conclusion === 'cancelled') {
+            return 'Static sync was cancelled.';
+        }
+
+        return 'Static sync failed.';
+    }
+
+    if ($phase === 'dispatch_failed') {
+        return 'Unable to dispatch static sync.';
+    }
+
+    return '';
+}
+
+function meza_headless_build_mark_dispatch_status(
+    string $dispatch_id,
+    array $queue,
+    bool $ok,
+    string $message = '',
+    int $status_code = 0
+): array {
+    $dispatched_at = gmdate('c');
+
+    return meza_headless_build_store_status([
+        'dispatchId' => $dispatch_id,
+        'phase' => $ok ? 'queued' : 'dispatch_failed',
+        'message' => $message !== '' ? $message : meza_headless_build_status_message($ok ? 'queued' : 'dispatch_failed'),
+        'ok' => $ok ? null : false,
+        'conclusion' => $ok ? '' : 'failure',
+        'queuedAt' => (string) ($queue['queued_at'] ?? $dispatched_at),
+        'dispatchedAt' => $dispatched_at,
+        'startedAt' => '',
+        'completedAt' => '',
+        'updatedAt' => $dispatched_at,
+        'elapsedSeconds' => null,
+        'runId' => '',
+        'runUrl' => '',
+        'sourceSite' => home_url('/'),
+        'sourceLabel' => get_bloginfo('name'),
+    ]);
+}
+
+function meza_headless_build_update_status_from_callback(array $payload): array
+{
+    $current = meza_headless_build_read_status();
+    $dispatch_id = trim((string) ($payload['dispatchId'] ?? ''));
+
+    if ($dispatch_id === '') {
+        return $current;
+    }
+
+    if (($current['dispatchId'] ?? '') !== '' && $dispatch_id !== $current['dispatchId']) {
+        return $current;
+    }
+
+    $phase = trim((string) ($payload['phase'] ?? ''));
+    $conclusion = trim((string) ($payload['conclusion'] ?? ''));
+    $updated_at = gmdate('c');
+    $status = $current;
+    $status['dispatchId'] = $dispatch_id;
+    $status['updatedAt'] = $updated_at;
+
+    if ($phase === 'in_progress') {
+        $started_at = trim((string) ($payload['startedAt'] ?? ''));
+        $status['phase'] = 'in_progress';
+        $status['message'] = trim((string) ($payload['message'] ?? '')) ?: meza_headless_build_status_message('in_progress');
+        $status['ok'] = null;
+        $status['conclusion'] = '';
+        $status['startedAt'] = $started_at !== '' ? $started_at : ($status['startedAt'] ?: $updated_at);
+        $status['runId'] = trim((string) ($payload['runId'] ?? ''));
+        $status['runUrl'] = trim((string) ($payload['runUrl'] ?? ''));
+
+        return meza_headless_build_store_status($status);
+    }
+
+    if ($phase === 'completed') {
+        $completed_at = trim((string) ($payload['completedAt'] ?? ''));
+        $message = trim((string) ($payload['message'] ?? ''));
+        $elapsed = is_numeric($payload['elapsedSeconds'] ?? null) ? (int) $payload['elapsedSeconds'] : null;
+        if ($elapsed === null) {
+            $elapsed = meza_headless_build_diff_seconds(
+                (string) ($status['dispatchedAt'] ?? ''),
+                $completed_at !== '' ? $completed_at : $updated_at
+            );
+        }
+
+        $status['phase'] = 'completed';
+        $status['conclusion'] = $conclusion;
+        $status['ok'] = $conclusion === 'success';
+        $status['message'] = $message !== '' ? $message : meza_headless_build_status_message('completed', $conclusion);
+        $status['completedAt'] = $completed_at !== '' ? $completed_at : $updated_at;
+        $status['elapsedSeconds'] = $elapsed;
+        $status['runId'] = trim((string) ($payload['runId'] ?? '')) ?: $status['runId'];
+        $status['runUrl'] = trim((string) ($payload['runUrl'] ?? '')) ?: $status['runUrl'];
+
+        return meza_headless_build_store_status($status);
+    }
+
+    return meza_headless_build_store_status($status);
 }
 
 function meza_headless_build_schedule_dispatch(): void
@@ -273,6 +618,7 @@ function meza_headless_build_dispatch_queue(): void
 
     $token = meza_headless_build_dispatch_token();
     $url = meza_headless_build_dispatch_url();
+    $dispatch_id = meza_headless_build_create_dispatch_id();
 
     if ($token === '' || $url === '') {
         meza_headless_build_store_result([
@@ -281,6 +627,12 @@ function meza_headless_build_dispatch_queue(): void
             'message' => 'Headless build dispatch is missing token or repo configuration.',
             'queue' => $queue,
         ]);
+        meza_headless_build_mark_dispatch_status(
+            $dispatch_id,
+            $queue,
+            false,
+            'Headless build dispatch is missing token or repo configuration.'
+        );
         return;
     }
 
@@ -294,8 +646,8 @@ function meza_headless_build_dispatch_queue(): void
             'branch' => meza_headless_build_dispatch_branch(),
             'environment' => meza_current_environment_label(),
             'queuedAt' => $queue['queued_at'],
-            'sourceSite' => home_url('/'),
-            'sourceLabel' => get_bloginfo('name'),
+            'dispatchId' => $dispatch_id,
+            'callbackUrl' => meza_headless_build_status_callback_url(),
         ],
     ];
 
@@ -321,6 +673,12 @@ function meza_headless_build_dispatch_queue(): void
             'message' => $response->get_error_message(),
             'queue' => $queue,
         ]);
+        meza_headless_build_mark_dispatch_status(
+            $dispatch_id,
+            $queue,
+            false,
+            $response->get_error_message()
+        );
         meza_headless_build_schedule_dispatch();
         return;
     }
@@ -335,6 +693,15 @@ function meza_headless_build_dispatch_queue(): void
         'message' => wp_remote_retrieve_body($response),
         'queue' => $queue,
     ]);
+    meza_headless_build_mark_dispatch_status(
+        $dispatch_id,
+        $queue,
+        $ok,
+        $ok
+            ? meza_headless_build_status_message('queued')
+            : wp_remote_retrieve_body($response),
+        $status
+    );
 
     if ($ok) {
         delete_option(MEZA_HEADLESS_BUILD_QUEUE_OPTION);
@@ -342,6 +709,40 @@ function meza_headless_build_dispatch_queue(): void
     }
 
     meza_headless_build_schedule_dispatch();
+}
+
+function meza_headless_build_dispatch_now(array $fallback_changes = []): array
+{
+    if (!meza_headless_build_manual_dispatch_available()) {
+        $result = [
+            'sent_at' => gmdate('c'),
+            'ok' => false,
+            'message' => 'Headless build dispatch is missing token or repo configuration.',
+        ];
+
+        meza_headless_build_store_result($result);
+
+        return $result;
+    }
+
+    $queue = meza_headless_build_read_queue();
+    $has_pending_changes = $queue['paths'] !== [] || $queue['slugs'] !== [] || $queue['types'] !== [];
+
+    if (!$has_pending_changes) {
+        $fallback_changes = is_array($fallback_changes) ? $fallback_changes : [];
+        if ($fallback_changes === []) {
+            $fallback_changes = [
+                'paths' => ['/'],
+                'types' => ['manual'],
+            ];
+        }
+
+        meza_headless_build_queue_changes($fallback_changes);
+    }
+
+    meza_headless_build_dispatch_queue();
+
+    return meza_headless_build_read_result();
 }
 
 add_action(MEZA_HEADLESS_BUILD_CRON_HOOK, 'meza_headless_build_dispatch_queue');
@@ -391,3 +792,88 @@ add_action('updated_option', function ($option) {
 
     meza_headless_build_queue_global_change('settings');
 }, 20, 1);
+
+add_action('wp_ajax_meza_headless_build_dispatch_now', function (): void {
+    if (!function_exists('meza_can_access_clear_cache') || !meza_can_access_clear_cache()) {
+        wp_send_json_error([
+            'message' => 'You do not have permission to sync content.',
+        ], 403);
+    }
+
+    $nonce = isset($_REQUEST['nonce']) ? (string) wp_unslash($_REQUEST['nonce']) : '';
+    if ($nonce === '' || !wp_verify_nonce($nonce, MEZA_HEADLESS_BUILD_MANUAL_NONCE_ACTION)) {
+        wp_send_json_error([
+            'message' => 'Your sync session expired. Refresh wp-admin and try again.',
+        ], 403);
+    }
+
+    $result = meza_headless_build_dispatch_now([
+        'paths' => ['/'],
+        'types' => ['manual'],
+    ]);
+
+    if (!empty($result['ok'])) {
+        wp_send_json_success([
+            'message' => 'Headless content sync dispatched successfully.',
+            'result' => $result,
+            'status' => meza_headless_build_read_status(),
+        ]);
+    }
+
+    wp_send_json_error([
+        'message' => (string) ($result['message'] ?? 'Unable to dispatch headless content sync.'),
+        'result' => $result,
+        'status' => meza_headless_build_read_status(),
+    ]);
+});
+
+add_action('wp_ajax_' . MEZA_HEADLESS_BUILD_STATUS_POLL_ACTION, function (): void {
+    if (!function_exists('meza_can_access_clear_cache') || !meza_can_access_clear_cache()) {
+        wp_send_json_error([
+            'message' => 'You do not have permission to view sync status.',
+        ], 403);
+    }
+
+    wp_send_json_success([
+        'status' => meza_headless_build_read_status(),
+        'serverTime' => gmdate('c'),
+    ]);
+});
+
+$meza_headless_build_status_callback = function (): void {
+    $expected_secret = meza_headless_build_status_secret();
+    $provided_secret = (string) ($_SERVER['HTTP_X_MEZA_HEADLESS_BUILD_STATUS_SECRET'] ?? '');
+
+    if ($expected_secret === '' || !hash_equals($expected_secret, $provided_secret)) {
+        wp_send_json_error([
+            'message' => 'Invalid sync status secret.',
+        ], 403);
+    }
+
+    $dispatch_id = trim((string) wp_unslash($_REQUEST['dispatchId'] ?? ''));
+    if ($dispatch_id === '') {
+        wp_send_json_error([
+            'message' => 'Missing dispatchId.',
+        ], 400);
+    }
+
+    $status = meza_headless_build_update_status_from_callback([
+        'dispatchId' => $dispatch_id,
+        'phase' => trim((string) wp_unslash($_REQUEST['phase'] ?? '')),
+        'conclusion' => trim((string) wp_unslash($_REQUEST['conclusion'] ?? '')),
+        'message' => trim((string) wp_unslash($_REQUEST['message'] ?? '')),
+        'startedAt' => trim((string) wp_unslash($_REQUEST['startedAt'] ?? '')),
+        'completedAt' => trim((string) wp_unslash($_REQUEST['completedAt'] ?? '')),
+        'elapsedSeconds' => wp_unslash($_REQUEST['elapsedSeconds'] ?? null),
+        'runId' => trim((string) wp_unslash($_REQUEST['runId'] ?? '')),
+        'runUrl' => trim((string) wp_unslash($_REQUEST['runUrl'] ?? '')),
+    ]);
+
+    wp_send_json_success([
+        'status' => $status,
+        'serverTime' => gmdate('c'),
+    ]);
+};
+
+add_action('wp_ajax_' . MEZA_HEADLESS_BUILD_STATUS_CALLBACK_ACTION, $meza_headless_build_status_callback);
+add_action('wp_ajax_nopriv_' . MEZA_HEADLESS_BUILD_STATUS_CALLBACK_ACTION, $meza_headless_build_status_callback);
