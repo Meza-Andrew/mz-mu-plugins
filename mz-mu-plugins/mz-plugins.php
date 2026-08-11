@@ -757,6 +757,7 @@ if (!function_exists('mz_plugins_get_catalog')) {
 
             // Production only
             ['name' => 'Site Kit by Google', 'slug' => 'google-site-kit', 'file' => 'google-site-kit/google-site-kit.php', 'envs' => ['production']],
+            ['name' => 'MainWP Child', 'slug' => 'mainwp-child', 'file' => 'mainwp-child/mainwp-child.php', 'envs' => ['production']],
         ];
 
         if (mz_plugins_should_manage_woocommerce()) {
