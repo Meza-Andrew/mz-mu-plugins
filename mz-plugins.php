@@ -401,7 +401,7 @@ function mz_plugins_get_default_settings_import_specs(): array
     return [
         'updraftplus/updraftplus.php' => [
             'name' => 'UpdraftPlus',
-            'source' => __DIR__ . '/defaults/updraftplus-settings.json',
+            'source' => mz_plugins_get_updraftplus_settings_source_path(),
             'signature_option' => 'mz_plugins_default_settings_signature_updraftplus',
             'importer' => 'mz_plugins_import_updraftplus_settings_file',
             'is_configured' => 'mz_plugins_has_updraft_settings',
@@ -414,6 +414,17 @@ function mz_plugins_get_default_settings_import_specs(): array
             'is_configured' => 'mz_plugins_has_aios_settings',
         ],
     ];
+}
+
+function mz_plugins_get_updraftplus_settings_source_path(): string
+{
+    $env_name = defined('WP_ENV') ? strtolower(trim((string) WP_ENV)) : 'production';
+
+    if ('qa' === $env_name) {
+        return __DIR__ . '/defaults/updraftplus-settings-qa.json';
+    }
+
+    return __DIR__ . '/defaults/updraftplus-settings.json';
 }
 
 function mz_plugins_has_updraft_settings(): bool
@@ -431,7 +442,7 @@ function mz_plugins_has_aios_settings(): bool
 
 function mz_plugins_get_updraft_settings_export_path(): string
 {
-    return __DIR__ . '/defaults/updraftplus-settings.json';
+    return mz_plugins_get_updraftplus_settings_source_path();
 }
 
 function mz_plugins_get_updraft_installed_version(): string
@@ -757,6 +768,7 @@ if (!function_exists('mz_plugins_get_catalog')) {
 
             // Production only
             ['name' => 'Site Kit by Google', 'slug' => 'google-site-kit', 'file' => 'google-site-kit/google-site-kit.php', 'envs' => ['production']],
+            ['name' => 'MainWP Child', 'slug' => 'mainwp-child', 'file' => 'mainwp-child/mainwp-child.php', 'envs' => ['production']],
         ];
 
         if (mz_plugins_should_manage_woocommerce()) {

@@ -1094,6 +1094,15 @@ if (!function_exists('meza_ensure_acf_admin_options_page_class_loaded')) {
             return;
         }
 
+        // Only load the admin class when the rest of ACF's options-page API is already available.
+        if (
+            !function_exists('acf_get_options_pages')
+            || !function_exists('acf_get_options_page')
+            || !function_exists('acf_add_options_page')
+        ) {
+            return;
+        }
+
         $initialized = true;
 
         if (!class_exists('acf_admin_options_page')) {
