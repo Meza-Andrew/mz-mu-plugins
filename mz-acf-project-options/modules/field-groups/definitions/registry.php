@@ -655,6 +655,10 @@
             $groups[] = meza_get_post_field_group_definition();
         }
 
+        if (function_exists('meza_supports_sponsor_features') && meza_supports_sponsor_features()) {
+            $groups[] = meza_get_organization_type_sponsor_level_term_field_group_definition();
+        }
+
         if (function_exists('meza_is_nonprofit_business_type') && meza_is_nonprofit_business_type()) {
             $groups[] = meza_get_certification_field_group_definition();
         }

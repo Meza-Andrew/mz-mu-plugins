@@ -1399,6 +1399,74 @@ JSON, true);
         ];
     }
 
+    function meza_get_organization_type_sponsor_level_term_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_meza_organization_type_sponsor_level_term',
+            'title' => 'Sponsor Level Details',
+            'fields' => [
+                [
+                    'key' => 'field_meza_sponsor_level_cost',
+                    'label' => 'Cost',
+                    'name' => 'cost',
+                    'aria-label' => '',
+                    'type' => 'text',
+                    'instructions' => 'Optional display text for this sponsor level cost (for example "$2,000").',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'default_value' => '',
+                    'placeholder' => '',
+                    'maxlength' => '',
+                    'allow_in_bindings' => 0,
+                ],
+                [
+                    'key' => 'field_meza_sponsor_level_signup_link',
+                    'label' => 'Signup Link',
+                    'name' => 'signup_link',
+                    'aria-label' => '',
+                    'type' => 'url',
+                    'instructions' => 'Optional outbound destination used by this sponsor level.',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'default_value' => '',
+                    'placeholder' => 'https://',
+                    'allow_in_bindings' => 0,
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'taxonomy',
+                        'operator' => '==',
+                        'value' => 'organization-type',
+                    ],
+                ],
+            ],
+            'menu_order' => 0,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => 'Sponsor level metadata used by homepage sponsor-level payloads.',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
     function meza_get_taxonomy_featured_image_field_group_definition(): array
     {
         $location = [];
