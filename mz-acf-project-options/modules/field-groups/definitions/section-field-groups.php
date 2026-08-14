@@ -185,8 +185,14 @@
         ];
 
         $section_field_name = sanitize_key($section_field_name);
+        $names = $contracts[$section_field_name]
+            ?? ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'];
 
-        return $contracts[$section_field_name] ?? ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'];
+        if (!in_array('id', $names, true)) {
+            $names[] = 'id';
+        }
+
+        return $names;
     }
 
     function meza_get_standard_list_section_sub_fields(array $config): array

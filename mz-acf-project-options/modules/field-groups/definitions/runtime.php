@@ -2432,6 +2432,11 @@
 
     function meza_build_default_section_sub_field(string $section_field_name, string $sub_field_name): array
     {
+        $default_value = '';
+        if ($sub_field_name === 'id') {
+            $default_value = meza_get_standard_section_default_id($section_field_name);
+        }
+
         $is_textarea = in_array($sub_field_name, ['description', 'subhead'], true)
             || (in_array($sub_field_name, ['headline', 'display'], true) && meza_has_combined_temporal_content_context());
         $is_link = in_array($sub_field_name, ['link', 'link_secondary'], true);
@@ -2449,7 +2454,7 @@
                 'class' => '',
                 'id' => '',
             ],
-            'default_value' => '',
+            'default_value' => $default_value,
             'maxlength' => '',
             'allow_in_bindings' => 0,
         ];
@@ -2502,6 +2507,48 @@
         }
 
         return $field;
+    }
+
+    function meza_get_standard_section_default_id(string $section_field_name): string
+    {
+        $section_field_name = sanitize_key($section_field_name);
+        if ($section_field_name === '') {
+            return '';
+        }
+
+        $section_defaults = [
+            'section_hero' => 'hero',
+            'section_form' => 'form',
+            'section_content' => 'content',
+            'section_faqs' => 'faqs',
+            'section_gallery' => 'gallery',
+            'section_list-reviews' => 'reviews',
+            'section_list-posts' => 'posts',
+            'section_list-resources' => 'resources',
+            'section_list-events' => 'events',
+            'section_list-services' => 'services',
+            'section_list-partners' => 'partners',
+            'section_list-sponsors' => 'sponsors',
+            'section_list-profiles' => 'profiles',
+            'section_list-locations' => 'localities',
+            'section_list-segments' => 'segments',
+            'section_benefits' => 'benefits',
+            'section_list-songs' => 'songs',
+            'section_list-donor-levels' => 'donor-levels',
+            'section_list-certifications' => 'certifications',
+            'section_list-donation-options' => 'donation-options',
+            'section_list-donors-sponsors' => 'donors-sponsors',
+            'section_list-sponsor-levels' => 'sponsor-levels',
+        ];
+
+        if (array_key_exists($section_field_name, $section_defaults)) {
+            return sanitize_title($section_defaults[$section_field_name]);
+        }
+
+        $base_name = preg_replace('/^section_/', '', $section_field_name);
+        $base_name = preg_replace('/^list[-_]/', '', (string) $base_name);
+
+        return sanitize_title((string) $base_name);
     }
 
     function meza_get_standard_section_sub_field_label(string $sub_field_name): string
@@ -2585,7 +2632,14 @@
                 continue;
             }
 
-            $sub_fields[$index]['default_value'] = '';
+            if ($name === 'id') {
+                $default_value = meza_get_standard_section_default_id($section_field_name);
+                if ((string) ($sub_fields[$index]['default_value'] ?? '') === '') {
+                    $sub_fields[$index]['default_value'] = $default_value;
+                }
+            } else {
+                $sub_fields[$index]['default_value'] = '';
+            }
 
             $current_label = trim((string) ($sub_fields[$index]['label'] ?? ''));
             $default_label = meza_get_standard_section_sub_field_label($name);
