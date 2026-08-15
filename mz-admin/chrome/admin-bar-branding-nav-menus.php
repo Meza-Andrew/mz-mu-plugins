@@ -259,6 +259,12 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
     $is_production_like_environment = in_array($environment, ['qa', 'production'], true);
     $can_dispatch_headless_build = function_exists('meza_headless_build_manual_dispatch_available')
         && meza_headless_build_manual_dispatch_available();
+    $headless_build_warning_message = function_exists('meza_headless_build_admin_bar_warning_message')
+        ? trim((string) meza_headless_build_admin_bar_warning_message())
+        : '';
+    $show_headless_build_warning = $is_production_like_environment
+        && !$can_dispatch_headless_build
+        && $headless_build_warning_message !== '';
     $wp_super_cache_plugin_file = trailingslashit((string) WP_PLUGIN_DIR) . 'wp-super-cache/wp-cache.php';
     $has_wp_super_cache_installed = file_exists($wp_super_cache_plugin_file);
     $nodes = $wp_admin_bar->get_nodes();
@@ -437,17 +443,22 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         ]);
     };
 
-    $add_sync_content = static function () use ($wp_admin_bar, $toolbar_parent): void {
+    $add_sync_content = static function (
+        string $label = 'Sync Content',
+        string $icon_class = 'dashicons-update',
+        string $title = 'Sync Content',
+        string $extra_class = ''
+    ) use ($wp_admin_bar, $toolbar_parent): void {
         $wp_admin_bar->remove_node(meza_get_sync_content_admin_bar_node_id());
         $wp_admin_bar->add_node([
             'id' => meza_get_sync_content_admin_bar_node_id(),
             'parent' => $toolbar_parent,
-            'title' => meza_get_sync_content_admin_bar_title(),
+            'title' => meza_get_sync_content_admin_bar_title($label, $icon_class),
             'href' => '#',
             'group' => false,
             'meta' => [
-                'title' => 'Sync Content',
-                'class' => 'meza-admin-bar-toolbar-action meza-admin-bar-sync-content-action',
+                'title' => $title,
+                'class' => trim('meza-admin-bar-toolbar-action meza-admin-bar-sync-content-action ' . $extra_class),
             ],
         ]);
     };
@@ -470,6 +481,13 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         $add_clone($delete_cache_node, meza_get_clear_cache_admin_bar_title(), $toolbar_parent, 'Clear Page and Object Cache');
         if ($can_dispatch_headless_build) {
             $add_sync_content();
+        } elseif ($show_headless_build_warning) {
+            $add_sync_content(
+                'Sync Setup Needed',
+                'dashicons-warning',
+                $headless_build_warning_message,
+                'is-disabled'
+            );
         }
         return;
     }
@@ -478,6 +496,13 @@ function meza_position_flush_server_cache_node($wp_admin_bar): void
         $add_flush();
         if ($can_dispatch_headless_build) {
             $add_sync_content();
+        } elseif ($show_headless_build_warning) {
+            $add_sync_content(
+                'Sync Setup Needed',
+                'dashicons-warning',
+                $headless_build_warning_message,
+                'is-disabled'
+            );
         }
         return;
     }
@@ -1232,7 +1257,13 @@ add_action('admin_footer', function (): void {
         return;
     }
 
-    if (!function_exists('meza_headless_build_manual_dispatch_available') || !meza_headless_build_manual_dispatch_available()) {
+    $sync_is_actionable = function_exists('meza_headless_build_manual_dispatch_available')
+        && meza_headless_build_manual_dispatch_available();
+    $sync_warning_message = function_exists('meza_headless_build_admin_bar_warning_message')
+        ? trim((string) meza_headless_build_admin_bar_warning_message())
+        : '';
+
+    if (!$sync_is_actionable && $sync_warning_message === '') {
         return;
     }
 
@@ -1250,9 +1281,17 @@ add_action('admin_footer', function (): void {
         'syncingLabel' => 'Syncing...',
         'successLabel' => 'Synced in',
         'errorLabel' => 'Sync failed',
+        'warningLabel' => 'Sync Setup Needed',
+        'warningMessage' => $sync_warning_message,
+        'actionable' => $sync_is_actionable,
         'pollIntervalMs' => 2000,
         'completedResetDelayMs' => 10000,
-        'initialStatus' => meza_headless_build_read_status(),
+        'initialStatus' => $sync_is_actionable
+            ? meza_headless_build_read_status()
+            : [
+                'phase' => 'configuration_warning',
+                'message' => $sync_warning_message,
+            ],
     ];
 
     ?>
@@ -1398,6 +1437,14 @@ add_action('admin_footer', function (): void {
                 };
             }
 
+            if (status.phase === 'configuration_warning') {
+                return {
+                    phase: 'warning',
+                    label: config.warningLabel || config.idleLabel,
+                    icon: 'warning'
+                };
+            }
+
             return {
                 phase: 'idle',
                 label: config.idleLabel,
@@ -1421,7 +1468,9 @@ add_action('admin_footer', function (): void {
             return { phase: 'idle' };
         }
 
-        let currentStatus = getInitialStatus(config.initialStatus || { phase: 'idle' });
+        let currentStatus = config.actionable
+            ? getInitialStatus(config.initialStatus || { phase: 'idle' })
+            : (config.initialStatus || { phase: 'configuration_warning', message: config.warningMessage || '' });
 
         function renderPresentation(presentation) {
             const $node = getNode();
@@ -1431,7 +1480,7 @@ add_action('admin_footer', function (): void {
                 return;
             }
 
-            $node.removeClass('is-syncing is-success is-error');
+            $node.removeClass('is-syncing is-success is-error is-warning');
 
             if (presentation.phase === 'syncing') {
                 $node.addClass('is-syncing');
@@ -1439,6 +1488,8 @@ add_action('admin_footer', function (): void {
                 $node.addClass('is-success');
             } else if (presentation.phase === 'error') {
                 $node.addClass('is-error');
+            } else if (presentation.phase === 'warning') {
+                $node.addClass('is-warning');
             }
 
             $link.html(getIconHtml(presentation.icon) + '<span class="ab-label">' + presentation.label + '</span>');
@@ -1572,6 +1623,15 @@ add_action('admin_footer', function (): void {
         }
 
         applyCurrentStatus();
+
+        if (!config.actionable) {
+            const $link = getLink();
+            if ($link.length && config.warningMessage) {
+                $link.attr('title', config.warningMessage);
+                $link.attr('aria-disabled', 'true');
+            }
+            return;
+        }
 
         $(document).on('click.mezaSyncContent', toolbarNodeSelector + ' > .ab-item', function (event) {
             event.preventDefault();

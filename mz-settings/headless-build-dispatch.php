@@ -25,8 +25,16 @@ function meza_headless_build_dispatch_enabled(): bool
         return meza_truthy(MZ_HEADLESS_BUILD_DISPATCH_ENABLED);
     }
 
-    return meza_headless_build_dispatch_token() !== ''
-        && meza_current_environment_label() === 'production';
+    return meza_headless_build_dispatch_block_reason() === '';
+}
+
+function meza_headless_build_auto_dispatch_enabled(): bool
+{
+    if (defined('MZ_HEADLESS_BUILD_AUTO_DISPATCH_ENABLED')) {
+        return meza_truthy(MZ_HEADLESS_BUILD_AUTO_DISPATCH_ENABLED);
+    }
+
+    return meza_truthy(meza_headless_build_dispatch_env('MZ_HEADLESS_BUILD_AUTO_DISPATCH_ENABLED', '0'));
 }
 
 function meza_headless_build_status_secret(): string
@@ -43,12 +51,37 @@ function meza_headless_build_status_callback_available(): bool
     return meza_headless_build_status_secret() !== '';
 }
 
+function meza_headless_build_dispatch_block_reason(): string
+{
+    if (meza_current_environment_label() !== 'production') {
+        return 'Sync Content dispatch is only enabled in production.';
+    }
+
+    if (meza_headless_build_dispatch_token() === '' || meza_headless_build_dispatch_url() === '') {
+        return 'Sync Content dispatch is missing GitHub repository settings or token.';
+    }
+
+    if (!meza_headless_build_status_callback_available()) {
+        return 'Sync Content status callback secret is missing. Configure matching WordPress and GitHub callback secrets before syncing.';
+    }
+
+    return '';
+}
+
+function meza_headless_build_admin_bar_warning_message(): string
+{
+    $block_reason = meza_headless_build_dispatch_block_reason();
+
+    if ($block_reason !== '') {
+        return $block_reason;
+    }
+
+    return '';
+}
+
 function meza_headless_build_manual_dispatch_available(): bool
 {
-    $token = meza_headless_build_dispatch_token();
-    $url = meza_headless_build_dispatch_url();
-
-    return $token !== '' && $url !== '';
+    return meza_headless_build_dispatch_block_reason() === '';
 }
 
 function meza_headless_build_dispatch_owner(): string
@@ -278,8 +311,8 @@ function meza_headless_build_mark_stale_status(array $status): array
     $phase = (string) ($status['phase'] ?? '');
     $now = gmdate('c');
     $message = $phase === 'queued'
-        ? 'Static sync stayed queued too long. Refresh complete and ready to retry.'
-        : 'Static sync status timed out waiting for completion. Refresh complete and ready to retry.';
+        ? 'Static sync stayed queued too long. The GitHub workflow may not have started or the callback may be misconfigured. Refresh complete and ready to retry.'
+        : 'Static sync status timed out waiting for completion. The GitHub workflow may be stuck or the callback may be misconfigured. Refresh complete and ready to retry.';
 
     $status['phase'] = 'dispatch_failed';
     $status['ok'] = false;
@@ -515,6 +548,10 @@ function meza_headless_build_update_status_from_callback(array $payload): array
 
 function meza_headless_build_schedule_dispatch(): void
 {
+    if (!meza_headless_build_auto_dispatch_enabled()) {
+        return;
+    }
+
     if (!meza_headless_build_dispatch_enabled()) {
         return;
     }
@@ -531,10 +568,6 @@ function meza_headless_build_schedule_dispatch(): void
 
 function meza_headless_build_queue_changes(array $changes): void
 {
-    if (!meza_headless_build_dispatch_enabled()) {
-        return;
-    }
-
     $queue = meza_headless_build_read_queue();
     $queue['paths'] = array_merge($queue['paths'], (array) ($changes['paths'] ?? []));
     $queue['slugs'] = array_merge($queue['slugs'], (array) ($changes['slugs'] ?? []));
@@ -550,6 +583,29 @@ function meza_headless_build_queue_global_change(string $type = 'settings'): voi
     meza_headless_build_queue_changes([
         'paths' => ['/'],
         'types' => [$type],
+    ]);
+}
+
+function meza_headless_build_queue_taxonomy_change(string $taxonomy): void
+{
+    $taxonomy = sanitize_key($taxonomy);
+    if ($taxonomy === '') {
+        return;
+    }
+
+    if ($taxonomy === 'nav_menu') {
+        meza_headless_build_queue_global_change('menu');
+        return;
+    }
+
+    $taxonomy_object = get_taxonomy($taxonomy);
+    if (!($taxonomy_object instanceof WP_Taxonomy)) {
+        return;
+    }
+
+    meza_headless_build_queue_changes([
+        'paths' => ['/'],
+        'types' => ['taxonomy', $taxonomy],
     ]);
 }
 
@@ -604,8 +660,12 @@ function meza_headless_build_payload_for_post(WP_Post $post): array
     return $payload;
 }
 
-function meza_headless_build_dispatch_queue(): void
+function meza_headless_build_dispatch_queue(bool $is_manual_dispatch = false): void
 {
+    if (!$is_manual_dispatch && !meza_headless_build_auto_dispatch_enabled()) {
+        return;
+    }
+
     if (!meza_headless_build_dispatch_enabled()) {
         return;
     }
@@ -619,19 +679,24 @@ function meza_headless_build_dispatch_queue(): void
     $token = meza_headless_build_dispatch_token();
     $url = meza_headless_build_dispatch_url();
     $dispatch_id = meza_headless_build_create_dispatch_id();
+    $block_reason = meza_headless_build_dispatch_block_reason();
 
-    if ($token === '' || $url === '') {
+    if ($block_reason !== '' || $token === '' || $url === '') {
         meza_headless_build_store_result([
             'sent_at' => gmdate('c'),
             'ok' => false,
-            'message' => 'Headless build dispatch is missing token or repo configuration.',
+            'message' => $block_reason !== ''
+                ? $block_reason
+                : 'Headless build dispatch is missing token or repo configuration.',
             'queue' => $queue,
         ]);
         meza_headless_build_mark_dispatch_status(
             $dispatch_id,
             $queue,
             false,
-            'Headless build dispatch is missing token or repo configuration.'
+            $block_reason !== ''
+                ? $block_reason
+                : 'Headless build dispatch is missing token or repo configuration.'
         );
         return;
     }
@@ -714,10 +779,13 @@ function meza_headless_build_dispatch_queue(): void
 function meza_headless_build_dispatch_now(array $fallback_changes = []): array
 {
     if (!meza_headless_build_manual_dispatch_available()) {
+        $block_reason = meza_headless_build_dispatch_block_reason();
         $result = [
             'sent_at' => gmdate('c'),
             'ok' => false,
-            'message' => 'Headless build dispatch is missing token or repo configuration.',
+            'message' => $block_reason !== ''
+                ? $block_reason
+                : 'Headless build dispatch is missing token or repo configuration.',
         ];
 
         meza_headless_build_store_result($result);
@@ -740,7 +808,7 @@ function meza_headless_build_dispatch_now(array $fallback_changes = []): array
         meza_headless_build_queue_changes($fallback_changes);
     }
 
-    meza_headless_build_dispatch_queue();
+    meza_headless_build_dispatch_queue(true);
 
     return meza_headless_build_read_result();
 }
@@ -758,6 +826,22 @@ add_action('save_post', function ($post_id, $post) {
 
     meza_headless_build_queue_changes(meza_headless_build_payload_for_post($post));
 }, 20, 2);
+
+add_action('transition_post_status', function ($new_status, $old_status, $post) {
+    if (!$post instanceof WP_Post) {
+        return;
+    }
+
+    if (wp_is_post_revision($post->ID) || wp_is_post_autosave($post->ID)) {
+        return;
+    }
+
+    if ($old_status !== 'publish' || $new_status === 'publish') {
+        return;
+    }
+
+    meza_headless_build_queue_changes(meza_headless_build_payload_for_post($post));
+}, 20, 3);
 
 add_action('before_delete_post', function ($post_id, $post) {
     if (!$post instanceof WP_Post) {
@@ -792,6 +876,18 @@ add_action('updated_option', function ($option) {
 
     meza_headless_build_queue_global_change('settings');
 }, 20, 1);
+
+add_action('created_term', function ($term_id, $tt_id, $taxonomy) {
+    meza_headless_build_queue_taxonomy_change((string) $taxonomy);
+}, 20, 3);
+
+add_action('edited_term', function ($term_id, $tt_id, $taxonomy) {
+    meza_headless_build_queue_taxonomy_change((string) $taxonomy);
+}, 20, 3);
+
+add_action('delete_term', function ($term_id, $tt_id, $taxonomy) {
+    meza_headless_build_queue_taxonomy_change((string) $taxonomy);
+}, 20, 3);
 
 add_action('wp_ajax_meza_headless_build_dispatch_now', function (): void {
     if (!function_exists('meza_can_access_clear_cache') || !meza_can_access_clear_cache()) {
