@@ -27,9 +27,15 @@ $mz_plugin_files = [
 ];
 
 foreach ($mz_plugin_files as $mz_plugin_file) {
-    $mz_plugin_path = __DIR__ . '/mz-mu-plugins/' . $mz_plugin_file;
+    $candidate_paths = [
+        __DIR__ . '/' . $mz_plugin_file,
+        __DIR__ . '/mz-mu-plugins/' . $mz_plugin_file,
+    ];
 
-    if (file_exists($mz_plugin_path)) {
-        require_once $mz_plugin_path;
+    foreach ($candidate_paths as $mz_plugin_path) {
+        if (file_exists($mz_plugin_path)) {
+            require_once $mz_plugin_path;
+            break;
+        }
     }
 }
