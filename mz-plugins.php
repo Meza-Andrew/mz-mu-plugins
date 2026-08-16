@@ -526,8 +526,23 @@ function mz_plugins_build_updraft_settings_payload(array $existing_payload): arr
     ];
 }
 
+/**
+ * Exporting live UpdraftPlus settings writes into the checked-in defaults file.
+ * Keep that operation opt-in so normal runtime requests never dirty a client
+ * checkout or overwrite the shared baseline with site-specific settings.
+ */
+function mz_plugins_can_export_updraft_settings(): bool
+{
+    return defined('MZ_EXPORT_UPDRAFTPLUS_SETTINGS')
+        && mz_plugins_truthy(MZ_EXPORT_UPDRAFTPLUS_SETTINGS);
+}
+
 function mz_plugins_refresh_updraft_settings_export(bool $force = false)
 {
+    if (!mz_plugins_can_export_updraft_settings()) {
+        return false;
+    }
+
     $env_name = defined('WP_ENV') ? strtolower((string) WP_ENV) : 'production';
     if (!in_array($env_name, ['development', 'local', 'staging', 'qa'], true)) {
         return false;
