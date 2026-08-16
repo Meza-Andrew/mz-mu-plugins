@@ -44,6 +44,87 @@ if (!function_exists('mzf_get')) {
     }
 }
 
+if (!function_exists('mzf_normalize_env_name')) {
+    function mzf_normalize_env_name($env, string $fallback = 'production'): string
+    {
+        $value = strtolower(trim((string) $env));
+        $map = [
+            'prod' => 'production',
+            'production' => 'production',
+            'qa' => 'qa',
+            'stage' => 'staging',
+            'staging' => 'staging',
+            'dev' => 'development',
+            'development' => 'development',
+            'local' => 'local',
+        ];
+
+        if (isset($map[$value])) {
+            return $map[$value];
+        }
+
+        if ($fallback === '') {
+            return '';
+        }
+
+        $normalized_fallback = strtolower(trim($fallback));
+        return $map[$normalized_fallback] ?? 'production';
+    }
+}
+
+if (!function_exists('mzf_runtime_env')) {
+    function mzf_runtime_env(?string $fallback = null): string
+    {
+        global $env;
+
+        $default_env = $fallback !== null
+            ? mzf_normalize_env_name($fallback)
+            : mzf_normalize_env_name((string) mzf_get('default_env', 'production'));
+        $candidates = [];
+
+        if (!empty($env)) {
+            $candidates[] = (string) $env;
+        }
+        if (defined('WP_ENV')) {
+            $candidates[] = (string) WP_ENV;
+        }
+
+        $env_var = getenv('WP_ENV');
+        if (is_string($env_var) && trim($env_var) !== '') {
+            $candidates[] = $env_var;
+        }
+
+        if (function_exists('wp_get_environment_type')) {
+            $environment_type = (string) wp_get_environment_type();
+            if (trim($environment_type) !== '') {
+                $candidates[] = $environment_type;
+            }
+        }
+
+        foreach ($candidates as $candidate) {
+            $normalized = mzf_normalize_env_name($candidate, '');
+            if ($normalized !== '') {
+                $env = $normalized;
+                return $normalized;
+            }
+        }
+
+        $env = $default_env;
+        return $default_env;
+    }
+}
+
+if (!function_exists('mzf_is_live_env')) {
+    function mzf_is_live_env(?string $env = null): bool
+    {
+        $resolved = $env !== null
+            ? mzf_normalize_env_name($env)
+            : mzf_runtime_env();
+
+        return in_array($resolved, ['production', 'qa'], true);
+    }
+}
+
 if (!function_exists('mzf_get_crm_group')) {
     function mzf_get_crm_group(): array
     {
@@ -717,9 +798,11 @@ if (!function_exists('mzf_debug_session_enabled')) {
 if (!function_exists('mzf_marketing_dry_run_enabled')) {
     function mzf_marketing_dry_run_enabled(string $provider = ''): bool
     {
-        $env = function_exists('wp_get_environment_type')
-            ? strtolower((string) wp_get_environment_type())
-            : 'production';
+        $env = function_exists('mzf_runtime_env')
+            ? mzf_runtime_env('production')
+            : (function_exists('wp_get_environment_type')
+                ? strtolower((string) wp_get_environment_type())
+                : 'production');
 
         $default_enabled = in_array($env, ['local', 'development', 'staging'], true);
 

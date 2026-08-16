@@ -20,7 +20,9 @@ if (!function_exists('mzf_log_submit_attempt')) :
 
         global $env;
         $env_default = (string) mzf_get('default_env', 'production');
-        $env = !empty($env) ? strtolower((string) $env) : strtolower($env_default);
+        $env = function_exists('mzf_runtime_env')
+            ? mzf_runtime_env($env_default)
+            : (!empty($env) ? strtolower((string) $env) : strtolower($env_default));
 
         $submitted_payload = function_exists('mzf_prepare_submission_payload')
             ? mzf_prepare_submission_payload((array) $_POST)
@@ -104,7 +106,9 @@ if (!function_exists('send_form_data')) :
 
         global $env, $prod_url;
         $env_default = (string) mzf_get('default_env', 'production');
-        $env      = !empty($env) ? strtolower($env) : strtolower($env_default);
+        $env      = function_exists('mzf_runtime_env')
+            ? mzf_runtime_env($env_default)
+            : (!empty($env) ? strtolower((string) $env) : strtolower($env_default));
         $prod_url = !empty($prod_url) ? $prod_url : home_url();
         $domain   = parse_url($prod_url, PHP_URL_HOST);
         $site_domain = (string) wp_parse_url(home_url('/'), PHP_URL_HOST);
@@ -912,32 +916,42 @@ if (!function_exists('send_form_data')) :
         $form_cfg = mzf_resolve_form_config($data);
 
         $to = [];
-        $is_live_env = in_array((string) $env, ['production', 'qa'], true);
+        $is_live_env = function_exists('mzf_is_live_env')
+            ? mzf_is_live_env((string) $env)
+            : in_array((string) $env, ['production', 'qa'], true);
+        $non_live_tester_email = '';
+        $mail_delivery_mode = $is_live_env ? 'live' : 'dry_run';
         if (!$is_live_env && is_user_logged_in()) {
             $u = wp_get_current_user();
-            if (!empty($u->user_email) && is_email($u->user_email)) {
-                $to[] = $u->user_email;
+            $candidate_email = sanitize_email((string) ($u->user_email ?? ''));
+            if ($candidate_email !== '' && is_email($candidate_email)) {
+                $non_live_tester_email = $candidate_email;
+                $mail_delivery_mode = 'tester';
             }
         }
-        if (empty($to) && function_exists('mzf_recipients_from_form_config')) {
-            $to = mzf_recipients_from_form_config($data, $form_cfg);
-        }
-        if (empty($to) && !empty($org_email_hdr) && is_email($org_email_hdr)) {
-            $to[] = $org_email_hdr;
-        }
-        if (empty($to)) {
-            $admin_fallback = sanitize_email((string) get_option('admin_email'));
-            if ($admin_fallback && is_email($admin_fallback)) {
-                $to[] = $admin_fallback;
+        if ($is_live_env) {
+            if (function_exists('mzf_recipients_from_form_config')) {
+                $to = mzf_recipients_from_form_config($data, $form_cfg);
             }
-        }
-        if (empty($to)) {
-            $to[] = $meza_admin;
+            if (empty($to) && !empty($org_email_hdr) && is_email($org_email_hdr)) {
+                $to[] = $org_email_hdr;
+            }
+            if (empty($to)) {
+                $admin_fallback = sanitize_email((string) get_option('admin_email'));
+                if ($admin_fallback && is_email($admin_fallback)) {
+                    $to[] = $admin_fallback;
+                }
+            }
+            if (empty($to)) {
+                $to[] = $meza_admin;
+            }
+
+            $to = array_values(array_unique(array_filter(apply_filters('mzf_recipients', $to, $data, $env), 'is_email')));
+        } elseif ($non_live_tester_email !== '') {
+            $to = [$non_live_tester_email];
         }
 
-        // finalize + guarantee
-        $to = array_values(array_unique(array_filter(apply_filters('mzf_recipients', $to, $data, $env), 'is_email')));
-        if (empty($to)) {
+        if ($is_live_env && empty($to)) {
             error_log('Mail: no admin recipients resolved');
             $debug_log('no_recipients', ['form_slug' => (string) ($data['FormSlug'] ?? ''), 'env' => (string) $env]);
             $fail_request('No admin recipients configured.', 500, 'error_no_recipients', [
@@ -956,8 +970,7 @@ if (!function_exists('send_form_data')) :
 
         // Core default BCC support (replaces the legacy adapter BCC bridge behavior).
         $default_bcc = sanitize_email((string) mzf_get('admin_bcc_email', ''));
-        $bcc_allowed_envs = ['production', 'qa'];
-        if (in_array((string) $env, $bcc_allowed_envs, true) && $default_bcc && is_email($default_bcc)) {
+        if ($is_live_env && $default_bcc && is_email($default_bcc)) {
             $has_bcc = false;
             foreach ((array) $admin_headers as $hdr) {
                 if (stripos((string) $hdr, 'bcc:') === 0) {
@@ -1190,8 +1203,24 @@ if (!function_exists('send_form_data')) :
 
         $user_email = mz_build_user_email($data, $footer_html);
 
-        $admin_ok = wp_mail($to, $subject, $body, $admin_headers, $attachments);
-        $user_ok  = wp_mail($data['Email'], $user_email['subject'], $user_email['body'], $user_headers);
+        $submitted_email = sanitize_email((string) ($data['Email'] ?? ''));
+        $should_send_admin_mail = !empty($to);
+        $should_send_user_mail = $is_live_env && $submitted_email !== '' && is_email($submitted_email);
+        if (
+            !$is_live_env
+            && $non_live_tester_email !== ''
+            && $submitted_email !== ''
+            && strcasecmp($submitted_email, $non_live_tester_email) === 0
+        ) {
+            $should_send_user_mail = true;
+        }
+
+        $admin_ok = $should_send_admin_mail
+            ? wp_mail($to, $subject, $body, $admin_headers, $attachments)
+            : true;
+        $user_ok  = $should_send_user_mail
+            ? wp_mail($submitted_email, $user_email['subject'], $user_email['body'], $user_headers)
+            : true;
 
         do_action('mz_form_validated', [
             'first'    => (string) ($data['FirstName'] ?? ''),
@@ -1238,6 +1267,9 @@ if (!function_exists('send_form_data')) :
             'crm_platform_label' => $crm_platform_label_for_log,
             'newsletter_opt_in' => !empty($newsletter_opt_in),
             'marketing_sync' => is_array($marketing_sync) ? $marketing_sync : [],
+            'mail_delivery_mode' => $mail_delivery_mode,
+            'mail_admin_sent' => $should_send_admin_mail,
+            'mail_user_sent' => $should_send_user_mail,
             'payload' => (array) $data,
             'submitted' => $submitted_payload,
             'recipients' => (array) $to,
@@ -1254,6 +1286,9 @@ if (!function_exists('send_form_data')) :
             'required_fields' => array_values((array) $required_fields),
             'unknown_fields_rejected' => false,
             'strict_mode' => (bool) $strict_mode,
+            'mail_delivery_mode' => (string) $mail_delivery_mode,
+            'mail_admin_sent' => (bool) $should_send_admin_mail,
+            'mail_user_sent' => (bool) $should_send_user_mail,
             'marketing_sync' => is_array($marketing_sync) ? $marketing_sync : [],
             'submission_log_id' => $submission_log_id,
         ];
