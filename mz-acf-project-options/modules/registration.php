@@ -5933,12 +5933,24 @@ if (!function_exists('meza_migrate_event_after_content_field_meta')) {
     }
 }
 
+if (!function_exists('meza_is_shared_event_automation_enabled')) {
+    function meza_is_shared_event_automation_enabled(): bool
+    {
+        if (defined('MZ_SHARED_EVENT_AUTOMATION_ENABLED')) {
+            return (bool) MZ_SHARED_EVENT_AUTOMATION_ENABLED;
+        }
+
+        return true;
+    }
+}
+
 if (!function_exists('meza_migrate_event_after_content_post_values')) {
     function meza_migrate_event_after_content_post_values(int $post_id, bool $force_before_sync = false): void
     {
         if (
             $post_id <= 0
             || get_post_type($post_id) !== 'event'
+            || !meza_is_shared_event_automation_enabled()
             || !function_exists('acf_get_field_groups')
             || !function_exists('acf_get_fields')
             || !function_exists('meza_field_tree_has_event_context')
@@ -6053,6 +6065,10 @@ if (!function_exists('meza_sync_event_after_content_migration_state')) {
 
     function meza_run_event_after_content_migration(bool $force_before_sync = false): void
     {
+        if (!meza_is_shared_event_automation_enabled()) {
+            return;
+        }
+
         $event_ids = get_posts([
             'post_type' => 'event',
             'post_status' => 'any',
@@ -6088,6 +6104,11 @@ if (!function_exists('meza_sync_event_after_content_migration_state')) {
 
         $was_enabled = meza_business_information_acf_truthy(get_option('options_events_after', 0));
         $is_enabled = meza_business_information_acf_truthy($value);
+
+        if (!meza_is_shared_event_automation_enabled()) {
+            $is_enabled = false;
+            $value = 0;
+        }
 
         // Persist this specific toggle at the field-update layer so it cannot
         // silently depend on later generic options-page save behavior.
@@ -6342,6 +6363,7 @@ if (!function_exists('meza_migrate_season_after_content_post_values')) {
     {
         if (
             $post_id <= 0
+            || !meza_is_shared_event_automation_enabled()
             || !function_exists('acf_get_field_groups')
             || !function_exists('acf_get_fields')
         ) {
@@ -6386,6 +6408,10 @@ if (!function_exists('meza_migrate_season_after_content_post_values')) {
 if (!function_exists('meza_run_season_after_content_migration')) {
     function meza_run_season_after_content_migration(): void
     {
+        if (!meza_is_shared_event_automation_enabled()) {
+            return;
+        }
+
         $post_ids = get_posts([
             'post_type' => 'any',
             'post_status' => 'any',
@@ -6421,6 +6447,11 @@ if (!function_exists('meza_run_season_after_content_migration')) {
         $was_enabled = meza_business_information_acf_truthy(get_option('options_season_after', 0));
         $is_enabled = meza_business_information_acf_truthy($value);
 
+        if (!meza_is_shared_event_automation_enabled()) {
+            $is_enabled = false;
+            $value = 0;
+        }
+
         update_option('options_season_after', $is_enabled ? '1' : '0', false);
         update_option('_options_season_after', 'field_meza_enable_season_after_content', false);
 
@@ -6441,6 +6472,7 @@ if (!function_exists('meza_repair_current_season_after_content_meta_on_admin_loa
     {
         if (
             !is_admin()
+            || !meza_is_shared_event_automation_enabled()
             || !function_exists('meza_seasons_have_after_content')
             || !meza_seasons_have_after_content()
         ) {
@@ -6474,6 +6506,7 @@ if (!function_exists('meza_sync_season_after_content_after_business_information_
                 && !meza_is_content_structure_acf_submission()
             )
             || !in_array($post_id, ['option', 'options'], true)
+            || !meza_is_shared_event_automation_enabled()
             || !function_exists('meza_seasons_have_after_content')
             || !meza_seasons_have_after_content()
         ) {
@@ -6493,6 +6526,7 @@ if (!function_exists('meza_repair_current_event_after_content_meta_on_admin_load
     {
         if (
             !is_admin()
+            || !meza_is_shared_event_automation_enabled()
         ) {
             return;
         }
@@ -6521,6 +6555,15 @@ if (!function_exists('meza_sync_events_after_business_information_save')) {
         if (!isset($_POST['acf']) || !is_array($_POST['acf']) || !function_exists('meza_business_information_acf_truthy')) {
             return;
         }
+
+        $shared_event_automation_enabled = meza_is_shared_event_automation_enabled();
+        $forced_disabled_field_keys = [
+            'field_meza_include_event_functionality',
+            'field_meza_indexable_events',
+            'field_meza_event_speakers_topics',
+            'field_meza_event_after_content',
+            'field_meza_enable_season_after_content',
+        ];
 
         $field_option_map = [
             'field_meza_include_event_functionality' => [
@@ -6556,6 +6599,13 @@ if (!function_exists('meza_sync_events_after_business_information_save')) {
             $normalized_value = (
                 meza_business_information_acf_truthy(wp_unslash($_POST['acf'][$field_key]))
             ) ? '1' : '0';
+
+            if (
+                !$shared_event_automation_enabled
+                && in_array($field_key, $forced_disabled_field_keys, true)
+            ) {
+                $normalized_value = '0';
+            }
 
             foreach ($targets as $option_name => $stored_value) {
                 if ($option_name === 'legacy_option') {
@@ -6595,6 +6645,7 @@ if (!function_exists('meza_sync_event_after_content_after_business_information_s
                 && !meza_is_content_structure_acf_submission()
             )
             || !in_array($post_id, ['option', 'options'], true)
+            || !meza_is_shared_event_automation_enabled()
             || !function_exists('meza_events_have_after_content')
             || !meza_events_have_after_content()
         ) {

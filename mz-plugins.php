@@ -790,7 +790,17 @@ if (!function_exists('mz_plugins_get_catalog')) {
             $catalog[] = ['name' => 'WooCommerce', 'slug' => 'woocommerce', 'file' => 'woocommerce/woocommerce.php', 'envs' => ['development', 'staging', 'qa', 'production']];
         }
 
-        return $catalog;
+        $catalog = apply_filters('mz_plugins_catalog', $catalog);
+        if (!is_array($catalog)) {
+            return [];
+        }
+
+        return array_values(array_filter($catalog, static function ($plugin): bool {
+            return is_array($plugin)
+                && trim((string) ($plugin['name'] ?? '')) !== ''
+                && trim((string) ($plugin['slug'] ?? '')) !== ''
+                && trim((string) ($plugin['file'] ?? '')) !== '';
+        }));
     }
 }
 
