@@ -87,6 +87,33 @@ if (!function_exists('meza_is_godaddy_hosting')) {
 }
 
 if (!function_exists('meza_get_public_facing_url')) {
+    function meza_is_admin_boundary_path(string $path): bool
+    {
+        if ($path === '/') {
+            return false;
+        }
+
+        $normalized_path = '/' . ltrim((string) $path, '/');
+        $admin_prefixes = [
+            '/wp-admin',
+            '/wp-login.php',
+            '/wp-signup.php',
+            '/wp-json',
+            '/wp-content',
+            '/admin-ajax.php',
+            '/xmlrpc.php',
+            '/wp-cron.php',
+        ];
+
+        foreach ($admin_prefixes as $prefix) {
+            if (str_starts_with($normalized_path, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     function meza_get_public_facing_url(string $url): string
     {
         $url = trim($url);
@@ -109,10 +136,17 @@ if (!function_exists('meza_get_public_facing_url')) {
             return $url;
         }
 
+        $path = isset($parsed_url['path']) ? (string) $parsed_url['path'] : '/';
+        if ($path === '') {
+            $path = '/';
+        }
+
+        if (meza_is_admin_boundary_path($path)) {
+            return $url;
+        }
+
         $scheme = (string) ($parsed_url['scheme'] ?? 'https');
         $port = isset($parsed_url['port']) ? ':' . (int) $parsed_url['port'] : '';
-        $path = isset($parsed_url['path']) ? (string) $parsed_url['path'] : '/';
-        $path = $path === '' ? '/' : $path;
         $query = isset($parsed_url['query']) && $parsed_url['query'] !== ''
             ? '?' . (string) $parsed_url['query']
             : '';

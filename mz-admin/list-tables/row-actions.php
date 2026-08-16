@@ -43,6 +43,79 @@ function meza_get_public_admin_url(string $url): string
         : $url;
 }
 
+function meza_is_preview_like_url(string $url): bool
+{
+    $url = trim($url);
+    if ($url === '') {
+        return false;
+    }
+
+    $parsed_url = wp_parse_url($url);
+    if (!is_array($parsed_url)) {
+        return false;
+    }
+
+    $query = [];
+    parse_str((string) ($parsed_url['query'] ?? ''), $query);
+
+    if (!is_array($query) || $query === []) {
+        return false;
+    }
+
+    foreach (['preview', 'preview_id', 'preview_nonce', 'post_preview'] as $key) {
+        if (!array_key_exists($key, $query)) {
+            continue;
+        }
+
+        $value = $query[$key];
+        if ($value === '' || $value === null || $value === false || $value === '0') {
+            continue;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+function meza_get_contextual_admin_action_url(string $action_key, string $url, string $text = ''): string
+{
+    $url = trim($url);
+    if ($url === '') {
+        return '';
+    }
+
+    $normalized_key = strtolower(trim($action_key));
+    $text_plain = strtolower(trim(wp_strip_all_tags($text)));
+    $is_preview_like_url = meza_is_preview_like_url($url);
+
+    if (in_array($normalized_key, ['edit', 'trash', 'delete', 'duplicate', 'duplicate_post'], true)) {
+        return $url;
+    }
+
+    if ($normalized_key === 'view') {
+        return $is_preview_like_url ? $url : meza_get_public_admin_url($url);
+    }
+
+    if ($normalized_key === 'preview') {
+        return $is_preview_like_url ? $url : meza_get_public_admin_url($url);
+    }
+
+    if ($is_preview_like_url) {
+        return $url;
+    }
+
+    if (str_contains($text_plain, 'preview')) {
+        return meza_get_public_admin_url($url);
+    }
+
+    if (str_contains($text_plain, 'view')) {
+        return meza_get_public_admin_url($url);
+    }
+
+    return $url;
+}
+
 function meza_strip_post_type_from_action_label(string $label, $post = null): string
 {
     $normalized = trim(wp_strip_all_tags($label));
@@ -76,11 +149,11 @@ function meza_strip_post_type_from_action_label(string $label, $post = null): st
     return $normalized;
 }
 
-function meza_update_admin_action_link(string $html, $post = null, string $label = ''): string
+function meza_update_admin_action_link(string $html, $post = null, string $label = '', string $action_key = ''): string
 {
     if (trim($html) === '') return $html;
 
-    return preg_replace_callback('/<a\b([^>]*)>(.*?)<\/a>/is', static function ($matches) use ($label, $post) {
+    return preg_replace_callback('/<a\b([^>]*)>(.*?)<\/a>/is', static function ($matches) use ($label, $post, $action_key) {
         $attrs = (string) ($matches[1] ?? '');
         $text = (string) ($matches[2] ?? '');
 
@@ -89,33 +162,41 @@ function meza_update_admin_action_link(string $html, $post = null, string $label
             $href = html_entity_decode((string) ($href_matches[2] ?? ''), ENT_QUOTES, 'UTF-8');
         }
 
-        $public_href = meza_get_public_admin_url($href);
-        if ($href !== '' && $public_href !== '' && $public_href !== $href) {
-            $quoted_public_href = esc_url($public_href);
+        $updated_href = meza_get_contextual_admin_action_url($action_key, $href, $text);
+        if ($href !== '' && $updated_href !== '' && $updated_href !== $href) {
+            $quoted_public_href = esc_url($updated_href);
             $attrs = preg_replace(
                 '/(\bhref\s*=\s*)([\'"]).*?\2/i',
                 '$1$2' . $quoted_public_href . '$2',
                 $attrs,
                 1
             ) ?? $attrs;
-            $href = $public_href;
+            $href = $updated_href;
         }
 
+        $normalized_key = strtolower(trim($action_key));
         $text_plain = strtolower(trim(wp_strip_all_tags($text)));
         $is_delete_or_trash = (
+            in_array($normalized_key, ['trash', 'delete'], true)
+            || in_array($normalized_key, ['duplicate', 'duplicate_post'], true)
+            ||
             str_contains($href, 'action=trash')
             || str_contains($href, 'action=untrash')
             || str_contains($href, 'action=delete')
+            || str_contains($href, 'action=duplicate')
             || str_contains($text_plain, 'delete')
             || str_contains($text_plain, 'trash')
+            || str_contains($text_plain, 'duplicate')
         );
         $is_edit_or_view = (
             !$is_delete_or_trash
             && (
+                in_array($normalized_key, ['edit', 'view', 'preview'], true)
+                ||
                 str_contains($href, 'action=edit')
-            || str_contains($text_plain, 'edit')
-            || str_contains($text_plain, 'view')
-            || str_contains($text_plain, 'preview')
+                || str_contains($text_plain, 'edit')
+                || str_contains($text_plain, 'view')
+                || str_contains($text_plain, 'preview')
             )
         );
 
@@ -201,7 +282,7 @@ function meza_remove_quick_edit_action(array $actions, $post = null): array
             $label = __('View');
         }
 
-        $actions[$key] = meza_update_admin_action_link($action, $post, $label);
+        $actions[$key] = meza_update_admin_action_link($action, $post, $label, (string) $key);
     }
 
     if (!($post instanceof WP_Post)) {
@@ -223,7 +304,7 @@ function meza_remove_quick_edit_action(array $actions, $post = null): array
 
     foreach ($actions as $key => $action) {
         if (!meza_is_duplicate_row_action($key, $action)) continue;
-        $ordered[$key] = meza_update_admin_action_link((string) $action, $post, __('Duplicate'));
+        $ordered[$key] = meza_update_admin_action_link((string) $action, $post, __('Duplicate'), (string) $key);
         unset($actions[$key]);
     }
 
@@ -437,8 +518,16 @@ add_action('admin_bar_menu', function ($wp_admin_bar) {
     $wp_admin_bar->add_node([
         'id' => (string) $view_node->id,
         'parent' => $view_node->parent ?? false,
-        'title' => esc_html(meza_get_view_post_label($post)),
-        'href' => meza_get_public_admin_url((string) ($view_node->href ?? '')),
+        'title' => esc_html(
+            meza_is_preview_like_url((string) ($view_node->href ?? ''))
+                ? meza_get_preview_post_label($post)
+                : meza_get_view_post_label($post)
+        ),
+        'href' => meza_get_contextual_admin_action_url(
+            'view',
+            (string) ($view_node->href ?? ''),
+            (string) ($view_node->title ?? '')
+        ),
         'group' => !empty($view_node->group),
         'meta' => $meta,
     ]);
