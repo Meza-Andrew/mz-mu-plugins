@@ -908,11 +908,7 @@ if (!function_exists('send_form_data')) :
         $attached_meta  = [];
         $file_errors    = [];
 
-        // Standardized recipients: non-live tester, then form config recipients, then option/admin fallback.
-        $meza_admin = sanitize_email((string) mzf_get('admin_bcc_email', 'info@meza.design'));
-        if (!is_email($meza_admin)) {
-            $meza_admin = 'info@meza.design';
-        }
+        // Standardized recipients: non-live tester, then form config recipients, then business email, then fail closed.
         $form_cfg = mzf_resolve_form_config($data);
 
         $to = [];
@@ -936,16 +932,6 @@ if (!function_exists('send_form_data')) :
             if (empty($to) && !empty($org_email_hdr) && is_email($org_email_hdr)) {
                 $to[] = $org_email_hdr;
             }
-            if (empty($to)) {
-                $admin_fallback = sanitize_email((string) get_option('admin_email'));
-                if ($admin_fallback && is_email($admin_fallback)) {
-                    $to[] = $admin_fallback;
-                }
-            }
-            if (empty($to)) {
-                $to[] = $meza_admin;
-            }
-
             $to = array_values(array_unique(array_filter(apply_filters('mzf_recipients', $to, $data, $env), 'is_email')));
         } elseif ($non_live_tester_email !== '') {
             $to = [$non_live_tester_email];

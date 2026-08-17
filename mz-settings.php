@@ -11,7 +11,7 @@
 /** ================================
  *  CONFIG
  *  ================================ */
-const MEZA_ADMIN_EMAIL       = 'info@meza.design';
+defined('MEZA_ADMIN_EMAIL') || define('MEZA_ADMIN_EMAIL', 'info@meza.design');
 const MEZA_GMT_OFFSET        = null;   // auto-resolve from timezone string
 const MEZA_TIMEZONE_STRING   = 'America/New_York';
 const MEZA_RSS_USE_EXCERPT   = 1;
