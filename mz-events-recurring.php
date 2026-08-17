@@ -30,6 +30,25 @@ use DateTime;
 use DateTimeZone;
 use Exception;
 
+if (!function_exists(__NAMESPACE__ . '\\mz_events_recurring_automation_enabled')) {
+    function mz_events_recurring_automation_enabled(): bool
+    {
+        $shared_enabled = defined('MZ_SHARED_EVENT_AUTOMATION_ENABLED')
+            ? (bool) MZ_SHARED_EVENT_AUTOMATION_ENABLED
+            : true;
+
+        if (!$shared_enabled) {
+            return false;
+        }
+
+        if (defined('MZ_EVENTS_RECURRING_ENABLED')) {
+            return (bool) MZ_EVENTS_RECURRING_ENABLED;
+        }
+
+        return true;
+    }
+}
+
 class MZ_Recurring_Events
 {
     private const SEO_TITLE_MAX_LENGTH = 60;
@@ -2315,7 +2334,9 @@ class MZ_Recurring_Events
 
 }
 
-new MZ_Recurring_Events();
+if (mz_events_recurring_automation_enabled()) {
+    new MZ_Recurring_Events();
+}
 
 if (!function_exists(__NAMESPACE__ . '\\mz_get_event_timezone')) {
     function mz_get_event_timezone(): DateTimeZone
