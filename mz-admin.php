@@ -1045,6 +1045,29 @@ if (!function_exists('meza_get_conference_admin_menu_slug_aliases')) {
     }
 }
 
+if (!function_exists('meza_get_conference_admin_menu_capability')) {
+    function meza_get_conference_admin_menu_capability(): string
+    {
+        return 'edit_posts';
+    }
+}
+
+if (!function_exists('meza_get_segment_admin_menu_capability')) {
+    function meza_get_segment_admin_menu_capability(): string
+    {
+        $post_type_object = meza_get_cached_post_type_object('segment');
+
+        if ($post_type_object instanceof WP_Post_Type && isset($post_type_object->cap->edit_posts)) {
+            $capability = trim((string) $post_type_object->cap->edit_posts);
+            if ($capability !== '') {
+                return $capability;
+            }
+        }
+
+        return 'edit_posts';
+    }
+}
+
 if (!function_exists('meza_build_conference_admin_menu_item')) {
     function meza_build_conference_admin_menu_item(): array
     {
@@ -1054,7 +1077,7 @@ if (!function_exists('meza_build_conference_admin_menu_item')) {
 
         return [
             __('Conference'),
-            'manage_options',
+            meza_get_conference_admin_menu_capability(),
             $parent_slug,
             __('Conference'),
             $css_class,
@@ -1070,10 +1093,7 @@ if (!function_exists('meza_normalize_conference_admin_menu_item')) {
         $defaults = meza_build_conference_admin_menu_item();
 
         $item[0] = $defaults[0];
-        $item[1] = (string) ($item[1] ?? $defaults[1]);
-        if ($item[1] === '') {
-            $item[1] = $defaults[1];
-        }
+        $item[1] = $defaults[1];
         $item[2] = $defaults[2];
         $item[3] = $defaults[3];
         $item[4] = $defaults[4];
@@ -1218,9 +1238,11 @@ if (!function_exists('meza_sync_admin_menu_editor_conference_menu_items')) {
         $conference_node['menu_title'] = 'Conference';
 
         $defaults = isset($conference_node['defaults']) && is_array($conference_node['defaults']) ? $conference_node['defaults'] : [];
+        $conference_capability = meza_get_conference_admin_menu_capability();
+        $segment_capability = meza_get_segment_admin_menu_capability();
         $defaults['menu_title'] = 'Conference';
         $defaults['page_title'] = 'Conference';
-        $defaults['access_level'] = 'edit_posts';
+        $defaults['access_level'] = $conference_capability;
         $defaults['file'] = $parent_slug;
         $defaults['css_class'] = 'menu-top toplevel_page_' . $parent_slug;
         $defaults['hookname'] = 'toplevel_page_' . $parent_slug;
@@ -1252,7 +1274,7 @@ if (!function_exists('meza_sync_admin_menu_editor_conference_menu_items')) {
                 $item['template_id'] = $parent_slug . '>' . $parent_slug;
                 $item_defaults['menu_title'] = 'Information';
                 $item_defaults['page_title'] = 'Conference';
-                $item_defaults['access_level'] = 'edit_posts';
+                $item_defaults['access_level'] = $conference_capability;
                 $item_defaults['file'] = $parent_slug;
                 $item_defaults['is_plugin_page'] = true;
                 $item_defaults['url'] = 'admin.php?page=' . $parent_slug;
@@ -1265,7 +1287,7 @@ if (!function_exists('meza_sync_admin_menu_editor_conference_menu_items')) {
                 $item['template_id'] = $parent_slug . '>' . $schedule_slug;
                 $item_defaults['menu_title'] = 'Schedule';
                 $item_defaults['page_title'] = 'Schedule';
-                $item_defaults['access_level'] = 'edit_posts';
+                $item_defaults['access_level'] = $conference_capability;
                 $item_defaults['file'] = $schedule_slug;
                 $item_defaults['is_plugin_page'] = true;
                 $item_defaults['url'] = 'admin.php?page=' . $schedule_slug;
@@ -1278,7 +1300,7 @@ if (!function_exists('meza_sync_admin_menu_editor_conference_menu_items')) {
                 $item['menu_title'] = 'Segments';
                 $item['template_id'] = $parent_slug . '>edit.php?post_type=segment';
                 $item_defaults['menu_title'] = 'Segments';
-                $item_defaults['access_level'] = 'edit_posts';
+                $item_defaults['access_level'] = $segment_capability;
                 $item_defaults['file'] = 'edit.php?post_type=segment';
                 $item_defaults['url'] = 'edit.php?post_type=segment';
                 $item['defaults'] = $item_defaults;
@@ -1305,7 +1327,7 @@ if (!function_exists('meza_sync_admin_menu_editor_conference_menu_items')) {
                 'defaults' => [
                     'menu_title' => 'Information',
                     'page_title' => 'Conference',
-                    'access_level' => 'edit_posts',
+                    'access_level' => $conference_capability,
                     'file' => $parent_slug,
                     'is_plugin_page' => true,
                     'url' => 'admin.php?page=' . $parent_slug,
@@ -1321,7 +1343,7 @@ if (!function_exists('meza_sync_admin_menu_editor_conference_menu_items')) {
                 'defaults' => [
                     'menu_title' => 'Schedule',
                     'page_title' => 'Schedule',
-                    'access_level' => 'edit_posts',
+                    'access_level' => $conference_capability,
                     'file' => $schedule_slug,
                     'is_plugin_page' => true,
                     'url' => 'admin.php?page=' . $schedule_slug,
@@ -1336,7 +1358,7 @@ if (!function_exists('meza_sync_admin_menu_editor_conference_menu_items')) {
                 'template_id' => $parent_slug . '>edit.php?post_type=segment',
                 'defaults' => [
                     'menu_title' => 'Segments',
-                    'access_level' => 'edit_posts',
+                    'access_level' => $segment_capability,
                     'file' => 'edit.php?post_type=segment',
                     'url' => 'edit.php?post_type=segment',
                 ],
@@ -1611,6 +1633,8 @@ if (!function_exists('meza_normalize_conference_admin_submenu')) {
         $other_items = [];
         $expected_segment_taxonomy_items = meza_get_segment_taxonomy_menu_items();
         $schedule_slug = meza_get_conference_schedule_admin_menu_slug();
+        $conference_capability = meza_get_conference_admin_menu_capability();
+        $segment_capability = meza_get_segment_admin_menu_capability();
 
         foreach ((array) $submenu[$parent_slug] as $item) {
             if (!is_array($item) || count($item) < 3) {
@@ -1622,6 +1646,7 @@ if (!function_exists('meza_normalize_conference_admin_submenu')) {
 
             if ($information_item === null && in_array($normalized_slug, meza_get_conference_admin_menu_slug_aliases(), true)) {
                 $item[0] = __('Information');
+                $item[1] = $conference_capability;
                 $item[2] = $parent_slug;
                 $information_item = $item;
                 continue;
@@ -1632,6 +1657,7 @@ if (!function_exists('meza_normalize_conference_admin_submenu')) {
                 && ($slug === $schedule_slug || $normalized_slug === $schedule_slug)
             ) {
                 $item[0] = __('Schedule');
+                $item[1] = $conference_capability;
                 $item[2] = $schedule_slug;
                 if (isset($item[3])) {
                     $item[3] = __('Schedule');
@@ -1642,6 +1668,7 @@ if (!function_exists('meza_normalize_conference_admin_submenu')) {
 
             if ($slug === 'edit.php?post_type=segment') {
                 $item[0] = __('Segments');
+                $item[1] = $segment_capability;
                 if (isset($item[3])) {
                     $item[3] = __('Segments');
                 }
@@ -1664,7 +1691,7 @@ if (!function_exists('meza_normalize_conference_admin_submenu')) {
         if ($information_item === null) {
             $information_item = [
                 __('Information'),
-                'manage_options',
+                $conference_capability,
                 $parent_slug,
                 __('Information'),
             ];
@@ -1673,7 +1700,7 @@ if (!function_exists('meza_normalize_conference_admin_submenu')) {
         if ($schedule_slug !== '' && $schedule_item === null) {
             $schedule_item = [
                 __('Schedule'),
-                'manage_options',
+                $conference_capability,
                 $schedule_slug,
                 __('Schedule'),
             ];
@@ -1683,7 +1710,7 @@ if (!function_exists('meza_normalize_conference_admin_submenu')) {
             if ($segments_item === null) {
                 $segments_item = [
                     __('Segments'),
-                    'edit_posts',
+                    $segment_capability,
                     'edit.php?post_type=segment',
                     __('Segments'),
                 ];
