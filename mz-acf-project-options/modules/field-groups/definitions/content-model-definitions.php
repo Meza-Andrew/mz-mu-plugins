@@ -74,6 +74,7 @@
                 'title',
                 'excerpt',
                 'custom-fields',
+                'thumbnail',
             ],
             'taxonomies' => [
                 'event-type',
