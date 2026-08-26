@@ -86,6 +86,13 @@ add_action('acf/init', function (): void {
             $group = meza_apply_db_acf_field_group_overrides_to_local_group($group);
         }
 
+        // ACF expects every local field, including nested sub-fields, to retain
+        // its internal name while the field group is being prepared. Definitions
+        // assembled in PHP do not always include that private value themselves.
+        if (function_exists('meza_prepare_acf_local_field_group_for_export')) {
+            $group = meza_prepare_acf_local_field_group_for_export($group);
+        }
+
         acf_add_local_field_group($group);
     }
 }, 15);
