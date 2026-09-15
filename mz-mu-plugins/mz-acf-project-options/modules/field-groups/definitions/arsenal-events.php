@@ -1,0 +1,1141 @@
+<?php
+
+/**
+ * Arsenal Events ACF Field Groups & CPT Definitions
+ * All field keys, group names, and layout slugs use strict snake_case naming.
+ */
+
+function arsenal_events_get_global_settings_group(): array
+{
+    return [
+        'key' => 'group_global_site_settings',
+        'title' => 'Global Site Settings',
+        'fields' => [
+            [
+                'key' => 'field_site_phone',
+                'label' => 'Site Phone',
+                'name' => 'site_phone',
+                'type' => 'text',
+                'instructions' => 'Main contact phone number',
+                'required' => 0,
+                'wrapper' => ['width' => '50'],
+            ],
+            [
+                'key' => 'field_site_email',
+                'label' => 'Site Email',
+                'name' => 'site_email',
+                'type' => 'email',
+                'instructions' => 'Main contact email',
+                'required' => 0,
+                'wrapper' => ['width' => '50'],
+            ],
+            [
+                'key' => 'field_site_info_text',
+                'label' => 'Site Info Text',
+                'name' => 'site_info_text',
+                'type' => 'textarea',
+                'instructions' => 'General information text',
+                'required' => 0,
+                'rows' => 3,
+            ],
+            [
+                'key' => 'field_site_copyright_text',
+                'label' => 'Copyright Text',
+                'name' => 'site_copyright_text',
+                'type' => 'text',
+                'instructions' => 'Copyright notice',
+                'required' => 0,
+            ],
+            [
+                'key' => 'field_social_links',
+                'label' => 'Social Links',
+                'name' => 'social_links',
+                'type' => 'repeater',
+                'instructions' => 'Social media links',
+                'layout' => 'table',
+                'button_label' => 'Add Social Link',
+                'sub_fields' => [
+                    [
+                        'key' => 'field_social_icon',
+                        'label' => 'Icon',
+                        'name' => 'social_icon',
+                        'type' => 'select',
+                        'choices' => [
+                            'linkedin' => 'LinkedIn',
+                            'facebook' => 'Facebook',
+                            'instagram' => 'Instagram',
+                            'twitter' => 'Twitter',
+                            'youtube' => 'YouTube',
+                        ],
+                        'wrapper' => ['width' => '33.33'],
+                    ],
+                    [
+                        'key' => 'field_social_url',
+                        'label' => 'URL',
+                        'name' => 'social_url',
+                        'type' => 'url',
+                        'wrapper' => ['width' => '33.33'],
+                    ],
+                    [
+                        'key' => 'field_social_label',
+                        'label' => 'Label',
+                        'name' => 'social_label',
+                        'type' => 'text',
+                        'wrapper' => ['width' => '33.33'],
+                    ],
+                ],
+            ],
+        ],
+        'location' => [
+            [
+                [
+                    'param' => 'options_page',
+                    'operator' => '==',
+                    'value' => 'arsenal-events-settings',
+                ],
+            ],
+        ],
+        'menu_order' => 0,
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+        'description' => 'Global site configuration for Arsenal Events',
+        'show_in_rest' => 1,
+    ];
+}
+
+function arsenal_events_get_page_blocks_group(): array
+{
+    return [
+        'key' => 'group_page_blocks',
+        'title' => 'Page Blocks',
+        'fields' => [
+            [
+                'key' => 'field_page_blocks',
+                'label' => 'Page Blocks',
+                'name' => 'page_blocks',
+                'type' => 'flexible_content',
+                'instructions' => 'Build page content using flexible block layouts',
+                'layouts' => [
+                    // Header Block
+                    [
+                        'key' => 'layout_header_block',
+                        'name' => 'header_block',
+                        'label' => 'Header',
+                        'display' => 'block',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_header_nav_links',
+                                'label' => 'Navigation Links',
+                                'name' => 'header_nav_links',
+                                'type' => 'repeater',
+                                'layout' => 'table',
+                                'button_label' => 'Add Link',
+                                'sub_fields' => [
+                                    [
+                                        'key' => 'field_header_nav_label',
+                                        'label' => 'Label',
+                                        'name' => 'label',
+                                        'type' => 'text',
+                                        'wrapper' => ['width' => '50'],
+                                    ],
+                                    [
+                                        'key' => 'field_header_nav_href',
+                                        'label' => 'URL',
+                                        'name' => 'href',
+                                        'type' => 'url',
+                                        'wrapper' => ['width' => '50'],
+                                    ],
+                                ],
+                            ],
+                            [
+                                'key' => 'field_header_cta_label',
+                                'label' => 'CTA Button Label',
+                                'name' => 'header_cta_label',
+                                'type' => 'text',
+                                'wrapper' => ['width' => '50'],
+                            ],
+                            [
+                                'key' => 'field_header_cta_href',
+                                'label' => 'CTA Button URL',
+                                'name' => 'header_cta_href',
+                                'type' => 'url',
+                                'wrapper' => ['width' => '50'],
+                            ],
+                        ],
+                    ],
+                    // Hero Block
+                    [
+                        'key' => 'layout_hero_block',
+                        'name' => 'hero_block',
+                        'label' => 'Hero',
+                        'display' => 'block',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_hero_headline',
+                                'label' => 'Headline',
+                                'name' => 'hero_headline',
+                                'type' => 'text',
+                            ],
+                            [
+                                'key' => 'field_hero_subtitle',
+                                'label' => 'Subtitle',
+                                'name' => 'hero_subtitle',
+                                'type' => 'textarea',
+                                'rows' => 2,
+                            ],
+                            [
+                                'key' => 'field_hero_background_image',
+                                'label' => 'Background Image',
+                                'name' => 'hero_background_image',
+                                'type' => 'image',
+                                'return_format' => 'array',
+                                'preview_size' => 'medium',
+                            ],
+                            [
+                                'key' => 'field_hero_cta_label',
+                                'label' => 'CTA Button Label',
+                                'name' => 'hero_cta_label',
+                                'type' => 'text',
+                                'wrapper' => ['width' => '50'],
+                            ],
+                            [
+                                'key' => 'field_hero_cta_href',
+                                'label' => 'CTA Button URL',
+                                'name' => 'hero_cta_href',
+                                'type' => 'url',
+                                'wrapper' => ['width' => '50'],
+                            ],
+                        ],
+                    ],
+                    // Services Block
+                    [
+                        'key' => 'layout_services_block',
+                        'name' => 'services_block',
+                        'label' => 'Services',
+                        'display' => 'block',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_services_title',
+                                'label' => 'Title',
+                                'name' => 'services_title',
+                                'type' => 'text',
+                            ],
+                            [
+                                'key' => 'field_services_description',
+                                'label' => 'Description',
+                                'name' => 'services_description',
+                                'type' => 'textarea',
+                                'rows' => 2,
+                            ],
+                            [
+                                'key' => 'field_services_grid',
+                                'label' => 'Services',
+                                'name' => 'services_grid',
+                                'type' => 'repeater',
+                                'layout' => 'block',
+                                'button_label' => 'Add Service',
+                                'sub_fields' => [
+                                    [
+                                        'key' => 'field_service_title',
+                                        'label' => 'Title',
+                                        'name' => 'service_title',
+                                        'type' => 'text',
+                                    ],
+                                    [
+                                        'key' => 'field_service_description',
+                                        'label' => 'Description',
+                                        'name' => 'service_description',
+                                        'type' => 'textarea',
+                                        'rows' => 2,
+                                    ],
+                                    [
+                                        'key' => 'field_service_icon',
+                                        'label' => 'Icon',
+                                        'name' => 'service_icon',
+                                        'type' => 'image',
+                                        'return_format' => 'array',
+                                        'preview_size' => 'thumbnail',
+                                    ],
+                                    [
+                                        'key' => 'field_service_link',
+                                        'label' => 'Link',
+                                        'name' => 'service_link',
+                                        'type' => 'link',
+                                        'return_format' => 'array',
+                                    ],
+                                    [
+                                        'key' => 'field_service_category',
+                                        'label' => 'Service Category',
+                                        'name' => 'service_category',
+                                        'type' => 'select',
+                                        'choices' => [
+                                            'director' => 'For Race Directors',
+                                            'runner' => 'For Runners',
+                                        ],
+                                    ],
+                                    [
+                                        'key' => 'field_service_card_image',
+                                        'label' => 'Card Image',
+                                        'name' => 'service_card_image',
+                                        'type' => 'image',
+                                        'return_format' => 'array',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    // Upcoming Races Block
+                    [
+                        'key' => 'layout_upcoming_races_block',
+                        'name' => 'upcoming_races_block',
+                        'label' => 'Upcoming Races',
+                        'display' => 'block',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_races_title',
+                                'label' => 'Title',
+                                'name' => 'races_title',
+                                'type' => 'text',
+                            ],
+                            [
+                                'key' => 'field_races_description',
+                                'label' => 'Description',
+                                'name' => 'races_description',
+                                'type' => 'textarea',
+                                'rows' => 2,
+                            ],
+                            [
+                                'key' => 'field_races_carousel',
+                                'label' => 'Races',
+                                'name' => 'races_carousel',
+                                'type' => 'repeater',
+                                'layout' => 'block',
+                                'button_label' => 'Add Race',
+                                'sub_fields' => [
+                                    [
+                                        'key' => 'field_race_title',
+                                        'label' => 'Title',
+                                        'name' => 'race_title',
+                                        'type' => 'text',
+                                    ],
+                                    [
+                                        'key' => 'field_race_date',
+                                        'label' => 'Date',
+                                        'name' => 'race_date',
+                                        'type' => 'date_picker',
+                                        'display_format' => 'F j, Y',
+                                        'return_format' => 'Y-m-d',
+                                        'wrapper' => ['width' => '50'],
+                                    ],
+                                    [
+                                        'key' => 'field_race_location',
+                                        'label' => 'Location',
+                                        'name' => 'race_location',
+                                        'type' => 'text',
+                                        'wrapper' => ['width' => '50'],
+                                    ],
+                                    [
+                                        'key' => 'field_race_image',
+                                        'label' => 'Image',
+                                        'name' => 'race_image',
+                                        'type' => 'image',
+                                        'return_format' => 'array',
+                                        'preview_size' => 'medium',
+                                    ],
+                                    [
+                                        'key' => 'field_race_link',
+                                        'label' => 'Link',
+                                        'name' => 'race_link',
+                                        'type' => 'link',
+                                        'return_format' => 'array',
+                                    ],
+                                    [
+                                        'key' => 'field_race_background_image',
+                                        'label' => 'Background Image',
+                                        'name' => 'race_background_image',
+                                        'type' => 'image',
+                                        'return_format' => 'array',
+                                    ],
+                                    [
+                                        'key' => 'field_race_logo_image',
+                                        'label' => 'Logo Image',
+                                        'name' => 'race_logo_image',
+                                        'type' => 'image',
+                                        'return_format' => 'array',
+                                    ],
+                                    [
+                                        'key' => 'field_is_arsenal_event',
+                                        'label' => 'Arsenal Events Race',
+                                        'name' => 'is_arsenal_event',
+                                        'type' => 'true_false',
+                                        'default_value' => 0,
+                                    ],
+                                    [
+                                        'key' => 'field_registration_button_label',
+                                        'label' => 'Registration Button Label',
+                                        'name' => 'registration_button_label',
+                                        'type' => 'text',
+                                        'default_value' => 'Register Now',
+                                    ],
+                                    [
+                                        'key' => 'field_registration_button_url',
+                                        'label' => 'Registration Button URL',
+                                        'name' => 'registration_button_url',
+                                        'type' => 'url',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    // Resources Block
+                    [
+                        'key' => 'layout_resources_block',
+                        'name' => 'resources_block',
+                        'label' => 'Resources',
+                        'display' => 'block',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_resources_title',
+                                'label' => 'Title',
+                                'name' => 'resources_title',
+                                'type' => 'text',
+                            ],
+                            [
+                                'key' => 'field_resources_description',
+                                'label' => 'Description',
+                                'name' => 'resources_description',
+                                'type' => 'textarea',
+                                'rows' => 2,
+                            ],
+                            [
+                                'key' => 'field_resources_grid',
+                                'label' => 'Resources',
+                                'name' => 'resources_grid',
+                                'type' => 'repeater',
+                                'layout' => 'block',
+                                'button_label' => 'Add Resource',
+                                'sub_fields' => [
+                                    [
+                                        'key' => 'field_resource_title',
+                                        'label' => 'Title',
+                                        'name' => 'resource_title',
+                                        'type' => 'text',
+                                    ],
+                                    [
+                                        'key' => 'field_resource_description',
+                                        'label' => 'Description',
+                                        'name' => 'resource_description',
+                                        'type' => 'textarea',
+                                        'rows' => 2,
+                                    ],
+                                    [
+                                        'key' => 'field_resource_image',
+                                        'label' => 'Image',
+                                        'name' => 'resource_image',
+                                        'type' => 'image',
+                                        'return_format' => 'array',
+                                        'preview_size' => 'medium',
+                                    ],
+                                    [
+                                        'key' => 'field_resource_link',
+                                        'label' => 'Link',
+                                        'name' => 'resource_link',
+                                        'type' => 'link',
+                                        'return_format' => 'array',
+                                    ],
+                                    [
+                                        'key' => 'field_resource_category',
+                                        'label' => 'Category',
+                                        'name' => 'resource_category',
+                                        'type' => 'select',
+                                        'choices' => [
+                                            'for_runners' => 'For Runners',
+                                            'for_directors' => 'For Race Directors',
+                                        ],
+                                    ],
+                                    [
+                                        'key' => 'field_resource_category_icon',
+                                        'label' => 'Category Icon',
+                                        'name' => 'resource_category_icon',
+                                        'type' => 'image',
+                                        'return_format' => 'array',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    // CTA Block
+                    [
+                        'key' => 'layout_cta_block',
+                        'name' => 'cta_block',
+                        'label' => 'CTA',
+                        'display' => 'block',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_cta_headline',
+                                'label' => 'Headline',
+                                'name' => 'cta_headline',
+                                'type' => 'text',
+                            ],
+                            [
+                                'key' => 'field_cta_description',
+                                'label' => 'Description',
+                                'name' => 'cta_description',
+                                'type' => 'textarea',
+                                'rows' => 2,
+                            ],
+                            [
+                                'key' => 'field_cta_label',
+                                'label' => 'Button Label',
+                                'name' => 'cta_label',
+                                'type' => 'text',
+                                'wrapper' => ['width' => '50'],
+                            ],
+                            [
+                                'key' => 'field_cta_href',
+                                'label' => 'Button URL',
+                                'name' => 'cta_href',
+                                'type' => 'url',
+                                'wrapper' => ['width' => '50'],
+                            ],
+                            [
+                                'key' => 'field_cta_background_image',
+                                'label' => 'Background Image',
+                                'name' => 'cta_background_image',
+                                'type' => 'image',
+                                'return_format' => 'array',
+                                'preview_size' => 'medium',
+                            ],
+                        ],
+                    ],
+                    // Testimonials & Stats Block (Combined)
+                    [
+                        'key' => 'layout_testimonials_stats_block',
+                        'name' => 'testimonials_stats_block',
+                        'label' => 'Testimonials & Stats',
+                        'display' => 'block',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_testimonials_headline',
+                                'label' => 'Headline',
+                                'name' => 'testimonials_headline',
+                                'type' => 'text',
+                                'default_value' => "We're Built for Race Day",
+                            ],
+                            [
+                                'key' => 'field_testimonials_description',
+                                'label' => 'Description',
+                                'name' => 'testimonials_description',
+                                'type' => 'textarea',
+                                'rows' => 2,
+                            ],
+                            [
+                                'key' => 'field_testimonials_list',
+                                'label' => 'Testimonials',
+                                'name' => 'testimonials_list',
+                                'type' => 'repeater',
+                                'layout' => 'table',
+                                'button_label' => 'Add Testimonial',
+                                'sub_fields' => [
+                                    [
+                                        'key' => 'field_testimonial_type',
+                                        'label' => 'Type',
+                                        'name' => 'testimonial_type',
+                                        'type' => 'select',
+                                        'choices' => [
+                                            'director' => 'Race Director',
+                                            'runner' => 'Runner',
+                                        ],
+                                    ],
+                                    [
+                                        'key' => 'field_testimonial_label',
+                                        'label' => 'Label',
+                                        'name' => 'testimonial_label',
+                                        'type' => 'text',
+                                    ],
+                                    [
+                                        'key' => 'field_testimonial_quote',
+                                        'label' => 'Quote',
+                                        'name' => 'testimonial_quote',
+                                        'type' => 'textarea',
+                                        'rows' => 3,
+                                    ],
+                                    [
+                                        'key' => 'field_testimonial_attribution',
+                                        'label' => 'Attribution',
+                                        'name' => 'testimonial_attribution',
+                                        'type' => 'text',
+                                    ],
+                                ],
+                            ],
+                            [
+                                'key' => 'field_stats_list',
+                                'label' => 'Statistics',
+                                'name' => 'stats_list',
+                                'type' => 'repeater',
+                                'layout' => 'table',
+                                'max' => 3,
+                                'button_label' => 'Add Stat',
+                                'sub_fields' => [
+                                    [
+                                        'key' => 'field_stat_icon',
+                                        'label' => 'Icon',
+                                        'name' => 'stat_icon',
+                                        'type' => 'image',
+                                        'return_format' => 'array',
+                                    ],
+                                    [
+                                        'key' => 'field_stat_value',
+                                        'label' => 'Value',
+                                        'name' => 'stat_value',
+                                        'type' => 'text',
+                                    ],
+                                    [
+                                        'key' => 'field_stat_label',
+                                        'label' => 'Label',
+                                        'name' => 'stat_label',
+                                        'type' => 'text',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    // Footer Block
+                    [
+                        'key' => 'layout_footer_block',
+                        'name' => 'footer_block',
+                        'label' => 'Footer',
+                        'display' => 'block',
+                        'sub_fields' => [
+                            [
+                                'key' => 'field_footer_nav_links',
+                                'label' => 'Navigation Links',
+                                'name' => 'footer_nav_links',
+                                'type' => 'repeater',
+                                'layout' => 'table',
+                                'button_label' => 'Add Link',
+                                'sub_fields' => [
+                                    [
+                                        'key' => 'field_footer_nav_label',
+                                        'label' => 'Label',
+                                        'name' => 'label',
+                                        'type' => 'text',
+                                        'wrapper' => ['width' => '50'],
+                                    ],
+                                    [
+                                        'key' => 'field_footer_nav_href',
+                                        'label' => 'URL',
+                                        'name' => 'href',
+                                        'type' => 'url',
+                                        'wrapper' => ['width' => '50'],
+                                    ],
+                                ],
+                            ],
+                            [
+                                'key' => 'field_footer_info_text',
+                                'label' => 'Info Text',
+                                'name' => 'footer_info_text',
+                                'type' => 'textarea',
+                                'rows' => 2,
+                            ],
+                            [
+                                'key' => 'field_footer_copyright_text',
+                                'label' => 'Copyright Text',
+                                'name' => 'footer_copyright_text',
+                                'type' => 'text',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ],
+        'location' => [
+            [
+                [
+                    'param' => 'post_type',
+                    'operator' => '==',
+                    'value' => 'page',
+                ],
+            ],
+        ],
+        'menu_order' => 0,
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+        'description' => 'Flexible content blocks for pages',
+        'show_in_rest' => 1,
+    ];
+}
+
+function arsenal_events_get_race_details_group(): array
+{
+    return [
+        'key' => 'group_race_details',
+        'title' => 'Race Details',
+        'fields' => [
+            [
+                'key' => 'field_race_date_picker',
+                'label' => 'Race Date',
+                'name' => 'race_date',
+                'type' => 'date_picker',
+                'display_format' => 'F j, Y',
+                'return_format' => 'Y-m-d',
+            ],
+            [
+                'key' => 'field_race_location_text',
+                'label' => 'Location',
+                'name' => 'race_location',
+                'type' => 'text',
+            ],
+            [
+                'key' => 'field_race_featured_image',
+                'label' => 'Featured Image',
+                'name' => 'race_featured_image',
+                'type' => 'image',
+                'return_format' => 'array',
+                'preview_size' => 'medium',
+            ],
+            [
+                'key' => 'field_race_registration_link',
+                'label' => 'Registration Link',
+                'name' => 'race_registration_link',
+                'type' => 'url',
+            ],
+            [
+                'key' => 'field_race_results_link',
+                'label' => 'Results Link',
+                'name' => 'race_results_link',
+                'type' => 'url',
+            ],
+        ],
+        'location' => [
+            [
+                [
+                    'param' => 'post_type',
+                    'operator' => '==',
+                    'value' => 'race',
+                ],
+            ],
+        ],
+        'menu_order' => 0,
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+        'description' => 'Race-specific details and metadata',
+        'show_in_rest' => 1,
+    ];
+}
+
+function arsenal_events_get_resource_details_group(): array
+{
+    return [
+        'key' => 'group_resource_details',
+        'title' => 'Resource Details',
+        'fields' => [
+            [
+                'key' => 'field_resource_featured_image',
+                'label' => 'Featured Image',
+                'name' => 'resource_featured_image',
+                'type' => 'image',
+                'return_format' => 'array',
+                'preview_size' => 'medium',
+            ],
+            [
+                'key' => 'field_resource_download_link',
+                'label' => 'Download File',
+                'name' => 'resource_download_link',
+                'type' => 'file',
+                'return_format' => 'array',
+            ],
+            [
+                'key' => 'field_resource_external_link',
+                'label' => 'External Link',
+                'name' => 'resource_external_link',
+                'type' => 'url',
+            ],
+        ],
+        'location' => [
+            [
+                [
+                    'param' => 'post_type',
+                    'operator' => '==',
+                    'value' => 'resource',
+                ],
+            ],
+        ],
+        'menu_order' => 0,
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+        'description' => 'Resource-specific details and metadata',
+        'show_in_rest' => 1,
+    ];
+}
+
+/**
+ * Race Directors Page - Hero Section Fields
+ */
+function arsenal_events_get_rd_hero_group(): array
+{
+    return [
+        'key' => 'group_rd_hero',
+        'title' => 'Race Directors - Hero Section',
+        'fields' => [
+            [
+                'key' => 'field_rd_hero_title',
+                'label' => 'Title',
+                'name' => 'rd_hero_title',
+                'type' => 'text',
+                'instructions' => 'Main headline for Race Directors hero section',
+                'required' => 0,
+            ],
+            [
+                'key' => 'field_rd_hero_subtitle',
+                'label' => 'Subtitle',
+                'name' => 'rd_hero_subtitle',
+                'type' => 'text',
+                'instructions' => 'Secondary headline',
+                'required' => 0,
+            ],
+            [
+                'key' => 'field_rd_hero_description',
+                'label' => 'Description',
+                'name' => 'rd_hero_description',
+                'type' => 'textarea',
+                'instructions' => 'Hero section description text',
+                'required' => 0,
+                'rows' => 3,
+            ],
+            [
+                'key' => 'field_rd_hero_primary_button_text',
+                'label' => 'Primary Button Text',
+                'name' => 'rd_hero_primary_button_text',
+                'type' => 'text',
+                'wrapper' => ['width' => '50'],
+            ],
+            [
+                'key' => 'field_rd_hero_primary_button_href',
+                'label' => 'Primary Button URL',
+                'name' => 'rd_hero_primary_button_href',
+                'type' => 'url',
+                'wrapper' => ['width' => '50'],
+            ],
+            [
+                'key' => 'field_rd_hero_secondary_button_text',
+                'label' => 'Secondary Button Text',
+                'name' => 'rd_hero_secondary_button_text',
+                'type' => 'text',
+                'wrapper' => ['width' => '50'],
+            ],
+            [
+                'key' => 'field_rd_hero_secondary_button_href',
+                'label' => 'Secondary Button URL',
+                'name' => 'rd_hero_secondary_button_href',
+                'type' => 'url',
+                'wrapper' => ['width' => '50'],
+            ],
+            [
+                'key' => 'field_rd_hero_image',
+                'label' => 'Hero Image',
+                'name' => 'rd_hero_image',
+                'type' => 'image',
+                'return_format' => 'array',
+                'preview_size' => 'medium',
+            ],
+        ],
+        'location' => [
+            [
+                [
+                    'param' => 'page_template',
+                    'operator' => '==',
+                    'value' => 'for-race-directors',
+                ],
+            ],
+        ],
+        'menu_order' => 0,
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+        'description' => 'Hero section content for Race Directors page',
+        'show_in_rest' => 1,
+    ];
+}
+
+/**
+ * Race Directors Page - Services Section Fields
+ */
+function arsenal_events_get_rd_services_group(): array
+{
+    return [
+        'key' => 'group_rd_services',
+        'title' => 'Race Directors - Services Section',
+        'fields' => [
+            [
+                'key' => 'field_rd_services_title',
+                'label' => 'Section Title',
+                'name' => 'rd_services_title',
+                'type' => 'text',
+                'instructions' => 'Main title for services section',
+                'required' => 0,
+            ],
+            [
+                'key' => 'field_rd_services_subtitle',
+                'label' => 'Section Subtitle',
+                'name' => 'rd_services_subtitle',
+                'type' => 'text',
+                'instructions' => 'Subtitle for services section',
+                'required' => 0,
+            ],
+            [
+                'key' => 'field_rd_services_list',
+                'label' => 'Services',
+                'name' => 'rd_services_list',
+                'type' => 'repeater',
+                'instructions' => 'Add race director services',
+                'layout' => 'block',
+                'button_label' => 'Add Service',
+                'sub_fields' => [
+                    [
+                        'key' => 'field_rd_service_title',
+                        'label' => 'Service Title',
+                        'name' => 'title',
+                        'type' => 'text',
+                        'required' => 0,
+                    ],
+                    [
+                        'key' => 'field_rd_service_body',
+                        'label' => 'Service Description',
+                        'name' => 'body',
+                        'type' => 'textarea',
+                        'rows' => 3,
+                        'required' => 0,
+                    ],
+                    [
+                        'key' => 'field_rd_service_image',
+                        'label' => 'Service Image',
+                        'name' => 'image',
+                        'type' => 'image',
+                        'return_format' => 'array',
+                        'preview_size' => 'medium',
+                    ],
+                    [
+                        'key' => 'field_rd_service_icon',
+                        'label' => 'Service Icon',
+                        'name' => 'icon',
+                        'type' => 'image',
+                        'return_format' => 'array',
+                        'preview_size' => 'thumbnail',
+                    ],
+                ],
+            ],
+        ],
+        'location' => [
+            [
+                [
+                    'param' => 'page_template',
+                    'operator' => '==',
+                    'value' => 'for-race-directors',
+                ],
+            ],
+        ],
+        'menu_order' => 1,
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+        'description' => 'Services section content for Race Directors page',
+        'show_in_rest' => 1,
+    ];
+}
+
+/**
+ * Race Directors Page - Gallery Section Fields
+ */
+function arsenal_events_get_rd_gallery_group(): array
+{
+    return [
+        'key' => 'group_rd_gallery',
+        'title' => 'Race Directors - Gallery Section',
+        'fields' => [
+            [
+                'key' => 'field_rd_gallery_title',
+                'label' => 'Gallery Title',
+                'name' => 'rd_gallery_title',
+                'type' => 'text',
+                'instructions' => 'Title for the gallery section',
+                'required' => 0,
+            ],
+            [
+                'key' => 'field_rd_gallery_items',
+                'label' => 'Gallery Items',
+                'name' => 'rd_gallery_items',
+                'type' => 'repeater',
+                'instructions' => 'Add gallery images',
+                'layout' => 'block',
+                'button_label' => 'Add Image',
+                'sub_fields' => [
+                    [
+                        'key' => 'field_rd_gallery_item_image',
+                        'label' => 'Image',
+                        'name' => 'image',
+                        'type' => 'image',
+                        'return_format' => 'array',
+                        'preview_size' => 'medium',
+                        'required' => 0,
+                    ],
+                    [
+                        'key' => 'field_rd_gallery_item_caption',
+                        'label' => 'Caption',
+                        'name' => 'caption',
+                        'type' => 'text',
+                        'required' => 0,
+                    ],
+                    [
+                        'key' => 'field_rd_gallery_item_classname',
+                        'label' => 'CSS Class Name',
+                        'name' => 'className',
+                        'type' => 'text',
+                        'instructions' => 'Optional CSS class for styling',
+                        'required' => 0,
+                    ],
+                ],
+            ],
+            [
+                'key' => 'field_rd_gallery_topography_bg',
+                'label' => 'Topography Background Image',
+                'name' => 'rd_gallery_topography_bg',
+                'type' => 'image',
+                'return_format' => 'array',
+                'preview_size' => 'medium',
+            ],
+            [
+                'key' => 'field_rd_gallery_chevron',
+                'label' => 'Chevron Icon',
+                'name' => 'rd_gallery_chevron',
+                'type' => 'image',
+                'return_format' => 'array',
+                'preview_size' => 'thumbnail',
+            ],
+        ],
+        'location' => [
+            [
+                [
+                    'param' => 'page_template',
+                    'operator' => '==',
+                    'value' => 'for-race-directors',
+                ],
+            ],
+        ],
+        'menu_order' => 2,
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+        'description' => 'Gallery section content for Race Directors page',
+        'show_in_rest' => 1,
+    ];
+}
+
+/**
+ * Races & Results Page - Hero Section Fields
+ */
+function arsenal_events_get_rr_hero_group(): array
+{
+    return [
+        'key' => 'group_rr_hero',
+        'title' => 'Races & Results - Hero Section',
+        'fields' => [
+            [
+                'key' => 'field_rr_hero_title',
+                'label' => 'Title',
+                'name' => 'rr_hero_title',
+                'type' => 'text',
+                'instructions' => 'Main headline for Races & Results hero section',
+                'required' => 0,
+            ],
+            [
+                'key' => 'field_rr_hero_subtitle',
+                'label' => 'Subtitle',
+                'name' => 'rr_hero_subtitle',
+                'type' => 'text',
+                'instructions' => 'Secondary headline',
+                'required' => 0,
+            ],
+            [
+                'key' => 'field_rr_hero_description',
+                'label' => 'Description',
+                'name' => 'rr_hero_description',
+                'type' => 'textarea',
+                'instructions' => 'Hero section description text',
+                'required' => 0,
+                'rows' => 3,
+            ],
+            [
+                'key' => 'field_rr_hero_primary_button_text',
+                'label' => 'Primary Button Text',
+                'name' => 'rr_hero_primary_button_text',
+                'type' => 'text',
+                'wrapper' => ['width' => '50'],
+            ],
+            [
+                'key' => 'field_rr_hero_primary_button_href',
+                'label' => 'Primary Button URL',
+                'name' => 'rr_hero_primary_button_href',
+                'type' => 'url',
+                'wrapper' => ['width' => '50'],
+            ],
+            [
+                'key' => 'field_rr_hero_secondary_button_text',
+                'label' => 'Secondary Button Text',
+                'name' => 'rr_hero_secondary_button_text',
+                'type' => 'text',
+                'wrapper' => ['width' => '50'],
+            ],
+            [
+                'key' => 'field_rr_hero_secondary_button_href',
+                'label' => 'Secondary Button URL',
+                'name' => 'rr_hero_secondary_button_href',
+                'type' => 'url',
+                'wrapper' => ['width' => '50'],
+            ],
+            [
+                'key' => 'field_rr_hero_image',
+                'label' => 'Hero Image',
+                'name' => 'rr_hero_image',
+                'type' => 'image',
+                'return_format' => 'array',
+                'preview_size' => 'medium',
+            ],
+        ],
+        'location' => [
+            [
+                [
+                    'param' => 'page_template',
+                    'operator' => '==',
+                    'value' => 'races-and-results',
+                ],
+            ],
+        ],
+        'menu_order' => 0,
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+        'description' => 'Hero section content for Races & Results page',
+        'show_in_rest' => 1,
+    ];
+}

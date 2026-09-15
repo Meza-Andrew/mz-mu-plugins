@@ -10,6 +10,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// The site-level MU loader symlink points at this package root, but runtime modules
+// are loaded from the inner mz-mu-plugins directory below. Keep loadable modules there.
 $mz_plugin_files = [
     'mz-site-documentation.php',
     'mz-admin.php',
@@ -24,6 +26,8 @@ $mz_plugin_files = [
     'mz-security.php',
     'mz-settings.php',
     'mz-woocommerce.php',
+    'arsenal-events-cpt.php',
+    'mz-rest-api.php',
 ];
 
 foreach ($mz_plugin_files as $mz_plugin_file) {
