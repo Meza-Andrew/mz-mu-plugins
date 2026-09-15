@@ -456,36 +456,77 @@ function meza_rest_api_permission_callback(): bool
 }
 
 /**
+ * Extends headless-core's canonical page contract for Arsenal's author-facing
+ * flexible content field. Arsenal must not register a competing pages route.
+ */
+function meza_arsenal_extend_page_payload(array $payload, WP_Post $page): array
+{
+    $blocks = meza_get_page_blocks((int) $page->ID);
+    $content = trim((string) $page->post_content);
+
+    if ($content !== '') {
+        $content_block = [
+            'id' => 'content-' . (int) $page->ID,
+            'type' => 'content',
+            'props' => [
+                'html' => wp_kses_post(apply_filters('the_content', $content)),
+            ],
+        ];
+
+        $insert_at = 0;
+        foreach ($blocks as $index => $block) {
+            if (in_array($block['type'] ?? '', ['hero', 'hero_block'], true)) {
+                $insert_at = $index + 1;
+                break;
+            }
+        }
+
+        array_splice($blocks, $insert_at, 0, [$content_block]);
+    }
+
+    $payload['blocks'] = $blocks;
+    $payload['yoast_meta'] = meza_get_yoast_metadata((int) $page->ID);
+
+    return $payload;
+}
+add_filter('mzhc_page_payload', 'meza_arsenal_extend_page_payload', 20, 2);
+
+/**
+ * Adds backward-compatible Arsenal settings aliases to the canonical
+ * headless-core settings contract without taking ownership of its route.
+ */
+function meza_arsenal_extend_settings_payload(array $payload): array
+{
+    $option = static function (string $field, string $fallback = ''): string {
+        return (string) (meza_get_arsenal_option_field($field) ?: $fallback);
+    };
+
+    $header_links = function_exists('get_field') ? get_field('header_nav_links', 'option') : [];
+    $footer_links = function_exists('get_field') ? get_field('footer_nav_links', 'option') : [];
+    $social_links = function_exists('get_field') ? get_field('social_links', 'option') : [];
+
+    $payload['site_title'] = $payload['site']['name'] ?? get_bloginfo('name');
+    $payload['site_description'] = $payload['site']['description'] ?? get_bloginfo('description');
+    $payload['site_phone'] = $option('site_phone', (string) get_option('meza_site_phone', ''));
+    $payload['site_email'] = $option('site_email', (string) get_option('admin_email', ''));
+    $payload['site_info_text'] = $option('site_info_text');
+    $payload['site_copyright_text'] = $option('site_copyright_text');
+    $payload['header_nav_links'] = is_array($header_links) ? $header_links : [];
+    $payload['footer_nav_links'] = is_array($footer_links) ? $footer_links : [];
+    $payload['social_links'] = is_array($social_links) ? $social_links : [];
+    $payload['seo_defaults'] = [
+        'og_image' => $payload['seo']['default_og_image'] ?? '',
+        'twitter_card' => 'summary_large_image',
+    ];
+
+    return $payload;
+}
+add_filter('mzhc_settings_payload', 'meza_arsenal_extend_settings_payload', 20);
+
+/**
  * Register REST API routes
  */
 add_action('rest_api_init', function () {
-    // GET /wp-json/meza/v1/pages
-    register_rest_route('meza/v1', '/pages', [
-        'methods' => 'GET',
-        'callback' => 'meza_rest_get_pages',
-        'permission_callback' => 'meza_rest_api_permission_callback',
-    ]);
-
-    // GET /wp-json/meza/v1/pages/{slug}
-    register_rest_route('meza/v1', '/pages/(?P<slug>[a-zA-Z0-9_-]+)', [
-        'methods' => 'GET',
-        'callback' => 'meza_rest_get_page_by_slug',
-        'permission_callback' => 'meza_rest_api_permission_callback',
-        'args' => [
-            'slug' => [
-                'type' => 'string',
-                'required' => true,
-            ],
-        ],
-    ]);
-
-    // GET /wp-json/meza/v1/settings
-    register_rest_route('meza/v1', '/settings', [
-        'methods' => 'GET',
-        'callback' => 'meza_rest_get_settings',
-        'permission_callback' => 'meza_rest_api_permission_callback',
-    ]);
-
     // GET /wp-json/meza/v1/arsenal-media
     register_rest_route('meza/v1', '/arsenal-media', [
         'methods' => 'GET',
