@@ -42,8 +42,8 @@ add_filter('xmlrpc_enabled', function () {
 });
 
 /** Authentication hardening: avoid revealing whether login credentials were invalid. */
-add_filter('login_errors', function () {
-    return null;
+add_filter('login_errors', function (): string {
+    return 'Invalid login credentials.';
 });
 
 /** ================================
