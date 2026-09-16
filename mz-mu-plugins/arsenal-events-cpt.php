@@ -11,6 +11,15 @@
 // RACE CUSTOM POST TYPE
 // ============================================================================
 
+if (!function_exists('arsenal_events_site_settings_capability')) {
+    function arsenal_events_site_settings_capability(): string
+    {
+        return function_exists('meza_access_site_settings_capability')
+            ? meza_access_site_settings_capability()
+            : 'meza_access_site_settings';
+    }
+}
+
 function arsenal_events_register_race_cpt() {
     $labels = [
         'name'                  => _x('Races', 'Post Type General Name', 'arsenal-events'),
@@ -46,7 +55,7 @@ function arsenal_events_register_race_cpt() {
         'label'                 => __('Race', 'arsenal-events'),
         'description'           => __('Upcoming races and race results', 'arsenal-events'),
         'labels'                => $labels,
-        'supports'              => ['title', 'editor', 'thumbnail', 'excerpt', 'custom-fields'],
+        'supports'              => ['title', 'editor', 'thumbnail', 'excerpt'],
         'taxonomies'            => ['race_category'],
         'hierarchical'          => false,
         'public'                => true,
@@ -153,7 +162,7 @@ function arsenal_events_register_resource_cpt() {
         'label'                 => __('Resource', 'arsenal-events'),
         'description'           => __('Downloadable guides, documentation, and resources', 'arsenal-events'),
         'labels'                => $labels,
-        'supports'              => ['title', 'editor', 'thumbnail', 'excerpt', 'custom-fields'],
+        'supports'              => ['title', 'editor', 'thumbnail', 'excerpt'],
         'taxonomies'            => ['resource_category'],
         'hierarchical'          => false,
         'public'                => true,
@@ -231,7 +240,7 @@ function arsenal_events_register_options_page() {
             'page_title' => 'Arsenal Events Settings',
             'menu_title' => 'Arsenal Events',
             'menu_slug'  => 'arsenal-events-settings',
-            'capability' => 'manage_options',
+            'capability' => arsenal_events_site_settings_capability(),
             'redirect'   => false,
         ]);
     }

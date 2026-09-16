@@ -24,8 +24,15 @@ function meza_get_yoast_metadata(int $post_id): array
         'og_title' => '',
         'og_description' => '',
         'og_image' => '',
+        'twitter_title' => '',
+        'twitter_description' => '',
+        'twitter_image' => '',
         'twitter_card' => 'summary_large_image',
         'canonical' => '',
+        'robots' => [
+            'noindex' => false,
+            'nofollow' => false,
+        ],
     ];
 
     if ($post_id <= 0) {
@@ -38,7 +45,16 @@ function meza_get_yoast_metadata(int $post_id): array
     $yoast_meta['og_title'] = (string) get_post_meta($post_id, '_yoast_wpseo_opengraph-title', true);
     $yoast_meta['og_description'] = (string) get_post_meta($post_id, '_yoast_wpseo_opengraph-description', true);
     $yoast_meta['og_image'] = (string) get_post_meta($post_id, '_yoast_wpseo_opengraph-image', true);
+    $yoast_meta['twitter_title'] = (string) get_post_meta($post_id, '_yoast_wpseo_twitter-title', true);
+    $yoast_meta['twitter_description'] = (string) get_post_meta($post_id, '_yoast_wpseo_twitter-description', true);
+    $yoast_meta['twitter_image'] = (string) get_post_meta($post_id, '_yoast_wpseo_twitter-image', true);
     $yoast_meta['canonical'] = (string) get_post_meta($post_id, '_yoast_wpseo_canonical', true);
+    $robots_noindex = (string) get_post_meta($post_id, '_yoast_wpseo_meta-robots-noindex', true);
+    $robots_nofollow = (string) get_post_meta($post_id, '_yoast_wpseo_meta-robots-nofollow', true);
+    $yoast_meta['robots'] = [
+        'noindex' => in_array($robots_noindex, ['1', 'noindex'], true),
+        'nofollow' => in_array($robots_nofollow, ['1', 'nofollow'], true),
+    ];
 
     // Fallback to post title and excerpt if Yoast meta not set
     if (empty($yoast_meta['title'])) {
@@ -65,7 +81,45 @@ function meza_get_yoast_metadata(int $post_id): array
         $yoast_meta['og_description'] = $yoast_meta['description'];
     }
 
+    if (empty($yoast_meta['twitter_title'])) {
+        $yoast_meta['twitter_title'] = $yoast_meta['og_title'];
+    }
+
+    if (empty($yoast_meta['twitter_description'])) {
+        $yoast_meta['twitter_description'] = $yoast_meta['og_description'];
+    }
+
+    if (empty($yoast_meta['twitter_image'])) {
+        $yoast_meta['twitter_image'] = $yoast_meta['og_image'];
+    }
+
     return $yoast_meta;
+}
+
+function meza_get_canonical_seo_payload(int $post_id): array
+{
+    $yoast = meza_get_yoast_metadata($post_id);
+
+    return [
+        'title' => (string) ($yoast['title'] ?? ''),
+        'description' => (string) ($yoast['description'] ?? ''),
+        'canonical' => (string) ($yoast['canonical'] ?? ''),
+        'robots' => is_array($yoast['robots'] ?? null) ? $yoast['robots'] : [
+            'noindex' => false,
+            'nofollow' => false,
+        ],
+        'open_graph' => [
+            'title' => (string) ($yoast['og_title'] ?? ''),
+            'description' => (string) ($yoast['og_description'] ?? ''),
+            'image' => (string) ($yoast['og_image'] ?? ''),
+        ],
+        'twitter' => [
+            'title' => (string) ($yoast['twitter_title'] ?? ''),
+            'description' => (string) ($yoast['twitter_description'] ?? ''),
+            'image' => (string) ($yoast['twitter_image'] ?? ''),
+            'card' => (string) ($yoast['twitter_card'] ?? 'summary_large_image'),
+        ],
+    ];
 }
 
 /**
@@ -113,11 +167,25 @@ function meza_normalize_acf_asset($value)
         if (empty($normalized["url"])) {
             $normalized["url"] = wp_get_attachment_url($attachment_id) ?: "";
         }
-        if (!array_key_exists("alt", $normalized)) {
-            $normalized["alt"] = (string) get_post_meta($attachment_id, "_wp_attachment_image_alt", true);
-        }
+        $normalized["alt"] = (string) get_post_meta($attachment_id, "_wp_attachment_image_alt", true);
         if (empty($normalized["title"])) {
             $normalized["title"] = get_the_title($attachment_id) ?: "";
+        }
+        if (!array_key_exists("caption", $normalized)) {
+            $normalized["caption"] = wp_get_attachment_caption($attachment_id) ?: "";
+        }
+        if (!array_key_exists("description", $normalized)) {
+            $normalized["description"] = get_post_field("post_content", $attachment_id) ?: "";
+        }
+        if (!array_key_exists("sizes", $normalized)) {
+            $sizes = [];
+            foreach (["thumbnail", "medium", "large", "full"] as $size) {
+                $image = wp_get_attachment_image_src($attachment_id, $size);
+                if (is_array($image) && !empty($image[0])) {
+                    $sizes[$size] = $image[0];
+                }
+            }
+            $normalized["sizes"] = $sizes;
         }
     }
 
@@ -209,6 +277,37 @@ function meza_get_arsenal_media_options(): array
     return $media;
 }
 
+function meza_get_arsenal_media_requirements(array $media): array
+{
+    $required_fields = [
+        'rd_hero_image',
+        'rr_hero_image',
+    ];
+    $optional_fields = [
+        'rd_services_items',
+        'rd_gallery_items',
+    ];
+    $errors = [];
+
+    foreach ($required_fields as $field_name) {
+        $value = $media[$field_name] ?? null;
+        if (!is_array($value) || empty($value['id']) || empty($value['url'])) {
+            $errors[] = [
+                'field' => $field_name,
+                'code' => 'required_media_missing',
+                'message' => 'Required Arsenal media field is not configured.',
+            ];
+        }
+    }
+
+    return [
+        'required' => $required_fields,
+        'optional' => $optional_fields,
+        'errors' => $errors,
+        'ok' => $errors === [],
+    ];
+}
+
 /**
  * REST API: GET /wp-json/meza/v1/arsenal-media
  * Fetch Arsenal media option fields in an ACF-compatible envelope.
@@ -216,10 +315,13 @@ function meza_get_arsenal_media_options(): array
 function meza_rest_get_arsenal_media(WP_REST_Request $request): WP_REST_Response
 {
     $media = meza_get_arsenal_media_options();
+    $requirements = meza_get_arsenal_media_requirements($media);
 
     return new WP_REST_Response([
         "acf" => $media,
         "media" => $media,
+        "requirements" => $requirements,
+        "errors" => $requirements["errors"],
     ], 200);
 }
 
@@ -497,6 +599,113 @@ add_action('rest_api_init', function () {
 /**
  * Get race/resource data with ACF fields and Yoast metadata
  */
+function meza_render_post_content(WP_Post $post): string
+{
+    $content = (string) $post->post_content;
+    if ($content === '') {
+        return '';
+    }
+
+    return function_exists('wp_kses_post')
+        ? wp_kses_post(apply_filters('the_content', $content))
+        : (string) apply_filters('the_content', $content);
+}
+
+function meza_get_post_excerpt_payload(WP_Post $post): array
+{
+    $raw = (string) $post->post_excerpt;
+    $rendered = $raw !== '' ? $raw : (string) wp_trim_excerpt('', (int) $post->ID);
+
+    return [
+        'raw' => $raw,
+        'rendered' => $rendered,
+    ];
+}
+
+function meza_get_native_featured_image(int $post_id)
+{
+    if (!function_exists('get_post_thumbnail_id')) {
+        return null;
+    }
+
+    $thumbnail_id = (int) get_post_thumbnail_id($post_id);
+    if ($thumbnail_id <= 0) {
+        return null;
+    }
+
+    return meza_normalize_acf_asset($thumbnail_id);
+}
+
+function meza_get_legacy_acf_featured_image(int $post_id, string $post_type)
+{
+    if (!function_exists('get_field')) {
+        return null;
+    }
+
+    if ($post_type === 'race') {
+        return meza_normalize_acf_asset(get_field('race_featured_image', $post_id));
+    }
+
+    if ($post_type === 'resource') {
+        return meza_normalize_acf_asset(get_field('resource_featured_image', $post_id));
+    }
+
+    return null;
+}
+
+function meza_get_post_featured_image_payload(int $post_id, string $post_type): array
+{
+    $native = meza_get_native_featured_image($post_id);
+    $legacy = meza_get_legacy_acf_featured_image($post_id, $post_type);
+    $canonical = is_array($native) ? $native : null;
+    $legacy_matches = is_array($canonical)
+        && is_array($legacy)
+        && (int) ($canonical['id'] ?? 0) > 0
+        && (int) ($canonical['id'] ?? 0) === (int) ($legacy['id'] ?? 0);
+
+    return [
+        'canonical' => $canonical,
+        'legacy' => is_array($legacy) ? $legacy : null,
+        'legacy_matches_canonical' => $legacy_matches,
+        'source' => is_array($canonical) ? 'native_featured_image' : 'none',
+    ];
+}
+
+function meza_get_post_taxonomy_payload(int $post_id, string $post_type): array
+{
+    if (!function_exists('get_object_taxonomies') || !function_exists('wp_get_post_terms')) {
+        return [];
+    }
+
+    $taxonomy_names = get_object_taxonomies($post_type, 'names');
+    if (!is_array($taxonomy_names)) {
+        return [];
+    }
+
+    $taxonomies = [];
+    foreach ($taxonomy_names as $taxonomy_name) {
+        $taxonomy_name = (string) $taxonomy_name;
+        $terms = wp_get_post_terms($post_id, $taxonomy_name);
+        if (!is_array($terms)) {
+            continue;
+        }
+
+        $taxonomies[$taxonomy_name] = array_values(array_map(
+            static function ($term): array {
+                return [
+                    'id' => (int) ($term->term_id ?? 0),
+                    'slug' => (string) ($term->slug ?? ''),
+                    'name' => (string) ($term->name ?? ''),
+                    'taxonomy' => (string) ($term->taxonomy ?? ''),
+                ];
+            },
+            $terms
+        ));
+    }
+
+    return $taxonomies;
+}
+
 function meza_get_post_data(int $post_id, string $post_type): array
 {
     $post = get_post($post_id);
@@ -504,12 +713,26 @@ function meza_get_post_data(int $post_id, string $post_type): array
         return [];
     }
 
+    $excerpt = meza_get_post_excerpt_payload($post);
+    $image_payload = meza_get_post_featured_image_payload($post->ID, $post_type);
+    $yoast_meta = meza_get_yoast_metadata($post->ID);
+
     $data = [
         'id' => $post->ID,
         'slug' => $post->post_name,
         'title' => $post->post_title,
         'status' => $post->post_status,
-        'yoast_meta' => meza_get_yoast_metadata($post->ID),
+        'content' => meza_render_post_content($post),
+        'content_raw' => (string) $post->post_content,
+        'excerpt' => $excerpt['rendered'],
+        'excerpt_raw' => $excerpt['raw'],
+        'featured_image' => $image_payload['canonical'],
+        'featured_image_source' => $image_payload['source'],
+        'legacy_acf_featured_image' => $image_payload['legacy'],
+        'legacy_acf_featured_image_matches_native' => $image_payload['legacy_matches_canonical'],
+        'taxonomies' => meza_get_post_taxonomy_payload($post->ID, $post_type),
+        'seo' => meza_get_canonical_seo_payload($post->ID),
+        'yoast_meta' => $yoast_meta,
     ];
 
     // Add post-specific ACF fields based on post type
@@ -522,9 +745,9 @@ function meza_get_post_data(int $post_id, string $post_type): array
         $data['race_location'] = get_field('race_location', $post->ID);
         $data['race_registration_link'] = get_field('race_registration_link', $post->ID);
         $data['race_results_link'] = get_field('race_results_link', $post->ID);
-        $data['race_featured_image'] = meza_normalize_acf_asset(get_field('race_featured_image', $post->ID));
+        $data['race_featured_image'] = $image_payload['canonical'];
     } elseif ($post_type === 'resource') {
-        $data['resource_featured_image'] = meza_normalize_acf_asset(get_field('resource_featured_image', $post->ID));
+        $data['resource_featured_image'] = $image_payload['canonical'];
         $data['resource_download_link'] = meza_normalize_acf_asset(get_field('resource_download_link', $post->ID));
         $data['resource_external_link'] = get_field('resource_external_link', $post->ID);
     }

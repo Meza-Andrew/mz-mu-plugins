@@ -384,6 +384,15 @@ function arsenal_events_get_rr_hero_media_group(): array
 /**
  * Register all media field groups
  */
+if (!function_exists('arsenal_events_site_settings_capability')) {
+    function arsenal_events_site_settings_capability(): string
+    {
+        return function_exists('meza_access_site_settings_capability')
+            ? meza_access_site_settings_capability()
+            : 'meza_access_site_settings';
+    }
+}
+
 function arsenal_events_register_media_field_groups()
 {
     if (function_exists('acf_add_local_field_group')) {
@@ -407,7 +416,7 @@ function arsenal_events_register_media_options_pages()
             'page_title' => 'Media Library',
             'menu_title' => 'Media Library',
             'menu_slug'  => 'arsenal-events-media',
-            'capability' => 'manage_options',
+            'capability' => arsenal_events_site_settings_capability(),
             'redirect'   => false,
             'parent_slug' => 'arsenal-events-settings',
         ]);

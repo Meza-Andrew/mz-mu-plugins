@@ -917,14 +917,6 @@ function arsenal_events_get_race_details_group(): array
                 'type' => 'text',
             ],
             [
-                'key' => 'field_race_featured_image',
-                'label' => 'Featured Image',
-                'name' => 'race_featured_image',
-                'type' => 'image',
-                'return_format' => 'array',
-                'preview_size' => 'medium',
-            ],
-            [
                 'key' => 'field_race_registration_link',
                 'label' => 'Registration Link',
                 'name' => 'race_registration_link',
@@ -963,14 +955,6 @@ function arsenal_events_get_resource_details_group(): array
         'key' => 'group_resource_details',
         'title' => 'Resource Details',
         'fields' => [
-            [
-                'key' => 'field_resource_featured_image',
-                'label' => 'Featured Image',
-                'name' => 'resource_featured_image',
-                'type' => 'image',
-                'return_format' => 'array',
-                'preview_size' => 'medium',
-            ],
             [
                 'key' => 'field_resource_download_link',
                 'label' => 'Download File',
