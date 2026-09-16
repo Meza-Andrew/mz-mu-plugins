@@ -664,10 +664,6 @@
             "arsenal_events_get_page_blocks_group",
             "arsenal_events_get_race_details_group",
             "arsenal_events_get_resource_details_group",
-            "arsenal_events_get_rd_hero_group",
-            "arsenal_events_get_rd_services_group",
-            "arsenal_events_get_rd_gallery_group",
-            "arsenal_events_get_rr_hero_group",
         ] as $arsenal_events_field_group_callback) {
             if (function_exists($arsenal_events_field_group_callback)) {
                 $groups[] = $arsenal_events_field_group_callback();

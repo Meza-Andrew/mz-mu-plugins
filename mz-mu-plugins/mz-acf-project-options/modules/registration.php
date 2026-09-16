@@ -1290,6 +1290,64 @@ if (!function_exists('meza_sync_section_field_group_menu_order')) {
 }
 add_action('acf/init', 'meza_sync_section_field_group_menu_order', 23);
 
+if (!function_exists('meza_dedupe_list_localities_section_field_group')) {
+    function meza_dedupe_list_localities_section_field_group_option_name(): string
+    {
+        return 'meza_list_localities_section_field_group_dedupe_version';
+    }
+
+    function meza_dedupe_list_localities_section_field_group(): void
+    {
+        $version = '2026-09-15-arsenal-localities-dedupe-v1';
+        if ((string) get_option(meza_dedupe_list_localities_section_field_group_option_name(), '') === $version) {
+            return;
+        }
+
+        $groups = get_posts([
+            'post_type' => 'acf-field-group',
+            'post_status' => ['publish', 'acf-disabled'],
+            'posts_per_page' => -1,
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'fields' => 'ids',
+            'no_found_rows' => true,
+            'name' => 'group_9f5b5c9a',
+        ]);
+
+        $active_group_id = 0;
+        $duplicate_group_ids = [];
+
+        foreach ((array) $groups as $group_id) {
+            $group_id = (int) $group_id;
+            $group = get_post($group_id);
+            if (!$group instanceof WP_Post) {
+                continue;
+            }
+
+            if ((string) $group->post_title !== 'List Localities Section') {
+                continue;
+            }
+
+            if ((string) $group->post_status === 'publish' && $active_group_id === 0) {
+                $active_group_id = $group_id;
+                continue;
+            }
+
+            $duplicate_group_ids[] = $group_id;
+        }
+
+        foreach ($duplicate_group_ids as $duplicate_group_id) {
+            wp_update_post([
+                'ID' => (int) $duplicate_group_id,
+                'post_status' => 'acf-disabled',
+            ]);
+        }
+
+        update_option(meza_dedupe_list_localities_section_field_group_option_name(), $version, false);
+    }
+}
+add_action('acf/init', 'meza_dedupe_list_localities_section_field_group', 25);
+
 add_action('acf/init', 'meza_seed_default_organization_type_terms', 25);
 add_action('acf/update_post_type', 'meza_attach_locality_to_new_custom_acf_post_type', 20);
 add_action('init', 'meza_migrate_legacy_list_testimonials_meta_once', 29);
@@ -1312,6 +1370,9 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
         return [
             'group_meza_content_model_field_groups',
             'group_69f04ade6c91c',
+            'group_global_site_settings',
+            'group_race_details',
+            'group_resource_details',
         ];
     }
 

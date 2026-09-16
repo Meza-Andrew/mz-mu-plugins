@@ -47,6 +47,56 @@ function arsenal_events_get_global_settings_group(): array
                 'required' => 0,
             ],
             [
+                'key' => 'field_global_header_nav_links',
+                'label' => 'Header Navigation Links',
+                'name' => 'header_nav_links',
+                'type' => 'repeater',
+                'instructions' => 'Main navigation links displayed in the site header',
+                'layout' => 'table',
+                'button_label' => 'Add Header Link',
+                'sub_fields' => [
+                    [
+                        'key' => 'field_global_header_nav_label',
+                        'label' => 'Label',
+                        'name' => 'label',
+                        'type' => 'text',
+                        'wrapper' => ['width' => '50'],
+                    ],
+                    [
+                        'key' => 'field_global_header_nav_href',
+                        'label' => 'URL',
+                        'name' => 'href',
+                        'type' => 'url',
+                        'wrapper' => ['width' => '50'],
+                    ],
+                ],
+            ],
+            [
+                'key' => 'field_global_footer_nav_links',
+                'label' => 'Footer Navigation Links',
+                'name' => 'footer_nav_links',
+                'type' => 'repeater',
+                'instructions' => 'Navigation links displayed in the site footer',
+                'layout' => 'table',
+                'button_label' => 'Add Footer Link',
+                'sub_fields' => [
+                    [
+                        'key' => 'field_global_footer_nav_label',
+                        'label' => 'Label',
+                        'name' => 'label',
+                        'type' => 'text',
+                        'wrapper' => ['width' => '50'],
+                    ],
+                    [
+                        'key' => 'field_global_footer_nav_href',
+                        'label' => 'URL',
+                        'name' => 'href',
+                        'type' => 'url',
+                        'wrapper' => ['width' => '50'],
+                    ],
+                ],
+            ],
+            [
                 'key' => 'field_social_links',
                 'label' => 'Social Links',
                 'name' => 'social_links',
@@ -671,10 +721,10 @@ function arsenal_events_get_page_blocks_group(): array
         'show_in_rest' => 1,
     ];
 
-    // Global layout is configured through canonical settings, not page blocks.
+    // Keep page authoring limited to layouts the frontend currently renders.
     $group['fields'][0]['layouts'] = array_values(array_filter(
         $group['fields'][0]['layouts'],
-        static fn(array $layout): bool => !in_array($layout['name'] ?? '', ['header_block', 'footer_block'], true)
+        static fn(array $layout): bool => in_array($layout['name'] ?? '', ['hero_block', 'services_block'], true)
     ));
 
     return $group;
