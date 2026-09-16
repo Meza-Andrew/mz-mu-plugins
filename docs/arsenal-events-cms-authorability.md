@@ -7,6 +7,9 @@ This document records the retained local authoring contract for the Arsenal Even
 | Surface | Author UI | ACF storage | REST payload | Frontend consumer |
 | --- | --- | --- | --- | --- |
 | Default page blocks | Page edit screen > Page Blocks | `page_blocks` flexible content, retained layouts `hero_block` and `services_block` | `/meza/v1/pages`, `/meza/v1/pages/{slug}`: `page_blocks`, canonical `blocks` mapping | page renderer and block adapters |
+| Homepage structured sections | Home page edit screen > Homepage Structured Sections | `home_upcoming_races_*`, `home_stats_*`, `home_testimonials_*`, `home_resources_*`, `home_cta_*` | `/meza/v1/pages/home`: `structured_content.upcoming_races`, `structured_content.stats`, `structured_content.testimonials`, `structured_content.resources`, `structured_content.cta`; compatibility `page_blocks`/`blocks` for supported homepage sections | homepage block adapters |
+| Race Director structured sections | For Race Directors page edit screen > Race Director Structured Sections | `rd_stats_*`, `rd_inquiry_*`, `rd_resources_*`, `rd_cta_*` | `/meza/v1/pages/for-race-directors`: `structured_content.stats`, `structured_content.inquiry`, `structured_content.resources`, `structured_content.cta` | Race Director page follow-up consumer |
+| Races & Results structured sections | Races & Results page edit screen > Races & Results Structured Sections | `rr_results_*`, `rr_upcoming_races_*`, `rr_stats_*`, `rr_resources_*`, `rr_cta_*` | `/meza/v1/pages/races-and-results`: `structured_content.results`, `structured_content.upcoming_races`, `structured_content.stats`, `structured_content.resources`, `structured_content.cta` | Races & Results page follow-up consumer |
 | Global contact | Arsenal Events > Settings > Global Site Settings | `options_site_email`, `options_site_phone` | `/meza/v1/settings`: `contact.email`, `contact.phone`, temporary aliases `site_email`, `site_phone` | `frontend/src/lib/wordpress/client.ts`, layout header/footer binds |
 | Global social/nav/copyright | Arsenal Events > Settings > Global Site Settings | `options_social_links`, `options_header_nav_links`, `options_footer_nav_links`, `options_site_info_text`, `options_site_copyright_text` | `/meza/v1/settings`: `social_links`, `header_nav_links`, `footer_nav_links`, `site_info_text`, `site_copyright_text` | layout header/footer binds |
 | Race details | Race edit screen > Race Details | `race_date`, `race_location`, `race_registration_link`, `race_results_link`, `race_featured_image` | `/meza/v1/races`, `/meza/v1/races/{slug}` | race list/detail and Races & Results pages |
@@ -18,7 +21,7 @@ This document records the retained local authoring contract for the Arsenal Even
 
 Race Director and Races & Results page-template field groups are intentionally not active author UI. REST and the frontend read the options/settings source above.
 
-Page authoring is intentionally limited to `hero_block` and `services_block` because those are the layouts currently rendered by the frontend. The previously registered global header/footer page-block layouts are superseded by Global Settings options fields, and the other non-rendered page layouts remain unavailable to authors until a renderer exists.
+Page authoring is intentionally limited to `hero_block`, `services_block`, and the page-specific structured groups listed above because those are the layouts currently rendered by the frontend. The previously registered global header/footer page-block layouts are superseded by Global Settings options fields, and the other non-rendered page layouts remain unavailable to authors until a renderer exists. Empty author values are serialized explicitly so cleared fields do not fall back to code-owned copy.
 
 ## Localities Deduplication
 

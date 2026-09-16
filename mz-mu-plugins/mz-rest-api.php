@@ -335,39 +335,276 @@ function meza_get_page_blocks(int $post_id): array
     }
 
     $blocks_raw = get_field('page_blocks', $post_id);
-    if (!is_array($blocks_raw)) {
+    $blocks = [];
+    if (is_array($blocks_raw)) {
+        foreach ($blocks_raw as $block) {
+            if (!is_array($block)) {
+                continue;
+            }
+
+            $block_type = isset($block['acf_fc_layout']) ? (string) $block['acf_fc_layout'] : '';
+            if (empty($block_type)) {
+                continue;
+            }
+
+            // Convert block data to snake_case props
+            $props = [];
+            foreach ($block as $key => $value) {
+                if ($key === 'acf_fc_layout') {
+                    continue;
+                }
+                // Convert camelCase to snake_case
+                $snake_key = strtolower(preg_replace('/(?<!^)(?=[A-Z])/', '_', $key));
+                $props[$snake_key] = $value;
+            }
+
+            $blocks[] = [
+                'type' => $block_type,
+                'props' => $props,
+            ];
+        }
+    }
+
+    return array_merge($blocks, meza_get_page_structured_blocks($post_id));
+}
+
+function meza_get_page_field_value(int $post_id, string $field_name, $empty_value = '')
+{
+    if (!function_exists('get_field')) {
+        return $empty_value;
+    }
+
+    $value = get_field($field_name, $post_id);
+
+    return $value === null || $value === false ? $empty_value : $value;
+}
+
+function meza_normalize_structured_stat_items($items): array
+{
+    if (!is_array($items)) {
         return [];
     }
 
-    $blocks = [];
-    foreach ($blocks_raw as $block) {
-        if (!is_array($block)) {
-            continue;
-        }
+    return array_values(array_map(
+        static function ($item): array {
+            $item = is_array($item) ? $item : [];
 
-        $block_type = isset($block['acf_fc_layout']) ? (string) $block['acf_fc_layout'] : '';
-        if (empty($block_type)) {
-            continue;
-        }
+            return [
+                'stat_icon' => meza_normalize_acf_asset($item['stat_icon'] ?? null),
+                'stat_value' => (string) ($item['stat_value'] ?? ''),
+                'stat_label' => (string) ($item['stat_label'] ?? ''),
+            ];
+        },
+        $items
+    ));
+}
 
-        // Convert block data to snake_case props
-        $props = [];
-        foreach ($block as $key => $value) {
-            if ($key === 'acf_fc_layout') {
-                continue;
-            }
-            // Convert camelCase to snake_case
-            $snake_key = strtolower(preg_replace('/(?<!^)(?=[A-Z])/', '_', $key));
-            $props[$snake_key] = $value;
-        }
-
-        $blocks[] = [
-            'type' => $block_type,
-            'props' => $props,
-        ];
+function meza_normalize_structured_resource_items($items): array
+{
+    if (!is_array($items)) {
+        return [];
     }
 
-    return $blocks;
+    return array_values(array_map(
+        static function ($item): array {
+            $item = is_array($item) ? $item : [];
+
+            return [
+                'resource_title' => (string) ($item['resource_title'] ?? ''),
+                'resource_image' => meza_normalize_acf_asset($item['resource_image'] ?? null),
+                'resource_category' => (string) ($item['resource_category'] ?? ''),
+                'resource_link' => (string) ($item['resource_link'] ?? ''),
+            ];
+        },
+        $items
+    ));
+}
+
+function meza_normalize_structured_testimonial_items($items): array
+{
+    if (!is_array($items)) {
+        return [];
+    }
+
+    return array_values(array_map(
+        static function ($item): array {
+            $item = is_array($item) ? $item : [];
+
+            return [
+                'testimonial_type' => (string) ($item['testimonial_type'] ?? ''),
+                'testimonial_label' => (string) ($item['testimonial_label'] ?? ''),
+                'testimonial_quote' => (string) ($item['testimonial_quote'] ?? ''),
+                'testimonial_attribution' => (string) ($item['testimonial_attribution'] ?? ''),
+            ];
+        },
+        $items
+    ));
+}
+
+function meza_get_structured_cta_payload(int $post_id, string $prefix): array
+{
+    return [
+        'title' => (string) meza_get_page_field_value($post_id, "{$prefix}_cta_title"),
+        'description' => (string) meza_get_page_field_value($post_id, "{$prefix}_cta_description"),
+        'primary_button_text' => (string) meza_get_page_field_value($post_id, "{$prefix}_cta_primary_text"),
+        'primary_button_href' => (string) meza_get_page_field_value($post_id, "{$prefix}_cta_primary_href"),
+        'secondary_button_text' => (string) meza_get_page_field_value($post_id, "{$prefix}_cta_secondary_text"),
+        'secondary_button_href' => (string) meza_get_page_field_value($post_id, "{$prefix}_cta_secondary_href"),
+    ];
+}
+
+function meza_get_home_structured_content(int $post_id): array
+{
+    return [
+        'upcoming_races' => [
+            'title' => (string) meza_get_page_field_value($post_id, 'home_upcoming_races_title'),
+            'description' => (string) meza_get_page_field_value($post_id, 'home_upcoming_races_description'),
+        ],
+        'stats' => [
+            'title' => (string) meza_get_page_field_value($post_id, 'home_stats_title'),
+            'items' => meza_normalize_structured_stat_items(meza_get_page_field_value($post_id, 'home_stats_items', [])),
+        ],
+        'testimonials' => [
+            'title' => (string) meza_get_page_field_value($post_id, 'home_testimonials_title'),
+            'description' => (string) meza_get_page_field_value($post_id, 'home_testimonials_description'),
+            'items' => meza_normalize_structured_testimonial_items(meza_get_page_field_value($post_id, 'home_testimonials_items', [])),
+        ],
+        'resources' => [
+            'title' => (string) meza_get_page_field_value($post_id, 'home_resources_title'),
+            'description' => (string) meza_get_page_field_value($post_id, 'home_resources_description'),
+            'items' => meza_normalize_structured_resource_items(meza_get_page_field_value($post_id, 'home_resources_items', [])),
+        ],
+        'cta' => meza_get_structured_cta_payload($post_id, 'home'),
+    ];
+}
+
+function meza_get_race_director_structured_content(int $post_id): array
+{
+    return [
+        'stats' => [
+            'title' => (string) meza_get_page_field_value($post_id, 'rd_stats_title'),
+            'items' => meza_normalize_structured_stat_items(meza_get_page_field_value($post_id, 'rd_stats_items', [])),
+        ],
+        'inquiry' => [
+            'title' => (string) meza_get_page_field_value($post_id, 'rd_inquiry_title'),
+            'description' => (string) meza_get_page_field_value($post_id, 'rd_inquiry_description'),
+            'primary_button_text' => (string) meza_get_page_field_value($post_id, 'rd_inquiry_primary_text'),
+            'primary_button_href' => (string) meza_get_page_field_value($post_id, 'rd_inquiry_primary_href'),
+            'secondary_button_text' => (string) meza_get_page_field_value($post_id, 'rd_inquiry_secondary_text'),
+            'secondary_button_href' => (string) meza_get_page_field_value($post_id, 'rd_inquiry_secondary_href'),
+        ],
+        'resources' => [
+            'title' => (string) meza_get_page_field_value($post_id, 'rd_resources_title'),
+            'description' => (string) meza_get_page_field_value($post_id, 'rd_resources_description'),
+        ],
+        'cta' => meza_get_structured_cta_payload($post_id, 'rd'),
+    ];
+}
+
+function meza_get_races_results_structured_content(int $post_id): array
+{
+    return [
+        'results' => [
+            'title' => (string) meza_get_page_field_value($post_id, 'rr_results_title'),
+            'description' => (string) meza_get_page_field_value($post_id, 'rr_results_description'),
+            'unavailable_label' => (string) meza_get_page_field_value($post_id, 'rr_results_unavailable_label'),
+            'unavailable_description' => (string) meza_get_page_field_value($post_id, 'rr_results_unavailable_description'),
+        ],
+        'upcoming_races' => [
+            'title' => (string) meza_get_page_field_value($post_id, 'rr_upcoming_races_title'),
+            'description' => (string) meza_get_page_field_value($post_id, 'rr_upcoming_races_description'),
+        ],
+        'stats' => [
+            'title' => (string) meza_get_page_field_value($post_id, 'rr_stats_title'),
+            'items' => meza_normalize_structured_stat_items(meza_get_page_field_value($post_id, 'rr_stats_items', [])),
+        ],
+        'resources' => [
+            'title' => (string) meza_get_page_field_value($post_id, 'rr_resources_title'),
+            'description' => (string) meza_get_page_field_value($post_id, 'rr_resources_description'),
+        ],
+        'cta' => meza_get_structured_cta_payload($post_id, 'rr'),
+    ];
+}
+
+function meza_get_page_structured_content(int $post_id): array
+{
+    $post = get_post($post_id);
+    $slug = $post instanceof WP_Post ? (string) $post->post_name : '';
+
+    if ($slug === 'home' || $slug === '') {
+        return meza_get_home_structured_content($post_id);
+    }
+
+    if ($slug === 'for-race-directors') {
+        return meza_get_race_director_structured_content($post_id);
+    }
+
+    if ($slug === 'races-and-results') {
+        return meza_get_races_results_structured_content($post_id);
+    }
+
+    return [];
+}
+
+function meza_get_page_structured_blocks(int $post_id): array
+{
+    $post = get_post($post_id);
+    $slug = $post instanceof WP_Post ? (string) $post->post_name : '';
+    if ($slug !== 'home' && $slug !== '') {
+        return [];
+    }
+
+    $structured = meza_get_home_structured_content($post_id);
+
+    return [
+        [
+            'id' => 'home-upcoming-races',
+            'type' => 'upcoming_races_block',
+            'props' => [
+                'upcoming_races_block' => [
+                    'races_title' => $structured['upcoming_races']['title'],
+                    'races_description' => $structured['upcoming_races']['description'],
+                    'races_carousel' => [],
+                ],
+            ],
+        ],
+        [
+            'id' => 'home-testimonials-stats',
+            'type' => 'testimonials_stats_block',
+            'props' => [
+                'testimonials_stats_block' => [
+                    'testimonials_headline' => $structured['testimonials']['title'],
+                    'testimonials_description' => $structured['testimonials']['description'],
+                    'testimonials_list' => $structured['testimonials']['items'],
+                    'stats_list' => $structured['stats']['items'],
+                ],
+                'stats_title' => $structured['stats']['title'],
+            ],
+        ],
+        [
+            'id' => 'home-resources',
+            'type' => 'resources_block',
+            'props' => [
+                'resources_block' => [
+                    'resources_title' => $structured['resources']['title'],
+                    'resources_description' => $structured['resources']['description'],
+                    'resources_grid' => $structured['resources']['items'],
+                ],
+            ],
+        ],
+        [
+            'id' => 'home-cta',
+            'type' => 'cta_block',
+            'props' => [
+                'cta_title' => $structured['cta']['title'],
+                'cta_description' => $structured['cta']['description'],
+                'cta_button_text' => $structured['cta']['primary_button_text'],
+                'cta_button_url' => $structured['cta']['primary_button_href'],
+                'cta_secondary_label' => $structured['cta']['secondary_button_text'],
+                'cta_secondary_href' => $structured['cta']['secondary_button_href'],
+            ],
+        ],
+    ];
 }
 
 /**
@@ -385,7 +622,12 @@ function meza_get_page_data(int $post_id): array
         'slug' => $post->post_name,
         'title' => $post->post_title,
         'status' => $post->post_status,
+        'content' => function_exists('wp_kses_post')
+            ? wp_kses_post(apply_filters('the_content', (string) $post->post_content))
+            : (string) apply_filters('the_content', (string) $post->post_content),
+        'structured_content' => meza_get_page_structured_content($post->ID),
         'page_blocks' => meza_get_page_blocks($post->ID),
+        'seo' => meza_get_canonical_seo_payload($post->ID),
         'yoast_meta' => meza_get_yoast_metadata($post->ID),
     ];
 }
@@ -508,9 +750,16 @@ function meza_rest_api_permission_callback(): bool
 function meza_arsenal_extend_page_payload(array $payload, WP_Post $page): array
 {
     $arsenal_blocks = meza_get_page_blocks((int) $page->ID);
+    $structured_blocks = meza_get_page_structured_blocks((int) $page->ID);
+    $structured_content = meza_get_page_structured_content((int) $page->ID);
     $blocks = $arsenal_blocks !== []
         ? $arsenal_blocks
         : (is_array($payload['blocks'] ?? null) ? $payload['blocks'] : []);
+
+    if ($arsenal_blocks === [] && $structured_blocks !== []) {
+        $blocks = array_merge($blocks, $structured_blocks);
+    }
+
     $content = trim((string) $page->post_content);
 
     if ($content !== '') {
@@ -534,6 +783,8 @@ function meza_arsenal_extend_page_payload(array $payload, WP_Post $page): array
     }
 
     $payload['blocks'] = $blocks;
+    $payload['page_blocks'] = $blocks;
+    $payload['structured_content'] = $structured_content;
     $payload['yoast_meta'] = meza_get_yoast_metadata((int) $page->ID);
 
     return $payload;

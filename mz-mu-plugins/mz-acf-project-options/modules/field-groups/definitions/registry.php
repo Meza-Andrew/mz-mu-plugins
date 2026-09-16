@@ -661,6 +661,9 @@
         // Arsenal Events field groups live in the active inner mz-mu-plugins runtime.
         foreach ([
             "arsenal_events_get_global_settings_group",
+            "arsenal_events_get_home_structured_content_group",
+            "arsenal_events_get_race_director_structured_content_group",
+            "arsenal_events_get_races_results_structured_content_group",
             "arsenal_events_get_page_blocks_group",
             "arsenal_events_get_race_details_group",
             "arsenal_events_get_resource_details_group",

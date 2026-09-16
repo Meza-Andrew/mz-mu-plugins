@@ -165,10 +165,53 @@ function arsenal_events_filter_loaded_default_page_acf_field_groups(array $field
     ));
 }
 
+function arsenal_events_register_page_slug_location_rule(array $choices): array
+{
+    if (!isset($choices['Post']) || !is_array($choices['Post'])) {
+        $choices['Post'] = [];
+    }
+
+    $choices['Post']['arsenal_page_slug'] = 'Page Slug';
+
+    return $choices;
+}
+
+function arsenal_events_get_page_slug_location_values(array $choices): array
+{
+    $choices['home'] = 'Homepage';
+    $choices['for-race-directors'] = 'For Race Directors';
+    $choices['races-and-results'] = 'Races & Results';
+
+    return $choices;
+}
+
+function arsenal_events_match_page_slug_location_rule(bool $match, array $rule, array $options): bool
+{
+    $raw_post_id = $options['post_id'] ?? arsenal_events_get_current_page_editor_post_id();
+    $post_id = is_string($raw_post_id) && strncmp($raw_post_id, 'post_', 5) === 0
+        ? (int) substr($raw_post_id, 5)
+        : (int) $raw_post_id;
+
+    if ($post_id <= 0 || !function_exists('get_post')) {
+        return false;
+    }
+
+    $post = get_post($post_id);
+    $slug = $post instanceof WP_Post ? (string) $post->post_name : '';
+    $target = (string) ($rule['value'] ?? '');
+    $operator = (string) ($rule['operator'] ?? '==');
+    $matches = $slug === $target || ($target === 'home' && $slug === '');
+
+    return $operator === '!=' ? !$matches : $matches;
+}
+
 if (function_exists('add_filter')) {
     add_filter('meza_shared_project_acf_field_groups', 'arsenal_events_filter_default_page_acf_field_groups');
     add_filter('acf/load_field_group', 'arsenal_events_filter_default_page_acf_field_group_location');
     add_filter('acf/load_field_groups', 'arsenal_events_filter_loaded_default_page_acf_field_groups', 20, 2);
+    add_filter('acf/location/rule_types', 'arsenal_events_register_page_slug_location_rule');
+    add_filter('acf/location/rule_values/arsenal_page_slug', 'arsenal_events_get_page_slug_location_values');
+    add_filter('acf/location/rule_match/arsenal_page_slug', 'arsenal_events_match_page_slug_location_rule', 10, 3);
 }
 
 function arsenal_events_get_global_settings_group(): array
@@ -322,6 +365,244 @@ function arsenal_events_get_global_settings_group(): array
     ];
 }
 
+function arsenal_events_text_field(string $key, string $label, string $name, string $width = ''): array
+{
+    $field = [
+        'key' => $key,
+        'label' => $label,
+        'name' => $name,
+        'type' => 'text',
+        'required' => 0,
+    ];
+
+    if ($width !== '') {
+        $field['wrapper'] = ['width' => $width];
+    }
+
+    return $field;
+}
+
+function arsenal_events_textarea_field(string $key, string $label, string $name): array
+{
+    return [
+        'key' => $key,
+        'label' => $label,
+        'name' => $name,
+        'type' => 'textarea',
+        'required' => 0,
+        'rows' => 3,
+    ];
+}
+
+function arsenal_events_url_field(string $key, string $label, string $name, string $width = '50'): array
+{
+    return [
+        'key' => $key,
+        'label' => $label,
+        'name' => $name,
+        'type' => 'url',
+        'required' => 0,
+        'wrapper' => ['width' => $width],
+    ];
+}
+
+function arsenal_events_image_field(string $key, string $label, string $name): array
+{
+    return [
+        'key' => $key,
+        'label' => $label,
+        'name' => $name,
+        'type' => 'image',
+        'return_format' => 'array',
+        'preview_size' => 'thumbnail',
+        'library' => 'all',
+        'required' => 0,
+    ];
+}
+
+function arsenal_events_stat_fields(string $prefix): array
+{
+    return [
+        arsenal_events_image_field("field_{$prefix}_stat_icon", 'Icon', 'stat_icon'),
+        arsenal_events_text_field("field_{$prefix}_stat_value", 'Value', 'stat_value', '50'),
+        arsenal_events_text_field("field_{$prefix}_stat_label", 'Label', 'stat_label', '50'),
+    ];
+}
+
+function arsenal_events_stats_repeater(string $key, string $name, string $prefix): array
+{
+    return [
+        'key' => $key,
+        'label' => 'Stats',
+        'name' => $name,
+        'type' => 'repeater',
+        'layout' => 'table',
+        'button_label' => 'Add Stat',
+        'sub_fields' => arsenal_events_stat_fields($prefix),
+    ];
+}
+
+function arsenal_events_cta_fields(string $prefix): array
+{
+    return [
+        arsenal_events_text_field("field_{$prefix}_cta_title", 'CTA Title', "{$prefix}_cta_title"),
+        arsenal_events_textarea_field("field_{$prefix}_cta_description", 'CTA Description', "{$prefix}_cta_description"),
+        arsenal_events_text_field("field_{$prefix}_cta_primary_text", 'Primary Button Text', "{$prefix}_cta_primary_text", '50'),
+        arsenal_events_url_field("field_{$prefix}_cta_primary_href", 'Primary Button URL', "{$prefix}_cta_primary_href", '50'),
+        arsenal_events_text_field("field_{$prefix}_cta_secondary_text", 'Secondary Button Text', "{$prefix}_cta_secondary_text", '50'),
+        arsenal_events_url_field("field_{$prefix}_cta_secondary_href", 'Secondary Button URL', "{$prefix}_cta_secondary_href", '50'),
+    ];
+}
+
+function arsenal_events_page_slug_location(string $slug): array
+{
+    return [
+        [
+            [
+                'param' => 'arsenal_page_slug',
+                'operator' => '==',
+                'value' => $slug,
+            ],
+        ],
+    ];
+}
+
+function arsenal_events_get_home_structured_content_group(): array
+{
+    return [
+        'key' => 'group_arsenal_home_structured_content',
+        'title' => 'Homepage Structured Sections',
+        'fields' => [
+            arsenal_events_text_field('field_home_upcoming_races_title', 'Upcoming Races Title', 'home_upcoming_races_title'),
+            arsenal_events_textarea_field('field_home_upcoming_races_description', 'Upcoming Races Description', 'home_upcoming_races_description'),
+            arsenal_events_text_field('field_home_stats_title', 'Stats Title', 'home_stats_title'),
+            arsenal_events_stats_repeater('field_home_stats_items', 'home_stats_items', 'home'),
+            arsenal_events_text_field('field_home_testimonials_title', 'Testimonials Title', 'home_testimonials_title'),
+            arsenal_events_textarea_field('field_home_testimonials_description', 'Testimonials Description', 'home_testimonials_description'),
+            [
+                'key' => 'field_home_testimonials_items',
+                'label' => 'Testimonials',
+                'name' => 'home_testimonials_items',
+                'type' => 'repeater',
+                'layout' => 'block',
+                'button_label' => 'Add Testimonial',
+                'sub_fields' => [
+                    [
+                        'key' => 'field_home_testimonial_type',
+                        'label' => 'Type',
+                        'name' => 'testimonial_type',
+                        'type' => 'select',
+                        'choices' => [
+                            'director' => 'Race Director',
+                            'runner' => 'Runner',
+                        ],
+                        'allow_null' => 1,
+                    ],
+                    arsenal_events_text_field('field_home_testimonial_label', 'Label', 'testimonial_label'),
+                    arsenal_events_textarea_field('field_home_testimonial_quote', 'Quote', 'testimonial_quote'),
+                    arsenal_events_text_field('field_home_testimonial_attribution', 'Attribution', 'testimonial_attribution'),
+                ],
+            ],
+            arsenal_events_text_field('field_home_resources_title', 'Resources Title', 'home_resources_title'),
+            arsenal_events_textarea_field('field_home_resources_description', 'Resources Description', 'home_resources_description'),
+            [
+                'key' => 'field_home_resources_items',
+                'label' => 'Resource Cards',
+                'name' => 'home_resources_items',
+                'type' => 'repeater',
+                'layout' => 'block',
+                'button_label' => 'Add Resource Card',
+                'sub_fields' => [
+                    arsenal_events_text_field('field_home_resource_title', 'Title', 'resource_title'),
+                    arsenal_events_image_field('field_home_resource_image', 'Image', 'resource_image'),
+                    [
+                        'key' => 'field_home_resource_category',
+                        'label' => 'Category',
+                        'name' => 'resource_category',
+                        'type' => 'select',
+                        'choices' => [
+                            'for_runners' => 'For Runners',
+                            'for_directors' => 'For Race Directors',
+                        ],
+                        'allow_null' => 1,
+                    ],
+                    arsenal_events_url_field('field_home_resource_link', 'Link URL', 'resource_link', '100'),
+                ],
+            ],
+            ...arsenal_events_cta_fields('home'),
+        ],
+        'location' => arsenal_events_page_slug_location('home'),
+        'menu_order' => 10,
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+        'description' => 'Narrow homepage structured content fields for visible sections without generic layout groups.',
+        'show_in_rest' => 1,
+    ];
+}
+
+function arsenal_events_get_race_director_structured_content_group(): array
+{
+    return [
+        'key' => 'group_arsenal_rd_structured_content',
+        'title' => 'Race Director Structured Sections',
+        'fields' => [
+            arsenal_events_text_field('field_rd_stats_title', 'Stats Title', 'rd_stats_title'),
+            arsenal_events_stats_repeater('field_rd_stats_items', 'rd_stats_items', 'rd'),
+            arsenal_events_text_field('field_rd_inquiry_title', 'Inquiry Title', 'rd_inquiry_title'),
+            arsenal_events_textarea_field('field_rd_inquiry_description', 'Inquiry Description', 'rd_inquiry_description'),
+            arsenal_events_text_field('field_rd_inquiry_primary_text', 'Inquiry Primary Button Text', 'rd_inquiry_primary_text', '50'),
+            arsenal_events_url_field('field_rd_inquiry_primary_href', 'Inquiry Primary Button URL', 'rd_inquiry_primary_href', '50'),
+            arsenal_events_text_field('field_rd_inquiry_secondary_text', 'Inquiry Secondary Button Text', 'rd_inquiry_secondary_text', '50'),
+            arsenal_events_url_field('field_rd_inquiry_secondary_href', 'Inquiry Secondary Button URL', 'rd_inquiry_secondary_href', '50'),
+            arsenal_events_text_field('field_rd_resources_title', 'Resources Title', 'rd_resources_title'),
+            arsenal_events_textarea_field('field_rd_resources_description', 'Resources Description', 'rd_resources_description'),
+            ...arsenal_events_cta_fields('rd'),
+        ],
+        'location' => arsenal_events_page_slug_location('for-race-directors'),
+        'menu_order' => 10,
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+        'description' => 'Race Director page-specific structured fields for visible stats, inquiry, resources, and CTA copy.',
+        'show_in_rest' => 1,
+    ];
+}
+
+function arsenal_events_get_races_results_structured_content_group(): array
+{
+    return [
+        'key' => 'group_arsenal_rr_structured_content',
+        'title' => 'Races & Results Structured Sections',
+        'fields' => [
+            arsenal_events_text_field('field_rr_results_title', 'Results Section Title', 'rr_results_title'),
+            arsenal_events_textarea_field('field_rr_results_description', 'Results Section Description', 'rr_results_description'),
+            arsenal_events_text_field('field_rr_results_unavailable_label', 'Unavailable Label', 'rr_results_unavailable_label'),
+            arsenal_events_textarea_field('field_rr_results_unavailable_description', 'Unavailable Description', 'rr_results_unavailable_description'),
+            arsenal_events_text_field('field_rr_upcoming_races_title', 'Upcoming Races Title', 'rr_upcoming_races_title'),
+            arsenal_events_textarea_field('field_rr_upcoming_races_description', 'Upcoming Races Description', 'rr_upcoming_races_description'),
+            arsenal_events_text_field('field_rr_stats_title', 'Stats Title', 'rr_stats_title'),
+            arsenal_events_stats_repeater('field_rr_stats_items', 'rr_stats_items', 'rr'),
+            arsenal_events_text_field('field_rr_resources_title', 'Resources Title', 'rr_resources_title'),
+            arsenal_events_textarea_field('field_rr_resources_description', 'Resources Description', 'rr_resources_description'),
+            ...arsenal_events_cta_fields('rr'),
+        ],
+        'location' => arsenal_events_page_slug_location('races-and-results'),
+        'menu_order' => 10,
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+        'description' => 'Races & Results page-specific structured fields for visible results, stats, resources, and CTA copy.',
+        'show_in_rest' => 1,
+    ];
+}
+
 function arsenal_events_get_page_blocks_group(): array
 {
     $group = [
@@ -421,6 +702,20 @@ function arsenal_events_get_page_blocks_group(): array
                                 'key' => 'field_hero_cta_href',
                                 'label' => 'CTA Button URL',
                                 'name' => 'hero_cta_href',
+                                'type' => 'url',
+                                'wrapper' => ['width' => '50'],
+                            ],
+                            [
+                                'key' => 'field_hero_secondary_cta_label',
+                                'label' => 'Secondary CTA Button Label',
+                                'name' => 'hero_secondary_cta_label',
+                                'type' => 'text',
+                                'wrapper' => ['width' => '50'],
+                            ],
+                            [
+                                'key' => 'field_hero_secondary_cta_href',
+                                'label' => 'Secondary CTA Button URL',
+                                'name' => 'hero_secondary_cta_href',
                                 'type' => 'url',
                                 'wrapper' => ['width' => '50'],
                             ],
