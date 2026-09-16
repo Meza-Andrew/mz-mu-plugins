@@ -507,11 +507,23 @@ function meza_arsenal_extend_settings_payload(array $payload): array
     $header_links = function_exists('get_field') ? get_field('header_nav_links', 'option') : [];
     $footer_links = function_exists('get_field') ? get_field('footer_nav_links', 'option') : [];
     $social_links = function_exists('get_field') ? get_field('social_links', 'option') : [];
+    $site_phone = $option('site_phone', (string) get_option('meza_site_phone', ''));
+    $site_email = $option('site_email', (string) get_option('meza_site_email', ''));
+    $contact = is_array($payload['contact'] ?? null) ? $payload['contact'] : [];
+
+    if ($site_email !== '') {
+        $contact['email'] = $site_email;
+    }
+
+    if ($site_phone !== '') {
+        $contact['phone'] = $site_phone;
+    }
 
     $payload['site_title'] = $payload['site']['name'] ?? get_bloginfo('name');
     $payload['site_description'] = $payload['site']['description'] ?? get_bloginfo('description');
-    $payload['site_phone'] = $option('site_phone', (string) get_option('meza_site_phone', ''));
-    $payload['site_email'] = $option('site_email', (string) get_option('admin_email', ''));
+    $payload['contact'] = $contact;
+    $payload['site_phone'] = $site_phone;
+    $payload['site_email'] = $site_email;
     $payload['site_info_text'] = $option('site_info_text');
     $payload['site_copyright_text'] = $option('site_copyright_text');
     $payload['header_nav_links'] = is_array($header_links) ? $header_links : [];
