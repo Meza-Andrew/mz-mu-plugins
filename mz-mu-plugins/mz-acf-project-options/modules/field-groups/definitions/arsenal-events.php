@@ -5,6 +5,172 @@
  * All field keys, group names, and layout slugs use strict snake_case naming.
  */
 
+function arsenal_events_is_current_site(): bool
+{
+    if (defined('ARSENAL_EVENTS_SITE') && ARSENAL_EVENTS_SITE) {
+        return true;
+    }
+
+    if (!function_exists('home_url')) {
+        return false;
+    }
+
+    $host = parse_url((string) home_url('/'), PHP_URL_HOST);
+    return is_string($host) && strtolower($host) === 'arsenal-events.local';
+}
+
+function arsenal_events_get_hidden_default_page_field_group_titles(): array
+{
+    return [
+        'Hero Section',
+        'List Services Section',
+        'List Segments Section',
+        'List Reviews Section',
+        'List Localities Section',
+        'Form Section',
+        'CTA Section',
+        'List Posts Section',
+        'List Resources Section',
+        'List FAQs Section',
+    ];
+}
+
+function arsenal_events_location_group_targets_default_page_editor(array $location_group): bool
+{
+    foreach ($location_group as $rule) {
+        if (
+            is_array($rule)
+            && ($rule['param'] ?? '') === 'post_type'
+            && ($rule['operator'] ?? '') === '=='
+            && ($rule['value'] ?? '') === 'page'
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function arsenal_events_location_group_already_excludes_default_page_template(array $location_group): bool
+{
+    foreach ($location_group as $rule) {
+        if (
+            is_array($rule)
+            && ($rule['param'] ?? '') === 'page_template'
+            && ($rule['operator'] ?? '') === '!='
+            && ($rule['value'] ?? '') === 'default'
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function arsenal_events_hide_group_from_default_page_editor(array $group): array
+{
+    foreach ((array) ($group['location'] ?? []) as $index => $location_group) {
+        if (!is_array($location_group)) {
+            continue;
+        }
+
+        if (
+            !arsenal_events_location_group_targets_default_page_editor($location_group)
+            || arsenal_events_location_group_already_excludes_default_page_template($location_group)
+        ) {
+            continue;
+        }
+
+        $location_group[] = [
+            'param' => 'page_template',
+            'operator' => '!=',
+            'value' => 'default',
+        ];
+        $group['location'][$index] = $location_group;
+    }
+
+    return $group;
+}
+
+function arsenal_events_filter_default_page_acf_field_groups(array $groups): array
+{
+    if (!arsenal_events_is_current_site()) {
+        return $groups;
+    }
+
+    $hidden_titles = array_flip(arsenal_events_get_hidden_default_page_field_group_titles());
+
+    foreach ($groups as $index => $group) {
+        if (!is_array($group) || !isset($hidden_titles[(string) ($group['title'] ?? '')])) {
+            continue;
+        }
+
+        $groups[$index] = arsenal_events_hide_group_from_default_page_editor($group);
+    }
+
+    return $groups;
+}
+
+function arsenal_events_filter_default_page_acf_field_group_location(array $field_group): array
+{
+    if (!arsenal_events_is_current_site()) {
+        return $field_group;
+    }
+
+    $hidden_titles = array_flip(arsenal_events_get_hidden_default_page_field_group_titles());
+    if (!isset($hidden_titles[(string) ($field_group['title'] ?? '')])) {
+        return $field_group;
+    }
+
+    return arsenal_events_hide_group_from_default_page_editor($field_group);
+}
+
+function arsenal_events_get_current_page_editor_post_id(): int
+{
+    $post_id = isset($_GET['post']) ? (int) $_GET['post'] : 0;
+
+    if ($post_id <= 0 && isset($_POST['post_ID'])) {
+        $post_id = (int) $_POST['post_ID'];
+    }
+
+    return max(0, $post_id);
+}
+
+function arsenal_events_is_default_page_editor_context(string $post_type): bool
+{
+    if (!arsenal_events_is_current_site() || $post_type !== 'page') {
+        return false;
+    }
+
+    $post_id = arsenal_events_get_current_page_editor_post_id();
+    if ($post_id <= 0 || !function_exists('get_page_template_slug')) {
+        return true;
+    }
+
+    $template = (string) get_page_template_slug($post_id);
+    return $template === '' || $template === 'default';
+}
+
+function arsenal_events_filter_loaded_default_page_acf_field_groups(array $field_groups, string $post_type): array
+{
+    if (!arsenal_events_is_default_page_editor_context($post_type)) {
+        return $field_groups;
+    }
+
+    $hidden_titles = array_flip(arsenal_events_get_hidden_default_page_field_group_titles());
+
+    return array_values(array_filter(
+        $field_groups,
+        static fn(array $field_group): bool => !isset($hidden_titles[(string) ($field_group['title'] ?? '')])
+    ));
+}
+
+if (function_exists('add_filter')) {
+    add_filter('meza_shared_project_acf_field_groups', 'arsenal_events_filter_default_page_acf_field_groups');
+    add_filter('acf/load_field_group', 'arsenal_events_filter_default_page_acf_field_group_location');
+    add_filter('acf/load_field_groups', 'arsenal_events_filter_loaded_default_page_acf_field_groups', 20, 2);
+}
+
 function arsenal_events_get_global_settings_group(): array
 {
     return [
