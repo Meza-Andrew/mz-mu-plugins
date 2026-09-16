@@ -12,6 +12,7 @@ if (defined('WP_INSTALLING') && WP_INSTALLING) return;
 
 require_once __DIR__ . '/arsenal-events-cors.php';
 require_once __DIR__ . '/arsenal-events-revalidation.php';
+require_once __DIR__ . '/arsenal-events-preview.php';
 
 /**
  * Extract Yoast SEO metadata for a post
@@ -610,10 +611,10 @@ function meza_get_page_structured_blocks(int $post_id): array
 /**
  * Get page data with blocks and Yoast metadata
  */
-function meza_get_page_data(int $post_id): array
+function meza_get_page_data(int $post_id, bool $published_only = true): array
 {
     $post = get_post($post_id);
-    if (!$post || $post->post_status !== 'publish') {
+    if (!$post || ($published_only && $post->post_status !== 'publish')) {
         return [];
     }
 
@@ -957,10 +958,10 @@ function meza_get_post_taxonomy_payload(int $post_id, string $post_type): array
     return $taxonomies;
 }
 
-function meza_get_post_data(int $post_id, string $post_type): array
+function meza_get_post_data(int $post_id, string $post_type, bool $published_only = true): array
 {
     $post = get_post($post_id);
-    if (!$post || $post->post_status !== 'publish' || $post->post_type !== $post_type) {
+    if (!$post || ($published_only && $post->post_status !== 'publish') || $post->post_type !== $post_type) {
         return [];
     }
 
