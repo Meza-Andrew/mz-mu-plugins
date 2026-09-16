@@ -10,6 +10,8 @@
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) return;
 
+require_once __DIR__ . '/arsenal-events-revalidation.php';
+
 /**
  * Define allowed frontend origins for CORS
  * Defaults to localhost:3001 for local dev, can be overridden via constant
