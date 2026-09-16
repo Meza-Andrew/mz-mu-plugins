@@ -77,17 +77,42 @@ function arsenal_events_revalidation_normalize_path($path): ?string
     $path = trim($path);
     if (
         $path === ''
+        || $path[0] !== '/'
         || preg_match('#^[a-z][a-z0-9+.-]*://#i', $path)
         || arsenal_events_revalidation_starts_with($path, '//')
+        || arsenal_events_revalidation_contains($path, '?')
+        || arsenal_events_revalidation_contains($path, '#')
+        || arsenal_events_revalidation_contains($path, '\\')
+        || arsenal_events_revalidation_contains($path, '%')
+        || arsenal_events_revalidation_contains($path, '..')
     ) {
         return null;
     }
 
-    $path = '/' . ltrim($path, '/');
-    $path = preg_split('/[?#]/', $path, 2)[0];
     $path = preg_replace('#/+#', '/', $path);
+    $path = $path === '/' ? '/' : rtrim($path, '/');
 
-    return $path === '' ? '/' : $path;
+    return arsenal_events_revalidation_is_allowed_path($path) ? $path : null;
+}
+
+function arsenal_events_revalidation_is_allowed_slug(string $slug): bool
+{
+    return (bool) preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug);
+}
+
+function arsenal_events_revalidation_is_allowed_path(string $path): bool
+{
+    if (in_array($path, ['/', '/contact', '/races', '/resources', '/races-and-results', '/for-race-directors'], true)) {
+        return true;
+    }
+
+    foreach (['/races/', '/resources/'] as $prefix) {
+        if (arsenal_events_revalidation_starts_with($path, $prefix)) {
+            return arsenal_events_revalidation_is_allowed_slug(substr($path, strlen($prefix)));
+        }
+    }
+
+    return false;
 }
 
 function arsenal_events_revalidation_unique_paths(array $paths): array

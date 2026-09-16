@@ -178,21 +178,27 @@ function arsenal_events_test(string $name, callable $run): void
 
 arsenal_events_test('maps page slug and status transitions', function (): void {
     arsenal_events_test_assert_same(
-        ['/old-page', '/new-page'],
-        arsenal_events_revalidation_paths_for_post_change('page', 'new-page', 'publish', 'old-page', 'publish'),
-        'Published page slug changes should invalidate old and new paths'
+        ['/contact'],
+        arsenal_events_revalidation_paths_for_post_change('page', 'contact', 'publish', 'contact', 'publish'),
+        'Approved published pages should invalidate their exact path'
     );
 
     arsenal_events_test_assert_same(
-        ['/draft-to-published'],
-        arsenal_events_revalidation_paths_for_post_change('page', 'draft-to-published', 'publish', 'draft-to-published', 'draft'),
-        'Publishing a page should invalidate the new path'
+        ['/contact'],
+        arsenal_events_revalidation_paths_for_post_change('page', 'contact', 'publish', 'draft-contact', 'draft'),
+        'Publishing an approved page should invalidate the new path'
     );
 
     arsenal_events_test_assert_same(
-        ['/was-live'],
-        arsenal_events_revalidation_paths_for_post_change('page', 'was-live', 'draft', 'was-live', 'publish'),
-        'Unpublishing a page should invalidate the old path'
+        ['/contact'],
+        arsenal_events_revalidation_paths_for_post_change('page', 'draft-contact', 'draft', 'contact', 'publish'),
+        'Unpublishing an approved page should invalidate the old path'
+    );
+
+    arsenal_events_test_assert_same(
+        [],
+        arsenal_events_revalidation_paths_for_post_change('page', 'about', 'publish', 'faq', 'publish'),
+        'Unapproved page paths should not be sent to the frontend'
     );
 });
 
@@ -361,6 +367,25 @@ arsenal_events_test('redacts secret-bearing URL queries', function (): void {
         arsenal_events_revalidation_redact_url('https://frontend.example/api/revalidate?secret=secret-value&token=abc'),
         'Logged URLs should redact query strings'
     );
+});
+
+arsenal_events_test('strictly rejects malformed and unapproved revalidation paths', function (): void {
+    foreach (['/', '/contact', '/races', '/races/wildcat-5k-2026-09-19', '/resources/timing-services', '/races-and-results', '/for-race-directors'] as $path) {
+        arsenal_events_test_assert_same($path, arsenal_events_revalidation_normalize_path($path), "{$path} should be allowed");
+    }
+
+    foreach ([
+        'contact',
+        '/about',
+        '/races/../contact',
+        '/races/%2e%2e/contact',
+        '/resources/timing?draft=true',
+        '/resources/timing#hash',
+        'https://frontend.example/contact',
+        '//frontend.example/contact',
+    ] as $path) {
+        arsenal_events_test_assert_same(null, arsenal_events_revalidation_normalize_path($path), "{$path} should be rejected");
+    }
 });
 
 echo "Arsenal Events revalidation tests passed\n";

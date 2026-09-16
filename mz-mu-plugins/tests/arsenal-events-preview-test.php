@@ -3,9 +3,40 @@
 define('ARSENAL_EVENTS_PREVIEW_TESTS', true);
 
 $arsenal_events_preview_test_transients = [];
+$arsenal_events_preview_test_options = [];
 $arsenal_events_preview_test_posts = [];
 $arsenal_events_preview_test_current_user_can = true;
 $arsenal_events_preview_test_logged_in = true;
+
+class Arsenal_Events_Preview_Test_DB
+{
+    public string $options = 'wp_options';
+
+    public function prepare($query, ...$args)
+    {
+        return [
+            'query' => $query,
+            'args' => $args,
+        ];
+    }
+
+    public function query($prepared): int
+    {
+        global $arsenal_events_preview_test_options;
+
+        $option_name = $prepared['args'][0] ?? '';
+        $option_value = $prepared['args'][1] ?? null;
+        if (($arsenal_events_preview_test_options[$option_name] ?? null) !== $option_value) {
+            return 0;
+        }
+
+        unset($arsenal_events_preview_test_options[$option_name]);
+
+        return 1;
+    }
+}
+
+$wpdb = new Arsenal_Events_Preview_Test_DB();
 
 class WP_REST_Response
 {
@@ -64,7 +95,10 @@ function apply_filters($hook_name, $value)
     if ($hook_name === 'arsenal_events_preview_config') {
         $value['frontend_origin'] = 'https://frontend.example';
         $value['audience'] = 'https://frontend.example';
+        $value['cms_origin'] = 'https://cms.example';
+        $value['allowed_frontend_origins'] = 'https://frontend.example';
         $value['signing_secret'] = 'preview-signing-secret';
+        $value['exchange_secret'] = 'preview-exchange-secret';
         $value['ttl_seconds'] = 300;
     }
 
@@ -159,6 +193,36 @@ function delete_transient($key): bool
     return true;
 }
 
+function add_option($name, $value = '', $deprecated = '', $autoload = null): bool
+{
+    global $arsenal_events_preview_test_options;
+
+    if (array_key_exists($name, $arsenal_events_preview_test_options)) {
+        return false;
+    }
+
+    $arsenal_events_preview_test_options[$name] = $value;
+
+    return true;
+}
+
+function get_option($name, $default = false)
+{
+    global $arsenal_events_preview_test_options;
+
+    return array_key_exists($name, $arsenal_events_preview_test_options) ? $arsenal_events_preview_test_options[$name] : $default;
+}
+
+function delete_option($name): bool
+{
+    global $arsenal_events_preview_test_options;
+
+    $exists = array_key_exists($name, $arsenal_events_preview_test_options);
+    unset($arsenal_events_preview_test_options[$name]);
+
+    return $exists;
+}
+
 function wp_json_encode($value): string
 {
     return json_encode($value);
@@ -216,11 +280,13 @@ require_once __DIR__ . '/../arsenal-events-preview.php';
 function arsenal_events_preview_test_reset(): void
 {
     global $arsenal_events_preview_test_transients,
+        $arsenal_events_preview_test_options,
         $arsenal_events_preview_test_posts,
         $arsenal_events_preview_test_current_user_can,
         $arsenal_events_preview_test_logged_in;
 
     $arsenal_events_preview_test_transients = [];
+    $arsenal_events_preview_test_options = [];
     $arsenal_events_preview_test_current_user_can = true;
     $arsenal_events_preview_test_logged_in = true;
     $arsenal_events_preview_test_posts = [
@@ -311,6 +377,8 @@ arsenal_events_preview_test('creates valid page, race, and resource preview asse
 
         arsenal_events_preview_test_assert(!empty($verified['ok']), 'Assertion should verify.');
         arsenal_events_preview_test_assert_same($route, $verified['payload']['route'], 'Assertion route should be scoped.');
+        arsenal_events_preview_test_assert_same('https://cms.example/', $verified['payload']['iss'], 'Issuer should be exact CMS origin.');
+        arsenal_events_preview_test_assert_same('https://cms.example/', $verified['payload']['site'], 'Site should be exact CMS origin.');
     }
 });
 
@@ -330,6 +398,14 @@ arsenal_events_preview_test('rejects token expiry, malformed signature, wrong au
     arsenal_events_preview_test_assert_same(401, $response->get_status(), 'Wrong audience fails.');
 
     $payload = arsenal_events_preview_assertion_payload(get_post(10), 0, $config, time());
+    $payload['iss'] = 'https://wrong-cms.example/';
+    $wrong_issuer = arsenal_events_preview_sign_payload($payload, $config['signing_secret']);
+    $response = arsenal_events_preview_rest_content(new Arsenal_Events_Preview_Test_Request([], [
+        'x-arsenal-preview-assertion' => $wrong_issuer,
+    ]));
+    arsenal_events_preview_test_assert_same(401, $response->get_status(), 'Wrong issuer fails.');
+
+    $payload = arsenal_events_preview_assertion_payload(get_post(10), 0, $config, time());
     $payload['route'] = '/wrong-route';
     $route_mismatch = arsenal_events_preview_sign_payload($payload, $config['signing_secret']);
     $response = arsenal_events_preview_rest_content(new Arsenal_Events_Preview_Test_Request([], [
@@ -338,20 +414,25 @@ arsenal_events_preview_test('rejects token expiry, malformed signature, wrong au
     arsenal_events_preview_test_assert_same(404, $response->get_status(), 'Route mismatch fails.');
 });
 
-arsenal_events_preview_test('exchanges one-time code without leaking assertion in redirect URL', function (): void {
+arsenal_events_preview_test('uses clean handoff URL and authenticated atomic exchange', function (): void {
     $config = arsenal_events_preview_config();
     $assertion = arsenal_events_preview_create_assertion(get_post(10), 0, $config, 1000);
     $code = arsenal_events_preview_store_assertion($assertion, 300);
-    $url = arsenal_events_preview_frontend_start_url($code, $config);
+    $url = arsenal_events_preview_frontend_start_url($config);
 
+    arsenal_events_preview_test_assert(strpos($url, $code) === false, 'Frontend start URL must not contain exchange code.');
     arsenal_events_preview_test_assert(strpos($url, $assertion) === false, 'Frontend start URL must not contain assertion.');
     arsenal_events_preview_test_assert(strpos($url, $config['signing_secret']) === false, 'Frontend start URL must not contain signing secret.');
 
-    $first = arsenal_events_preview_rest_exchange(new Arsenal_Events_Preview_Test_Request(['code' => $code]));
+    $unauthorized = arsenal_events_preview_rest_exchange(new Arsenal_Events_Preview_Test_Request(['code' => $code]));
+    arsenal_events_preview_test_assert_same(401, $unauthorized->get_status(), 'Exchange requires frontend server authentication.');
+
+    $headers = ['x-arsenal-preview-exchange-secret' => 'preview-exchange-secret'];
+    $first = arsenal_events_preview_rest_exchange(new Arsenal_Events_Preview_Test_Request(['code' => $code], $headers));
     arsenal_events_preview_test_assert_same(200, $first->get_status(), 'First exchange succeeds.');
     arsenal_events_preview_test_assert_same($assertion, $first->get_data()['assertion'], 'Exchange returns assertion.');
 
-    $second = arsenal_events_preview_rest_exchange(new Arsenal_Events_Preview_Test_Request(['code' => $code]));
+    $second = arsenal_events_preview_rest_exchange(new Arsenal_Events_Preview_Test_Request(['code' => $code], $headers));
     arsenal_events_preview_test_assert_same(401, $second->get_status(), 'Replay exchange fails.');
 });
 

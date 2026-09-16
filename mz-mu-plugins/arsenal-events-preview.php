@@ -28,11 +28,21 @@ function arsenal_events_preview_config(): array
 {
     $frontend_origin = rtrim((string) arsenal_events_preview_config_value('frontend_origin', ''), '/');
     $audience = (string) arsenal_events_preview_config_value('audience', $frontend_origin);
+    $cms_origin = rtrim((string) arsenal_events_preview_config_value(
+        'cms_origin',
+        function_exists('home_url') ? home_url('/') : ''
+    ), '/');
 
     $config = [
         'frontend_origin' => $frontend_origin,
         'audience' => $audience,
+        'cms_origin' => $cms_origin,
+        'allowed_frontend_origins' => (string) arsenal_events_preview_config_value('allowed_frontend_origins', 'https://arsenal-events.poweredbymeza.com'),
         'signing_secret' => (string) arsenal_events_preview_config_value('signing_secret', ''),
+        'exchange_secret' => (string) arsenal_events_preview_config_value('exchange_secret', ''),
+        'exchange_header_name' => (string) arsenal_events_preview_config_value('exchange_header_name', 'X-Arsenal-Preview-Exchange-Secret'),
+        'handoff_cookie_name' => (string) arsenal_events_preview_config_value('handoff_cookie_name', 'arsenal_preview_handoff'),
+        'handoff_cookie_domain' => (string) arsenal_events_preview_config_value('handoff_cookie_domain', ''),
         'ttl_seconds' => (int) arsenal_events_preview_config_value('ttl_seconds', 300),
     ];
     $config['ttl_seconds'] = max(30, min(900, $config['ttl_seconds']));
@@ -48,7 +58,49 @@ function arsenal_events_preview_is_configured(array $config): bool
 {
     return !empty($config['frontend_origin'])
         && !empty($config['audience'])
-        && !empty($config['signing_secret']);
+        && !empty($config['cms_origin'])
+        && !empty($config['signing_secret'])
+        && !empty($config['exchange_secret'])
+        && arsenal_events_preview_is_frontend_origin_allowed($config);
+}
+
+function arsenal_events_preview_origin_with_slash(string $origin): string
+{
+    return rtrim($origin, '/') . '/';
+}
+
+function arsenal_events_preview_is_origin(string $origin): bool
+{
+    $parts = parse_url($origin);
+
+    return is_array($parts)
+        && !empty($parts['scheme'])
+        && !empty($parts['host'])
+        && empty($parts['user'])
+        && empty($parts['pass'])
+        && empty($parts['path'])
+        && empty($parts['query'])
+        && empty($parts['fragment']);
+}
+
+function arsenal_events_preview_allowed_frontend_origins(array $config): array
+{
+    $raw = (string) ($config['allowed_frontend_origins'] ?? '');
+    $origins = array_filter(array_map('trim', explode(',', $raw)));
+
+    return array_values(array_unique(array_map(static function (string $origin): string {
+        return rtrim($origin, '/');
+    }, $origins)));
+}
+
+function arsenal_events_preview_is_frontend_origin_allowed(array $config): bool
+{
+    $origin = rtrim((string) ($config['frontend_origin'] ?? ''), '/');
+    if (!arsenal_events_preview_is_origin($origin) || (string) ($config['audience'] ?? '') !== $origin) {
+        return false;
+    }
+
+    return in_array($origin, arsenal_events_preview_allowed_frontend_origins($config), true);
 }
 
 function arsenal_events_preview_base64url_encode(string $value): string
@@ -143,9 +195,9 @@ function arsenal_events_preview_assertion_payload($post, int $revision_id, array
     $route = arsenal_events_preview_route_for_post($post);
 
     return [
-        'iss' => function_exists('home_url') ? home_url('/') : '',
+        'iss' => arsenal_events_preview_origin_with_slash((string) ($config['cms_origin'] ?? '')),
         'aud' => (string) ($config['audience'] ?? ''),
-        'site' => function_exists('home_url') ? home_url('/') : '',
+        'site' => arsenal_events_preview_origin_with_slash((string) ($config['cms_origin'] ?? '')),
         'post_id' => (int) ($post->ID ?? 0),
         'revision_id' => $revision_id,
         'post_type' => (string) ($post->post_type ?? ''),
@@ -165,16 +217,26 @@ function arsenal_events_preview_create_assertion($post, int $revision_id, array 
     );
 }
 
-function arsenal_events_preview_code_transient_key(string $code): string
+function arsenal_events_preview_code_hash(string $code): string
 {
-    return 'arsenal_events_preview_' . hash('sha256', $code);
+    return hash('sha256', $code);
 }
 
-function arsenal_events_preview_store_assertion(string $assertion, int $ttl_seconds): string
+function arsenal_events_preview_code_option_name(string $code): string
+{
+    return 'arsenal_events_preview_exchange_' . arsenal_events_preview_code_hash($code);
+}
+
+function arsenal_events_preview_store_assertion(string $assertion, int $ttl_seconds, ?int $now = null): string
 {
     $code = arsenal_events_preview_random_token(32);
-    if (function_exists('set_transient')) {
-        set_transient(arsenal_events_preview_code_transient_key($code), $assertion, $ttl_seconds);
+    $record = [
+        'assertion' => $assertion,
+        'expires_at' => ($now ?? time()) + $ttl_seconds,
+    ];
+
+    if (function_exists('add_option')) {
+        add_option(arsenal_events_preview_code_option_name($code), arsenal_events_preview_json_encode($record), '', false);
     }
 
     return $code;
@@ -182,18 +244,85 @@ function arsenal_events_preview_store_assertion(string $assertion, int $ttl_seco
 
 function arsenal_events_preview_exchange_code(string $code): ?string
 {
-    $key = arsenal_events_preview_code_transient_key($code);
-    $assertion = function_exists('get_transient') ? get_transient($key) : false;
-    if (function_exists('delete_transient')) {
-        delete_transient($key);
+    if (!function_exists('get_option') || !function_exists('delete_option')) {
+        return null;
     }
+
+    $key = arsenal_events_preview_code_option_name($code);
+    $raw = get_option($key, false);
+    if (!is_string($raw) || $raw === '') {
+        return null;
+    }
+
+    $record = json_decode($raw, true);
+    if (!is_array($record) || (int) ($record['expires_at'] ?? 0) < time()) {
+        delete_option($key);
+        return null;
+    }
+
+    if (!arsenal_events_preview_atomic_delete_exchange($key, $raw)) {
+        return null;
+    }
+
+    $assertion = $record['assertion'] ?? null;
 
     return is_string($assertion) && $assertion !== '' ? $assertion : null;
 }
 
-function arsenal_events_preview_frontend_start_url(string $code, array $config): string
+function arsenal_events_preview_atomic_delete_exchange(string $option_name, string $expected_value): bool
 {
-    return rtrim((string) ($config['frontend_origin'] ?? ''), '/') . '/api/preview?code=' . rawurlencode($code);
+    global $wpdb;
+
+    if (isset($wpdb) && is_object($wpdb) && method_exists($wpdb, 'query') && method_exists($wpdb, 'prepare')) {
+        $table = $wpdb->options ?? '';
+        if (is_string($table) && $table !== '') {
+            $deleted = $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$table} WHERE option_name = %s AND option_value = %s LIMIT 1",
+                $option_name,
+                $expected_value
+            ));
+
+            return (int) $deleted === 1;
+        }
+    }
+
+    return delete_option($option_name);
+}
+
+function arsenal_events_preview_frontend_start_url(array $config): string
+{
+    return rtrim((string) ($config['frontend_origin'] ?? ''), '/') . '/api/preview';
+}
+
+function arsenal_events_preview_handoff_cookie_domain(array $config): string
+{
+    $domain = trim((string) ($config['handoff_cookie_domain'] ?? ''));
+    if ($domain !== '') {
+        return $domain;
+    }
+
+    $host = parse_url((string) ($config['frontend_origin'] ?? ''), PHP_URL_HOST);
+
+    return is_string($host) ? $host : '';
+}
+
+function arsenal_events_preview_set_handoff_cookie(string $code, array $config): void
+{
+    $expires = time() + (int) ($config['ttl_seconds'] ?? 300);
+    $options = [
+        'expires' => $expires,
+        'path' => '/api/preview',
+        'secure' => true,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+
+    $domain = arsenal_events_preview_handoff_cookie_domain($config);
+    if ($domain !== '') {
+        $options['domain'] = $domain;
+    }
+
+    setcookie((string) ($config['handoff_cookie_name'] ?? 'arsenal_preview_handoff'), $code, $options);
 }
 
 function arsenal_events_preview_post_link(string $preview_link, $post): string
@@ -258,14 +387,27 @@ function arsenal_events_preview_admin_action(): void
 
     $assertion = arsenal_events_preview_create_assertion($post, $revision_id, $config);
     $code = arsenal_events_preview_store_assertion($assertion, (int) $config['ttl_seconds']);
-    $url = arsenal_events_preview_frontend_start_url($code, $config);
+    arsenal_events_preview_set_handoff_cookie($code, $config);
+    $url = arsenal_events_preview_frontend_start_url($config);
 
-    wp_safe_redirect($url, 302);
+    if (function_exists('wp_redirect')) {
+        wp_redirect($url, 302);
+    }
     exit;
 }
 
 function arsenal_events_preview_rest_exchange($request): WP_REST_Response
 {
+    $config = arsenal_events_preview_config();
+    $secret = arsenal_events_preview_request_header($request, (string) ($config['exchange_header_name'] ?? 'X-Arsenal-Preview-Exchange-Secret'));
+    if (
+        empty($config['exchange_secret'])
+        || $secret === ''
+        || !hash_equals((string) $config['exchange_secret'], $secret)
+    ) {
+        return new WP_REST_Response(['error' => 'Preview exchange is not authorized.'], 401);
+    }
+
     $code = '';
     if (is_object($request) && method_exists($request, 'get_param')) {
         $code = (string) $request->get_param('code');
@@ -374,6 +516,13 @@ function arsenal_events_preview_rest_content($request): WP_REST_Response
     $payload = $verified['payload'];
     if ((string) ($payload['aud'] ?? '') !== (string) ($config['audience'] ?? '')) {
         return new WP_REST_Response(['error' => 'Preview audience is invalid.'], 401);
+    }
+    $expected_site = arsenal_events_preview_origin_with_slash((string) ($config['cms_origin'] ?? ''));
+    if (
+        (string) ($payload['iss'] ?? '') !== $expected_site
+        || (string) ($payload['site'] ?? '') !== $expected_site
+    ) {
+        return new WP_REST_Response(['error' => 'Preview issuer is invalid.'], 401);
     }
 
     $post = arsenal_events_preview_get_asserted_post($payload);
