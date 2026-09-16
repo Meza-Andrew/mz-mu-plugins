@@ -461,7 +461,10 @@ function meza_rest_api_permission_callback(): bool
  */
 function meza_arsenal_extend_page_payload(array $payload, WP_Post $page): array
 {
-    $blocks = meza_get_page_blocks((int) $page->ID);
+    $arsenal_blocks = meza_get_page_blocks((int) $page->ID);
+    $blocks = $arsenal_blocks !== []
+        ? $arsenal_blocks
+        : (is_array($payload['blocks'] ?? null) ? $payload['blocks'] : []);
     $content = trim((string) $page->post_content);
 
     if ($content !== '') {
