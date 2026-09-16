@@ -29,7 +29,20 @@
             $definitions[] = mzf_get_form_post_type_definition();
         }
 
-        return $definitions;
+        /**
+         * Filters local ACF post-type definitions before managed registration.
+         *
+         * Extensions should append declarative ACF post-type definitions here instead
+         * of calling register_post_type() or acf_add_local_internal_post_type()
+         * directly. Returned definitions participate in the shared managed-definition
+         * lifecycle: runtime registration, ACF export grouping, enable/disable
+         * controls, override comparison, and deletion tracking.
+         *
+         * @param array<int,array<string,mixed>> $definitions Local ACF post-type definitions.
+         */
+        $definitions = apply_filters('meza_shared_project_acf_post_type_definitions', $definitions);
+
+        return is_array($definitions) ? array_values($definitions) : [];
     }
 
     function meza_get_builtin_acf_post_type_slugs(): array
@@ -85,7 +98,20 @@
             $definitions[] = meza_get_profile_type_taxonomy_definition();
         }
 
-        return $definitions;
+        /**
+         * Filters local ACF taxonomy definitions before managed registration.
+         *
+         * Extensions should append declarative ACF taxonomy definitions here instead
+         * of calling register_taxonomy() or acf_add_local_internal_post_type()
+         * directly. Returned definitions participate in the shared managed-definition
+         * lifecycle: runtime registration, ACF export grouping, enable/disable
+         * controls, override comparison, and deletion tracking.
+         *
+         * @param array<int,array<string,mixed>> $definitions Local ACF taxonomy definitions.
+         */
+        $definitions = apply_filters('meza_shared_project_acf_taxonomy_definitions', $definitions);
+
+        return is_array($definitions) ? array_values($definitions) : [];
     }
 
     function meza_get_local_acf_post_type_has_archive_value(array $definition)
