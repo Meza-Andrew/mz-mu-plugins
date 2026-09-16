@@ -108,7 +108,7 @@ function arsenal_events_get_global_settings_group(): array
 
 function arsenal_events_get_page_blocks_group(): array
 {
-    return [
+    $group = [
         'key' => 'group_page_blocks',
         'title' => 'Page Blocks',
         'fields' => [
@@ -670,6 +670,14 @@ function arsenal_events_get_page_blocks_group(): array
         'description' => 'Flexible content blocks for pages',
         'show_in_rest' => 1,
     ];
+
+    // Global layout is configured through canonical settings, not page blocks.
+    $group['fields'][0]['layouts'] = array_values(array_filter(
+        $group['fields'][0]['layouts'],
+        static fn(array $layout): bool => !in_array($layout['name'] ?? '', ['header_block', 'footer_block'], true)
+    ));
+
+    return $group;
 }
 
 function arsenal_events_get_race_details_group(): array
