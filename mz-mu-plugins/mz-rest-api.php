@@ -10,66 +10,8 @@
 
 if (defined('WP_INSTALLING') && WP_INSTALLING) return;
 
+require_once __DIR__ . '/arsenal-events-cors.php';
 require_once __DIR__ . '/arsenal-events-revalidation.php';
-
-/**
- * Define allowed frontend origins for CORS
- * Defaults to localhost:3001 for local dev, can be overridden via constant
- */
-if (!defined('ALLOWED_FRONTEND_ORIGINS')) {
-    define('ALLOWED_FRONTEND_ORIGINS', [
-        'http://localhost:3001',
-        'http://localhost:3000',
-    ]);
-}
-
-/**
- * CORS Security: Validate Origin header for meza/v1 endpoints
- * Intercepts REST API requests at the authentication stage
- */
-add_filter('rest_authentication_errors', function ($result) {
-    // Only apply to meza/v1 endpoints
-    if (strpos($_SERVER['REQUEST_URI'] ?? '', '/wp-json/meza/v1/') === false) {
-        return $result;
-    }
-
-    $origin = isset($_SERVER['HTTP_ORIGIN']) ? sanitize_text_field($_SERVER['HTTP_ORIGIN']) : '';
-    $allowed_origins = ALLOWED_FRONTEND_ORIGINS;
-
-    // If origin header is present, validate it
-    if (!empty($origin) && !in_array($origin, $allowed_origins, true)) {
-        // Invalid origin: return 403 Forbidden error
-        return new WP_Error(
-            'cors_origin_not_allowed',
-            'Origin not allowed to access this resource',
-            ['status' => 403]
-        );
-    }
-
-    return $result;
-}, 10, 1);
-
-/**
- * CORS Headers: Set strict CORS headers for meza/v1 endpoints
- * Ensures only allowed origins receive CORS headers
- */
-add_filter('rest_send_cors_headers', function ($value) {
-    // Only apply to meza/v1 endpoints
-    if (strpos($_SERVER['REQUEST_URI'] ?? '', '/wp-json/meza/v1/') === false) {
-        return $value;
-    }
-
-    $origin = isset($_SERVER['HTTP_ORIGIN']) ? sanitize_text_field($_SERVER['HTTP_ORIGIN']) : '';
-    $allowed_origins = ALLOWED_FRONTEND_ORIGINS;
-
-    // Only send CORS headers for allowed origins
-    if (!empty($origin) && in_array($origin, $allowed_origins, true)) {
-        return true;
-    }
-
-    // Block CORS for invalid origins by returning false
-    return false;
-}, 10, 1);
 
 /**
  * Extract Yoast SEO metadata for a post
