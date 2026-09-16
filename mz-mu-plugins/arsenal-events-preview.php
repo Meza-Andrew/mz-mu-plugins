@@ -458,14 +458,26 @@ function arsenal_events_preview_get_asserted_post(array $payload)
 
 function arsenal_events_preview_content_source($post, int $revision_id)
 {
-    if ($revision_id <= 0 || !function_exists('get_post') || !function_exists('wp_is_post_revision')) {
+    if ($revision_id <= 0) {
         return $post;
+    }
+
+    if (!function_exists('get_post') || !function_exists('wp_is_post_revision')) {
+        return null;
     }
 
     $parent_id = (int) wp_is_post_revision($revision_id);
     $revision = get_post($revision_id);
+    if (
+        !$revision
+        || (string) ($revision->post_type ?? '') !== 'revision'
+        || $parent_id !== (int) $post->ID
+        || (int) ($revision->post_parent ?? 0) !== (int) $post->ID
+    ) {
+        return null;
+    }
 
-    return ($parent_id === (int) $post->ID && $revision) ? $revision : $post;
+    return $revision;
 }
 
 function arsenal_events_preview_page_payload($post, $source): array
@@ -531,6 +543,10 @@ function arsenal_events_preview_rest_content($request): WP_REST_Response
     }
 
     $source = arsenal_events_preview_content_source($post, (int) ($payload['revision_id'] ?? 0));
+    if (!$source) {
+        return new WP_REST_Response(['error' => 'Preview revision is not available.'], 404);
+    }
+
     $data = (string) $post->post_type === 'page'
         ? arsenal_events_preview_page_payload($post, $source)
         : arsenal_events_preview_post_payload($post, $source);

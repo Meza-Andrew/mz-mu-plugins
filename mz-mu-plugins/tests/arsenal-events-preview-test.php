@@ -327,6 +327,36 @@ function arsenal_events_preview_test_reset(): void
             'post_content' => 'Revision contact body',
             'post_excerpt' => '',
         ],
+        21 => (object) [
+            'ID' => 21,
+            'post_type' => 'revision',
+            'post_parent' => 11,
+            'post_name' => '11-revision-v1',
+            'post_title' => 'Wrong Parent Revision',
+            'post_status' => 'inherit',
+            'post_content' => 'Wrong parent revision body',
+            'post_excerpt' => '',
+        ],
+        22 => (object) [
+            'ID' => 22,
+            'post_type' => 'page',
+            'post_parent' => 10,
+            'post_name' => 'not-a-revision',
+            'post_title' => 'Not A Revision',
+            'post_status' => 'draft',
+            'post_content' => 'Non-revision body',
+            'post_excerpt' => '',
+        ],
+        23 => (object) [
+            'ID' => 23,
+            'post_type' => 'revision',
+            'post_parent' => 999,
+            'post_name' => '999-revision-v1',
+            'post_title' => 'Invalid Parent Revision',
+            'post_status' => 'inherit',
+            'post_content' => 'Invalid parent revision body',
+            'post_excerpt' => '',
+        ],
     ];
 }
 
@@ -355,6 +385,29 @@ function arsenal_events_preview_test(string $name, callable $run): void
     arsenal_events_preview_test_reset();
     $run();
     echo "ok - {$name}\n";
+}
+
+function arsenal_events_preview_test_assertion_for(int $post_id, int $revision_id = 0): string
+{
+    $config = arsenal_events_preview_config();
+
+    return arsenal_events_preview_create_assertion(get_post($post_id), $revision_id, $config, time());
+}
+
+function arsenal_events_preview_test_content_response(int $post_id, int $revision_id = 0): WP_REST_Response
+{
+    return arsenal_events_preview_rest_content(new Arsenal_Events_Preview_Test_Request([], [
+        'x-arsenal-preview-assertion' => arsenal_events_preview_test_assertion_for($post_id, $revision_id),
+    ]));
+}
+
+function arsenal_events_preview_test_assert_no_parent_content(WP_REST_Response $response): void
+{
+    $data = $response->get_data();
+    $encoded = json_encode($data);
+
+    arsenal_events_preview_test_assert(strpos((string) $encoded, 'Draft contact body') === false, 'Failed revision requests must not return parent body.');
+    arsenal_events_preview_test_assert(strpos((string) $encoded, 'Contact Draft') === false, 'Failed revision requests must not return parent title.');
 }
 
 arsenal_events_preview_test('rejects unauthenticated and insufficient capability preview requests', function (): void {
@@ -437,15 +490,47 @@ arsenal_events_preview_test('uses clean handoff URL and authenticated atomic exc
 });
 
 arsenal_events_preview_test('serves authorized preview content with noindex robots and revision body', function (): void {
-    $config = arsenal_events_preview_config();
-    $assertion = arsenal_events_preview_create_assertion(get_post(10), 20, $config, time());
-    $response = arsenal_events_preview_rest_content(new Arsenal_Events_Preview_Test_Request([], [
-        'x-arsenal-preview-assertion' => $assertion,
-    ]));
+    $response = arsenal_events_preview_test_content_response(10, 20);
     $data = $response->get_data();
 
     arsenal_events_preview_test_assert_same(200, $response->get_status(), 'Preview content succeeds.');
     arsenal_events_preview_test_assert_same('page', $data['post_type'], 'Page preview is identified.');
     arsenal_events_preview_test_assert_same('Contact Revision', $data['data']['title'], 'Revision title is used.');
+    arsenal_events_preview_test_assert(strpos($data['data']['content'], 'Revision contact body') !== false, 'Revision body is used.');
+    arsenal_events_preview_test_assert(strpos($data['data']['content'], 'Draft contact body') === false, 'Parent body is not used when a revision is asserted.');
     arsenal_events_preview_test_assert_same(['noindex' => true, 'nofollow' => true], $data['data']['seo']['robots'], 'Preview content is noindex.');
+});
+
+arsenal_events_preview_test('rejects missing asserted revisions without parent fallback', function (): void {
+    $response = arsenal_events_preview_test_content_response(10, 999);
+
+    arsenal_events_preview_test_assert_same(404, $response->get_status(), 'Missing asserted revision should be rejected.');
+    arsenal_events_preview_test_assert_same('Preview revision is not available.', $response->get_data()['error'], 'Missing revision should explain rejection.');
+    arsenal_events_preview_test_assert_no_parent_content($response);
+});
+
+arsenal_events_preview_test('rejects asserted revisions belonging to another post', function (): void {
+    $response = arsenal_events_preview_test_content_response(10, 21);
+
+    arsenal_events_preview_test_assert_same(404, $response->get_status(), 'Wrong-parent asserted revision should be rejected.');
+    arsenal_events_preview_test_assert_no_parent_content($response);
+});
+
+arsenal_events_preview_test('rejects asserted revision IDs with invalid type or parent', function (): void {
+    $wrong_type = arsenal_events_preview_test_content_response(10, 22);
+    arsenal_events_preview_test_assert_same(404, $wrong_type->get_status(), 'Non-revision asserted ID should be rejected.');
+    arsenal_events_preview_test_assert_no_parent_content($wrong_type);
+
+    $invalid_parent = arsenal_events_preview_test_content_response(10, 23);
+    arsenal_events_preview_test_assert_same(404, $invalid_parent->get_status(), 'Revision with invalid parent should be rejected.');
+    arsenal_events_preview_test_assert_no_parent_content($invalid_parent);
+});
+
+arsenal_events_preview_test('allows parent preview only when revision id is zero', function (): void {
+    $response = arsenal_events_preview_test_content_response(10, 0);
+    $data = $response->get_data();
+
+    arsenal_events_preview_test_assert_same(200, $response->get_status(), 'Parent preview without asserted revision should remain valid.');
+    arsenal_events_preview_test_assert_same('Contact Draft', $data['data']['title'], 'Parent title is used without a revision assertion.');
+    arsenal_events_preview_test_assert(strpos($data['data']['content'], 'Draft contact body') !== false, 'Parent body is used without a revision assertion.');
 });
