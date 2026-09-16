@@ -26,8 +26,6 @@ $mz_plugin_files = [
     'mz-security.php',
     'mz-settings.php',
     'mz-woocommerce.php',
-    'arsenal-events-cpt.php',
-    'mz-rest-api.php',
 ];
 
 foreach ($mz_plugin_files as $mz_plugin_file) {

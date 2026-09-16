@@ -8,8 +8,6 @@ if (!function_exists('meza_get_shared_project_acf_field_groups')) {
         __DIR__ . '/definitions/section-field-groups.php',
         __DIR__ . '/definitions/content-field-groups.php',
         __DIR__ . '/definitions/runtime.php',
-        __DIR__ . '/definitions/arsenal-events.php',
-        __DIR__ . '/definitions/arsenal-events-media.php',
         __DIR__ . '/definitions/registry.php',
     ];
 

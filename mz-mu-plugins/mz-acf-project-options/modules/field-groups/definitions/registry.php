@@ -658,21 +658,6 @@
             $groups[] = meza_get_certification_field_group_definition();
         }
 
-        // Arsenal Events field groups live in the active inner mz-mu-plugins runtime.
-        foreach ([
-            "arsenal_events_get_global_settings_group",
-            "arsenal_events_get_home_structured_content_group",
-            "arsenal_events_get_race_director_structured_content_group",
-            "arsenal_events_get_races_results_structured_content_group",
-            "arsenal_events_get_page_blocks_group",
-            "arsenal_events_get_race_details_group",
-            "arsenal_events_get_resource_details_group",
-        ] as $arsenal_events_field_group_callback) {
-            if (function_exists($arsenal_events_field_group_callback)) {
-                $groups[] = $arsenal_events_field_group_callback();
-            }
-        }
-
         foreach ($groups as $index => $group) {
             if (!is_array($group)) {
                 continue;

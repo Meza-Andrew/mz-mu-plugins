@@ -168,7 +168,7 @@
 
     function meza_get_local_acf_post_type_args(array $definition): array
     {
-        return [
+        $args = [
             'labels' => (array) ($definition['labels'] ?? []),
             'description' => (string) ($definition['description'] ?? ''),
             'public' => !empty($definition['public']),
@@ -191,6 +191,27 @@
             'delete_with_user' => !empty($definition['delete_with_user']),
             'map_meta_cap' => true,
         ];
+
+        $rest_base = (string) ($definition['rest_base'] ?? '');
+        if ($rest_base !== '') {
+            $args['rest_base'] = $rest_base;
+        }
+
+        if (isset($definition['menu_position']) && is_numeric($definition['menu_position'])) {
+            $args['menu_position'] = (int) $definition['menu_position'];
+        }
+
+        $taxonomies = is_array($definition['taxonomies'] ?? null) ? array_values($definition['taxonomies']) : [];
+        if ($taxonomies !== []) {
+            $args['taxonomies'] = $taxonomies;
+        }
+
+        $capability_type = (string) ($definition['capability_type'] ?? '');
+        if ($capability_type !== '') {
+            $args['capability_type'] = $capability_type;
+        }
+
+        return $args;
     }
 
     function meza_get_local_acf_taxonomy_rewrite_value(array $definition)
