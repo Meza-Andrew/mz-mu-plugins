@@ -1177,6 +1177,81 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
 }
 add_action('acf/init', 'meza_sync_shared_project_field_group_fields', 24);
 
+if (!function_exists('meza_sync_default_editable_field_group_fields')) {
+    function meza_get_default_editable_field_group_fields_sync_definitions(): array
+    {
+        if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
+            return [];
+        }
+
+        $definitions = [];
+        foreach ((array) meza_get_default_editable_acf_field_group_definitions() as $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            if (
+                function_exists('meza_is_managed_acf_definition_manually_deleted')
+                && meza_is_managed_acf_definition_manually_deleted('field_groups', $definition)
+            ) {
+                continue;
+            }
+
+            $definitions[] = $definition;
+        }
+
+        return $definitions;
+    }
+
+    function meza_get_default_editable_field_group_fields_sync_version($definitions = null): string
+    {
+        $definitions = is_array($definitions)
+            ? $definitions
+            : meza_get_default_editable_field_group_fields_sync_definitions();
+
+        return '2026-09-17-default-editable-field-group-fields-'
+            . meza_get_shared_project_field_group_fields_sync_mode()
+            . '-'
+            . meza_get_shared_project_field_group_fields_sync_fingerprint($definitions);
+    }
+
+    function meza_get_default_editable_field_group_fields_sync_option_name(): string
+    {
+        return 'meza_default_editable_field_group_fields_sync_version';
+    }
+
+    function meza_sync_default_editable_field_group_fields(): void
+    {
+        $definitions = meza_get_default_editable_field_group_fields_sync_definitions();
+        $version = meza_get_default_editable_field_group_fields_sync_version($definitions);
+        if (
+            (string) get_option(meza_get_default_editable_field_group_fields_sync_option_name(), '') === $version
+            && meza_shared_project_field_group_definition_trees_are_complete($definitions)
+        ) {
+            return;
+        }
+
+        $did_update = false;
+
+        foreach ($definitions as $definition) {
+            if (meza_sync_builtin_field_group_fields($definition)) {
+                $did_update = true;
+            }
+        }
+
+        if (
+            meza_shared_project_field_group_definition_trees_are_complete($definitions)
+            && (
+                $did_update
+                || (string) get_option(meza_get_default_editable_field_group_fields_sync_option_name(), '') !== $version
+            )
+        ) {
+            update_option(meza_get_default_editable_field_group_fields_sync_option_name(), $version, false);
+        }
+    }
+}
+add_action('acf/init', 'meza_sync_default_editable_field_group_fields', 24);
+
 if (!function_exists('meza_get_shared_project_acf_field_group_definition_by_key')) {
     function meza_get_shared_project_acf_field_group_definition_by_key(string $group_key): array
     {

@@ -2,6 +2,7 @@
 
 $meza_project_sync_test_options = [];
 $meza_project_sync_test_definitions = [];
+$meza_project_sync_test_default_definitions = [];
 $meza_project_sync_test_deleted_keys = [];
 $meza_project_sync_test_field_group_ids = [];
 $meza_project_sync_test_field_groups_by_id = [];
@@ -77,6 +78,13 @@ function meza_get_shared_project_acf_field_groups(): array
     global $meza_project_sync_test_definitions;
 
     return $meza_project_sync_test_definitions;
+}
+
+function meza_get_default_editable_acf_field_group_definitions(): array
+{
+    global $meza_project_sync_test_default_definitions;
+
+    return $meza_project_sync_test_default_definitions;
 }
 
 function meza_is_managed_acf_definition_manually_deleted(string $kind, array $definition): bool
@@ -281,10 +289,11 @@ function meza_project_sync_test_seed_complete_db_fields(array $definition): void
     );
 }
 
-function meza_project_sync_test_reset(array $definitions, array $deleted_keys = [], array $existing_fields_by_group_key = []): void
+function meza_project_sync_test_reset(array $definitions, array $deleted_keys = [], array $existing_fields_by_group_key = [], array $default_definitions = []): void
 {
     global $meza_project_sync_test_options,
         $meza_project_sync_test_definitions,
+        $meza_project_sync_test_default_definitions,
         $meza_project_sync_test_deleted_keys,
         $meza_project_sync_test_field_group_ids,
         $meza_project_sync_test_field_groups_by_id,
@@ -295,6 +304,7 @@ function meza_project_sync_test_reset(array $definitions, array $deleted_keys = 
 
     $meza_project_sync_test_options = [];
     $meza_project_sync_test_definitions = $definitions;
+    $meza_project_sync_test_default_definitions = $default_definitions;
     $meza_project_sync_test_deleted_keys = $deleted_keys;
     $meza_project_sync_test_field_group_ids = [];
     $meza_project_sync_test_field_groups_by_id = [];
@@ -303,7 +313,7 @@ function meza_project_sync_test_reset(array $definitions, array $deleted_keys = 
     $meza_project_sync_test_deleted_fields = [];
     $meza_project_sync_test_event_mode = false;
 
-    foreach ($definitions as $index => $definition) {
+    foreach (array_values(array_merge($definitions, $default_definitions)) as $index => $definition) {
         if (!is_array($definition)) {
             continue;
         }
@@ -505,6 +515,56 @@ meza_project_sync_test_case('managed-deleted definitions remain excluded from fi
     $updated_keys = array_values(array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields));
 
     meza_project_sync_test_assert_same(['field_project_title'], $updated_keys, 'Sync should not update fields from managed-deleted definitions.');
+});
+
+meza_project_sync_test_case('default-editable current fingerprint with missing nested field triggers sync', function () use ($nested_definition): void {
+    global $meza_project_sync_test_options, $meza_project_sync_test_updated_fields;
+
+    meza_project_sync_test_reset([], [], [
+        'group_project_nested' => meza_project_sync_test_with_parents([
+            meza_project_sync_test_repeater_field([
+                meza_project_sync_test_text_field('field_project_metric_value', 'value', 'Value'),
+            ]),
+        ], 'group_project_nested'),
+    ], [$nested_definition]);
+    $current_version = meza_get_default_editable_field_group_fields_sync_version();
+    $meza_project_sync_test_options[meza_get_default_editable_field_group_fields_sync_option_name()] = $current_version;
+
+    meza_sync_default_editable_field_group_fields();
+
+    meza_project_sync_test_assert_same(['field_project_repeater'], array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields), 'Current default-editable fingerprint must not mask an incomplete nested tree.');
+    meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'Default-editable sync should reconcile the missing nested field tree.');
+    meza_project_sync_test_assert_same($current_version, get_option(meza_get_default_editable_field_group_fields_sync_option_name(), ''), 'Current default-editable fingerprint remains recorded after the tree is complete.');
+});
+
+meza_project_sync_test_case('default-editable current fingerprint with complete tree skips repeat sync', function () use ($nested_definition): void {
+    global $meza_project_sync_test_options, $meza_project_sync_test_updated_fields;
+
+    meza_project_sync_test_reset([], [], [], [$nested_definition]);
+    meza_project_sync_test_seed_complete_db_fields($nested_definition);
+    $current_version = meza_get_default_editable_field_group_fields_sync_version();
+    $meza_project_sync_test_options[meza_get_default_editable_field_group_fields_sync_option_name()] = $current_version;
+
+    meza_sync_default_editable_field_group_fields();
+
+    meza_project_sync_test_assert_same([], $meza_project_sync_test_updated_fields, 'A current default-editable fingerprint with a complete DB tree should skip sync.');
+});
+
+meza_project_sync_test_case('managed-deleted default-editable definitions remain excluded from fingerprint and sync', function () use ($base_definition): void {
+    global $meza_project_sync_test_updated_fields;
+
+    $deleted_definition = meza_project_sync_test_field_group('group_project_deleted', [
+        meza_project_sync_test_text_field('field_project_deleted', 'deleted', 'Deleted'),
+    ]);
+    meza_project_sync_test_reset([], ['group_project_deleted'], [], [$base_definition, $deleted_definition]);
+
+    $effective_definitions = meza_get_default_editable_field_group_fields_sync_definitions();
+    meza_project_sync_test_assert_same([$base_definition], $effective_definitions, 'Deleted default-editable definitions should be excluded from the effective sync set.');
+
+    meza_sync_default_editable_field_group_fields();
+    $updated_keys = array_values(array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields));
+
+    meza_project_sync_test_assert_same(['field_project_title'], $updated_keys, 'Default-editable sync should not update fields from managed-deleted definitions.');
 });
 
 meza_project_sync_test_case('default and event modes remain distinct', function () use ($base_definition): void {

@@ -269,6 +269,16 @@ add_filter('meza_shared_project_acf_taxonomy_definitions', static function (arra
     return $definitions;
 });
 
+add_filter('meza_shared_project_default_acf_field_group_definitions', static function (array $definitions): array {
+    $definitions[] = [
+        'key' => 'group_fiction_default_section',
+        'title' => 'Fiction Default Section',
+        'fields' => [],
+    ];
+
+    return $definitions;
+});
+
 meza_content_model_extension_test('fictional filters append managed definitions', function (): void {
     $taxonomy_identifiers = meza_get_runtime_local_managed_acf_definition_identifiers('taxonomies');
     $post_type_definitions = meza_get_managed_acf_definitions_by_kind('post_types');
@@ -282,6 +292,13 @@ meza_content_model_extension_test('fictional filters append managed definitions'
 
     meza_content_model_extension_test_assert(is_array(meza_get_managed_acf_definition_match('post_types', ['post_type' => 'fiction_book'])), 'Filtered post type should participate in managed-definition matching.');
     meza_content_model_extension_test_assert(is_array(meza_get_managed_acf_definition_match('taxonomies', ['taxonomy' => 'fiction_genre'])), 'Filtered taxonomy should participate in managed-definition matching.');
+});
+
+meza_content_model_extension_test('fictional default field-group filter appends effective definitions', function (): void {
+    $definitions = meza_apply_shared_project_default_acf_field_group_definition_filters([]);
+    $keys = array_map(static fn(array $definition): string => (string) ($definition['key'] ?? ''), $definitions);
+
+    meza_content_model_extension_test_assert(in_array('group_fiction_default_section', $keys, true), 'Filtered default-editable field group should be present in effective definitions.');
 });
 
 meza_content_model_extension_test('fictional filters register through framework fallbacks', function (): void {

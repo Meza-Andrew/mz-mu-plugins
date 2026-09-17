@@ -1388,6 +1388,17 @@ add_action('acf/untrash_ui_options_page', static function (array $options_page):
     meza_track_managed_acf_definition_event('options_pages', $options_page, false);
 }, 5);
 
+if (!function_exists('meza_apply_shared_project_default_acf_field_group_definition_filters')) {
+    function meza_apply_shared_project_default_acf_field_group_definition_filters(array $definitions): array
+    {
+        if (function_exists('apply_filters')) {
+            $definitions = apply_filters('meza_shared_project_default_acf_field_group_definitions', $definitions);
+        }
+
+        return array_values(array_filter((array) $definitions, 'is_array'));
+    }
+}
+
 if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
     function meza_get_ecommerce_editable_acf_field_group_definitions(): array
     {
@@ -2572,7 +2583,7 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
             $definitions[$index] = meza_normalize_header_section_group($definition);
         }
 
-        return $definitions;
+        return meza_apply_shared_project_default_acf_field_group_definition_filters($definitions);
     }
 }
 
