@@ -343,6 +343,46 @@ meza_deleted_sync_test_case('existing managed field groups are not reimported', 
     );
 });
 
+meza_deleted_sync_test_case('active managed field group wins over disabled same-key duplicate', function (): void {
+    $definition = [
+        'key' => 'group_meza_enabled_test_section',
+        'title' => 'Enabled Test Section',
+        'fields' => [],
+    ];
+
+    meza_deleted_sync_test_reset(true);
+    meza_deleted_sync_test_add_raw_field_group(
+        109,
+        'group_meza_enabled_test_section',
+        'Enabled Test Section',
+        'acf-disabled',
+        [
+            [
+                'key' => 'field_disabled_historical',
+                'name' => 'disabled_historical',
+            ],
+        ]
+    );
+    meza_deleted_sync_test_add_raw_field_group(
+        103,
+        'group_meza_enabled_test_section',
+        'Enabled Test Section',
+        'publish',
+        []
+    );
+
+    meza_deleted_sync_test_assert_same(
+        103,
+        meza_get_raw_editable_acf_field_group_id($definition),
+        'Raw editable field-group identity should select the active canonical record before a disabled duplicate.'
+    );
+    meza_deleted_sync_test_assert_same(
+        103,
+        meza_get_existing_editable_acf_field_group_id($definition),
+        'Existing editable field-group identity should fall back to the active raw record before a disabled duplicate.'
+    );
+});
+
 meza_deleted_sync_test_case('existing duplicate managed field groups do not cause repair import', function (): void {
     global $meza_deleted_sync_test_imports;
 

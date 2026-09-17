@@ -107,13 +107,6 @@ function meza_get_event_context_request_post_type(): string
     return $meza_project_sync_test_event_mode ? 'event' : 'page';
 }
 
-function meza_get_existing_editable_acf_field_group_id(array $definition): int
-{
-    global $meza_project_sync_test_field_group_ids;
-
-    return (int) ($meza_project_sync_test_field_group_ids[(string) ($definition['key'] ?? '')] ?? 0);
-}
-
 function acf_get_field_group($field_group_id)
 {
     global $meza_project_sync_test_field_groups_by_id;
@@ -121,11 +114,30 @@ function acf_get_field_group($field_group_id)
     return $meza_project_sync_test_field_groups_by_id[(int) $field_group_id] ?? null;
 }
 
+function acf_get_field_groups(): array
+{
+    global $meza_project_sync_test_field_groups_by_id;
+
+    return array_values($meza_project_sync_test_field_groups_by_id);
+}
+
+function acf_get_raw_field_groups(): array
+{
+    return acf_get_field_groups();
+}
+
 function acf_get_fields($field_group_id): array
 {
     global $meza_project_sync_test_existing_fields_by_id;
 
     return $meza_project_sync_test_existing_fields_by_id[(int) $field_group_id] ?? [];
+}
+
+function get_post_status($post_id): string
+{
+    global $meza_project_sync_test_field_groups_by_id;
+
+    return (string) ($meza_project_sync_test_field_groups_by_id[(int) $post_id]['post_status'] ?? 'publish');
 }
 
 function acf_update_field(array $field): void
@@ -220,6 +232,7 @@ function meza_preserve_acf_field_tree_identifiers(array $field, ?array $existing
     return $field;
 }
 
+require_once __DIR__ . '/../mz-acf-project-options/modules/managed-definitions.php';
 require_once __DIR__ . '/../mz-acf-project-options/modules/registration.php';
 
 function meza_project_sync_test_field_group(string $group_key, array $fields): array
@@ -328,6 +341,8 @@ function meza_project_sync_test_reset(array $definitions, array $deleted_keys = 
         $meza_project_sync_test_field_groups_by_id[$field_group_id] = [
             'ID' => $field_group_id,
             'key' => $group_key,
+            'title' => (string) ($definition['title'] ?? ''),
+            'post_status' => 'publish',
         ];
         $meza_project_sync_test_existing_fields_by_id[$field_group_id] = isset($existing_fields_by_group_key[$group_key])
             ? $existing_fields_by_group_key[$group_key]
@@ -548,6 +563,62 @@ meza_project_sync_test_case('default-editable current fingerprint with complete 
     meza_sync_default_editable_field_group_fields();
 
     meza_project_sync_test_assert_same([], $meza_project_sync_test_updated_fields, 'A current default-editable fingerprint with a complete DB tree should skip sync.');
+});
+
+meza_project_sync_test_case('default-editable sync reconciles active record before disabled duplicate', function () use ($nested_definition): void {
+    global $meza_project_sync_test_options,
+        $meza_project_sync_test_field_group_ids,
+        $meza_project_sync_test_field_groups_by_id,
+        $meza_project_sync_test_existing_fields_by_id,
+        $meza_project_sync_test_updated_fields;
+
+    meza_project_sync_test_reset([], [], [], [$nested_definition]);
+    unset($meza_project_sync_test_field_groups_by_id[101], $meza_project_sync_test_existing_fields_by_id[101]);
+
+    $meza_project_sync_test_field_group_ids['group_project_nested'] = 103;
+    $meza_project_sync_test_field_groups_by_id[103] = [
+        'ID' => 103,
+        'key' => 'group_project_nested',
+        'title' => 'Project Test Group',
+        'post_status' => 'publish',
+    ];
+    $meza_project_sync_test_existing_fields_by_id[103] = meza_project_sync_test_with_parents([
+        meza_project_sync_test_repeater_field([
+            meza_project_sync_test_text_field('field_project_metric_value', 'value', 'Value'),
+        ]),
+    ], 'group_project_nested');
+
+    $meza_project_sync_test_field_groups_by_id[109] = [
+        'ID' => 109,
+        'key' => 'group_project_nested',
+        'title' => 'Project Test Group',
+        'post_status' => 'acf-disabled',
+    ];
+    $meza_project_sync_test_existing_fields_by_id[109] = meza_project_sync_test_with_parents(
+        array_values((array) ($nested_definition['fields'] ?? [])),
+        'group_project_nested'
+    );
+    $disabled_before = $meza_project_sync_test_existing_fields_by_id[109];
+
+    $current_version = meza_get_default_editable_field_group_fields_sync_version();
+    $meza_project_sync_test_options[meza_get_default_editable_field_group_fields_sync_option_name()] = $current_version;
+
+    meza_project_sync_test_assert_same(
+        103,
+        meza_get_existing_editable_acf_field_group_id($nested_definition),
+        'Managed field-group resolver should select the active canonical record before a disabled same-key duplicate.'
+    );
+
+    meza_sync_default_editable_field_group_fields();
+
+    meza_project_sync_test_assert_same(
+        ['field_project_repeater'],
+        array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields),
+        'Default sync should reconcile the active canonical record when its nested tree is incomplete.'
+    );
+    meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'The active canonical record should become complete.');
+    meza_project_sync_test_assert_same($disabled_before, $meza_project_sync_test_existing_fields_by_id[109], 'Disabled historical duplicate should remain unchanged.');
+    meza_project_sync_test_assert_same($current_version, get_option(meza_get_default_editable_field_group_fields_sync_option_name(), ''), 'Default sync option should record once the active canonical tree is complete.');
 });
 
 meza_project_sync_test_case('managed-deleted default-editable definitions remain excluded from fingerprint and sync', function () use ($base_definition): void {

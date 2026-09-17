@@ -2595,44 +2595,127 @@ if (!function_exists('meza_get_default_editable_acf_taxonomy_definitions')) {
 }
 
 if (!function_exists('meza_get_existing_editable_acf_field_group_id')) {
-    function meza_get_existing_editable_acf_field_group_id(array $definition): int
+    function meza_get_acf_field_group_candidate_status(array $field_group): string
     {
-        if (!function_exists('acf_get_field_groups')) {
+        $status = (string) ($field_group['post_status'] ?? '');
+        if ($status !== '') {
+            return $status;
+        }
+
+        $field_group_id = (int) ($field_group['ID'] ?? 0);
+        if ($field_group_id > 0 && function_exists('get_post_status')) {
+            $status = (string) get_post_status($field_group_id);
+            if ($status !== '') {
+                return $status;
+            }
+        }
+
+        if (array_key_exists('active', $field_group) && !$field_group['active']) {
+            return 'acf-disabled';
+        }
+
+        return 'publish';
+    }
+
+    function meza_get_acf_field_group_candidate_status_rank(array $field_group): int
+    {
+        $status = meza_get_acf_field_group_candidate_status($field_group);
+
+        if ($status === 'publish') {
             return 0;
         }
 
-        $filters = function_exists('acf_disable_filters') ? acf_disable_filters() : null;
-        $field_groups = (array) acf_get_field_groups();
-        if (function_exists('acf_enable_filters')) {
-            acf_enable_filters($filters ?? []);
+        if ($status === 'acf-disabled') {
+            return 1;
         }
 
+        if ($status === 'trash') {
+            return 2;
+        }
+
+        return 3;
+    }
+
+    function meza_sort_acf_field_group_candidates(array $field_groups): array
+    {
+        $field_groups = array_values(array_filter($field_groups, 'is_array'));
+
+        usort($field_groups, static function (array $a, array $b): int {
+            $status_rank = meza_get_acf_field_group_candidate_status_rank($a)
+                <=> meza_get_acf_field_group_candidate_status_rank($b);
+            if ($status_rank !== 0) {
+                return $status_rank;
+            }
+
+            $menu_order = (int) ($a['menu_order'] ?? 0) <=> (int) ($b['menu_order'] ?? 0);
+            if ($menu_order !== 0) {
+                return $menu_order;
+            }
+
+            $title = strcmp((string) ($a['title'] ?? ''), (string) ($b['title'] ?? ''));
+            if ($title !== 0) {
+                return $title;
+            }
+
+            return (int) ($a['ID'] ?? 0) <=> (int) ($b['ID'] ?? 0);
+        });
+
+        return $field_groups;
+    }
+
+    function meza_get_matching_acf_field_group_candidates(array $definition, array $field_groups): array
+    {
         $target_key = (string) ($definition['key'] ?? '');
         $target_title = trim((string) ($definition['title'] ?? ''));
 
+        $key_matches = [];
         foreach ($field_groups as $field_group) {
             if (!is_array($field_group)) {
                 continue;
             }
 
             if ($target_key !== '' && (string) ($field_group['key'] ?? '') === $target_key) {
-                $field_group_id = (int) ($field_group['ID'] ?? 0);
-                if ($field_group_id > 0) {
-                    return $field_group_id;
-                }
+                $key_matches[] = $field_group;
             }
         }
 
+        if ($key_matches !== []) {
+            return meza_sort_acf_field_group_candidates($key_matches);
+        }
+
+        $title_matches = [];
         foreach ($field_groups as $field_group) {
             if (!is_array($field_group)) {
                 continue;
             }
 
             if ($target_title !== '' && trim((string) ($field_group['title'] ?? '')) === $target_title) {
-                $field_group_id = (int) ($field_group['ID'] ?? 0);
-                if ($field_group_id > 0) {
-                    return $field_group_id;
-                }
+                $title_matches[] = $field_group;
+            }
+        }
+
+        return meza_sort_acf_field_group_candidates($title_matches);
+    }
+
+    function meza_get_canonical_acf_field_group_candidate(array $definition, array $field_groups): array
+    {
+        $matches = meza_get_matching_acf_field_group_candidates($definition, $field_groups);
+
+        return $matches[0] ?? [];
+    }
+
+    function meza_get_existing_editable_acf_field_group_id(array $definition): int
+    {
+        if (function_exists('acf_get_field_groups')) {
+            $filters = function_exists('acf_disable_filters') ? acf_disable_filters() : null;
+            $field_group = meza_get_canonical_acf_field_group_candidate($definition, (array) acf_get_field_groups());
+            if (function_exists('acf_enable_filters')) {
+                acf_enable_filters($filters ?? []);
+            }
+
+            $field_group_id = (int) ($field_group['ID'] ?? 0);
+            if ($field_group_id > 0) {
+                return $field_group_id;
             }
         }
 
@@ -2640,27 +2723,9 @@ if (!function_exists('meza_get_existing_editable_acf_field_group_id')) {
             return 0;
         }
 
-        foreach ((array) acf_get_raw_field_groups() as $field_group) {
-            if (!is_array($field_group)) {
-                continue;
-            }
+        $field_group = meza_get_canonical_acf_field_group_candidate($definition, (array) acf_get_raw_field_groups());
 
-            if ($target_key !== '' && (string) ($field_group['key'] ?? '') === $target_key) {
-                return (int) ($field_group['ID'] ?? 0);
-            }
-        }
-
-        foreach ((array) acf_get_raw_field_groups() as $field_group) {
-            if (!is_array($field_group)) {
-                continue;
-            }
-
-            if ($target_title !== '' && trim((string) ($field_group['title'] ?? '')) === $target_title) {
-                return (int) ($field_group['ID'] ?? 0);
-            }
-        }
-
-        return 0;
+        return (int) ($field_group['ID'] ?? 0);
     }
 }
 
@@ -2839,10 +2904,9 @@ if (!function_exists('meza_delete_editable_acf_field_group_definition')) {
 
     function meza_get_raw_editable_acf_field_group(array $definition): array
     {
-        $target_key = (string) ($definition['key'] ?? '');
-        if ($target_key !== '' && function_exists('acf_get_raw_internal_post_type')) {
-            $field_group = acf_get_raw_internal_post_type($target_key, 'acf-field-group');
-            if (is_array($field_group)) {
+        if (function_exists('acf_get_raw_field_groups')) {
+            $field_group = meza_get_canonical_acf_field_group_candidate($definition, (array) acf_get_raw_field_groups());
+            if ($field_group !== []) {
                 return $field_group;
             }
         }
@@ -2864,6 +2928,7 @@ if (!function_exists('meza_delete_editable_acf_field_group_definition')) {
             'update_post_term_cache' => false,
         ]);
 
+        $field_groups = [];
         foreach ($posts as $post) {
             if (!($post instanceof WP_Post) || trim((string) $post->post_title) !== $target_title) {
                 continue;
@@ -2875,11 +2940,12 @@ if (!function_exists('meza_delete_editable_acf_field_group_definition')) {
 
             $field_group = acf_get_raw_internal_post_type((int) $post->ID, 'acf-field-group');
             if (is_array($field_group)) {
-                return $field_group;
+                $field_group['post_status'] = (string) $post->post_status;
+                $field_groups[] = $field_group;
             }
         }
 
-        return [];
+        return meza_get_canonical_acf_field_group_candidate($definition, $field_groups);
     }
 
     function meza_get_trashed_editable_acf_field_group_id(array $definition): int
@@ -3091,36 +3157,7 @@ if (!function_exists('meza_get_acf_field_group_order_migration_version')) {
             return [];
         }
 
-        $target_key = (string) ($definition['key'] ?? '');
-        $target_title = trim((string) ($definition['title'] ?? ''));
-        $raw_field_groups = array_values(array_filter((array) acf_get_raw_field_groups(), 'is_array'));
-
-        $matches = [];
-        foreach ($raw_field_groups as $field_group) {
-            if ($target_key === '' || (string) ($field_group['key'] ?? '') !== $target_key) {
-                continue;
-            }
-
-            $matches[] = $field_group;
-        }
-
-        if ($matches !== []) {
-            return $matches;
-        }
-
-        if ($target_title === '') {
-            return [];
-        }
-
-        foreach ($raw_field_groups as $field_group) {
-            if (trim((string) ($field_group['title'] ?? '')) !== $target_title) {
-                continue;
-            }
-
-            $matches[] = $field_group;
-        }
-
-        return $matches;
+        return meza_get_matching_acf_field_group_candidates($definition, (array) acf_get_raw_field_groups());
     }
 
     function meza_raw_acf_field_group_has_fields(array $field_group): bool
