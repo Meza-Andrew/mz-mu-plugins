@@ -1178,14 +1178,10 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
 add_action('acf/init', 'meza_sync_shared_project_field_group_fields', 24);
 
 if (!function_exists('meza_sync_default_editable_field_group_fields')) {
-    function meza_get_default_editable_field_group_fields_sync_definitions(): array
+    function meza_get_default_editable_field_group_fields_sync_filtered_definitions(array $definitions): array
     {
-        if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
-            return [];
-        }
-
-        $definitions = [];
-        foreach ((array) meza_get_default_editable_acf_field_group_definitions() as $definition) {
+        $filtered = [];
+        foreach ($definitions as $definition) {
             if (!is_array($definition)) {
                 continue;
             }
@@ -1197,10 +1193,127 @@ if (!function_exists('meza_sync_default_editable_field_group_fields')) {
                 continue;
             }
 
-            $definitions[] = $definition;
+            $filtered[] = $definition;
         }
 
-        return $definitions;
+        return $filtered;
+    }
+
+    function meza_get_default_editable_field_group_fields_sync_base_definitions(): array
+    {
+        if (!function_exists('meza_get_base_default_editable_acf_field_group_definitions')) {
+            return [];
+        }
+
+        return meza_get_default_editable_field_group_fields_sync_filtered_definitions(
+            (array) meza_get_base_default_editable_acf_field_group_definitions()
+        );
+    }
+
+    function meza_get_default_editable_field_group_fields_sync_effective_definitions(): array
+    {
+        if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
+            return [];
+        }
+
+        return meza_get_default_editable_field_group_fields_sync_filtered_definitions(
+            (array) meza_get_default_editable_acf_field_group_definitions()
+        );
+    }
+
+    function meza_get_default_editable_field_group_fields_sync_identity(array $definition, bool $prefer_title = false): string
+    {
+        $key = (string) ($definition['key'] ?? '');
+        if (!$prefer_title && $key !== '') {
+            return 'key:' . $key;
+        }
+
+        $title = trim((string) ($definition['title'] ?? ''));
+        if ($title !== '') {
+            return 'title:' . $title;
+        }
+
+        return $key !== '' ? 'key:' . $key : '';
+    }
+
+    function meza_index_default_editable_field_group_fields_sync_base_definitions(array $definitions): array
+    {
+        $index = [
+            'key' => [],
+            'title' => [],
+        ];
+
+        foreach ($definitions as $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            $key_identity = meza_get_default_editable_field_group_fields_sync_identity($definition);
+            if ($key_identity !== '') {
+                $index['key'][$key_identity] = $definition;
+            }
+
+            $title_identity = meza_get_default_editable_field_group_fields_sync_identity($definition, true);
+            if ($title_identity !== '') {
+                $index['title'][$title_identity] = $definition;
+            }
+        }
+
+        return $index;
+    }
+
+    function meza_get_matching_default_editable_field_group_fields_sync_base_definition(array $effective_definition, array $base_index): array
+    {
+        $key_identity = meza_get_default_editable_field_group_fields_sync_identity($effective_definition);
+        if ($key_identity !== '' && isset($base_index['key'][$key_identity])) {
+            return $base_index['key'][$key_identity];
+        }
+
+        $title_identity = meza_get_default_editable_field_group_fields_sync_identity($effective_definition, true);
+        if ($title_identity !== '' && isset($base_index['title'][$title_identity])) {
+            return $base_index['title'][$title_identity];
+        }
+
+        return [];
+    }
+
+    function meza_get_default_editable_field_group_fields_sync_field_tree_signature(array $definition): array
+    {
+        $fields = isset($definition['fields']) && is_array($definition['fields'])
+            ? array_values($definition['fields'])
+            : [];
+
+        return meza_normalize_shared_project_field_group_sync_fingerprint_value($fields);
+    }
+
+    function meza_default_editable_field_group_fields_sync_field_trees_differ(array $base_definition, array $effective_definition): bool
+    {
+        return meza_get_default_editable_field_group_fields_sync_field_tree_signature($base_definition)
+            !== meza_get_default_editable_field_group_fields_sync_field_tree_signature($effective_definition);
+    }
+
+    function meza_get_default_editable_field_group_fields_sync_definitions(): array
+    {
+        $base_definitions = meza_get_default_editable_field_group_fields_sync_base_definitions();
+        $effective_definitions = meza_get_default_editable_field_group_fields_sync_effective_definitions();
+        $base_index = meza_index_default_editable_field_group_fields_sync_base_definitions($base_definitions);
+
+        $changed_definitions = [];
+        foreach ($effective_definitions as $effective_definition) {
+            $base_definition = meza_get_matching_default_editable_field_group_fields_sync_base_definition(
+                $effective_definition,
+                $base_index
+            );
+
+            if (
+                $base_definition === []
+                || meza_default_editable_field_group_fields_sync_field_trees_differ($base_definition, $effective_definition)
+            ) {
+                $changed_definitions[] = $effective_definition;
+            }
+        }
+
+        return $changed_definitions;
     }
 
     function meza_get_default_editable_field_group_fields_sync_version($definitions = null): string

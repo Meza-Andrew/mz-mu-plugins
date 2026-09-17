@@ -1440,9 +1440,10 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
         return meza_get_ecommerce_editable_acf_field_group_definitions();
     }
 
-    function meza_get_default_editable_acf_field_group_definitions(): array
-    {
-        $definitions = [
+    if (!function_exists('meza_get_base_default_editable_acf_field_group_definitions')) {
+        function meza_get_base_default_editable_acf_field_group_definitions(): array
+        {
+            $definitions = [
             meza_get_content_section_field_group_definition(),
             [
                 'key' => 'group_meza_list_profiles_section',
@@ -2583,7 +2584,15 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
             $definitions[$index] = meza_normalize_header_section_group($definition);
         }
 
-        return meza_apply_shared_project_default_acf_field_group_definition_filters($definitions);
+            return $definitions;
+        }
+    }
+
+    function meza_get_default_editable_acf_field_group_definitions(): array
+    {
+        return meza_apply_shared_project_default_acf_field_group_definition_filters(
+            meza_get_base_default_editable_acf_field_group_definitions()
+        );
     }
 }
 
