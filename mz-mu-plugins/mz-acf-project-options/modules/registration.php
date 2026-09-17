@@ -1290,20 +1290,40 @@ if (!function_exists('meza_sync_section_field_group_menu_order')) {
 }
 add_action('acf/init', 'meza_sync_section_field_group_menu_order', 23);
 
-if (!function_exists('meza_dedupe_list_localities_section_field_group')) {
-    function meza_dedupe_list_localities_section_field_group_option_name(): string
+if (!function_exists('meza_dedupe_managed_acf_field_groups')) {
+    function meza_get_managed_acf_field_group_dedupe_option_name(): string
     {
-        return 'meza_list_localities_section_field_group_dedupe_version';
+        return 'meza_managed_acf_field_group_dedupe_version';
     }
 
-    function meza_dedupe_list_localities_section_field_group(): void
+    function meza_get_managed_acf_field_group_dedupe_version(): string
     {
-        $version = '2026-09-15-arsenal-localities-dedupe-v1';
-        if ((string) get_option(meza_dedupe_list_localities_section_field_group_option_name(), '') === $version) {
+        return '2026-09-17-shared-managed-acf-field-group-dedupe-v1';
+    }
+
+    function meza_get_managed_acf_field_group_dedupe_specs(): array
+    {
+        return [
+            [
+                'post_name' => 'group_9f5b5c9a',
+                'title' => 'List Localities Section',
+            ],
+        ];
+    }
+
+    function meza_dedupe_managed_acf_field_group(array $spec): void
+    {
+        $post_name = sanitize_key((string) ($spec['post_name'] ?? ''));
+        $title = trim((string) ($spec['title'] ?? ''));
+
+        if ($post_name === '' || $title === '') {
             return;
         }
 
-        $groups = get_posts([
+        $active_group_id = 0;
+        $duplicate_group_ids = [];
+
+        foreach ((array) get_posts([
             'post_type' => 'acf-field-group',
             'post_status' => ['publish', 'acf-disabled'],
             'posts_per_page' => -1,
@@ -1311,20 +1331,15 @@ if (!function_exists('meza_dedupe_list_localities_section_field_group')) {
             'order' => 'ASC',
             'fields' => 'ids',
             'no_found_rows' => true,
-            'name' => 'group_9f5b5c9a',
-        ]);
-
-        $active_group_id = 0;
-        $duplicate_group_ids = [];
-
-        foreach ((array) $groups as $group_id) {
+            'name' => $post_name,
+        ]) as $group_id) {
             $group_id = (int) $group_id;
             $group = get_post($group_id);
             if (!$group instanceof WP_Post) {
                 continue;
             }
 
-            if ((string) $group->post_title !== 'List Localities Section') {
+            if ((string) $group->post_title !== $title) {
                 continue;
             }
 
@@ -1337,16 +1352,40 @@ if (!function_exists('meza_dedupe_list_localities_section_field_group')) {
         }
 
         foreach ($duplicate_group_ids as $duplicate_group_id) {
+            $duplicate_group = get_post((int) $duplicate_group_id);
+            if (
+                $duplicate_group instanceof WP_Post
+                && (string) $duplicate_group->post_status === 'acf-disabled'
+            ) {
+                continue;
+            }
+
             wp_update_post([
                 'ID' => (int) $duplicate_group_id,
                 'post_status' => 'acf-disabled',
             ]);
         }
+    }
 
-        update_option(meza_dedupe_list_localities_section_field_group_option_name(), $version, false);
+    function meza_dedupe_managed_acf_field_groups(): void
+    {
+        $version = meza_get_managed_acf_field_group_dedupe_version();
+        if ((string) get_option(meza_get_managed_acf_field_group_dedupe_option_name(), '') === $version) {
+            return;
+        }
+
+        foreach (meza_get_managed_acf_field_group_dedupe_specs() as $spec) {
+            if (!is_array($spec)) {
+                continue;
+            }
+
+            meza_dedupe_managed_acf_field_group($spec);
+        }
+
+        update_option(meza_get_managed_acf_field_group_dedupe_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_dedupe_list_localities_section_field_group', 25);
+add_action('acf/init', 'meza_dedupe_managed_acf_field_groups', 25);
 
 add_action('acf/init', 'meza_seed_default_organization_type_terms', 25);
 add_action('acf/update_post_type', 'meza_attach_locality_to_new_custom_acf_post_type', 20);
