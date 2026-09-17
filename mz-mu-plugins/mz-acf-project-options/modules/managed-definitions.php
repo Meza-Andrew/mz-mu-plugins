@@ -264,7 +264,7 @@ if (!function_exists('meza_should_seed_default_acf_field_groups')) {
 if (!function_exists('meza_should_ignore_managed_acf_deletions')) {
     function meza_should_ignore_managed_acf_deletions(): bool
     {
-        return meza_should_seed_default_acf_field_groups();
+        return false;
     }
 }
 
