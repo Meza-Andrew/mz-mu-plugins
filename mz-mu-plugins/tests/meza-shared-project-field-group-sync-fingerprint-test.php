@@ -160,6 +160,155 @@ function get_post_status($post_id): string
     return (string) ($meza_project_sync_test_field_groups_by_id[(int) $post_id]['post_status'] ?? 'publish');
 }
 
+function meza_project_sync_test_field_without_descendants(array $field): array
+{
+    unset($field['sub_fields']);
+
+    if (isset($field['layouts']) && is_array($field['layouts'])) {
+        foreach ($field['layouts'] as $layout_index => $layout) {
+            if (!is_array($layout)) {
+                continue;
+            }
+
+            unset($layout['sub_fields']);
+            $field['layouts'][$layout_index] = $layout;
+        }
+    }
+
+    return $field;
+}
+
+function meza_project_sync_test_upsert_field(array $fields, array $field): array
+{
+    $field_key = (string) ($field['key'] ?? '');
+    $did_replace = false;
+
+    foreach ($fields as $index => $existing_field) {
+        if (!is_array($existing_field) || (string) ($existing_field['key'] ?? '') !== $field_key) {
+            continue;
+        }
+
+        $updated_field = meza_project_sync_test_field_without_descendants($field)
+            + array_intersect_key($existing_field, ['sub_fields' => true]);
+
+        if (isset($updated_field['layouts']) && is_array($updated_field['layouts'])) {
+            $existing_layouts_by_key = [];
+            foreach ((array) ($existing_field['layouts'] ?? []) as $existing_layout) {
+                if (!is_array($existing_layout)) {
+                    continue;
+                }
+
+                $layout_key = (string) ($existing_layout['key'] ?? '');
+                if ($layout_key !== '') {
+                    $existing_layouts_by_key[$layout_key] = $existing_layout;
+                    continue;
+                }
+
+                $layout_name = (string) ($existing_layout['name'] ?? '');
+                if ($layout_name !== '') {
+                    $existing_layouts_by_key['name:' . $layout_name] = $existing_layout;
+                }
+            }
+
+            foreach ($updated_field['layouts'] as $layout_index => $layout) {
+                if (!is_array($layout)) {
+                    continue;
+                }
+
+                $layout_key = (string) ($layout['key'] ?? '');
+                if ($layout_key === '') {
+                    $layout_name = (string) ($layout['name'] ?? '');
+                    $layout_key = $layout_name !== '' ? 'name:' . $layout_name : '';
+                }
+
+                if ($layout_key !== '' && isset($existing_layouts_by_key[$layout_key]['sub_fields'])) {
+                    $layout['sub_fields'] = $existing_layouts_by_key[$layout_key]['sub_fields'];
+                    $updated_field['layouts'][$layout_index] = $layout;
+                }
+            }
+        }
+
+        $fields[$index] = $updated_field;
+        $did_replace = true;
+        break;
+    }
+
+    if (!$did_replace) {
+        $fields[] = meza_project_sync_test_field_without_descendants($field);
+    }
+
+    return array_values($fields);
+}
+
+function meza_project_sync_test_upsert_field_under_parent(array $fields, string $parent_key, array $field, bool &$did_update): array
+{
+    foreach ($fields as $index => $existing_field) {
+        if (!is_array($existing_field)) {
+            continue;
+        }
+
+        if ((string) ($existing_field['key'] ?? '') === $parent_key) {
+            $existing_field['sub_fields'] = meza_project_sync_test_upsert_field(
+                (array) ($existing_field['sub_fields'] ?? []),
+                $field
+            );
+            $fields[$index] = $existing_field;
+            $did_update = true;
+            return $fields;
+        }
+
+        if (isset($existing_field['sub_fields']) && is_array($existing_field['sub_fields'])) {
+            $existing_field['sub_fields'] = meza_project_sync_test_upsert_field_under_parent(
+                $existing_field['sub_fields'],
+                $parent_key,
+                $field,
+                $did_update
+            );
+            if ($did_update) {
+                $fields[$index] = $existing_field;
+                return $fields;
+            }
+        }
+
+        if (!isset($existing_field['layouts']) || !is_array($existing_field['layouts'])) {
+            continue;
+        }
+
+        foreach ($existing_field['layouts'] as $layout_index => $layout) {
+            if (!is_array($layout)) {
+                continue;
+            }
+
+            if ((string) ($layout['key'] ?? '') === $parent_key) {
+                $layout['sub_fields'] = meza_project_sync_test_upsert_field(
+                    (array) ($layout['sub_fields'] ?? []),
+                    $field
+                );
+                $existing_field['layouts'][$layout_index] = $layout;
+                $fields[$index] = $existing_field;
+                $did_update = true;
+                return $fields;
+            }
+
+            if (isset($layout['sub_fields']) && is_array($layout['sub_fields'])) {
+                $layout['sub_fields'] = meza_project_sync_test_upsert_field_under_parent(
+                    $layout['sub_fields'],
+                    $parent_key,
+                    $field,
+                    $did_update
+                );
+                if ($did_update) {
+                    $existing_field['layouts'][$layout_index] = $layout;
+                    $fields[$index] = $existing_field;
+                    return $fields;
+                }
+            }
+        }
+    }
+
+    return $fields;
+}
+
 function acf_update_field(array $field): void
 {
     global $meza_project_sync_test_updated_fields,
@@ -178,22 +327,19 @@ function acf_update_field(array $field): void
             continue;
         }
 
-        $field_key = (string) ($field['key'] ?? '');
         $fields = $meza_project_sync_test_existing_fields_by_id[(int) $field_group_id] ?? [];
-        $did_replace = false;
+        $meza_project_sync_test_existing_fields_by_id[(int) $field_group_id] = meza_project_sync_test_upsert_field(
+            $fields,
+            $field
+        );
+        return;
+    }
 
-        foreach ($fields as $index => $existing_field) {
-            if (!is_array($existing_field) || (string) ($existing_field['key'] ?? '') !== $field_key) {
-                continue;
-            }
-
-            $fields[$index] = $field;
-            $did_replace = true;
-            break;
-        }
-
-        if (!$did_replace) {
-            $fields[] = $field;
+    foreach ($meza_project_sync_test_existing_fields_by_id as $field_group_id => $fields) {
+        $did_update = false;
+        $fields = meza_project_sync_test_upsert_field_under_parent($fields, $parent_key, $field, $did_update);
+        if (!$did_update) {
+            continue;
         }
 
         $meza_project_sync_test_existing_fields_by_id[(int) $field_group_id] = $fields;
@@ -285,6 +431,24 @@ function meza_project_sync_test_repeater_field(array $sub_fields): array
     ];
 }
 
+function meza_project_sync_test_flexible_field(array $layout_sub_fields): array
+{
+    return [
+        'key' => 'field_project_flexible',
+        'name' => 'project_flexible',
+        'label' => 'Project Flexible',
+        'type' => 'flexible_content',
+        'layouts' => [
+            [
+                'key' => 'layout_project_feature',
+                'name' => 'feature',
+                'label' => 'Feature',
+                'sub_fields' => $layout_sub_fields,
+            ],
+        ],
+    ];
+}
+
 function meza_project_sync_test_with_parents(array $fields, string $parent_key): array
 {
     foreach ($fields as $index => $field) {
@@ -293,11 +457,30 @@ function meza_project_sync_test_with_parents(array $fields, string $parent_key):
         }
 
         $field['parent'] = $parent_key;
+        $field['menu_order'] = (int) $index;
         if (isset($field['sub_fields']) && is_array($field['sub_fields'])) {
             $field['sub_fields'] = meza_project_sync_test_with_parents(
                 array_values($field['sub_fields']),
                 (string) ($field['key'] ?? $parent_key)
             );
+        }
+
+        if (isset($field['layouts']) && is_array($field['layouts'])) {
+            foreach ($field['layouts'] as $layout_index => $layout) {
+                if (!is_array($layout)) {
+                    continue;
+                }
+
+                $layout['parent'] = (string) ($field['key'] ?? $parent_key);
+                if (isset($layout['sub_fields']) && is_array($layout['sub_fields'])) {
+                    $layout['sub_fields'] = meza_project_sync_test_with_parents(
+                        array_values($layout['sub_fields']),
+                        (string) ($layout['key'] ?? ($field['key'] ?? $parent_key))
+                    );
+                }
+
+                $field['layouts'][$layout_index] = $layout;
+            }
         }
 
         $fields[$index] = $field;
@@ -320,6 +503,52 @@ function meza_project_sync_test_seed_complete_db_fields(array $definition): void
         array_values((array) ($definition['fields'] ?? [])),
         $group_key
     );
+}
+
+function meza_project_sync_test_updated_field_keys(): array
+{
+    global $meza_project_sync_test_updated_fields;
+
+    return array_values(array_map(
+        static fn(array $field): string => (string) ($field['key'] ?? ''),
+        $meza_project_sync_test_updated_fields
+    ));
+}
+
+function meza_project_sync_test_find_field_path(array $fields, array $path): ?array
+{
+    if ($path === []) {
+        return null;
+    }
+
+    $name = array_shift($path);
+    foreach ($fields as $field) {
+        if (!is_array($field) || (string) ($field['name'] ?? '') !== $name) {
+            continue;
+        }
+
+        if ($path === []) {
+            return $field;
+        }
+
+        $nested = meza_project_sync_test_find_field_path((array) ($field['sub_fields'] ?? []), $path);
+        if (is_array($nested)) {
+            return $nested;
+        }
+
+        foreach ((array) ($field['layouts'] ?? []) as $layout) {
+            if (!is_array($layout)) {
+                continue;
+            }
+
+            $nested = meza_project_sync_test_find_field_path((array) ($layout['sub_fields'] ?? []), $path);
+            if (is_array($nested)) {
+                return $nested;
+            }
+        }
+    }
+
+    return null;
 }
 
 function meza_project_sync_test_reset(array $definitions, array $deleted_keys = [], array $existing_fields_by_group_key = [], array $default_definitions = []): void
@@ -389,6 +618,12 @@ $base_nested_definition = meza_project_sync_test_field_group('group_project_nest
 $unrelated_default_definition = meza_project_sync_test_field_group('group_project_unrelated', [
     meza_project_sync_test_text_field('field_project_unrelated_title', 'title', 'Title'),
 ]);
+$flexible_definition = meza_project_sync_test_field_group('group_project_flexible', [
+    meza_project_sync_test_flexible_field([
+        meza_project_sync_test_text_field('field_project_feature_title', 'title', 'Title'),
+        meza_project_sync_test_text_field('field_project_feature_summary', 'summary', 'Summary'),
+    ]),
+]);
 
 meza_project_sync_test_case('same effective definition set does not repeat sync', function () use ($base_definition): void {
     global $meza_project_sync_test_updated_fields;
@@ -428,7 +663,11 @@ meza_project_sync_test_case('changed nested project field definition changes ver
     meza_sync_shared_project_field_group_fields();
 
     meza_project_sync_test_assert($changed_version !== $base_version, 'A nested field extension should change the fingerprinted version.');
-    meza_project_sync_test_assert_same(1, count($meza_project_sync_test_updated_fields), 'The changed definition should synchronize its missing field tree once.');
+    meza_project_sync_test_assert_same(
+        ['field_project_repeater', 'field_project_metric_label'],
+        meza_project_sync_test_updated_field_keys(),
+        'The changed definition should synchronize the parent field and its missing nested child once.'
+    );
 
     $meza_project_sync_test_updated_fields = [];
     meza_sync_shared_project_field_group_fields();
@@ -450,7 +689,11 @@ meza_project_sync_test_case('current fingerprint with missing nested field trigg
 
     meza_sync_shared_project_field_group_fields();
 
-    meza_project_sync_test_assert_same(['field_project_repeater'], array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields), 'Current fingerprint must not mask an incomplete nested tree.');
+    meza_project_sync_test_assert_same(
+        ['field_project_repeater', 'field_project_metric_label'],
+        meza_project_sync_test_updated_field_keys(),
+        'Current fingerprint must not mask an incomplete nested tree.'
+    );
     meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'Normal ACF sync should reconcile the missing nested field tree.');
     meza_project_sync_test_assert_same($current_version, get_option(meza_get_shared_project_field_group_fields_sync_option_name(), ''), 'Current fingerprint remains recorded after the tree is complete.');
 });
@@ -465,14 +708,38 @@ meza_project_sync_test_case('db-backed group missing nested metrics value label 
     ]);
 
     meza_sync_shared_project_field_group_fields();
-    $updated_field = $meza_project_sync_test_updated_fields[0] ?? [];
-    $sub_field_keys = array_map(
-        static fn(array $field): string => (string) ($field['key'] ?? ''),
-        (array) ($updated_field['sub_fields'] ?? [])
+    meza_project_sync_test_assert_same(
+        ['field_project_repeater', 'field_project_metric_value', 'field_project_metric_label'],
+        meza_project_sync_test_updated_field_keys(),
+        'Missing nested value/label fields should be written as explicit child rows after their parent.'
+    );
+    meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'The reconciled nested metrics field tree should be complete.');
+});
+
+meza_project_sync_test_case('flexible layout descendants are reconciled recursively', function () use ($flexible_definition): void {
+    global $meza_project_sync_test_existing_fields_by_id;
+
+    meza_project_sync_test_reset([$flexible_definition], [], [
+        'group_project_flexible' => meza_project_sync_test_with_parents([
+            meza_project_sync_test_flexible_field([
+                meza_project_sync_test_text_field('field_project_feature_title', 'title', 'Title'),
+            ]),
+        ], 'group_project_flexible'),
+    ]);
+
+    meza_sync_shared_project_field_group_fields();
+
+    meza_project_sync_test_assert_same(
+        ['field_project_flexible', 'field_project_feature_summary'],
+        meza_project_sync_test_updated_field_keys(),
+        'Missing flexible layout descendants should be written parent-first.'
     );
 
-    meza_project_sync_test_assert_same(['field_project_metric_value', 'field_project_metric_label'], $sub_field_keys, 'Missing nested value/label fields should be written through the parent field tree.');
-    meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'The reconciled nested metrics field tree should be complete.');
+    $fields = $meza_project_sync_test_existing_fields_by_id[101] ?? [];
+    $summary = meza_project_sync_test_find_field_path($fields, ['project_flexible', 'summary']);
+    meza_project_sync_test_assert_same('layout_project_feature', (string) ($summary['parent'] ?? ''), 'Flexible layout child should be parented to the layout key.');
+    meza_project_sync_test_assert_same(1, (int) ($summary['menu_order'] ?? -1), 'Flexible layout child should use the expected menu order.');
+    meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$flexible_definition]), 'The reconciled flexible layout tree should be complete.');
 });
 
 meza_project_sync_test_case('current fingerprint with complete tree skips repeat sync', function () use ($nested_definition): void {
@@ -512,7 +779,11 @@ meza_project_sync_test_case('duplicate disabled same-key record cannot satisfy a
 
     meza_sync_shared_project_field_group_fields();
 
-    meza_project_sync_test_assert_same(['field_project_repeater'], array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields), 'A complete disabled duplicate must not satisfy active DB tree completeness.');
+    meza_project_sync_test_assert_same(
+        ['field_project_repeater', 'field_project_metric_value', 'field_project_metric_label'],
+        meza_project_sync_test_updated_field_keys(),
+        'A complete disabled duplicate must not satisfy active DB tree completeness.'
+    );
     meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'The active same-key record should be reconciled.');
 });
 
@@ -528,7 +799,11 @@ meza_project_sync_test_case('mis-parented nested field triggers sync', function 
 
     meza_sync_shared_project_field_group_fields();
 
-    meza_project_sync_test_assert_same(['field_project_repeater'], array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields), 'A mis-parented nested field should force reconciliation.');
+    meza_project_sync_test_assert_same(
+        ['field_project_repeater', 'field_project_metric_value'],
+        meza_project_sync_test_updated_field_keys(),
+        'A mis-parented nested field should force reconciliation.'
+    );
     meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'Reconciliation should restore intended parent-key paths.');
 });
 
@@ -557,9 +832,7 @@ meza_project_sync_test_case('managed-deleted definitions remain excluded from fi
     meza_project_sync_test_assert_same([$base_definition], $effective_definitions, 'Deleted field-group definitions should be excluded from the effective sync set.');
 
     meza_sync_shared_project_field_group_fields();
-    $updated_keys = array_values(array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields));
-
-    meza_project_sync_test_assert_same(['field_project_title'], $updated_keys, 'Sync should not update fields from managed-deleted definitions.');
+    meza_project_sync_test_assert_same(['field_project_title'], meza_project_sync_test_updated_field_keys(), 'Sync should not update fields from managed-deleted definitions.');
 });
 
 meza_project_sync_test_case('default-extension sync scopes nested changes to active canonical record', function () use ($base_nested_definition, $nested_definition, $unrelated_default_definition): void {
@@ -613,15 +886,25 @@ meza_project_sync_test_case('default-extension sync scopes nested changes to act
     meza_sync_default_editable_field_group_fields();
 
     meza_project_sync_test_assert_same(
-        ['field_project_repeater'],
-        array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields),
+        ['field_project_repeater', 'field_project_metric_label'],
+        meza_project_sync_test_updated_field_keys(),
         'Default-extension sync should reconcile only the extended active canonical record.'
     );
     meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'The active canonical record should become complete.');
+    $active_fields = $meza_project_sync_test_existing_fields_by_id[101] ?? [];
+    $value_field = meza_project_sync_test_find_field_path($active_fields, ['project_repeater', 'value']);
+    $label_field = meza_project_sync_test_find_field_path($active_fields, ['project_repeater', 'label']);
+    meza_project_sync_test_assert_same('field_project_repeater', (string) ($value_field['parent'] ?? ''), 'Existing nested value field should keep the intended parent key.');
+    meza_project_sync_test_assert_same(0, (int) ($value_field['menu_order'] ?? -1), 'Existing nested value field should keep menu order 0.');
+    meza_project_sync_test_assert_same('field_project_repeater', (string) ($label_field['parent'] ?? ''), 'New nested label field should be inserted under the repeater parent key.');
+    meza_project_sync_test_assert_same(1, (int) ($label_field['menu_order'] ?? -1), 'New nested label field should be inserted with menu order 1.');
     meza_project_sync_test_assert_same($disabled_before, $meza_project_sync_test_existing_fields_by_id[109], 'Disabled historical duplicate should remain unchanged.');
     meza_project_sync_test_assert_same($field_group_count_before, count($meza_project_sync_test_field_groups_by_id), 'Default-extension sync should not seed a third field group.');
     meza_project_sync_test_assert(!meza_shared_project_field_group_definition_trees_are_complete([$unrelated_default_definition]), 'Unrelated incomplete default groups should remain outside the scoped sync gate.');
     meza_project_sync_test_assert_same(meza_get_default_editable_field_group_fields_sync_version(), get_option(meza_get_default_editable_field_group_fields_sync_option_name(), ''), 'Default-extension sync option should record once scoped active trees are complete.');
+    $meza_project_sync_test_updated_fields = [];
+    meza_sync_default_editable_field_group_fields();
+    meza_project_sync_test_assert_same([], $meza_project_sync_test_updated_fields, 'Completed default-extension sync should not duplicate nested fields on repeat.');
 });
 
 meza_project_sync_test_case('unchanged default-extension set does not broadly reconcile defaults', function () use ($base_nested_definition, $unrelated_default_definition): void {
