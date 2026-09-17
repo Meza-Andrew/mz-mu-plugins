@@ -127,6 +127,7 @@ function wp_update_post(array $postarr)
     return $post_id;
 }
 
+require_once __DIR__ . '/../mz-acf-project-options/modules/managed-definitions.php';
 require_once __DIR__ . '/../mz-acf-project-options/modules/registration.php';
 
 $meza_acf_dedupe_test_posts = [

@@ -57,6 +57,11 @@ function apply_filters(string $hook_name, $value)
     return $value;
 }
 
+function wp_json_encode($data, int $options = 0, int $depth = 512)
+{
+    return json_encode($data, $options, $depth);
+}
+
 function add_action(string $hook_name, callable $callback, int $priority = 10, int $accepted_args = 1): void
 {
     global $meza_test_actions;
@@ -315,6 +320,8 @@ meza_content_model_extension_test('fictional filters register through framework 
 meza_content_model_extension_test('fictional filters register through ACF local internals', function (): void {
     global $meza_test_actions, $meza_acf_local_internal_post_types;
 
+    putenv('MEZA_MANAGED_ACF_SUPPRESS_AUTOMATIC_MUTATIONS=1');
+
     foreach ($meza_test_actions['acf/init'] ?? [] as $callbacks) {
         foreach ($callbacks as $callback) {
             if ($callback instanceof Closure) {
@@ -322,6 +329,8 @@ meza_content_model_extension_test('fictional filters register through ACF local 
             }
         }
     }
+
+    putenv('MEZA_MANAGED_ACF_SUPPRESS_AUTOMATIC_MUTATIONS');
 
     $registered = [];
     foreach ($meza_acf_local_internal_post_types as $record) {

@@ -90,10 +90,10 @@ add_action('acf/init', function (): void {
     }
 }, 15);
 
-add_action('acf/init', 'meza_seed_default_editable_acf_taxonomies', 18);
-add_action('acf/init', 'meza_sync_default_editable_acf_field_group_order_and_names', 19);
-add_action('acf/init', 'meza_repair_empty_default_editable_acf_field_groups', 19);
-add_action('acf/init', 'meza_seed_default_editable_acf_field_groups', 20);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_seed_default_editable_acf_taxonomies', 18);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_default_editable_acf_field_group_order_and_names', 19);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_repair_empty_default_editable_acf_field_groups', 19);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_seed_default_editable_acf_field_groups', 20);
 
 if (!function_exists('meza_remove_legacy_business_information_toggle_field_groups')) {
     function meza_get_legacy_business_information_toggle_field_group_cleanup_version(): string
@@ -178,7 +178,7 @@ if (!function_exists('meza_remove_legacy_business_information_toggle_field_group
         }
     }
 }
-add_action('acf/init', 'meza_remove_legacy_business_information_toggle_field_groups', 21);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_remove_legacy_business_information_toggle_field_groups', 21);
 
 if (!function_exists('meza_sync_hero_section_field_group_locations')) {
     function meza_get_hero_section_field_group_location_sync_version(): string
@@ -223,7 +223,7 @@ if (!function_exists('meza_sync_hero_section_field_group_locations')) {
         update_option(meza_get_hero_section_field_group_location_sync_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_sync_hero_section_field_group_locations', 21);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_hero_section_field_group_locations', 21);
 
 if (!function_exists('meza_sync_list_reviews_section_field_group_locations')) {
     function meza_get_list_reviews_section_field_group_location_sync_version(): string
@@ -268,7 +268,7 @@ if (!function_exists('meza_sync_list_reviews_section_field_group_locations')) {
         update_option(meza_get_list_reviews_section_field_group_location_sync_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_sync_list_reviews_section_field_group_locations', 22);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_list_reviews_section_field_group_locations', 22);
 
 if (!function_exists('meza_get_ecommerce_field_group_definition_by_title')) {
     function meza_get_ecommerce_field_group_definition_by_title(string $title): array
@@ -341,7 +341,7 @@ if (!function_exists('meza_sync_list_products_section_field_group_locations')) {
         update_option(meza_get_list_products_section_field_group_location_sync_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_sync_list_products_section_field_group_locations', 22);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_list_products_section_field_group_locations', 22);
 
 if (!function_exists('meza_sync_list_profiles_section_field_group_fields')) {
     function meza_get_list_profiles_section_field_group_fields_sync_version(): string
@@ -389,7 +389,7 @@ if (!function_exists('meza_sync_list_profiles_section_field_group_fields')) {
         update_option(meza_get_list_profiles_section_field_group_fields_sync_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_sync_list_profiles_section_field_group_fields', 24);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_list_profiles_section_field_group_fields', 24);
 
 if (!function_exists('meza_cleanup_duplicate_list_profiles_group_fields')) {
     function meza_get_duplicate_list_profiles_group_fields_cleanup_version(): string
@@ -499,7 +499,7 @@ if (!function_exists('meza_cleanup_duplicate_list_profiles_group_fields')) {
         update_option(meza_get_duplicate_list_profiles_group_fields_cleanup_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_cleanup_duplicate_list_profiles_group_fields', 23);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_cleanup_duplicate_list_profiles_group_fields', 23);
 
 if (!function_exists('meza_sync_list_profiles_section_secondary_link_subfield_name')) {
     function meza_get_list_profiles_section_secondary_link_subfield_name_sync_version(): string
@@ -577,7 +577,7 @@ if (!function_exists('meza_sync_list_profiles_section_secondary_link_subfield_na
         update_option(meza_get_list_profiles_section_secondary_link_subfield_name_sync_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_sync_list_profiles_section_secondary_link_subfield_name', 24);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_list_profiles_section_secondary_link_subfield_name', 24);
 
 if (!function_exists('meza_get_hidden_default_section_location_titles')) {
     function meza_get_hidden_default_section_location_titles(): array
@@ -694,7 +694,7 @@ if (!function_exists('meza_sync_hidden_default_section_field_group_locations')) 
         update_option(meza_get_hidden_default_section_field_group_location_sync_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_sync_hidden_default_section_field_group_locations', 23);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_hidden_default_section_field_group_locations', 23);
 
 if (!function_exists('meza_remove_cta_section_id_field')) {
     function meza_get_remove_cta_section_id_field_sync_version(): string
@@ -743,7 +743,7 @@ if (!function_exists('meza_remove_cta_section_id_field')) {
         update_option(meza_get_remove_cta_section_id_field_sync_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_remove_cta_section_id_field', 22);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_remove_cta_section_id_field', 22);
 
 if (!function_exists('meza_sync_section_show_field_messages_blank')) {
     function meza_get_section_show_field_messages_blank_sync_version(): string
@@ -805,7 +805,7 @@ if (!function_exists('meza_sync_section_show_field_messages_blank')) {
         update_option(meza_get_section_show_field_messages_blank_sync_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_sync_section_show_field_messages_blank', 23);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_section_show_field_messages_blank', 23);
 
 if (!function_exists('meza_sync_section_group_sub_fields')) {
     function meza_get_section_group_sub_fields_sync_version(): string
@@ -947,7 +947,7 @@ if (!function_exists('meza_sync_section_group_sub_fields')) {
         }
     }
 }
-add_action('acf/init', 'meza_sync_section_group_sub_fields', 24);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_section_group_sub_fields', 24);
 
 if (!function_exists('meza_sync_shared_project_field_group_fields')) {
     function meza_get_shared_project_field_group_fields_sync_mode(): string
@@ -1175,7 +1175,7 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
         }
     }
 }
-add_action('acf/init', 'meza_sync_shared_project_field_group_fields', 24);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_shared_project_field_group_fields', 24);
 
 if (!function_exists('meza_sync_default_editable_field_group_fields')) {
     function meza_get_default_editable_field_group_fields_sync_filtered_definitions(array $definitions): array
@@ -1363,7 +1363,7 @@ if (!function_exists('meza_sync_default_editable_field_group_fields')) {
         }
     }
 }
-add_action('acf/init', 'meza_sync_default_editable_field_group_fields', 24);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_default_editable_field_group_fields', 24);
 
 if (!function_exists('meza_get_shared_project_acf_field_group_definition_by_key')) {
     function meza_get_shared_project_acf_field_group_definition_by_key(string $group_key): array
@@ -1566,7 +1566,7 @@ if (!function_exists('meza_sync_events_options_group_fields')) {
         update_option(meza_get_events_options_group_fields_sync_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_sync_events_options_group_fields', 24);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_events_options_group_fields', 24);
 
 if (!function_exists('meza_register_missing_events_options_local_field')) {
     function meza_register_missing_events_options_local_field(): void
@@ -1712,7 +1712,7 @@ if (!function_exists('meza_sync_section_field_group_menu_order')) {
         }
     }
 }
-add_action('acf/init', 'meza_sync_section_field_group_menu_order', 23);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_sync_section_field_group_menu_order', 23);
 
 if (!function_exists('meza_dedupe_managed_acf_field_groups')) {
     function meza_get_managed_acf_field_group_dedupe_option_name(): string
@@ -1809,14 +1809,14 @@ if (!function_exists('meza_dedupe_managed_acf_field_groups')) {
         update_option(meza_get_managed_acf_field_group_dedupe_option_name(), $version, false);
     }
 }
-add_action('acf/init', 'meza_dedupe_managed_acf_field_groups', 25);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_dedupe_managed_acf_field_groups', 25);
 
-add_action('acf/init', 'meza_seed_default_organization_type_terms', 25);
-add_action('acf/update_post_type', 'meza_attach_locality_to_new_custom_acf_post_type', 20);
-add_action('init', 'meza_migrate_legacy_list_testimonials_meta_once', 29);
-add_action('init', 'meza_sync_list_reviews_reference_values_once', 30);
-add_action('init', 'meza_reset_legacy_section_text_defaults_once', 31);
-add_action('init', 'meza_migrate_certification_url_meta_once', 32);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_seed_default_organization_type_terms', 25);
+meza_add_managed_acf_automatic_mutation_action('acf/update_post_type', 'meza_attach_locality_to_new_custom_acf_post_type', 20);
+meza_add_managed_acf_automatic_mutation_action('init', 'meza_migrate_legacy_list_testimonials_meta_once', 29);
+meza_add_managed_acf_automatic_mutation_action('init', 'meza_sync_list_reviews_reference_values_once', 30);
+meza_add_managed_acf_automatic_mutation_action('init', 'meza_reset_legacy_section_text_defaults_once', 31);
+meza_add_managed_acf_automatic_mutation_action('init', 'meza_migrate_certification_url_meta_once', 32);
 
 if (!function_exists('meza_get_content_model_field_group_management_field_key_map')) {
     function meza_get_content_model_field_group_management_field_key_map(): array
@@ -2600,7 +2600,7 @@ if (!function_exists('meza_get_content_model_field_group_management_field_key_ma
     }
 }
 
-add_action('acf/init', 'meza_cleanup_legacy_content_model_field_group_selection_options', 24);
+meza_add_managed_acf_automatic_mutation_action('acf/init', 'meza_cleanup_legacy_content_model_field_group_selection_options', 24);
 
 add_action('init', static function (): void {
     if (!post_type_exists('profile')) {
@@ -5412,13 +5412,13 @@ if (!function_exists('meza_validate_role_taxonomy_applies_to_value')) {
 add_filter('acf/validate_value/key=field_meza_role_taxonomy_applies_to', 'meza_validate_role_taxonomy_applies_to_value', 10, 2);
 add_filter('acf/validate_value/key=field_meza_service_fa_icon', 'meza_validate_service_icon_choice', 10, 3);
 add_filter('acf/validate_value/key=field_meza_service_icon_image', 'meza_validate_service_icon_choice', 10, 3);
-add_action('acf/save_post', 'meza_sync_content_model_field_group_management_after_save', 19);
-add_action('acf/save_post', 'meza_sync_content_model_object_management_after_save', 19);
-add_action('acf/save_post', 'meza_sync_content_model_taxonomy_term_management_after_save', 19);
-add_action('set_object_terms', 'meza_sync_profile_type_term_ancestors_after_terms_set', 20, 6);
-add_action('set_object_terms', 'meza_enforce_single_role_assignment', 30, 6);
-add_action('init', 'meza_reconcile_content_model_object_management_saved_selection', 28);
-add_action('init', 'meza_repair_content_model_nonprofit_default_taxonomy_hierarchy_caches', 29);
+meza_add_managed_acf_automatic_mutation_action('acf/save_post', 'meza_sync_content_model_field_group_management_after_save', 19);
+meza_add_managed_acf_automatic_mutation_action('acf/save_post', 'meza_sync_content_model_object_management_after_save', 19);
+meza_add_managed_acf_automatic_mutation_action('acf/save_post', 'meza_sync_content_model_taxonomy_term_management_after_save', 19);
+meza_add_managed_acf_automatic_mutation_action('set_object_terms', 'meza_sync_profile_type_term_ancestors_after_terms_set', 20, 6);
+meza_add_managed_acf_automatic_mutation_action('set_object_terms', 'meza_enforce_single_role_assignment', 30, 6);
+meza_add_managed_acf_automatic_mutation_action('init', 'meza_reconcile_content_model_object_management_saved_selection', 28);
+meza_add_managed_acf_automatic_mutation_action('init', 'meza_repair_content_model_nonprofit_default_taxonomy_hierarchy_caches', 29);
 
 add_filter('get_terms_args', static function (array $args, array $taxonomies): array {
     if (
@@ -5494,7 +5494,7 @@ if (!function_exists('meza_refresh_seeded_acf_field_groups_after_business_inform
         meza_seed_default_editable_acf_field_groups();
     }
 }
-add_action('acf/save_post', 'meza_refresh_seeded_acf_field_groups_after_business_information_save', 20);
+meza_add_managed_acf_automatic_mutation_action('acf/save_post', 'meza_refresh_seeded_acf_field_groups_after_business_information_save', 20);
 
 if (!function_exists('meza_field_group_locations_include_event_post_type')) {
     function meza_field_group_locations_include_event_post_type(array $field_group): bool
@@ -6627,7 +6627,7 @@ if (!function_exists('meza_repair_current_season_after_content_meta_on_admin_loa
         meza_migrate_season_after_content_post_values($screen_post_id);
     }
 }
-add_action('load-post.php', 'meza_repair_current_season_after_content_meta_on_admin_load', 21);
+meza_add_managed_acf_automatic_mutation_action('load-post.php', 'meza_repair_current_season_after_content_meta_on_admin_load', 21);
 
 if (!function_exists('meza_sync_season_after_content_after_business_information_save')) {
     function meza_sync_season_after_content_after_business_information_save($post_id): void
@@ -6650,7 +6650,7 @@ if (!function_exists('meza_sync_season_after_content_after_business_information_
         meza_run_season_after_content_migration();
     }
 }
-add_action('acf/save_post', 'meza_sync_season_after_content_after_business_information_save', 24);
+meza_add_managed_acf_automatic_mutation_action('acf/save_post', 'meza_sync_season_after_content_after_business_information_save', 24);
 
 if (!function_exists('meza_repair_current_event_after_content_meta_on_admin_load')) {
     function meza_repair_current_event_after_content_meta_on_admin_load(): void
@@ -6677,7 +6677,7 @@ if (!function_exists('meza_repair_current_event_after_content_meta_on_admin_load
         meza_migrate_event_after_content_post_values($screen_post_id);
     }
 }
-add_action('load-post.php', 'meza_repair_current_event_after_content_meta_on_admin_load', 20);
+meza_add_managed_acf_automatic_mutation_action('load-post.php', 'meza_repair_current_event_after_content_meta_on_admin_load', 20);
 
 if (!function_exists('meza_sync_events_after_business_information_save')) {
     function meza_persist_business_information_event_settings(): void
@@ -6748,7 +6748,7 @@ if (!function_exists('meza_sync_events_after_business_information_save')) {
         meza_persist_business_information_event_settings();
     }
 }
-add_action('acf/save_post', 'meza_sync_events_after_business_information_save', 24);
+meza_add_managed_acf_automatic_mutation_action('acf/save_post', 'meza_sync_events_after_business_information_save', 24);
 
 if (!function_exists('meza_sync_event_after_content_after_business_information_save')) {
     function meza_sync_event_after_content_after_business_information_save($post_id): void
@@ -6768,7 +6768,7 @@ if (!function_exists('meza_sync_event_after_content_after_business_information_s
         meza_run_event_after_content_migration(true);
     }
 }
-add_action('acf/save_post', 'meza_sync_event_after_content_after_business_information_save', 25);
+meza_add_managed_acf_automatic_mutation_action('acf/save_post', 'meza_sync_event_after_content_after_business_information_save', 25);
 
 if (!function_exists('meza_sync_ecommerce_after_business_information_save')) {
     function meza_persist_business_information_ecommerce_setting(): void
@@ -6842,7 +6842,7 @@ if (!function_exists('meza_sync_ecommerce_after_business_information_save')) {
         meza_sync_ecommerce_defaults();
     }
 }
-add_action('acf/save_post', 'meza_sync_ecommerce_after_business_information_save', 25);
+meza_add_managed_acf_automatic_mutation_action('acf/save_post', 'meza_sync_ecommerce_after_business_information_save', 25);
 
 if (!function_exists('meza_sync_ecommerce_after_content_structure_save')) {
     function meza_sync_ecommerce_after_content_structure_save($post_id): void
@@ -6863,7 +6863,7 @@ if (!function_exists('meza_sync_ecommerce_after_content_structure_save')) {
         }
     }
 }
-add_action('acf/save_post', 'meza_sync_ecommerce_after_content_structure_save', 25);
+meza_add_managed_acf_automatic_mutation_action('acf/save_post', 'meza_sync_ecommerce_after_content_structure_save', 25);
 
 if (!function_exists('meza_should_noindex_post_category_archives')) {
     function meza_should_noindex_post_category_archives(): bool
@@ -7087,7 +7087,7 @@ if (!function_exists('meza_sync_posts_after_business_information_save')) {
         meza_sync_posts_category_configuration(true);
     }
 }
-add_action('acf/save_post', 'meza_sync_posts_after_business_information_save', 25);
+meza_add_managed_acf_automatic_mutation_action('acf/save_post', 'meza_sync_posts_after_business_information_save', 25);
 
 if (!function_exists('meza_schedule_event_rewrite_flush_after_content_structure_save')) {
     function meza_schedule_event_rewrite_flush_after_content_structure_save($post_id): void
@@ -7105,9 +7105,9 @@ if (!function_exists('meza_schedule_event_rewrite_flush_after_content_structure_
         set_transient('meza_flush_rewrite_needed', 1, 5 * MINUTE_IN_SECONDS);
     }
 }
-add_action('acf/save_post', 'meza_schedule_event_rewrite_flush_after_content_structure_save', 25);
+meza_add_managed_acf_automatic_mutation_action('acf/save_post', 'meza_schedule_event_rewrite_flush_after_content_structure_save', 25);
 
-add_action('admin_init', function (): void {
+meza_add_managed_acf_automatic_mutation_action('admin_init', function (): void {
     static $did_sync = false;
 
     if (
@@ -7123,7 +7123,7 @@ add_action('admin_init', function (): void {
     meza_sync_ecommerce_defaults();
 }, 40);
 
-add_action('admin_init', function (): void {
+meza_add_managed_acf_automatic_mutation_action('admin_init', function (): void {
     static $did_sync = false;
 
     if ($did_sync || !is_admin()) {
