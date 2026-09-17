@@ -8,6 +8,7 @@ $meza_project_sync_test_field_groups_by_id = [];
 $meza_project_sync_test_existing_fields_by_id = [];
 $meza_project_sync_test_updated_fields = [];
 $meza_project_sync_test_deleted_fields = [];
+$meza_project_sync_test_event_mode = false;
 
 function meza_project_sync_test_assert(bool $condition, string $message): void
 {
@@ -86,6 +87,18 @@ function meza_is_managed_acf_definition_manually_deleted(string $kind, array $de
         && in_array((string) ($definition['key'] ?? ''), $meza_project_sync_test_deleted_keys, true);
 }
 
+function meza_events_have_after_content(): bool
+{
+    return true;
+}
+
+function meza_get_event_context_request_post_type(): string
+{
+    global $meza_project_sync_test_event_mode;
+
+    return $meza_project_sync_test_event_mode ? 'event' : 'page';
+}
+
 function meza_get_existing_editable_acf_field_group_id(array $definition): int
 {
     global $meza_project_sync_test_field_group_ids;
@@ -109,9 +122,43 @@ function acf_get_fields($field_group_id): array
 
 function acf_update_field(array $field): void
 {
-    global $meza_project_sync_test_updated_fields;
+    global $meza_project_sync_test_updated_fields,
+        $meza_project_sync_test_field_groups_by_id,
+        $meza_project_sync_test_existing_fields_by_id;
 
     $meza_project_sync_test_updated_fields[] = $field;
+
+    $parent_key = (string) ($field['parent'] ?? '');
+    if ($parent_key === '') {
+        return;
+    }
+
+    foreach ($meza_project_sync_test_field_groups_by_id as $field_group_id => $field_group) {
+        if ((string) ($field_group['key'] ?? '') !== $parent_key) {
+            continue;
+        }
+
+        $field_key = (string) ($field['key'] ?? '');
+        $fields = $meza_project_sync_test_existing_fields_by_id[(int) $field_group_id] ?? [];
+        $did_replace = false;
+
+        foreach ($fields as $index => $existing_field) {
+            if (!is_array($existing_field) || (string) ($existing_field['key'] ?? '') !== $field_key) {
+                continue;
+            }
+
+            $fields[$index] = $field;
+            $did_replace = true;
+            break;
+        }
+
+        if (!$did_replace) {
+            $fields[] = $field;
+        }
+
+        $meza_project_sync_test_existing_fields_by_id[(int) $field_group_id] = $fields;
+        return;
+    }
 }
 
 function acf_delete_field(int $field_id): void
@@ -119,6 +166,50 @@ function acf_delete_field(int $field_id): void
     global $meza_project_sync_test_deleted_fields;
 
     $meza_project_sync_test_deleted_fields[] = $field_id;
+}
+
+function meza_preserve_acf_field_tree_identifiers(array $field, ?array $existing_field = null, string $fallback_parent = ''): array
+{
+    if (is_array($existing_field)) {
+        foreach (['ID', 'id', 'parent', 'menu_order'] as $property) {
+            if (!array_key_exists($property, $field) && array_key_exists($property, $existing_field)) {
+                $field[$property] = $existing_field[$property];
+            }
+        }
+    }
+
+    if ((!isset($field['parent']) || $field['parent'] === '') && $fallback_parent !== '') {
+        $field['parent'] = $fallback_parent;
+    }
+
+    if (isset($field['sub_fields']) && is_array($field['sub_fields'])) {
+        $existing_sub_fields = [];
+        foreach ((array) ($existing_field['sub_fields'] ?? []) as $existing_sub_field) {
+            if (!is_array($existing_sub_field)) {
+                continue;
+            }
+
+            $existing_key = (string) ($existing_sub_field['key'] ?? '');
+            if ($existing_key !== '') {
+                $existing_sub_fields[$existing_key] = $existing_sub_field;
+            }
+        }
+
+        foreach ($field['sub_fields'] as $index => $sub_field) {
+            if (!is_array($sub_field)) {
+                continue;
+            }
+
+            $sub_field_key = (string) ($sub_field['key'] ?? '');
+            $field['sub_fields'][$index] = meza_preserve_acf_field_tree_identifiers(
+                $sub_field,
+                $sub_field_key !== '' ? ($existing_sub_fields[$sub_field_key] ?? null) : null,
+                (string) ($field['key'] ?? $fallback_parent)
+            );
+        }
+    }
+
+    return $field;
 }
 
 require_once __DIR__ . '/../mz-acf-project-options/modules/registration.php';
@@ -153,7 +244,44 @@ function meza_project_sync_test_repeater_field(array $sub_fields): array
     ];
 }
 
-function meza_project_sync_test_reset(array $definitions, array $deleted_keys = []): void
+function meza_project_sync_test_with_parents(array $fields, string $parent_key): array
+{
+    foreach ($fields as $index => $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+
+        $field['parent'] = $parent_key;
+        if (isset($field['sub_fields']) && is_array($field['sub_fields'])) {
+            $field['sub_fields'] = meza_project_sync_test_with_parents(
+                array_values($field['sub_fields']),
+                (string) ($field['key'] ?? $parent_key)
+            );
+        }
+
+        $fields[$index] = $field;
+    }
+
+    return $fields;
+}
+
+function meza_project_sync_test_seed_complete_db_fields(array $definition): void
+{
+    global $meza_project_sync_test_field_group_ids, $meza_project_sync_test_existing_fields_by_id;
+
+    $group_key = (string) ($definition['key'] ?? '');
+    $field_group_id = (int) ($meza_project_sync_test_field_group_ids[$group_key] ?? 0);
+    if ($field_group_id <= 0) {
+        return;
+    }
+
+    $meza_project_sync_test_existing_fields_by_id[$field_group_id] = meza_project_sync_test_with_parents(
+        array_values((array) ($definition['fields'] ?? [])),
+        $group_key
+    );
+}
+
+function meza_project_sync_test_reset(array $definitions, array $deleted_keys = [], array $existing_fields_by_group_key = []): void
 {
     global $meza_project_sync_test_options,
         $meza_project_sync_test_definitions,
@@ -162,7 +290,8 @@ function meza_project_sync_test_reset(array $definitions, array $deleted_keys = 
         $meza_project_sync_test_field_groups_by_id,
         $meza_project_sync_test_existing_fields_by_id,
         $meza_project_sync_test_updated_fields,
-        $meza_project_sync_test_deleted_fields;
+        $meza_project_sync_test_deleted_fields,
+        $meza_project_sync_test_event_mode;
 
     $meza_project_sync_test_options = [];
     $meza_project_sync_test_definitions = $definitions;
@@ -172,6 +301,7 @@ function meza_project_sync_test_reset(array $definitions, array $deleted_keys = 
     $meza_project_sync_test_existing_fields_by_id = [];
     $meza_project_sync_test_updated_fields = [];
     $meza_project_sync_test_deleted_fields = [];
+    $meza_project_sync_test_event_mode = false;
 
     foreach ($definitions as $index => $definition) {
         if (!is_array($definition)) {
@@ -189,12 +319,20 @@ function meza_project_sync_test_reset(array $definitions, array $deleted_keys = 
             'ID' => $field_group_id,
             'key' => $group_key,
         ];
-        $meza_project_sync_test_existing_fields_by_id[$field_group_id] = [];
+        $meza_project_sync_test_existing_fields_by_id[$field_group_id] = isset($existing_fields_by_group_key[$group_key])
+            ? $existing_fields_by_group_key[$group_key]
+            : [];
     }
 }
 
 $base_definition = meza_project_sync_test_field_group('group_project_test', [
     meza_project_sync_test_text_field('field_project_title', 'project_title', 'Project Title'),
+]);
+$nested_definition = meza_project_sync_test_field_group('group_project_nested', [
+    meza_project_sync_test_repeater_field([
+        meza_project_sync_test_text_field('field_project_metric_value', 'value', 'Value'),
+        meza_project_sync_test_text_field('field_project_metric_label', 'label', 'Label'),
+    ]),
 ]);
 
 meza_project_sync_test_case('same effective definition set does not repeat sync', function () use ($base_definition): void {
@@ -235,11 +373,108 @@ meza_project_sync_test_case('changed nested project field definition changes ver
     meza_sync_shared_project_field_group_fields();
 
     meza_project_sync_test_assert($changed_version !== $base_version, 'A nested field extension should change the fingerprinted version.');
-    meza_project_sync_test_assert_same(2, count($meza_project_sync_test_updated_fields), 'The changed definition should synchronize its current fields once.');
+    meza_project_sync_test_assert_same(1, count($meza_project_sync_test_updated_fields), 'The changed definition should synchronize its missing field tree once.');
 
     $meza_project_sync_test_updated_fields = [];
     meza_sync_shared_project_field_group_fields();
     meza_project_sync_test_assert_same([], $meza_project_sync_test_updated_fields, 'The changed definition should not repeat after its fingerprint is recorded.');
+});
+
+meza_project_sync_test_case('current fingerprint with missing nested field triggers sync', function () use ($nested_definition): void {
+    global $meza_project_sync_test_options, $meza_project_sync_test_updated_fields;
+
+    meza_project_sync_test_reset([$nested_definition], [], [
+        'group_project_nested' => meza_project_sync_test_with_parents([
+            meza_project_sync_test_repeater_field([
+                meza_project_sync_test_text_field('field_project_metric_value', 'value', 'Value'),
+            ]),
+        ], 'group_project_nested'),
+    ]);
+    $current_version = meza_get_shared_project_field_group_fields_sync_version();
+    $meza_project_sync_test_options[meza_get_shared_project_field_group_fields_sync_option_name()] = $current_version;
+
+    meza_sync_shared_project_field_group_fields();
+
+    meza_project_sync_test_assert_same(['field_project_repeater'], array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields), 'Current fingerprint must not mask an incomplete nested tree.');
+    meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'Normal ACF sync should reconcile the missing nested field tree.');
+    meza_project_sync_test_assert_same($current_version, get_option(meza_get_shared_project_field_group_fields_sync_option_name(), ''), 'Current fingerprint remains recorded after the tree is complete.');
+});
+
+meza_project_sync_test_case('db-backed group missing nested metrics value label is reconciled', function () use ($nested_definition): void {
+    global $meza_project_sync_test_updated_fields;
+
+    meza_project_sync_test_reset([$nested_definition], [], [
+        'group_project_nested' => meza_project_sync_test_with_parents([
+            meza_project_sync_test_repeater_field([]),
+        ], 'group_project_nested'),
+    ]);
+
+    meza_sync_shared_project_field_group_fields();
+    $updated_field = $meza_project_sync_test_updated_fields[0] ?? [];
+    $sub_field_keys = array_map(
+        static fn(array $field): string => (string) ($field['key'] ?? ''),
+        (array) ($updated_field['sub_fields'] ?? [])
+    );
+
+    meza_project_sync_test_assert_same(['field_project_metric_value', 'field_project_metric_label'], $sub_field_keys, 'Missing nested value/label fields should be written through the parent field tree.');
+    meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'The reconciled nested metrics field tree should be complete.');
+});
+
+meza_project_sync_test_case('current fingerprint with complete tree skips repeat sync', function () use ($nested_definition): void {
+    global $meza_project_sync_test_options, $meza_project_sync_test_updated_fields;
+
+    meza_project_sync_test_reset([$nested_definition]);
+    meza_project_sync_test_seed_complete_db_fields($nested_definition);
+    $current_version = meza_get_shared_project_field_group_fields_sync_version();
+    $meza_project_sync_test_options[meza_get_shared_project_field_group_fields_sync_option_name()] = $current_version;
+
+    meza_sync_shared_project_field_group_fields();
+
+    meza_project_sync_test_assert_same([], $meza_project_sync_test_updated_fields, 'A current fingerprint with a complete DB tree should skip sync.');
+});
+
+meza_project_sync_test_case('duplicate disabled same-key record cannot satisfy active completeness', function () use ($nested_definition): void {
+    global $meza_project_sync_test_field_group_ids,
+        $meza_project_sync_test_field_groups_by_id,
+        $meza_project_sync_test_existing_fields_by_id,
+        $meza_project_sync_test_options,
+        $meza_project_sync_test_updated_fields;
+
+    meza_project_sync_test_reset([$nested_definition], [], [
+        'group_project_nested' => [],
+    ]);
+    $meza_project_sync_test_field_group_ids['group_project_nested'] = 101;
+    $meza_project_sync_test_field_groups_by_id[202] = [
+        'ID' => 202,
+        'key' => 'group_project_nested',
+        'post_status' => 'acf-disabled',
+    ];
+    $meza_project_sync_test_existing_fields_by_id[202] = meza_project_sync_test_with_parents(
+        array_values((array) ($nested_definition['fields'] ?? [])),
+        'group_project_nested'
+    );
+    $meza_project_sync_test_options[meza_get_shared_project_field_group_fields_sync_option_name()] = meza_get_shared_project_field_group_fields_sync_version();
+
+    meza_sync_shared_project_field_group_fields();
+
+    meza_project_sync_test_assert_same(['field_project_repeater'], array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields), 'A complete disabled duplicate must not satisfy active DB tree completeness.');
+    meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'The active same-key record should be reconciled.');
+});
+
+meza_project_sync_test_case('mis-parented nested field triggers sync', function () use ($nested_definition): void {
+    global $meza_project_sync_test_updated_fields;
+
+    $fields = meza_project_sync_test_with_parents(array_values((array) ($nested_definition['fields'] ?? [])), 'group_project_nested');
+    $fields[0]['sub_fields'][0]['parent'] = 'field_project_wrong_parent';
+
+    meza_project_sync_test_reset([$nested_definition], [], [
+        'group_project_nested' => $fields,
+    ]);
+
+    meza_sync_shared_project_field_group_fields();
+
+    meza_project_sync_test_assert_same(['field_project_repeater'], array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields), 'A mis-parented nested field should force reconciliation.');
+    meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'Reconciliation should restore intended parent-key paths.');
 });
 
 meza_project_sync_test_case('distinct effective definitions produce distinct stable fingerprints', function () use ($base_definition): void {
@@ -270,6 +505,20 @@ meza_project_sync_test_case('managed-deleted definitions remain excluded from fi
     $updated_keys = array_values(array_map(static fn(array $field): string => (string) ($field['key'] ?? ''), $meza_project_sync_test_updated_fields));
 
     meza_project_sync_test_assert_same(['field_project_title'], $updated_keys, 'Sync should not update fields from managed-deleted definitions.');
+});
+
+meza_project_sync_test_case('default and event modes remain distinct', function () use ($base_definition): void {
+    global $meza_project_sync_test_event_mode;
+
+    meza_project_sync_test_reset([$base_definition]);
+    $default_version = meza_get_shared_project_field_group_fields_sync_version();
+
+    $meza_project_sync_test_event_mode = true;
+    $event_version = meza_get_shared_project_field_group_fields_sync_version();
+
+    meza_project_sync_test_assert($default_version !== $event_version, 'Default and event context versions should stay distinct.');
+    meza_project_sync_test_assert(str_contains($default_version, '-default-'), 'Default context should retain its mode marker.');
+    meza_project_sync_test_assert(str_contains($event_version, '-event-'), 'Event context should retain its mode marker.');
 });
 
 echo "Meza shared project field-group sync fingerprint tests passed\n";
