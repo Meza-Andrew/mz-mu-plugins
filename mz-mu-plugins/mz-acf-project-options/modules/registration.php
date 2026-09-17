@@ -950,7 +950,7 @@ if (!function_exists('meza_sync_section_group_sub_fields')) {
 add_action('acf/init', 'meza_sync_section_group_sub_fields', 24);
 
 if (!function_exists('meza_sync_shared_project_field_group_fields')) {
-    function meza_get_shared_project_field_group_fields_sync_version(): string
+    function meza_get_shared_project_field_group_fields_sync_mode(): string
     {
         $mode = 'default';
 
@@ -963,7 +963,75 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
             $mode = 'event';
         }
 
-        return '2026-07-01-shared-project-field-group-fields-v5-' . $mode;
+        return $mode;
+    }
+
+    function meza_normalize_shared_project_field_group_sync_fingerprint_value($value)
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $is_list = $value === [] || array_keys($value) === range(0, count($value) - 1);
+        if (!$is_list) {
+            ksort($value);
+        }
+
+        foreach ($value as $key => $child_value) {
+            $value[$key] = meza_normalize_shared_project_field_group_sync_fingerprint_value($child_value);
+        }
+
+        return $value;
+    }
+
+    function meza_get_shared_project_field_group_fields_sync_definitions(): array
+    {
+        if (!function_exists('meza_get_shared_project_acf_field_groups')) {
+            return [];
+        }
+
+        $definitions = [];
+        foreach ((array) meza_get_shared_project_acf_field_groups() as $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            if (
+                function_exists('meza_is_managed_acf_definition_manually_deleted')
+                && meza_is_managed_acf_definition_manually_deleted('field_groups', $definition)
+            ) {
+                continue;
+            }
+
+            $definitions[] = $definition;
+        }
+
+        return $definitions;
+    }
+
+    function meza_get_shared_project_field_group_fields_sync_fingerprint(array $definitions): string
+    {
+        $normalized_definitions = meza_normalize_shared_project_field_group_sync_fingerprint_value(
+            array_values($definitions)
+        );
+        $encoded = wp_json_encode($normalized_definitions);
+        if (!is_string($encoded)) {
+            $encoded = serialize($normalized_definitions);
+        }
+
+        return hash('sha256', $encoded);
+    }
+
+    function meza_get_shared_project_field_group_fields_sync_version($definitions = null): string
+    {
+        $definitions = is_array($definitions)
+            ? $definitions
+            : meza_get_shared_project_field_group_fields_sync_definitions();
+
+        return '2026-09-17-shared-project-field-group-fields-'
+            . meza_get_shared_project_field_group_fields_sync_mode()
+            . '-'
+            . meza_get_shared_project_field_group_fields_sync_fingerprint($definitions);
     }
 
     function meza_get_shared_project_field_group_fields_sync_option_name(): string
@@ -973,22 +1041,15 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
 
     function meza_sync_shared_project_field_group_fields(): void
     {
-        if (!function_exists('meza_get_shared_project_acf_field_groups')) {
-            return;
-        }
-
-        $version = meza_get_shared_project_field_group_fields_sync_version();
+        $definitions = meza_get_shared_project_field_group_fields_sync_definitions();
+        $version = meza_get_shared_project_field_group_fields_sync_version($definitions);
         if ((string) get_option(meza_get_shared_project_field_group_fields_sync_option_name(), '') === $version) {
             return;
         }
 
         $did_update = false;
 
-        foreach ((array) meza_get_shared_project_acf_field_groups() as $definition) {
-            if (!is_array($definition)) {
-                continue;
-            }
-
+        foreach ($definitions as $definition) {
             if (meza_sync_builtin_field_group_fields($definition)) {
                 $did_update = true;
             }
