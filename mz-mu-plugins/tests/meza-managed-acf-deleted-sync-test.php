@@ -4,6 +4,8 @@ $meza_deleted_sync_test_actions = [];
 $meza_deleted_sync_test_options = [];
 $meza_deleted_sync_test_imports = [];
 $meza_deleted_sync_test_existing_ids = [];
+$meza_deleted_sync_test_existing_groups = [];
+$meza_deleted_sync_test_existing_fields = [];
 $meza_deleted_sync_test_force_rerun = false;
 
 function meza_deleted_sync_test_assert(bool $condition, string $message): void
@@ -116,7 +118,11 @@ function meza_business_information_enables_ecommerce(): bool
 
 function acf_get_raw_field_groups(): array
 {
-    global $meza_deleted_sync_test_existing_ids;
+    global $meza_deleted_sync_test_existing_ids, $meza_deleted_sync_test_existing_groups;
+
+    if ($meza_deleted_sync_test_existing_groups !== []) {
+        return $meza_deleted_sync_test_existing_groups;
+    }
 
     $groups = [];
     foreach ($meza_deleted_sync_test_existing_ids as $key => $id) {
@@ -128,6 +134,26 @@ function acf_get_raw_field_groups(): array
     }
 
     return $groups;
+}
+
+function acf_get_raw_fields($field_group_id): array
+{
+    global $meza_deleted_sync_test_existing_fields;
+
+    return $meza_deleted_sync_test_existing_fields[(int) $field_group_id] ?? [];
+}
+
+function get_post_status($post_id): string
+{
+    global $meza_deleted_sync_test_existing_groups;
+
+    foreach ($meza_deleted_sync_test_existing_groups as $group) {
+        if ((int) ($group['ID'] ?? 0) === (int) $post_id) {
+            return (string) ($group['post_status'] ?? 'publish');
+        }
+    }
+
+    return 'publish';
 }
 
 function meza_get_builtin_acf_field_group_definitions(): array
@@ -177,7 +203,7 @@ require_once __DIR__ . '/../mz-acf-project-options/modules/managed-definitions.p
 
 function meza_deleted_sync_test_reset(bool $force_rerun): void
 {
-    global $meza_deleted_sync_test_options, $meza_deleted_sync_test_imports, $meza_deleted_sync_test_existing_ids, $meza_deleted_sync_test_force_rerun;
+    global $meza_deleted_sync_test_options, $meza_deleted_sync_test_imports, $meza_deleted_sync_test_existing_ids, $meza_deleted_sync_test_existing_groups, $meza_deleted_sync_test_existing_fields, $meza_deleted_sync_test_force_rerun;
 
     $meza_deleted_sync_test_options = [
         meza_get_managed_acf_deleted_objects_option_name() => [
@@ -191,7 +217,22 @@ function meza_deleted_sync_test_reset(bool $force_rerun): void
     ];
     $meza_deleted_sync_test_imports = [];
     $meza_deleted_sync_test_existing_ids = [];
+    $meza_deleted_sync_test_existing_groups = [];
+    $meza_deleted_sync_test_existing_fields = [];
     $meza_deleted_sync_test_force_rerun = $force_rerun;
+}
+
+function meza_deleted_sync_test_add_raw_field_group(int $id, string $key, string $title, string $post_status = 'publish', array $fields = []): void
+{
+    global $meza_deleted_sync_test_existing_groups, $meza_deleted_sync_test_existing_fields;
+
+    $meza_deleted_sync_test_existing_groups[] = [
+        'ID' => $id,
+        'key' => $key,
+        'title' => $title,
+        'post_status' => $post_status,
+    ];
+    $meza_deleted_sync_test_existing_fields[$id] = $fields;
 }
 
 meza_deleted_sync_test_case('managed deleted field group is not recreated during normal sync', function (): void {
@@ -299,6 +340,39 @@ meza_deleted_sync_test_case('existing managed field groups are not reimported', 
         [],
         $meza_deleted_sync_test_imports,
         'Existing enabled groups should not be duplicated and deleted groups should remain retired.'
+    );
+});
+
+meza_deleted_sync_test_case('existing duplicate managed field groups do not cause repair import', function (): void {
+    global $meza_deleted_sync_test_imports;
+
+    meza_deleted_sync_test_reset(true);
+    meza_deleted_sync_test_add_raw_field_group(
+        36,
+        'group_meza_enabled_test_section',
+        'Enabled Test Section',
+        'publish',
+        []
+    );
+    meza_deleted_sync_test_add_raw_field_group(
+        37,
+        'group_meza_enabled_test_section',
+        'Enabled Test Section',
+        'publish',
+        [
+            [
+                'key' => 'field_meza_enabled_test_section',
+                'name' => 'section_enabled-test',
+            ],
+        ]
+    );
+
+    meza_repair_empty_default_editable_acf_field_groups();
+
+    meza_deleted_sync_test_assert_same(
+        [],
+        $meza_deleted_sync_test_imports,
+        'An empty duplicate must not trigger a third import when an active matching managed group already has fields.'
     );
 });
 

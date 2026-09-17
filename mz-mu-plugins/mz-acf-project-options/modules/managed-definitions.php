@@ -3074,32 +3074,80 @@ if (!function_exists('meza_get_acf_field_group_order_migration_version')) {
         return 'meza_acf_field_group_order_migration_version';
     }
 
-    function meza_get_raw_editable_acf_field_group_id(array $definition): int
+    function meza_get_matching_raw_editable_acf_field_groups(array $definition): array
     {
         if (!function_exists('acf_get_raw_field_groups')) {
-            return 0;
+            return [];
         }
 
         $target_key = (string) ($definition['key'] ?? '');
         $target_title = trim((string) ($definition['title'] ?? ''));
+        $raw_field_groups = array_values(array_filter((array) acf_get_raw_field_groups(), 'is_array'));
 
-        foreach ((array) acf_get_raw_field_groups() as $field_group) {
-            if (!is_array($field_group)) {
+        $matches = [];
+        foreach ($raw_field_groups as $field_group) {
+            if ($target_key === '' || (string) ($field_group['key'] ?? '') !== $target_key) {
                 continue;
             }
 
-            if ($target_key !== '' && (string) ($field_group['key'] ?? '') === $target_key) {
-                return (int) ($field_group['ID'] ?? 0);
+            $matches[] = $field_group;
+        }
+
+        if ($matches !== []) {
+            return $matches;
+        }
+
+        if ($target_title === '') {
+            return [];
+        }
+
+        foreach ($raw_field_groups as $field_group) {
+            if (trim((string) ($field_group['title'] ?? '')) !== $target_title) {
+                continue;
+            }
+
+            $matches[] = $field_group;
+        }
+
+        return $matches;
+    }
+
+    function meza_raw_acf_field_group_has_fields(array $field_group): bool
+    {
+        if (!function_exists('acf_get_raw_fields')) {
+            return false;
+        }
+
+        $field_group_id = (int) ($field_group['ID'] ?? 0);
+        if ($field_group_id <= 0) {
+            return false;
+        }
+
+        return array_values(array_filter((array) acf_get_raw_fields($field_group_id), 'is_array')) !== [];
+    }
+
+    function meza_has_active_raw_editable_acf_field_group_with_fields(array $definition): bool
+    {
+        foreach (meza_get_matching_raw_editable_acf_field_groups($definition) as $field_group) {
+            $field_group_id = (int) ($field_group['ID'] ?? 0);
+            if ($field_group_id <= 0 || get_post_status($field_group_id) !== 'publish') {
+                continue;
+            }
+
+            if (meza_raw_acf_field_group_has_fields($field_group)) {
+                return true;
             }
         }
 
-        foreach ((array) acf_get_raw_field_groups() as $field_group) {
-            if (!is_array($field_group)) {
-                continue;
-            }
+        return false;
+    }
 
-            if ($target_title !== '' && trim((string) ($field_group['title'] ?? '')) === $target_title) {
-                return (int) ($field_group['ID'] ?? 0);
+    function meza_get_raw_editable_acf_field_group_id(array $definition): int
+    {
+        foreach (meza_get_matching_raw_editable_acf_field_groups($definition) as $field_group) {
+            $field_group_id = (int) ($field_group['ID'] ?? 0);
+            if ($field_group_id > 0) {
+                return $field_group_id;
             }
         }
 
@@ -3798,6 +3846,10 @@ if (!function_exists('meza_seed_default_editable_acf_field_groups')) {
 
             $field_group_id = meza_get_raw_editable_acf_field_group_id($definition);
             if ($field_group_id <= 0) {
+                continue;
+            }
+
+            if (meza_has_active_raw_editable_acf_field_group_with_fields($definition)) {
                 continue;
             }
 
