@@ -2465,6 +2465,10 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
             $definitions['profile-type'] = meza_get_profile_type_taxonomy_definition();
         }
 
+        if (function_exists('meza_get_role_taxonomy_definition')) {
+            $definitions['role'] = meza_get_role_taxonomy_definition();
+        }
+
         return $definitions;
     }
 
@@ -2484,6 +2488,11 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
         }
 
         return array_values($required);
+    }
+
+    function meza_is_role_taxonomy_selected_for_content_model(): bool
+    {
+        return meza_is_content_model_built_in_taxonomy_selected('role');
     }
 
     function meza_is_content_model_built_in_taxonomy_selected(string $identifier): bool
@@ -2539,6 +2548,10 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
 
         if (function_exists('meza_get_locality_taxonomy_definition')) {
             $definitions[] = meza_get_locality_taxonomy_definition();
+        }
+
+        if (function_exists('meza_get_role_taxonomy_definition')) {
+            $definitions[] = meza_get_role_taxonomy_definition();
         }
 
         if (meza_is_content_model_built_in_post_type_selected('event')) {
@@ -2896,6 +2909,7 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
                 'organization-type',
                 'post_tag',
                 'profile-type',
+                'role',
                 'season',
             ],
         ];
@@ -3091,6 +3105,7 @@ if (!function_exists('meza_get_content_model_object_management_configs')) {
             'product_brand',
             'product_cat',
             'product_tag',
+            'role',
             'topic',
         ];
     }
@@ -4886,10 +4901,98 @@ add_filter('acf/load_value', static function ($value, $post_id, $field) {
     return meza_load_content_model_taxonomy_term_management_value($value, $post_id, $field);
 }, 10, 3);
 
+if (!function_exists('meza_validate_role_taxonomy_applies_to_value')) {
+    function meza_validate_role_taxonomy_applies_to_value($valid, $value)
+    {
+        if ($valid !== true) {
+            return $valid;
+        }
+
+        if (!function_exists('meza_is_role_taxonomy_selected_for_content_model') || !meza_is_role_taxonomy_selected_for_content_model()) {
+            return true;
+        }
+
+        $object_types = function_exists('meza_normalize_role_taxonomy_object_types')
+            ? meza_normalize_role_taxonomy_object_types($value)
+            : array_values(array_filter(array_map('sanitize_key', (array) $value)));
+
+        return $object_types !== []
+            ? true
+            : 'Select at least one post type for Role Applies To when the Role taxonomy is enabled.';
+    }
+
+    function meza_get_posted_acf_value_by_key(string $field_key)
+    {
+        if (!isset($_POST['acf']) || !is_array($_POST['acf'])) {
+            return null;
+        }
+
+        return array_key_exists($field_key, $_POST['acf'])
+            ? wp_unslash($_POST['acf'][$field_key])
+            : null;
+    }
+
+    function meza_validate_service_icon_choice($valid, $value, array $field = [])
+    {
+        if ($valid !== true) {
+            return $valid;
+        }
+
+        $field_key = sanitize_key((string) ($field['key'] ?? ''));
+        $other_key = $field_key === 'field_meza_service_fa_icon'
+            ? 'field_meza_service_icon_image'
+            : 'field_meza_service_fa_icon';
+        $other_value = meza_get_posted_acf_value_by_key($other_key);
+
+        $has_value = trim((string) (is_array($value) ? reset($value) : $value)) !== '';
+        $has_other_value = trim((string) (is_array($other_value) ? reset($other_value) : $other_value)) !== '';
+
+        return ($has_value && $has_other_value)
+            ? 'Use either a FA Icon or an Icon Image, not both.'
+            : true;
+    }
+
+    function meza_enforce_single_role_assignment($object_id, $terms, array $tt_ids, string $taxonomy, bool $append, array $old_tt_ids): void
+    {
+        unset($terms, $tt_ids, $append, $old_tt_ids);
+
+        if ($taxonomy !== 'role' || !function_exists('wp_get_object_terms') || !function_exists('wp_set_object_terms')) {
+            return;
+        }
+
+        static $is_syncing = false;
+        if ($is_syncing) {
+            return;
+        }
+
+        $role_terms = wp_get_object_terms((int) $object_id, 'role', [
+            'fields' => 'ids',
+            'orderby' => 'term_id',
+            'order' => 'ASC',
+        ]);
+        if (is_wp_error($role_terms)) {
+            return;
+        }
+
+        $role_terms = array_values(array_unique(array_map('intval', (array) $role_terms)));
+        if (count($role_terms) <= 1) {
+            return;
+        }
+
+        $is_syncing = true;
+        wp_set_object_terms((int) $object_id, [(int) $role_terms[0]], 'role', false);
+        $is_syncing = false;
+    }
+}
+
+add_filter('acf/validate_value/key=field_meza_role_taxonomy_applies_to', 'meza_validate_role_taxonomy_applies_to_value', 10, 2);
+add_filter('acf/validate_value/key=field_meza_service_fa_icon', 'meza_validate_service_icon_choice', 10, 3);
+add_filter('acf/validate_value/key=field_meza_service_icon_image', 'meza_validate_service_icon_choice', 10, 3);
 add_action('acf/save_post', 'meza_sync_content_model_field_group_management_after_save', 19);
 add_action('acf/save_post', 'meza_sync_content_model_object_management_after_save', 19);
 add_action('acf/save_post', 'meza_sync_content_model_taxonomy_term_management_after_save', 19);
 add_action('set_object_terms', 'meza_sync_profile_type_term_ancestors_after_terms_set', 20, 6);
+add_action('set_object_terms', 'meza_enforce_single_role_assignment', 30, 6);
 add_action('init', 'meza_reconcile_content_model_object_management_saved_selection', 28);
 add_action('init', 'meza_repair_content_model_nonprofit_default_taxonomy_hierarchy_caches', 29);
 

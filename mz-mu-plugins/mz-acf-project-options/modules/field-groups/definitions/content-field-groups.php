@@ -38,6 +38,67 @@
                     'bidirectional' => 0,
                     'bidirectional_target' => [],
                 ],
+                [
+                    'key' => 'field_meza_service_fa_icon',
+                    'label' => 'FA Icon',
+                    'name' => 'fa_icon',
+                    'aria-label' => '',
+                    'type' => 'text',
+                    'instructions' => 'Enter a Font Awesome class string, or leave this empty to use an Icon Image or the native featured image.',
+                    'required' => 0,
+                    'conditional_logic' => [
+                        [
+                            [
+                                'field' => 'field_meza_service_icon_image',
+                                'operator' => '==empty',
+                            ],
+                        ],
+                    ],
+                    'wrapper' => [
+                        'width' => '50',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'default_value' => '',
+                    'maxlength' => '',
+                    'allow_in_bindings' => 0,
+                    'placeholder' => 'fa-solid fa-star',
+                    'prepend' => '',
+                    'append' => '',
+                ],
+                [
+                    'key' => 'field_meza_service_icon_image',
+                    'label' => 'Icon Image',
+                    'name' => 'icon_image',
+                    'aria-label' => '',
+                    'type' => 'image',
+                    'instructions' => 'Select a custom icon image, or leave this empty to use a FA Icon or the native featured image.',
+                    'required' => 0,
+                    'conditional_logic' => [
+                        [
+                            [
+                                'field' => 'field_meza_service_fa_icon',
+                                'operator' => '==empty',
+                            ],
+                        ],
+                    ],
+                    'wrapper' => [
+                        'width' => '50',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'return_format' => 'id',
+                    'library' => 'all',
+                    'min_width' => '',
+                    'min_height' => '',
+                    'min_size' => '',
+                    'max_width' => '',
+                    'max_height' => '',
+                    'max_size' => '',
+                    'mime_types' => '',
+                    'allow_in_bindings' => 0,
+                    'preview_size' => 'thumbnail',
+                ],
             ],
             'location' => [
                 [
@@ -49,6 +110,144 @@
                 ],
             ],
             'menu_order' => 0,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_event_promotion_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_meza_event_promotion',
+            'title' => 'Event Promotion',
+            'fields' => [
+                [
+                    'key' => 'field_meza_event_promotion_featured',
+                    'label' => 'Featured',
+                    'name' => 'featured',
+                    'aria-label' => '',
+                    'type' => 'true_false',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '50',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'message' => '',
+                    'default_value' => 0,
+                    'allow_in_bindings' => 0,
+                    'ui' => 1,
+                    'ui_on_text' => '',
+                    'ui_off_text' => '',
+                ],
+                [
+                    'key' => 'field_meza_event_promotion_organization',
+                    'label' => 'Organization',
+                    'name' => 'organization',
+                    'aria-label' => '',
+                    'type' => 'relationship',
+                    'instructions' => 'Select the organization associated with this event. The organization featured image is the logo source.',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '50',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'post_type' => [
+                        'organization',
+                    ],
+                    'post_status' => [
+                        'publish',
+                    ],
+                    'taxonomy' => '',
+                    'filters' => [
+                        'search',
+                    ],
+                    'return_format' => 'id',
+                    'min' => '',
+                    'max' => 1,
+                    'allow_in_bindings' => 0,
+                    'elements' => [
+                        'featured_image',
+                    ],
+                    'bidirectional' => 0,
+                    'bidirectional_target' => [],
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'event',
+                    ],
+                ],
+            ],
+            'menu_order' => 1,
+            'position' => 'normal',
+            'style' => 'default',
+            'label_placement' => 'top',
+            'instruction_placement' => 'label',
+            'hide_on_screen' => '',
+            'active' => true,
+            'description' => '',
+            'show_in_rest' => 0,
+            'display_title' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
+    function meza_get_post_promotion_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_meza_post_promotion',
+            'title' => 'Post Promotion',
+            'fields' => [
+                [
+                    'key' => 'field_meza_post_promotion_featured',
+                    'label' => 'Featured',
+                    'name' => 'featured',
+                    'aria-label' => '',
+                    'type' => 'true_false',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => [
+                        'width' => '',
+                        'class' => '',
+                        'id' => '',
+                    ],
+                    'message' => '',
+                    'default_value' => 0,
+                    'allow_in_bindings' => 0,
+                    'ui' => 1,
+                    'ui_on_text' => '',
+                    'ui_off_text' => '',
+                ],
+            ],
+            'location' => [
+                [
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => 'post',
+                    ],
+                ],
+            ],
+            'menu_order' => 1,
             'position' => 'normal',
             'style' => 'default',
             'label_placement' => 'top',

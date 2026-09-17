@@ -87,6 +87,16 @@
         }
 
         if (
+            function_exists('meza_are_roles_enabled')
+            && meza_are_roles_enabled()
+            && function_exists('meza_get_role_taxonomy_definition')
+            && function_exists('meza_get_role_taxonomy_object_types')
+            && meza_get_role_taxonomy_object_types() !== []
+        ) {
+            $definitions[] = meza_get_role_taxonomy_definition();
+        }
+
+        if (
             function_exists('meza_events_have_speakers_topics')
             && meza_events_have_speakers_topics()
             && function_exists('meza_get_topic_taxonomy_definition')
@@ -317,6 +327,7 @@
             'group_meza_contact_locations_section' => 'section_list-locations',
             'group_697feb01ec35f' => 'section_faqs',
             'group_meza_list_events_section' => 'section_list-events',
+            'group_meza_list_past_events_section' => 'section_list-past-events',
             'group_meza_list_reviews_section' => 'section_list-reviews',
             'group_meza_list_posts_section' => 'section_list-posts',
             'group_meza_list_resources_section' => 'section_list-resources',

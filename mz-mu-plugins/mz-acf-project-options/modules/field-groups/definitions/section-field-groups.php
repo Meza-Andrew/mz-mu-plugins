@@ -174,6 +174,7 @@
             'section_list-posts' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
             'section_list-resources' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
             'section_list-events' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
+            'section_list-past-events' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
             'section_list-services' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
             'section_list-partners' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
             'section_list-sponsors' => ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'],
@@ -316,7 +317,7 @@
                     'name' => 'section_hero',
                     'aria-label' => '',
                     'type' => 'group',
-                    'instructions' => '',
+                    'instructions' => 'Use for the page\'s primary introduction. Write one clear H1 headline, optional supporting copy, and optional calls to action.',
                     'required' => 0,
                     'conditional_logic' => 0,
                     'wrapper' => [
@@ -340,7 +341,7 @@
                                 'class' => '',
                                 'id' => '',
                             ],
-                            'default_value' => 'services',
+                            'default_value' => '',
                             'maxlength' => '',
                             'allow_in_bindings' => 0,
                             'placeholder' => '',
@@ -1277,6 +1278,32 @@
         ]);
     }
 
+    function meza_get_list_past_events_section_field_group_definition(): array
+    {
+        return meza_get_standard_list_section_field_group_definition([
+            'group_key' => 'group_meza_list_past_events_section',
+            'title' => 'List Past Events Section',
+            'visibility_key' => 'field_meza_show_list_past_events',
+            'visibility_name' => 'show_list-past-events',
+            'section_key' => 'field_meza_section_list_past_events',
+            'section_name' => 'section_list-past-events',
+            'headline_key' => 'field_meza_list_past_events_headline',
+            'headline_default' => 'Past Events',
+            'include_display' => true,
+            'display_key' => 'field_meza_list_past_events_display',
+            'subhead_key' => 'field_meza_list_past_events_subhead',
+            'include_description' => true,
+            'description_key' => 'field_meza_list_past_events_description',
+            'link_key' => 'field_meza_list_past_events_link',
+            'include_link_secondary' => true,
+            'link_secondary_key' => 'field_meza_list_past_events_link_secondary',
+            'id_key' => 'field_meza_list_past_events_id',
+            'id_default' => 'past-events',
+            'location' => meza_get_acf_location_rules_hidden_by_default(),
+            'menu_order' => 26,
+        ]);
+    }
+
     function meza_get_list_segments_section_field_group_definition(): array
     {
         return meza_get_standard_list_section_field_group_definition([
@@ -1305,7 +1332,7 @@
 
     function meza_get_list_services_section_field_group_definition(): array
     {
-        return meza_get_standard_list_section_field_group_definition([
+        $definition = meza_get_standard_list_section_field_group_definition([
             'group_key' => 'group_b2f9d7e8',
             'title' => 'List Services Section',
             'visibility_key' => 'field_3ce1e3d6',
@@ -1328,6 +1355,45 @@
             'location' => meza_get_acf_location_rules_for_permalink_post_types_and_taxonomies_excluding_posts(),
             'menu_order' => 3,
         ]);
+
+        foreach ($definition['fields'] as $field_index => $field) {
+            if (!is_array($field) || ($field['name'] ?? '') !== 'section_list-services') {
+                continue;
+            }
+
+            $definition['fields'][$field_index]['sub_fields'][] = [
+                'key' => 'field_meza_list_services_selected_services',
+                'label' => 'Services',
+                'name' => 'services',
+                'aria-label' => '',
+                'type' => 'relationship',
+                'instructions' => 'Select one or more services. Drag selected services to control display order.',
+                'required' => 1,
+                'conditional_logic' => 0,
+                'wrapper' => meza_get_section_field_wrapper(),
+                'post_type' => [
+                    'service',
+                ],
+                'post_status' => [
+                    'publish',
+                ],
+                'taxonomy' => '',
+                'filters' => [
+                    'search',
+                ],
+                'return_format' => 'id',
+                'min' => 1,
+                'max' => '',
+                'allow_in_bindings' => 0,
+                'elements' => '',
+                'bidirectional' => 0,
+                'bidirectional_target' => [],
+            ];
+
+            break;
+        }
+
+        return $definition;
     }
 
     function meza_get_list_partners_section_field_group_definition(): array

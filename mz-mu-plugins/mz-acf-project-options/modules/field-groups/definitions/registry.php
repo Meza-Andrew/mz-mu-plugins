@@ -644,11 +644,14 @@
         $groups[] = meza_get_list_resources_section_field_group_definition();
         $groups[] = meza_get_list_faqs_section_field_group_definition();
         $groups[] = meza_get_list_reviews_section_field_group_definition();
+        $groups[] = meza_get_list_past_events_section_field_group_definition();
         $groups[] = meza_get_cta_field_group_definition();
         $groups[] = meza_get_profile_field_group_definition();
         $groups[] = meza_get_organization_field_group_definition();
         $groups[] = meza_get_faq_field_group_definition();
         $groups[] = meza_get_review_field_group_definition();
+        $groups[] = meza_get_event_promotion_field_group_definition();
+        $groups[] = meza_get_post_promotion_field_group_definition();
 
         if (function_exists('meza_supports_profile_features') && meza_supports_profile_features()) {
             $groups[] = meza_get_post_field_group_definition();

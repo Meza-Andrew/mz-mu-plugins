@@ -387,6 +387,86 @@ if (!function_exists('meza_are_localities_indexable')) {
     }
 }
 
+if (!function_exists('meza_are_roles_enabled')) {
+    function meza_are_roles_enabled(): bool
+    {
+        $content_model_value = meza_is_content_model_checkbox_selection_checked(
+            ['field_meza_content_model_built_in_taxonomies', 'field_meza_content_model_built_in_non_indexable_taxonomies'],
+            'role'
+        );
+        if ($content_model_value !== null) {
+            return $content_model_value;
+        }
+
+        $saved_content_model_value = meza_is_saved_content_model_checkbox_selection_checked(
+            ['options_content_model_built_in_taxonomies', 'options_content_model_built_in_non_indexable_taxonomies'],
+            'role'
+        );
+        if ($saved_content_model_value !== null) {
+            return $saved_content_model_value;
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('meza_get_role_taxonomy_object_types')) {
+    function meza_get_role_taxonomy_object_type_choices(): array
+    {
+        $choices = [];
+
+        foreach ([
+            'post' => 'Posts',
+            'review' => 'Reviews',
+            'event' => 'Events',
+            'service' => 'Services',
+            'organization' => 'Organizations',
+            'profile' => 'Profiles',
+        ] as $post_type => $label) {
+            $choices[sanitize_key($post_type)] = $label;
+        }
+
+        if (function_exists('meza_get_content_model_object_management_choice_map')) {
+            foreach (['built_in', 'built_in_non_indexable', 'custom'] as $bucket) {
+                foreach (meza_get_content_model_object_management_choice_map('post_types', $bucket) as $post_type => $label) {
+                    $post_type = sanitize_key((string) $post_type);
+                    if ($post_type !== '') {
+                        $choices[$post_type] = (string) $label;
+                    }
+                }
+            }
+        }
+
+        natcasesort($choices);
+
+        return $choices;
+    }
+
+    function meza_normalize_role_taxonomy_object_types($value): array
+    {
+        $allowed = array_fill_keys(array_keys(meza_get_role_taxonomy_object_type_choices()), true);
+        $normalized = [];
+
+        foreach ((array) $value as $post_type) {
+            $post_type = sanitize_key((string) $post_type);
+            if ($post_type !== '' && isset($allowed[$post_type])) {
+                $normalized[$post_type] = $post_type;
+            }
+        }
+
+        return array_values($normalized);
+    }
+
+    function meza_get_role_taxonomy_object_types(): array
+    {
+        if (isset($_POST['acf']) && is_array($_POST['acf']) && array_key_exists('field_meza_role_taxonomy_applies_to', $_POST['acf'])) {
+            return meza_normalize_role_taxonomy_object_types(wp_unslash($_POST['acf']['field_meza_role_taxonomy_applies_to']));
+        }
+
+        return meza_normalize_role_taxonomy_object_types(get_option('options_role_taxonomy_applies_to', []));
+    }
+}
+
 if (!function_exists('meza_are_posts_enabled')) {
     function meza_are_posts_enabled(): bool
     {

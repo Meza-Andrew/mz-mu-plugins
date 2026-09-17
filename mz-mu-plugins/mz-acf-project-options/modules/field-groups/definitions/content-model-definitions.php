@@ -720,6 +720,82 @@
         ];
     }
 
+    function meza_get_role_taxonomy_definition(): array
+    {
+        $object_types = function_exists('meza_get_role_taxonomy_object_types')
+            ? meza_get_role_taxonomy_object_types()
+            : [];
+
+        return [
+            'key' => 'taxonomy_meza_role',
+            'title' => 'Roles',
+            'menu_order' => 0,
+            'active' => true,
+            'taxonomy' => 'role',
+            'object_type' => $object_types,
+            'advanced_configuration' => 1,
+            'import_source' => '',
+            'import_date' => '',
+            'labels' => [
+                'name' => 'Roles',
+                'singular_name' => 'Role',
+                'menu_name' => 'Roles',
+                'all_items' => 'All Roles',
+                'edit_item' => 'Edit Role',
+                'view_item' => 'View Role',
+                'update_item' => 'Update Role',
+                'add_new_item' => 'Add New Role',
+                'new_item_name' => 'New Role Name',
+                'search_items' => 'Search Roles',
+                'popular_items' => 'Popular Roles',
+                'separate_items_with_commas' => 'Separate roles with commas',
+                'add_or_remove_items' => 'Add or remove roles',
+                'choose_from_most_used' => 'Choose from the most used roles',
+                'not_found' => 'No roles found',
+                'no_terms' => 'No roles',
+                'items_list_navigation' => 'Roles list navigation',
+                'items_list' => 'Roles list',
+                'back_to_items' => '← Go to roles',
+                'item_link' => 'Role Link',
+                'item_link_description' => 'A link to a role.',
+            ],
+            'description' => 'Assign one internal role term to selected content types for reusable editorial grouping.',
+            'capabilities' => [
+                'manage_terms' => 'manage_categories',
+                'edit_terms' => 'manage_categories',
+                'delete_terms' => 'manage_categories',
+                'assign_terms' => 'edit_posts',
+            ],
+            'public' => 0,
+            'publicly_queryable' => 0,
+            'hierarchical' => 1,
+            'show_ui' => 1,
+            'show_in_menu' => 1,
+            'show_in_nav_menus' => 0,
+            'show_in_rest' => 1,
+            'rest_base' => '',
+            'rest_namespace' => 'wp/v2',
+            'rest_controller_class' => 'WP_REST_Terms_Controller',
+            'show_tagcloud' => 0,
+            'show_in_quick_edit' => 1,
+            'show_admin_column' => 1,
+            'rewrite' => [
+                'permalink_rewrite' => 'no_permalink',
+            ],
+            'query_var' => 'no_query_var',
+            'query_var_name' => '',
+            'default_term' => [
+                'default_term_enabled' => '0',
+            ],
+            'sort' => 0,
+            'meta_box' => 'default',
+            'meta_box_cb' => '',
+            'meta_box_sanitize_cb' => '',
+            'allow_ai_access' => false,
+            'ai_description' => '',
+        ];
+    }
+
     function meza_get_profile_type_taxonomy_definition(): array
     {
         return [

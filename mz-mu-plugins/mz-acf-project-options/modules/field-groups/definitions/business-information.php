@@ -219,6 +219,40 @@
                 'field_meza_content_model_indexable_taxonomies',
                 'content_model_indexable_taxonomies'
             ),
+            [
+                'key' => 'field_meza_role_taxonomy_applies_to',
+                'label' => 'Role Applies To',
+                'name' => 'role_taxonomy_applies_to',
+                'aria-label' => '',
+                'type' => 'checkbox',
+                'instructions' => 'Select the post types that can receive one Role term when the Role taxonomy is enabled.',
+                'required' => 0,
+                'conditional_logic' => [
+                    [
+                        [
+                            'field' => 'field_meza_content_model_built_in_taxonomies',
+                            'operator' => '==',
+                            'value' => 'role',
+                        ],
+                    ],
+                    [
+                        [
+                            'field' => 'field_meza_content_model_built_in_non_indexable_taxonomies',
+                            'operator' => '==',
+                            'value' => 'role',
+                        ],
+                    ],
+                ],
+                'wrapper' => meza_get_content_model_management_field_wrapper(),
+                'choices' => function_exists('meza_get_role_taxonomy_object_type_choices')
+                    ? meza_get_role_taxonomy_object_type_choices()
+                    : [],
+                'default_value' => [],
+                'allow_custom' => 0,
+                'save_custom' => 0,
+                'return_format' => 'value',
+                'layout' => 'vertical',
+            ],
         ];
     }
 
