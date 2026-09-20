@@ -184,10 +184,6 @@ if (!function_exists('meza_get_woocommerce_unlisted_page_slugs')) {
             'checkout',
             'my-account',
             'terms-and-conditions',
-            'privacy-policy',
-            'privacy',
-            'cookie-policy',
-            'cookies',
             'refunds-and-returns-policy',
             'refund-and-returns-policy',
             'refund-returns-policy',
@@ -209,8 +205,6 @@ if (!function_exists('meza_get_woocommerce_unlisted_page_titles')) {
             'My account',
             'My Account',
             'Terms and Conditions',
-            'Privacy Policy',
-            'Cookie Policy',
             'Refunds and Returns Policy',
             'Refund and Returns Policy',
             'Refund & Returns Policy',
@@ -596,8 +590,6 @@ if (!function_exists('meza_get_woocommerce_unlisted_page_ids')) {
             (int) get_option('woocommerce_terms_page_id', 0),
             (int) get_option('woocommerce_refund_returns_page_id', 0),
             (int) get_option('meza_woocommerce_refund_returns_page_id', 0),
-            (int) get_option('wp_page_for_privacy_policy', 0),
-            (int) get_option('meza_page_for_cookie_policy', 0),
         ];
 
         foreach (meza_get_woocommerce_unlisted_page_slugs() as $slug) {

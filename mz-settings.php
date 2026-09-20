@@ -273,19 +273,25 @@ function meza_build_page_meta_title(string $page_title): string
     return sprintf('%s | %s', $page_title, $site_name);
 }
 
-/** Store the standard Yoast meta title for a page. */
-function meza_assign_page_meta_title(int $page_id, string $page_title = ''): void
+/** Store the standard Yoast meta title for a page when it differs. */
+function meza_assign_page_meta_title(int $page_id, string $page_title = ''): bool
 {
-    if ($page_id <= 0) return;
+    if ($page_id <= 0) return false;
 
     if ($page_title === '') {
         $page_title = (string) get_the_title($page_id);
     }
 
     $meta_title = meza_build_page_meta_title($page_title);
-    if ($meta_title === '') return;
+    if ($meta_title === '') return false;
+
+    if ((string) get_post_meta($page_id, '_yoast_wpseo_title', true) === $meta_title) {
+        return false;
+    }
 
     update_post_meta($page_id, '_yoast_wpseo_title', $meta_title);
+
+    return true;
 }
 
 /** Ask Yoast to rebuild its indexable record for a post after manual SEO meta changes. */
@@ -308,13 +314,24 @@ function meza_refresh_yoast_indexable(int $post_id): void
     }
 }
 
-/** Apply Yoast Advanced tab robots defaults for a page. */
-function meza_assign_yoast_robots(int $page_id, bool $allow_indexing = true, bool $allow_follow = true): void
+/** Apply Yoast Advanced tab robots defaults for a page when they differ. */
+function meza_assign_yoast_robots(int $page_id, bool $allow_indexing = true, bool $allow_follow = true): bool
 {
-    if ($page_id <= 0) return;
+    if ($page_id <= 0) return false;
 
-    update_post_meta($page_id, '_yoast_wpseo_meta-robots-noindex', $allow_indexing ? '2' : '1');
-    update_post_meta($page_id, '_yoast_wpseo_meta-robots-nofollow', $allow_follow ? '0' : '1');
+    $target_noindex = $allow_indexing ? '2' : '1';
+    $target_nofollow = $allow_follow ? '0' : '1';
+    $current_noindex = (string) get_post_meta($page_id, '_yoast_wpseo_meta-robots-noindex', true);
+    $current_nofollow = (string) get_post_meta($page_id, '_yoast_wpseo_meta-robots-nofollow', true);
+
+    if ($current_noindex === $target_noindex && $current_nofollow === $target_nofollow) {
+        return false;
+    }
+
+    update_post_meta($page_id, '_yoast_wpseo_meta-robots-noindex', $target_noindex);
+    update_post_meta($page_id, '_yoast_wpseo_meta-robots-nofollow', $target_nofollow);
+
+    return true;
 }
 
 /** Normalize and de-duplicate page slug candidates while preserving order. */
@@ -530,6 +547,7 @@ function meza_get_page_by_candidate_slugs(array $slugs): ?WP_Post
  * - Creates it when missing
  * - Supports alias slugs
  * - Can optionally enforce status and template updates
+ * - Can apply SEO defaults only when creating a page
  * Returns the page ID (0 on failure).
  */
 function meza_ensure_page_state(string $title, array $slugs, array $args = []): int
@@ -543,6 +561,7 @@ function meza_ensure_page_state(string $title, array $slugs, array $args = []): 
         'meta_title' => true,
         'yoast_allow_indexing' => true,
         'yoast_allow_follow' => true,
+        'seo_defaults_for_new_page_only' => false,
     ]);
 
     $slugs = meza_normalize_slug_candidates($slugs);
@@ -570,12 +589,14 @@ function meza_ensure_page_state(string $title, array $slugs, array $args = []): 
     if (!$page instanceof WP_Post) return 0;
 
     $id = (int)$page->ID;
+    $indexable_refresh_required = $created;
 
     if (!empty($args['force_status']) && $page->post_status !== (string) $args['status']) {
         wp_update_post([
             'ID' => $id,
             'post_status' => (string) $args['status'],
         ]);
+        $indexable_refresh_required = true;
     }
 
     if (!empty($args['force_title']) && $page->post_title !== $title) {
@@ -583,6 +604,7 @@ function meza_ensure_page_state(string $title, array $slugs, array $args = []): 
             'ID' => $id,
             'post_title' => $title,
         ]);
+        $indexable_refresh_required = true;
     }
 
     $template_file = (string) ($args['template'] ?? '');
@@ -593,17 +615,23 @@ function meza_ensure_page_state(string $title, array $slugs, array $args = []): 
         meza_assign_template($id, $template_file);
     }
 
-    if (!empty($args['meta_title'])) {
-        meza_assign_page_meta_title($id, $title);
+    $apply_seo_defaults = empty($args['seo_defaults_for_new_page_only']) || $created;
+
+    if ($apply_seo_defaults && !empty($args['meta_title'])) {
+        $indexable_refresh_required = meza_assign_page_meta_title($id, $title) || $indexable_refresh_required;
     }
 
-    meza_assign_yoast_robots(
-        $id,
-        !empty($args['yoast_allow_indexing']),
-        !empty($args['yoast_allow_follow'])
-    );
+    if ($apply_seo_defaults) {
+        $indexable_refresh_required = meza_assign_yoast_robots(
+            $id,
+            !empty($args['yoast_allow_indexing']),
+            !empty($args['yoast_allow_follow'])
+        ) || $indexable_refresh_required;
+    }
 
-    meza_refresh_yoast_indexable($id);
+    if ($indexable_refresh_required) {
+        meza_refresh_yoast_indexable($id);
+    }
 
     return $id;
 }
@@ -932,13 +960,16 @@ add_action('admin_init', function () {
     // Privacy Policy
     $privacy_id = meza_ensure_page_state(MEZA_PRIVACY_POLICY_TITLE, MEZA_PRIVACY_POLICY_SLUGS, [
         'status' => 'draft',
-        'force_status' => true,
         'yoast_allow_indexing' => false,
         'yoast_allow_follow' => false,
+        // Existing legal-page status and editorial SEO decisions are authoritative.
+        'seo_defaults_for_new_page_only' => true,
     ]);
     if ($privacy_id) {
-        if (function_exists('set_privacy_policy_page')) set_privacy_policy_page($privacy_id);
-        else update_option('wp_page_for_privacy_policy', $privacy_id);
+        if ((int) get_option('wp_page_for_privacy_policy', 0) !== $privacy_id) {
+            if (function_exists('set_privacy_policy_page')) set_privacy_policy_page($privacy_id);
+            else update_option('wp_page_for_privacy_policy', $privacy_id);
+        }
     }
 
     // Cookie Policy
