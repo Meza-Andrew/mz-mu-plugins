@@ -1053,6 +1053,24 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
             }
         }
 
+        $expected_field_keys = [];
+        foreach ($expected_fields as $expected_field) {
+            if (!is_array($expected_field)) {
+                continue;
+            }
+
+            $expected_key = (string) ($expected_field['key'] ?? '');
+            if ($expected_key !== '') {
+                $expected_field_keys[$expected_key] = true;
+            }
+        }
+
+        foreach ($existing_fields_by_key as $existing_key => $existing_field) {
+            if (!isset($expected_field_keys[$existing_key])) {
+                return false;
+            }
+        }
+
         foreach ($expected_fields as $expected_field) {
             if (!is_array($expected_field)) {
                 continue;
@@ -1079,25 +1097,19 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
             $expected_sub_fields = isset($expected_field['sub_fields']) && is_array($expected_field['sub_fields'])
                 ? array_values($expected_field['sub_fields'])
                 : [];
-            if (
-                $expected_sub_fields !== []
-                && !meza_shared_project_field_tree_is_complete(
-                    $expected_sub_fields,
-                    (array) ($existing_field['sub_fields'] ?? []),
-                    $expected_key
-                )
-            ) {
+            if (!meza_shared_project_field_tree_is_complete(
+                $expected_sub_fields,
+                (array) ($existing_field['sub_fields'] ?? []),
+                $expected_key
+            )) {
                 return false;
             }
 
             $expected_layouts = isset($expected_field['layouts']) && is_array($expected_field['layouts'])
                 ? array_values($expected_field['layouts'])
                 : [];
-            if ($expected_layouts === []) {
-                continue;
-            }
-
             $existing_layouts_by_key = meza_index_acf_layouts_by_key((array) ($existing_field['layouts'] ?? []));
+            $expected_layout_keys = [];
             foreach ($expected_layouts as $expected_layout) {
                 if (!is_array($expected_layout)) {
                     continue;
@@ -1107,6 +1119,8 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
                 if ($layout_index_key === '') {
                     continue;
                 }
+
+                $expected_layout_keys[$layout_index_key] = true;
 
                 $existing_layout = $existing_layouts_by_key[$layout_index_key] ?? null;
                 if (!is_array($existing_layout)) {
@@ -1121,14 +1135,17 @@ if (!function_exists('meza_sync_shared_project_field_group_fields')) {
                 $expected_layout_sub_fields = isset($expected_layout['sub_fields']) && is_array($expected_layout['sub_fields'])
                     ? array_values($expected_layout['sub_fields'])
                     : [];
-                if (
-                    $expected_layout_sub_fields !== []
-                    && !meza_shared_project_field_tree_is_complete(
-                        $expected_layout_sub_fields,
-                        (array) ($existing_layout['sub_fields'] ?? []),
-                        $layout_parent_key
-                    )
-                ) {
+                if (!meza_shared_project_field_tree_is_complete(
+                    $expected_layout_sub_fields,
+                    (array) ($existing_layout['sub_fields'] ?? []),
+                    $layout_parent_key
+                )) {
+                    return false;
+                }
+            }
+
+            foreach ($existing_layouts_by_key as $existing_layout_key => $existing_layout) {
+                if (!isset($expected_layout_keys[$existing_layout_key])) {
                     return false;
                 }
             }
@@ -1578,22 +1595,17 @@ if (!function_exists('meza_sync_acf_field_tree')) {
             $expected_sub_fields = isset($expected_field['sub_fields']) && is_array($expected_field['sub_fields'])
                 ? array_values($expected_field['sub_fields'])
                 : [];
-            if ($expected_sub_fields !== []) {
-                $did_update = meza_sync_acf_field_tree(
-                    $expected_sub_fields,
-                    (array) ($existing_field['sub_fields'] ?? []),
-                    $expected_key
-                ) || $did_update;
-            }
+            $did_update = meza_sync_acf_field_tree(
+                $expected_sub_fields,
+                (array) ($existing_field['sub_fields'] ?? []),
+                $expected_key
+            ) || $did_update;
 
             $expected_layouts = isset($expected_field['layouts']) && is_array($expected_field['layouts'])
                 ? array_values($expected_field['layouts'])
                 : [];
-            if ($expected_layouts === []) {
-                continue;
-            }
-
             $existing_layouts_by_key = meza_index_acf_layouts_by_key((array) ($existing_field['layouts'] ?? []));
+            $expected_layout_keys = [];
             foreach ($expected_layouts as $layout) {
                 if (!is_array($layout)) {
                     continue;
@@ -1604,6 +1616,8 @@ if (!function_exists('meza_sync_acf_field_tree')) {
                     continue;
                 }
 
+                $expected_layout_keys[$layout_index_key] = true;
+
                 $layout_parent_key = (string) ($layout['key'] ?? '');
                 if ($layout_parent_key === '') {
                     $layout_parent_key = $expected_key;
@@ -1612,10 +1626,6 @@ if (!function_exists('meza_sync_acf_field_tree')) {
                 $expected_layout_sub_fields = isset($layout['sub_fields']) && is_array($layout['sub_fields'])
                     ? array_values($layout['sub_fields'])
                     : [];
-                if ($expected_layout_sub_fields === []) {
-                    continue;
-                }
-
                 $existing_layout = $existing_layouts_by_key[$layout_index_key] ?? [];
                 $did_update = meza_sync_acf_field_tree(
                     $expected_layout_sub_fields,
@@ -1623,6 +1633,45 @@ if (!function_exists('meza_sync_acf_field_tree')) {
                     $layout_parent_key
                 ) || $did_update;
             }
+
+            foreach ($existing_layouts_by_key as $existing_layout_key => $existing_layout) {
+                if (isset($expected_layout_keys[$existing_layout_key])) {
+                    continue;
+                }
+
+                $layout_parent_key = (string) ($existing_layout['key'] ?? '');
+                if ($layout_parent_key === '') {
+                    $layout_parent_key = $expected_key;
+                }
+
+                $did_update = meza_sync_acf_field_tree(
+                    [],
+                    (array) ($existing_layout['sub_fields'] ?? []),
+                    $layout_parent_key
+                ) || $did_update;
+            }
+        }
+
+        foreach ($existing_fields_by_key as $existing_key => $existing_field) {
+            $expected_field = null;
+            foreach ($expected_fields as $candidate) {
+                if (is_array($candidate) && (string) ($candidate['key'] ?? '') === $existing_key) {
+                    $expected_field = $candidate;
+                    break;
+                }
+            }
+
+            if (is_array($expected_field)) {
+                continue;
+            }
+
+            $existing_field_id = (int) ($existing_field['ID'] ?? 0);
+            if ($existing_field_id <= 0) {
+                continue;
+            }
+
+            acf_delete_field($existing_field_id);
+            $did_update = true;
         }
 
         return $did_update;
@@ -1656,55 +1705,11 @@ if (!function_exists('meza_sync_builtin_field_group_fields')) {
             : [];
         $existing_fields = (array) acf_get_fields($field_group_id);
 
-        $existing_fields_by_key = [];
-        foreach ($existing_fields as $existing_field) {
-            if (!is_array($existing_field)) {
-                continue;
-            }
-
-            $existing_key = (string) ($existing_field['key'] ?? '');
-            if ($existing_key !== '') {
-                $existing_fields_by_key[$existing_key] = $existing_field;
-            }
-        }
-
-        $did_update = false;
-        $expected_keys = [];
-
-        foreach ($expected_fields as $menu_order => $expected_field) {
-            if (!is_array($expected_field)) {
-                continue;
-            }
-
-            $expected_key = (string) ($expected_field['key'] ?? '');
-            if ($expected_key === '') {
-                continue;
-            }
-
-            $expected_keys[$expected_key] = true;
-        }
-
-        $did_update = meza_sync_acf_field_tree(
+        return meza_sync_acf_field_tree(
             $expected_fields,
             $existing_fields,
             (string) ($field_group['key'] ?? $definition['key'] ?? '')
-        ) || $did_update;
-
-        foreach ($existing_fields_by_key as $existing_key => $existing_field) {
-            if (isset($expected_keys[$existing_key])) {
-                continue;
-            }
-
-            $existing_field_id = (int) ($existing_field['ID'] ?? 0);
-            if ($existing_field_id <= 0) {
-                continue;
-            }
-
-            acf_delete_field($existing_field_id);
-            $did_update = true;
-        }
-
-        return $did_update;
+        );
     }
 }
 

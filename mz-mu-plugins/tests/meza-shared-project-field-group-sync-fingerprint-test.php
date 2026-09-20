@@ -349,9 +349,46 @@ function acf_update_field(array $field): void
 
 function acf_delete_field(int $field_id): void
 {
-    global $meza_project_sync_test_deleted_fields;
+    global $meza_project_sync_test_deleted_fields, $meza_project_sync_test_existing_fields_by_id;
 
     $meza_project_sync_test_deleted_fields[] = $field_id;
+
+    foreach ($meza_project_sync_test_existing_fields_by_id as $field_group_id => $fields) {
+        $meza_project_sync_test_existing_fields_by_id[$field_group_id] = meza_project_sync_test_remove_field_by_id($fields, $field_id);
+    }
+}
+
+function meza_project_sync_test_remove_field_by_id(array $fields, int $field_id): array
+{
+    $remaining = [];
+    foreach ($fields as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+
+        if ((int) ($field['ID'] ?? 0) === $field_id) {
+            continue;
+        }
+
+        if (isset($field['sub_fields']) && is_array($field['sub_fields'])) {
+            $field['sub_fields'] = meza_project_sync_test_remove_field_by_id($field['sub_fields'], $field_id);
+        }
+
+        if (isset($field['layouts']) && is_array($field['layouts'])) {
+            foreach ($field['layouts'] as $layout_index => $layout) {
+                if (!is_array($layout)) {
+                    continue;
+                }
+
+                $layout['sub_fields'] = meza_project_sync_test_remove_field_by_id((array) ($layout['sub_fields'] ?? []), $field_id);
+                $field['layouts'][$layout_index] = $layout;
+            }
+        }
+
+        $remaining[] = $field;
+    }
+
+    return array_values($remaining);
 }
 
 function meza_preserve_acf_field_tree_identifiers(array $field, ?array $existing_field = null, string $fallback_parent = ''): array
@@ -427,6 +464,17 @@ function meza_project_sync_test_repeater_field(array $sub_fields): array
         'name' => 'project_repeater',
         'label' => 'Project Repeater',
         'type' => 'repeater',
+        'sub_fields' => $sub_fields,
+    ];
+}
+
+function meza_project_sync_test_group_field(array $sub_fields): array
+{
+    return [
+        'key' => 'field_project_group',
+        'name' => 'project_group',
+        'label' => 'Project Group',
+        'type' => 'group',
         'sub_fields' => $sub_fields,
     ];
 }
@@ -624,6 +672,12 @@ $flexible_definition = meza_project_sync_test_field_group('group_project_flexibl
         meza_project_sync_test_text_field('field_project_feature_summary', 'summary', 'Summary'),
     ]),
 ]);
+$group_definition = meza_project_sync_test_field_group('group_project_group', [
+    meza_project_sync_test_group_field([
+        meza_project_sync_test_text_field('field_project_group_title', 'title', 'Title'),
+        meza_project_sync_test_text_field('field_project_group_extension', 'extension', 'Extension'),
+    ]),
+]);
 
 meza_project_sync_test_case('same effective definition set does not repeat sync', function () use ($base_definition): void {
     global $meza_project_sync_test_updated_fields;
@@ -716,6 +770,60 @@ meza_project_sync_test_case('db-backed group missing nested metrics value label 
     meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition]), 'The reconciled nested metrics field tree should be complete.');
 });
 
+meza_project_sync_test_case('stale repeater and group descendants block completeness then are deleted idempotently', function () use ($nested_definition, $group_definition): void {
+    global $meza_project_sync_test_existing_fields_by_id,
+        $meza_project_sync_test_updated_fields,
+        $meza_project_sync_test_deleted_fields;
+
+    $repeater_fields = meza_project_sync_test_with_parents(array_values((array) ($nested_definition['fields'] ?? [])), 'group_project_nested');
+    $repeater_fields[0]['ID'] = 410;
+    $repeater_fields[0]['sub_fields'][0]['ID'] = 411;
+    $repeater_fields[0]['sub_fields'][1]['ID'] = 412;
+    $repeater_fields[0]['sub_fields'][] = meza_project_sync_test_text_field('field_project_stale_repeater', 'stale_repeater', 'Stale Repeater') + [
+        'ID' => 499,
+        'parent' => 'field_project_repeater',
+        'menu_order' => 2,
+    ];
+
+    $group_fields = meza_project_sync_test_with_parents(array_values((array) ($group_definition['fields'] ?? [])), 'group_project_group');
+    $group_fields[0]['ID'] = 510;
+    $group_fields[0]['sub_fields'][0]['ID'] = 511;
+    $group_fields[0]['sub_fields'][1]['ID'] = 512;
+    $group_fields[0]['sub_fields'][] = meza_project_sync_test_text_field('field_project_stale_group', 'stale_group', 'Stale Group') + [
+        'ID' => 599,
+        'parent' => 'field_project_group',
+        'menu_order' => 2,
+    ];
+
+    meza_project_sync_test_reset([$nested_definition, $group_definition], [], [
+        'group_project_nested' => $repeater_fields,
+        'group_project_group' => $group_fields,
+    ]);
+
+    meza_project_sync_test_assert(!meza_shared_project_field_group_definition_trees_are_complete([$nested_definition, $group_definition]), 'Unexpected nested managed descendants must make the tree incomplete.');
+    meza_sync_shared_project_field_group_fields();
+
+    meza_project_sync_test_assert_same([499, 599], $meza_project_sync_test_deleted_fields, 'Each stale nested field ID must be passed to acf_delete_field().');
+    $reconciled_repeater = $meza_project_sync_test_existing_fields_by_id[101] ?? [];
+    $reconciled_group = $meza_project_sync_test_existing_fields_by_id[102] ?? [];
+    meza_project_sync_test_assert_same(null, meza_project_sync_test_find_field_path($reconciled_repeater, ['project_repeater', 'stale_repeater']), 'The stale repeater field must be absent after reconciliation.');
+    meza_project_sync_test_assert_same(null, meza_project_sync_test_find_field_path($reconciled_group, ['project_group', 'stale_group']), 'The stale group field must be absent after reconciliation.');
+    $label = meza_project_sync_test_find_field_path($reconciled_repeater, ['project_repeater', 'label']);
+    $extension = meza_project_sync_test_find_field_path($reconciled_group, ['project_group', 'extension']);
+    meza_project_sync_test_assert_same(412, (int) ($label['ID'] ?? 0), 'Retained repeater extension fields must keep their IDs.');
+    meza_project_sync_test_assert_same('field_project_repeater', (string) ($label['parent'] ?? ''), 'Retained repeater extension fields must retain their parent key.');
+    meza_project_sync_test_assert_same(1, (int) ($label['menu_order'] ?? -1), 'Retained repeater extension fields must retain their order.');
+    meza_project_sync_test_assert_same(512, (int) ($extension['ID'] ?? 0), 'Retained group extension fields must keep their IDs.');
+    meza_project_sync_test_assert_same('field_project_group', (string) ($extension['parent'] ?? ''), 'Retained group extension fields must retain their parent key.');
+    meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$nested_definition, $group_definition]), 'The corrected trees must become complete after stale descendants are deleted.');
+
+    $meza_project_sync_test_updated_fields = [];
+    $meza_project_sync_test_deleted_fields = [];
+    meza_sync_shared_project_field_group_fields();
+    meza_project_sync_test_assert_same([], $meza_project_sync_test_updated_fields, 'A second corrected-tree sync must perform no updates.');
+    meza_project_sync_test_assert_same([], $meza_project_sync_test_deleted_fields, 'A second corrected-tree sync must perform no deletions.');
+});
+
 meza_project_sync_test_case('flexible layout descendants are reconciled recursively', function () use ($flexible_definition): void {
     global $meza_project_sync_test_existing_fields_by_id;
 
@@ -740,6 +848,28 @@ meza_project_sync_test_case('flexible layout descendants are reconciled recursiv
     meza_project_sync_test_assert_same('layout_project_feature', (string) ($summary['parent'] ?? ''), 'Flexible layout child should be parented to the layout key.');
     meza_project_sync_test_assert_same(1, (int) ($summary['menu_order'] ?? -1), 'Flexible layout child should use the expected menu order.');
     meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$flexible_definition]), 'The reconciled flexible layout tree should be complete.');
+});
+
+meza_project_sync_test_case('stale flexible-layout descendants are deleted recursively', function () use ($flexible_definition): void {
+    global $meza_project_sync_test_existing_fields_by_id, $meza_project_sync_test_deleted_fields;
+
+    $fields = meza_project_sync_test_with_parents(array_values((array) ($flexible_definition['fields'] ?? [])), 'group_project_flexible');
+    $fields[0]['ID'] = 610;
+    $fields[0]['layouts'][0]['sub_fields'][0]['ID'] = 611;
+    $fields[0]['layouts'][0]['sub_fields'][1]['ID'] = 612;
+    $fields[0]['layouts'][0]['sub_fields'][] = meza_project_sync_test_text_field('field_project_stale_layout', 'stale_layout', 'Stale Layout') + [
+        'ID' => 699,
+        'parent' => 'layout_project_feature',
+        'menu_order' => 2,
+    ];
+
+    meza_project_sync_test_reset([$flexible_definition], [], ['group_project_flexible' => $fields]);
+    meza_project_sync_test_assert(!meza_shared_project_field_group_definition_trees_are_complete([$flexible_definition]), 'Unexpected flexible-layout descendants must make the tree incomplete.');
+    meza_sync_shared_project_field_group_fields();
+    meza_project_sync_test_assert_same([699], $meza_project_sync_test_deleted_fields, 'The stale flexible-layout field ID must be passed to acf_delete_field().');
+    $reconciled = $meza_project_sync_test_existing_fields_by_id[101] ?? [];
+    meza_project_sync_test_assert_same(null, meza_project_sync_test_find_field_path($reconciled, ['project_flexible', 'stale_layout']), 'The stale flexible-layout descendant must be absent after reconciliation.');
+    meza_project_sync_test_assert(meza_shared_project_field_group_definition_trees_are_complete([$flexible_definition]), 'The flexible-layout tree must become complete after stale descendant deletion.');
 });
 
 meza_project_sync_test_case('current fingerprint with complete tree skips repeat sync', function () use ($nested_definition): void {
