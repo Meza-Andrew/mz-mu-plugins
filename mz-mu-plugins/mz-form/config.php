@@ -258,15 +258,13 @@ if (!function_exists('mzf_maybe_migrate_mailchimp_to_crm')) {
     }
 }
 
-add_action('acf/init', function () {
-    mzf_maybe_migrate_mailchimp_to_crm();
-}, 20);
+if (function_exists('add_filter')) {
+    add_filter('meza_managed_acf_maintenance_operations', static function (array $operations): array {
+        $operations['migrate_mailchimp_to_crm'] = 'mzf_maybe_migrate_mailchimp_to_crm';
 
-add_action('init', function () {
-    if (!did_action('acf/init')) {
-        mzf_maybe_migrate_mailchimp_to_crm();
-    }
-}, 25);
+        return $operations;
+    });
+}
 
 if (!function_exists('mzf_normalize_crm_platform')) {
     function mzf_normalize_crm_platform(string $platform): string
