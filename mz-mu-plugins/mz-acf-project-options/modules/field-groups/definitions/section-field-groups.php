@@ -963,6 +963,26 @@
         ];
     }
 
+    function meza_get_about_section_field_group_definition(): array
+    {
+        return [
+            'key' => 'group_meza_about_section',
+            'title' => 'About Section',
+            'fields' => [[
+                'key' => 'field_meza_section_about', 'label' => 'Section', 'name' => 'section_about', 'type' => 'group',
+                'required' => 0, 'conditional_logic' => 0, 'wrapper' => meza_get_section_field_wrapper(), 'layout' => 'block',
+                'sub_fields' => [
+                    ['key' => 'field_meza_about_headline', 'label' => 'Headline (H2)', 'name' => 'headline', 'type' => 'text', 'required' => 0, 'conditional_logic' => 0, 'wrapper' => meza_get_section_field_wrapper(), 'default_value' => '', 'maxlength' => '', 'placeholder' => '', 'prepend' => '', 'append' => ''],
+                    ['key' => 'field_meza_about_subhead', 'label' => 'Subhead', 'name' => 'subhead', 'type' => 'textarea', 'required' => 0, 'conditional_logic' => 0, 'wrapper' => meza_get_section_field_wrapper(), 'default_value' => '', 'maxlength' => '', 'rows' => 2, 'placeholder' => '', 'new_lines' => ''],
+                    ['key' => 'field_meza_about_image', 'label' => 'Image', 'name' => 'image', 'type' => 'image', 'required' => 0, 'conditional_logic' => 0, 'wrapper' => meza_get_section_field_wrapper(), 'return_format' => 'id', 'library' => 'all', 'min_width' => '', 'min_height' => '', 'min_size' => '', 'max_width' => '', 'max_height' => '', 'max_size' => '', 'mime_types' => ''],
+                    ['key' => 'field_meza_about_link', 'label' => 'Link', 'name' => 'link', 'type' => 'link', 'required' => 0, 'conditional_logic' => 0, 'wrapper' => meza_get_section_field_wrapper(), 'return_format' => 'array'],
+                ],
+            ]],
+            'location' => [[['param' => 'post_type', 'operator' => '==', 'value' => 'page']]],
+            'menu_order' => 0, 'position' => 'normal', 'style' => 'default', 'label_placement' => 'top', 'instruction_placement' => 'label', 'hide_on_screen' => '', 'active' => true, 'description' => '', 'show_in_rest' => 0, 'display_title' => '', 'allow_ai_access' => false, 'ai_description' => '',
+        ];
+    }
+
     function meza_get_list_faqs_section_field_group_definition(): array
     {
         return [
