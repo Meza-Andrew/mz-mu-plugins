@@ -1287,7 +1287,7 @@
             'section_key' => 'field_meza_section_list_events',
             'section_name' => 'section_list-events',
             'headline_key' => 'field_meza_list_events_headline',
-            'headline_default' => 'List Events',
+            'headline_default' => 'Upcoming Races',
             'include_display' => true,
             'display_key' => 'field_meza_list_events_display',
             'subhead_key' => 'field_meza_list_events_subhead',
@@ -1300,6 +1300,32 @@
             'id_default' => 'events',
             'location' => meza_get_acf_location_rules_hidden_by_default(),
             'menu_order' => 25,
+        ]);
+    }
+
+    function meza_get_list_past_events_section_field_group_definition(): array
+    {
+        return meza_get_standard_list_section_field_group_definition([
+            'group_key' => 'group_meza_list_past_events_section',
+            'title' => 'List Past Events Section',
+            'visibility_key' => 'field_meza_show_list_past_events',
+            'visibility_name' => 'show_list-past-events',
+            'section_key' => 'field_meza_section_list_past_events',
+            'section_name' => 'section_list-past-events',
+            'headline_key' => 'field_meza_list_past_events_headline',
+            'headline_default' => 'Results',
+            'include_display' => true,
+            'display_key' => 'field_meza_list_past_events_display',
+            'subhead_key' => 'field_meza_list_past_events_subhead',
+            'include_description' => true,
+            'description_key' => 'field_meza_list_past_events_description',
+            'link_key' => 'field_meza_list_past_events_link',
+            'include_link_secondary' => true,
+            'link_secondary_key' => 'field_meza_list_past_events_link_secondary',
+            'id_key' => 'field_meza_list_past_events_id',
+            'id_default' => 'past-events',
+            'location' => meza_get_acf_location_rules_hidden_by_default(),
+            'menu_order' => 26,
         ]);
     }
 

@@ -933,7 +933,9 @@ if (!function_exists('meza_site_documentation_get_taxonomy_term_rows')) {
                     $resolved_term_url = get_term_link($term);
 
                     if (is_string($resolved_term_url) && !is_wp_error($resolved_term_url)) {
-                        $term_url = $resolved_term_url;
+                        $term_url = function_exists('meza_get_public_facing_url')
+                            ? meza_get_public_facing_url($resolved_term_url)
+                            : $resolved_term_url;
                     }
                 }
 

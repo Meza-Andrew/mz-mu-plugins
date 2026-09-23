@@ -644,6 +644,7 @@
         $groups[] = meza_get_list_resources_section_field_group_definition();
         $groups[] = meza_get_list_faqs_section_field_group_definition();
         $groups[] = meza_get_list_reviews_section_field_group_definition();
+        $groups[] = meza_get_list_past_events_section_field_group_definition();
         $groups[] = meza_get_cta_field_group_definition();
         $groups[] = meza_get_profile_field_group_definition();
         $groups[] = meza_get_organization_field_group_definition();
@@ -673,6 +674,9 @@
 
         $groups = apply_filters('meza_shared_project_acf_field_groups', $groups);
         $groups = is_array($groups) ? array_values($groups) : [];
+        if (function_exists('meza_augment_shared_project_statistics_fields')) {
+            $groups = meza_augment_shared_project_statistics_fields($groups);
+        }
 
         return $groups;
         } finally {

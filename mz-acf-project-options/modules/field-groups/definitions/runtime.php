@@ -270,6 +270,7 @@
             'group_meza_contact_locations_section' => 'section_list-locations',
             'group_697feb01ec35f' => 'section_faqs',
             'group_meza_list_events_section' => 'section_list-events',
+            'group_meza_list_past_events_section' => 'section_list-past-events',
             'group_meza_list_reviews_section' => 'section_list-reviews',
             'group_meza_list_posts_section' => 'section_list-posts',
             'group_meza_list_resources_section' => 'section_list-resources',
@@ -1125,6 +1126,10 @@
             return in_array($field_name, ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'], true);
         }
 
+        if ($section_field_name === 'section_list-past-events') {
+            return in_array($field_name, ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'], true);
+        }
+
         if ($section_field_name === 'section_list-concerts') {
             return in_array($field_name, ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'], true);
         }
@@ -1134,6 +1139,10 @@
         }
 
         if ($group_key === 'group_meza_list_events_section') {
+            return in_array($field_name, ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'], true);
+        }
+
+        if ($group_key === 'group_meza_list_past_events_section') {
             return in_array($field_name, ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'], true);
         }
 

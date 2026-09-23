@@ -38,6 +38,19 @@
                     'bidirectional' => 0,
                     'bidirectional_target' => [],
                 ],
+                [
+                    'key' => 'field_meza_service_cta_link',
+                    'label' => 'CTA Link',
+                    'name' => 'cta_link',
+                    'aria-label' => '',
+                    'type' => 'link',
+                    'instructions' => '',
+                    'required' => 0,
+                    'conditional_logic' => 0,
+                    'wrapper' => ['width' => '', 'class' => '', 'id' => ''],
+                    'return_format' => 'array',
+                    'allow_in_bindings' => 0,
+                ],
             ],
             'location' => [
                 [
@@ -834,6 +847,22 @@ JSON, true);
             ],
             'return_format' => 'url',
             'allow_in_bindings' => 0,
+        ];
+
+        $fields[] = [
+            'key' => 'field_meza_profile_fun_photo',
+            'label' => 'Fun Photo',
+            'name' => 'fun_photo',
+            'aria-label' => '',
+            'type' => 'image',
+            'instructions' => '',
+            'required' => 0,
+            'conditional_logic' => 0,
+            'wrapper' => ['width' => '', 'class' => '', 'id' => ''],
+            'return_format' => 'id',
+            'library' => 'all',
+            'allow_in_bindings' => 0,
+            'preview_size' => 'thumbnail',
         ];
 
         return [

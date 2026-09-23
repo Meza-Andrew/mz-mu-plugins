@@ -1182,6 +1182,10 @@
             return in_array($field_name, ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'], true);
         }
 
+        if ($section_field_name === 'section_list-past-events') {
+            return in_array($field_name, ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'], true);
+        }
+
         if ($section_field_name === 'section_list-concerts') {
             return in_array($field_name, ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'], true);
         }
@@ -1191,6 +1195,10 @@
         }
 
         if ($group_key === 'group_meza_list_events_section') {
+            return in_array($field_name, ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'], true);
+        }
+
+        if ($group_key === 'group_meza_list_past_events_section') {
             return in_array($field_name, ['headline', 'display', 'subhead', 'description', 'link', 'link_secondary'], true);
         }
 

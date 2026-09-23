@@ -38,6 +38,11 @@ function meza_get_public_admin_url(string $url): string
         return '';
     }
 
+    $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
+    if ($path === '/wp-admin' || str_starts_with($path, '/wp-admin/')) {
+        return $url;
+    }
+
     return function_exists('meza_get_public_facing_url')
         ? meza_get_public_facing_url($url)
         : $url;
@@ -265,18 +270,19 @@ add_filter('user_row_actions', function (array $actions, WP_User $user): array {
 }, 1000, 2);
 
 add_filter('term_row_actions', function (array $actions, WP_Term $term): array {
-    if (meza_can_delete_taxonomy_terms(wp_get_current_user())) {
-        return $actions;
-    }
-
-    unset($actions['delete']);
+    $can_delete = meza_can_delete_taxonomy_terms(wp_get_current_user());
 
     foreach ($actions as $key => $action) {
         $normalized_key = strtolower(trim((string) $key));
         $normalized_action = strtolower(trim(wp_strip_all_tags((string) $action)));
 
-        if ($normalized_key === 'delete' || $normalized_action === 'delete') {
+        if (!$can_delete && ($normalized_key === 'delete' || $normalized_action === 'delete')) {
             unset($actions[$key]);
+            continue;
+        }
+
+        if (is_string($action)) {
+            $actions[$key] = meza_update_admin_action_link($action);
         }
     }
 

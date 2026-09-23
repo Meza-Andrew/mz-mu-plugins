@@ -1293,6 +1293,58 @@ add_action('acf/untrash_ui_options_page', static function (array $options_page):
     meza_track_managed_acf_definition_event('options_pages', $options_page, false);
 }, 5);
 
+if (!function_exists('meza_augment_shared_project_statistics_fields')) {
+    function meza_augment_shared_project_statistics_fields(array $definitions): array
+    {
+        $augment = static function (array $fields) use (&$augment): array {
+            foreach ($fields as $index => $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+
+                if (isset($field['sub_fields']) && is_array($field['sub_fields'])) {
+                    $field['sub_fields'] = $augment($field['sub_fields']);
+                }
+
+                if (
+                    ($field['type'] ?? '') === 'repeater'
+                    && in_array((string) ($field['name'] ?? ''), ['statistics', 'metrics'], true)
+                ) {
+                    $has_icon = false;
+                    foreach ((array) ($field['sub_fields'] ?? []) as $sub_field) {
+                        if (is_array($sub_field) && ($sub_field['name'] ?? '') === 'stat_icon') {
+                            $has_icon = true;
+                            break;
+                        }
+                    }
+                    if (!$has_icon) {
+                        $owner = preg_replace('/^field_/', '', (string) ($field['key'] ?? $field['name'])) ?: 'statistics';
+                        $field['sub_fields'][] = [
+                            'key' => 'field_meza_' . sanitize_key($owner) . '_stat_icon',
+                            'label' => 'Stat Icon', 'name' => 'stat_icon', 'aria-label' => '',
+                            'type' => 'image', 'instructions' => '', 'required' => 0,
+                            'conditional_logic' => 0, 'wrapper' => ['width' => '', 'class' => '', 'id' => ''],
+                            'return_format' => 'id', 'library' => 'all', 'allow_in_bindings' => 0,
+                            'preview_size' => 'thumbnail',
+                        ];
+                    }
+                }
+
+                $fields[$index] = $field;
+            }
+            return $fields;
+        };
+
+        foreach ($definitions as $index => $definition) {
+            if (is_array($definition) && isset($definition['fields']) && is_array($definition['fields'])) {
+                $definition['fields'] = $augment($definition['fields']);
+                $definitions[$index] = $definition;
+            }
+        }
+        return $definitions;
+    }
+}
+
 if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
     function meza_get_ecommerce_editable_acf_field_group_definitions(): array
     {
@@ -2498,7 +2550,11 @@ if (!function_exists('meza_get_default_editable_acf_field_group_definitions')) {
             $definitions[$index] = meza_normalize_header_section_group($definition);
         }
 
-        return $definitions;
+        return meza_augment_shared_project_statistics_fields(
+            function_exists('apply_filters')
+                ? apply_filters('meza_shared_project_default_acf_field_group_definitions', $definitions)
+                : $definitions
+        );
     }
 }
 
